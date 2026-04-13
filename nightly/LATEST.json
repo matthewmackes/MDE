@@ -1,7 +1,7 @@
 {
-  "version": "nightly-20260412",
-  "commit": "48e8b3f7",
-  "file": "map2-audio-nightly-20260412-48e8b3f7.tar.gz",
-  "sha256": "51331241048dd70c165e704108e086bc67c3ffc10c8189280d844ee45a25372e",
-  "published": "2026-04-12T09:40:56Z"
+  "version": "nightly-20260413",
+  "commit": "83bdaa98",
+  "file": "map2-audio-nightly-20260413-83bdaa98.tar.gz",
+  "sha256": "5890aa91a8745b04492d8b9176c74d13ae87a56e7abe14154ccd1748cd669951",
+  "published": "2026-04-13T10:30:08Z"
 }
