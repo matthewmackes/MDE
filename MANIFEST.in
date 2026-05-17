@@ -11,7 +11,8 @@ include uninstall.sh
 include pyproject.toml
 include setup.py
 
-# MAP2 branding (logo placed on About, Wizard welcome, and Dashboard header)
+# Branding (logo placed on About, Wizard welcome, and Dashboard header +
+# the standard wallpaper used for desktop + LightDM greeter)
 recursive-include branding *.png *.svg
 
 # Specs and CI
@@ -19,11 +20,19 @@ recursive-include packaging *
 recursive-include install-helpers *.sh
 recursive-include .github *.yml
 
-# Documentation
+# Documentation (top-level spec + per-feature help topics)
 recursive-include docs *.md
 
+# bin/ wrappers consumed by the spec's %%install — mackes-gvfsd-mesh,
+# mackes-mesh-open
+recursive-include bin *
+
+# C panel plugin sources (compiled in %%build before %%install)
+recursive-include data/panel-plugins *
+
 # Shipped data tree: presets, wallpapers, applications/.desktop, icons,
-# CSS tokens, dnf repo file, systemd units, grub snippets
+# CSS tokens, dnf repo file, systemd units, grub snippets, mesh-services
+# catalog, Carbon icon theme + PadOS GTK theme, captured xfce-baseline
 recursive-include data *
 
 # Tests (shipped so downstream rebuilds can run them)

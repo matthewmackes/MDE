@@ -22,14 +22,15 @@ command -v rpm       >/dev/null 2>&1 || err "rpm not found."
 command -v curl      >/dev/null 2>&1 || err "curl not found."
 
 fedora_ver="$(rpm -E %fedora)"
-inf "Fedora detected:    $fedora_ver"
+arch="$(uname -m)"
+inf "Fedora detected:    $fedora_ver  ($arch)"
 inf "Resolving latest:   $REPO"
 
 tag="$(curl -fsSL "$GH_API" | grep -oP '"tag_name":\s*"\K[^"]+' | head -1 || true)"
 [ -n "$tag" ] || err "Could not resolve latest release tag for $REPO."
 
 version="${tag#v}"
-rpm_url="https://github.com/$REPO/releases/download/$tag/mackes-shell-${version}-1.fc${fedora_ver}.noarch.rpm"
+rpm_url="https://github.com/$REPO/releases/download/$tag/mackes-shell-${version}-1.fc${fedora_ver}.${arch}.rpm"
 
 inf "Release tag:        $tag"
 inf "RPM URL:            $rpm_url"

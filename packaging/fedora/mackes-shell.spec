@@ -1,3 +1,9 @@
+# Disable the auto-generated debuginfo / debugsource subpackages. Our C
+# panel plugin is tiny (~60 KB stripped) and we don't ship separate
+# debug builds. Avoids "Empty %files file debugsourcefiles.list" errors
+# from rpmbuild on Fedora 40+.
+%global debug_package %{nil}
+
 Name:           mackes-shell
 Version:        1.0.0
 Release:        1%{?dist}
@@ -7,10 +13,13 @@ License:        GPL-3.0
 URL:            https://github.com/matthewmackes/MAP2-RELEASES
 Source0:        %{name}-%{version}.tar.gz
 
-BuildArch:      noarch
+# Arch-specific (was BuildArch:noarch in 0.x): the package now carries a
+# compiled C xfce4-panel external plugin under %{_libdir}/xfce4/panel/
+# plugins/mackes-clipboard. The rest is pure-Python + data files.
+ExclusiveArch:  %{ix86} x86_64 aarch64
 
-# Pure-Python package; no compilation, no %%py3_build needed. We only need
-# python3 to know where site-packages lives.
+# Build dependencies — python3 for site-packages discovery + C toolchain
+# for the panel plugin.
 BuildRequires:  python3
 # C panel-plugin compile-time deps
 BuildRequires:  gcc
@@ -130,9 +139,10 @@ install -d %{buildroot}%{_datadir}/themes
 cp -r data/themes/PadOS   %{buildroot}%{_datadir}/themes/
 install -d %{buildroot}%{_datadir}/icons
 cp -r data/icons/Carbon   %{buildroot}%{_datadir}/icons/
-# C plugin install (compiled in %%build above)
+# C plugin install (compiled in %%build above). Pass libdir explicitly
+# so on 64-bit the binary lands at %{_libdir}=/usr/lib64, not /usr/lib.
 make -C data/panel-plugins/mackes-clipboard install \
-    DESTDIR=%{buildroot} prefix=%{_prefix}
+    DESTDIR=%{buildroot} prefix=%{_prefix} libdir=%{_libdir}
 cp -r data/grub           %{buildroot}%{_datadir}/%{name}/data/
 cp    data/media-services.yaml %{buildroot}%{_datadir}/%{name}/data/
 # Per-preset captured xfconf baselines (§8 lock). Each preset directory
