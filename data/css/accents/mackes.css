@@ -1,5 +1,6 @@
-/* Mackes — warm amber, the house style. */
-@define-color mackes_accent     #d4a060;
-@define-color mackes_accent_dim alpha(@mackes_accent, 0.25);
-@define-color mackes_text       #ececec;
-@define-color mackes_dim        alpha(@mackes_text, 0.6);
+/* Mackes — the house style. Warm amber on Carbon Gray 100. */
+@define-color mackes_accent        #d4a060;
+@define-color mackes_accent_hover  alpha(@mackes_accent, 0.85);
+@define-color mackes_accent_active alpha(@mackes_accent, 0.70);
+@define-color mackes_accent_dim    alpha(@mackes_accent, 0.20);
+@define-color mackes_accent_focus  @mackes_accent;

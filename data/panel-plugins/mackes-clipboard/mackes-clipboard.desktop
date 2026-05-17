@@ -1,0 +1,9 @@
+[Xfce Panel]
+Type=X-XFCE-PanelPlugin
+Encoding=UTF-8
+Name=Mackes Mesh Clipboard
+Comment=Distributed clipboard across mesh peers (mesh-sync NATS bucket)
+Icon=edit-paste
+X-XFCE-Internal=FALSE
+X-XFCE-Exec=/usr/lib/xfce4/panel/plugins/mackes-clipboard
+X-XFCE-Module-Path=

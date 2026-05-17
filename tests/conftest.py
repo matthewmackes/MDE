@@ -41,9 +41,8 @@ def isolated_xdg(tmp_path, monkeypatch):
         # they import GTK at import time, so reloading them in tests would
         # fail. Only drop the pure-backend modules + the package itself.
         if mod_name in {"mackes", "mackes.state", "mackes.logging",
-                        "mackes.snapshots", "mackes.shell_profiles",
-                        "mackes.menu_integration", "mackes.presets",
-                        "mackes.session_manager", "mackes.app_mgmt",
+                        "mackes.snapshots", "mackes.menu_integration",
+                        "mackes.presets", "mackes.app_mgmt",
                         "mackes.uninstall", "mackes.xfconf_bridge",
                         "mackes.qnm_bridge"}:
             del sys.modules[mod_name]
@@ -53,17 +52,12 @@ def isolated_xdg(tmp_path, monkeypatch):
     importlib.reload(mackes.state)
     mackes.state.ensure_dirs()
 
-    # Keep the runtime preset/profile lookups inside the dev tree so an
+    # Keep the runtime preset lookups inside the dev tree so an
     # already-installed `/usr/share/mackes-shell/` from a previous RPM build
     # doesn't shadow the local repo's data dirs during tests.
     import mackes.presets as _presets
     monkeypatch.setattr(_presets, "SHIPPED_PRESET_DIRS",
                         [REPO_ROOT / "data" / "presets"])
-    import mackes.shell_profiles as _sp
-    monkeypatch.setattr(_sp, "SHIPPED_PROFILE_DIRS",
-                        [REPO_ROOT / "data" / "shell-profiles"])
-    monkeypatch.setattr(_sp, "SHIPPED_PLANK_THEME_DIRS",
-                        [REPO_ROOT / "data" / "plank-themes"])
 
     yield {
         "home": home,

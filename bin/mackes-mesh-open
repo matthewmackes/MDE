@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# mackes-mesh-open — handle mesh:// URIs.
+# Triggered by the mackes-mesh-uri-handler.desktop file when xdg-open
+# is invoked with a mesh:// URI.
+
+set -euo pipefail
+
+URI="${1:-mesh:///}"
+
+# Strip scheme + leading slashes; what's left is a relative path under
+# the FUSE mount.
+REL="${URI#mesh://}"
+REL="${REL#/}"
+
+MOUNT="$HOME/.local/share/mackes-mesh-fuse"
+
+if [[ -z "$REL" ]]; then
+    TARGET="$MOUNT"
+else
+    TARGET="$MOUNT/$REL"
+fi
+
+# Make sure the daemon is up (best-effort)
+systemctl --user is-active mackes-gvfsd-mesh.service >/dev/null 2>&1 || \
+    systemctl --user start mackes-gvfsd-mesh.service 2>/dev/null || true
+
+# Wait briefly for the mount to appear
+for _ in 1 2 3 4 5; do
+    if mountpoint -q "$MOUNT" 2>/dev/null; then
+        break
+    fi
+    sleep 0.5
+done
+
+# Open in the user's default file manager
+if command -v xdg-open >/dev/null 2>&1; then
+    exec xdg-open "$TARGET"
+else
+    echo "$TARGET"
+fi

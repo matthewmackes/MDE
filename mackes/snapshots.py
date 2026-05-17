@@ -6,10 +6,7 @@ A snapshot is a timestamped directory under
     snapshots/2026-05-15T142300_pre-display/
     ├── manifest.json       # name, timestamp, hostname, source preset
     ├── xfconf/             # `xfconf-query --channel X --list -v` per channel
-    ├── polybar/            # full copy of ~/.config/polybar
-    ├── plank/              # full copy of ~/.config/plank
-    ├── rofi/               # full copy of ~/.config/rofi
-    └── xfce4-panel/        # full copy of ~/.config/xfce4/panel
+    └── xfce4/              # full copy of ~/.config/xfce4
 
 Restore wipes the live config dirs and copies snapshot contents back, then
 loads the xfconf dumps. xfsettingsd applies live; no service restart.
@@ -46,10 +43,7 @@ XFCONF_CHANNELS = [
 ]
 
 LIVE_CONFIG_DIRS = {
-    "polybar":     HOME / ".config" / "polybar",
-    "plank":       HOME / ".config" / "plank",
-    "rofi":        HOME / ".config" / "rofi",
-    "xfce4-panel": HOME / ".config" / "xfce4" / "panel",
+    "xfce4": HOME / ".config" / "xfce4",
 }
 
 

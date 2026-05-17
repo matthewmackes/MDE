@@ -1,0 +1,82 @@
+# Mackes Shell — standard panel layout overlay.
+#
+# Applied on top of the captured xfce4-panel baseline by
+# install-helpers/apply-xfce-baseline.sh. The full panel layout from
+# leftmost to rightmost matches the Q-MX locks + standard-layout locks:
+#
+#   Whisker Menu → Docklike Taskbar → systray → volume → power → clock
+#
+# This overlay only sets the plugin definitions and the panel's
+# plugin-ids array; existing panel position/geometry from the captured
+# baseline is preserved.
+#
+# Format: same as `xfconf-query --list --verbose` output. Each line is
+# a property path followed by whitespace then a value.
+
+/panels                                  Array
+/panels/dark-mode                        true
+/panels/panel-0/position                 p=8;x=0;y=1080
+/panels/panel-0/length                   100
+/panels/panel-0/size                     32
+/panels/panel-0/icon-size                22
+/panels/panel-0/mode                     0
+/panels/panel-0/background-style         0
+/panels/panel-0/position-locked          true
+/panels/panel-0/disable-struts           false
+/panels/panel-0/autohide-behavior        0
+
+# Plugin ordering — left to right
+/panels/panel-0/plugin-ids               [1,2,5,6,7,3,9,4,8]
+
+# 1: Whisker Menu (replaces classic apps menu)
+/plugins/plugin-1                        whiskermenu
+/plugins/plugin-1/show-button-title      false
+/plugins/plugin-1/button-icon            org.xfce.panel.whiskermenu
+/plugins/plugin-1/button-single-row      true
+/plugins/plugin-1/launcher-show-name     true
+/plugins/plugin-1/launcher-show-description false
+/plugins/plugin-1/category-show-name     true
+/plugins/plugin-1/search-actions         true
+/plugins/plugin-1/hover-switch-category  true
+
+# 2: Docklike Taskbar (replaces Window Buttons)
+/plugins/plugin-2                        docklike
+/plugins/plugin-2/indicator-style        1
+/plugins/plugin-2/show-only-current-monitor false
+/plugins/plugin-2/show-only-current-workspace false
+/plugins/plugin-2/group-windows          true
+/plugins/plugin-2/no-pinned              false
+
+# 5,7: Expanding separators (push systray + clock cluster to right)
+/plugins/plugin-5                        separator
+/plugins/plugin-5/expand                 true
+/plugins/plugin-5/style                  0
+/plugins/plugin-7                        separator
+/plugins/plugin-7/style                  0
+
+# 6: Systray
+/plugins/plugin-6                        systray
+/plugins/plugin-6/square-icons           true
+
+# 3: PulseAudio (volume applet)
+/plugins/plugin-3                        pulseaudio
+/plugins/plugin-3/enable-keyboard-shortcuts true
+/plugins/plugin-3/show-notifications     true
+/plugins/plugin-3/play-sound             false
+
+# 9: Power Manager Plugin (battery + power profiles)
+/plugins/plugin-9                        power-manager-plugin
+/plugins/plugin-9/show-panel-label       0
+
+# 4: Action buttons (lock / log out)
+/plugins/plugin-4                        actions
+/plugins/plugin-4/appearance             1
+/plugins/plugin-4/items                  [+lock-screen,+logout]
+
+# 8: Clock (IBM Plex Sans, two-line date + time)
+/plugins/plugin-8                        clock
+/plugins/plugin-8/digital-layout         1
+/plugins/plugin-8/digital-date-format    %B %d, %Y
+/plugins/plugin-8/digital-date-font      IBM Plex Sans 10
+/plugins/plugin-8/digital-time-format    %I:%M %p
+/plugins/plugin-8/digital-time-font      IBM Plex Sans Bold 12

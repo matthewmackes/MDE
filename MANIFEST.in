@@ -22,8 +22,8 @@ recursive-include .github *.yml
 # Documentation
 recursive-include docs *.md
 
-# Shipped data tree: presets, shell profiles, plank themes, wallpapers,
-# applications/.desktop, icons, overrides
+# Shipped data tree: presets, wallpapers, applications/.desktop, icons,
+# CSS tokens, dnf repo file, systemd units, grub snippets
 recursive-include data *
 
 # Tests (shipped so downstream rebuilds can run them)

@@ -1,0 +1,54 @@
+# Mackes Mesh SSH access policy (Headscale-format).
+#
+# This is the default policy shipped with Mackes 1.0. Edit at
+# ~/.config/mackes-shell/mesh-ssh-policy.yaml (the GUI panel at
+# Network → Mesh SSH → Access Policy writes here). Mackes pushes the
+# file to Headscale via `headscale policy set --file ...` on save.
+#
+# Schema reference: https://headscale.net/ref/acls/
+
+# ---------------------------------------------------------------------------
+# Groups — name → list of usernames or other groups
+# ---------------------------------------------------------------------------
+groups:
+  group:admin:
+    - mm
+  group:user:
+    - mm
+    - guest
+
+# ---------------------------------------------------------------------------
+# Tag ownership — which groups can apply each tag to peers they manage
+# ---------------------------------------------------------------------------
+tagOwners:
+  tag:mackes-admin:
+    - group:admin
+  tag:mackes-user:
+    - group:user
+  tag:mackes-fileserver:
+    - group:admin
+
+# ---------------------------------------------------------------------------
+# Standard network ACLs — who can reach whom on which ports
+# Default: full mesh. Tighten if you have guest peers / multi-tenant.
+# ---------------------------------------------------------------------------
+acls:
+  - action: accept
+    src:    ["*"]
+    dst:    ["*:*"]
+
+# ---------------------------------------------------------------------------
+# SSH-specific ACLs — Tailscale-SSH (§8.14 Layer B) auth rules
+# ---------------------------------------------------------------------------
+ssh:
+  # Admins can SSH anywhere as root or their own username
+  - action: accept
+    src:    ["tag:mackes-admin"]
+    dst:    ["*"]
+    users:  ["root", "mm"]
+
+  # Regular users can SSH only to fileservers as their own username
+  - action: accept
+    src:    ["tag:mackes-user"]
+    dst:    ["tag:mackes-fileserver"]
+    users:  ["mm"]

@@ -1,0 +1,27 @@
+[Unit]
+Description=Mackes Mesh — Tailscale-bootstrap presence (seed peer only)
+Documentation=file:///usr/share/mackes-shell/help/mesh-vpn.md
+After=network-online.target
+ConditionPathExists=/var/lib/mackes/mesh-vpn/seed.json
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/tailscaled \
+    --state=/var/lib/mackes/mesh-vpn/tailscale-bootstrap/tailscaled.state \
+    --socket=/var/lib/mackes/mesh-vpn/tailscale-bootstrap.sock \
+    --tun=userspace-networking \
+    --port=0
+Restart=on-failure
+RestartSec=15s
+TimeoutStopSec=15s
+
+User=root
+Group=root
+
+# Only the seed peer's bootstrap presence runs this; non-control peers
+# leave it disabled (state.is_control=false → systemd skips because of
+# ConditionPathExists).
+
+[Install]
+WantedBy=multi-user.target

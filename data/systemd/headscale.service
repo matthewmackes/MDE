@@ -1,0 +1,24 @@
+[Unit]
+Description=Headscale — Mackes self-hosted Tailscale control plane
+Documentation=file:///usr/share/mackes-shell/help/mesh-vpn.md
+After=network-online.target
+ConditionPathExists=/etc/headscale/config.yaml
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/headscale serve
+Restart=on-failure
+RestartSec=10s
+TimeoutStopSec=30s
+
+User=root
+Group=root
+WorkingDirectory=/var/lib/headscale
+
+# Headscale is a control plane only — modest resource needs
+MemoryHigh=128M
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target

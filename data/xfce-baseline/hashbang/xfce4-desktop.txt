@@ -1,0 +1,13 @@
+/backdrop/screen0/monitor0/workspace0/last-image                 /home/mm/.local/share/xfce-beautifier-fedora44/wallpapers/ipados-f44-abstract.svg
+/backdrop/screen0/monitorDP-1-1/workspace0/last-image            /usr/share/backgrounds/images/default-dark-5_4.jxl
+/backdrop/screen0/monitoreDP-1/workspace0/backdrop-cycle-enable  false
+/backdrop/screen0/monitoreDP-1/workspace0/color-style            0
+/backdrop/screen0/monitoreDP-1/workspace0/image-style            1
+/backdrop/screen0/monitoreDP-1/workspace0/last-image             /usr/share/backgrounds/images/default-dark-16_10.jxl
+/backdrop/screen0/monitoreDP-1/workspace0/rgba1                  [0.000000,0.000000,0.000000,1.000000]
+/desktop-icons/style                                             0
+/desktop-menu/show                                               false
+/last-settings-migration-version                                 1
+/last/window-height                                              607
+/last/window-width                                               662
+/windowlist-menu/show                                            false

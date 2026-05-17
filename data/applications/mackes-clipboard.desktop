@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Mackes Mesh Clipboard
+GenericName=Distributed clipboard
+Comment=Share clipboard items across every mesh peer (Mackes Shell)
+Exec=mackes-clipboard
+Icon=edit-paste
+Terminal=false
+StartupNotify=true
+Categories=Utility;System;
+Keywords=clipboard;mesh;mackes;
+StartupWMClass=mackes-clipboard
+X-Mackes-Component=mesh-clipboard

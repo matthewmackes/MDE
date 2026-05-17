@@ -1,0 +1,4 @@
+/xfce4-power-manager/brightness-switch                  0
+/xfce4-power-manager/brightness-switch-restore-on-exit  -1
+/xfce4-power-manager/power-profile                      balanced
+/xfce4-power-manager/presentation-mode                  true

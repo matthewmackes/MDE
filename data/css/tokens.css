@@ -1,0 +1,370 @@
+/* Mackes Shell — Carbon Design tokens (v1.0 lock).
+ *
+ * Single source of truth for the Mackes window chrome. Every color, font,
+ * and spacing value lives here as a CSS variable; mackes.css and the
+ * per-preset accent overrides consume these tokens.
+ *
+ * Palette: IBM Carbon Gray 100 (Q-CB1). Dark-only (Q-CB7).
+ * Typography: IBM Plex Sans + IBM Plex Mono (Q-CB3).
+ * Spacing: strict 8px grid per Carbon (Q-CB8) — cds-spacing-01..13.
+ *
+ * The per-preset accent (--mackes-accent) is the *only* token that varies
+ * across presets. Carbon's signature blue (#0f62fe) is replaced per Q-CB6.
+ */
+
+@define-color cds_bg_default       #161616;
+@define-color cds_bg_layer_01      #262626;
+@define-color cds_bg_layer_02      #393939;
+@define-color cds_bg_layer_03      #525252;
+@define-color cds_bg_inverse       #f4f4f4;
+@define-color cds_bg_hover         #353535;
+@define-color cds_bg_active        #525252;
+@define-color cds_bg_selected      #393939;
+
+@define-color cds_text_primary     #f4f4f4;
+@define-color cds_text_secondary   #c6c6c6;
+@define-color cds_text_helper      #a8a8a8;
+@define-color cds_text_placeholder #6f6f6f;
+@define-color cds_text_disabled    #525252;
+@define-color cds_text_inverse     #161616;
+@define-color cds_text_error       #ff8389;
+@define-color cds_text_warning     #f1c21b;
+@define-color cds_text_success     #42be65;
+
+@define-color cds_border_subtle_00 #393939;
+@define-color cds_border_subtle_01 #525252;
+@define-color cds_border_subtle_02 #6f6f6f;
+@define-color cds_border_strong_01 #6f6f6f;
+@define-color cds_border_inverse   #f4f4f4;
+
+@define-color cds_focus            #ffffff;
+@define-color cds_focus_inset      #161616;
+@define-color cds_focus_inverse    #0f62fe;
+
+@define-color cds_link_primary     #78a9ff;
+@define-color cds_link_secondary   #a6c8ff;
+@define-color cds_link_visited     #be95ff;
+
+@define-color cds_support_error    #ff8389;
+@define-color cds_support_success  #42be65;
+@define-color cds_support_warning  #f1c21b;
+@define-color cds_support_info     #4589ff;
+
+@define-color cds_overlay          alpha(#000000, 0.65);
+@define-color cds_skeleton         #353535;
+
+
+/* ---- Per-preset accent (overridden by data/css/accents/<preset>.css) ----- */
+
+@define-color mackes_accent        #ff0000;   /* placeholder; preset overrides */
+@define-color mackes_accent_hover  alpha(@mackes_accent, 0.85);
+@define-color mackes_accent_active alpha(@mackes_accent, 0.70);
+@define-color mackes_accent_dim    alpha(@mackes_accent, 0.20);
+@define-color mackes_accent_focus  @mackes_accent;
+
+
+/* ---- Back-compat aliases (existing widgets read these) ------------------- */
+
+@define-color mackes_text          @cds_text_primary;
+@define-color mackes_dim           @cds_text_helper;
+
+
+/* ---- Typography (Q-CB3 lock: IBM Plex Sans + Plex Mono) ----------------- */
+
+* {
+    font-family: "IBM Plex Sans", "Inter", "Cantarell", "system-ui", sans-serif;
+    font-feature-settings: "ss01" on, "ss02" on, "ss03" on;
+}
+
+.title-1, .title-2, .title-3, .title-4,
+.heading,
+.mackes-panel-title,
+.mackes-section-header,
+.cds-heading-01, .cds-heading-02, .cds-heading-03,
+.cds-heading-04, .cds-heading-05, .cds-heading-06, .cds-heading-07 {
+    font-family: "IBM Plex Sans", "Inter", "Cantarell", sans-serif;
+    font-weight: 600;
+}
+
+textview.monospace, textview.monospace text,
+.monospace, .cds-code-01, .cds-code-02 {
+    font-family: "IBM Plex Mono", "Cascadia Code", "JetBrains Mono", monospace;
+}
+
+
+/* ---- Carbon type scale (productive set) --------------------------------- */
+
+.cds-helper-text-01    { font-size: 12px; line-height: 16px; font-weight: 400; }
+.cds-helper-text-02    { font-size: 14px; line-height: 18px; font-weight: 400; }
+.cds-body-compact-01   { font-size: 14px; line-height: 18px; font-weight: 400; }
+.cds-body-compact-02   { font-size: 16px; line-height: 22px; font-weight: 400; }
+.cds-body-01           { font-size: 14px; line-height: 20px; font-weight: 400; }
+.cds-body-02           { font-size: 16px; line-height: 24px; font-weight: 400; }
+.cds-heading-01        { font-size: 14px; line-height: 18px; font-weight: 600; }
+.cds-heading-02        { font-size: 16px; line-height: 22px; font-weight: 600; }
+.cds-heading-03        { font-size: 20px; line-height: 28px; font-weight: 400; }
+.cds-heading-04        { font-size: 28px; line-height: 36px; font-weight: 400; }
+.cds-heading-05        { font-size: 32px; line-height: 40px; font-weight: 400; }
+.cds-heading-06        { font-size: 42px; line-height: 50px; font-weight: 300; }
+.cds-heading-07        { font-size: 54px; line-height: 64px; font-weight: 300; }
+.cds-code-01           { font-size: 12px; line-height: 16px; font-weight: 400; }
+.cds-code-02           { font-size: 14px; line-height: 20px; font-weight: 400; }
+
+
+/* ---- Spacing scale (Q-CB8 strict 8px grid) ------------------------------ */
+/* GTK CSS doesn't support custom property variables for sizing — these are
+ * documented here as comments and enforced by lint in install-helpers/
+ * lint-css.sh which rejects raw `px` values outside this table.
+ *
+ *   --cds-spacing-01 =  2px
+ *   --cds-spacing-02 =  4px
+ *   --cds-spacing-03 =  8px
+ *   --cds-spacing-04 = 12px
+ *   --cds-spacing-05 = 16px
+ *   --cds-spacing-06 = 24px
+ *   --cds-spacing-07 = 32px
+ *   --cds-spacing-08 = 40px
+ *   --cds-spacing-09 = 48px
+ *   --cds-spacing-10 = 64px
+ *   --cds-spacing-11 = 80px
+ *   --cds-spacing-12 = 96px
+ *   --cds-spacing-13 = 160px
+ */
+
+
+/* ---- Window chrome ------------------------------------------------------- */
+
+window, .background {
+    background-color: @cds_bg_default;
+    color: @cds_text_primary;
+}
+
+headerbar {
+    background-color: @cds_bg_layer_02;
+    color: @cds_text_primary;
+    border-bottom: 1px solid @cds_border_subtle_00;
+    min-height: 48px;
+    padding-left: 16px;
+    padding-right: 8px;
+}
+
+notebook header {
+    background-color: @cds_bg_layer_01;
+    border-bottom: 1px solid @cds_border_subtle_00;
+}
+
+notebook tab {
+    background-color: transparent;
+    color: @cds_text_secondary;
+    padding: 12px 16px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    min-height: 32px;
+}
+
+notebook tab:checked {
+    color: @cds_text_primary;
+    border-bottom: 2px solid @mackes_accent;
+    background-color: @cds_bg_default;
+}
+
+notebook tab:hover:not(:checked) {
+    background-color: @cds_bg_hover;
+}
+
+stacksidebar list, stacksidebar listbox {
+    background-color: @cds_bg_layer_01;
+    border-right: 1px solid @cds_border_subtle_00;
+}
+
+stacksidebar row {
+    color: @cds_text_secondary;
+    padding: 12px 16px;
+    border-left: 2px solid transparent;
+}
+
+stacksidebar row:selected, stacksidebar row:selected:hover {
+    background-color: @cds_bg_layer_02;
+    color: @cds_text_primary;
+    border-left: 2px solid @mackes_accent;
+}
+
+stacksidebar row:hover:not(:selected) {
+    background-color: @cds_bg_hover;
+}
+
+
+/* ---- Buttons (Carbon primary / secondary / tertiary / ghost / danger) --- */
+
+button {
+    background-image: none;
+    background-color: @cds_bg_layer_02;
+    color: @cds_text_primary;
+    border: 1px solid transparent;
+    border-radius: 0;          /* Carbon is square */
+    padding: 8px 16px;
+    min-height: 32px;
+    font-weight: 400;
+}
+
+button:hover {
+    background-color: @cds_bg_hover;
+}
+
+button:active, button:checked {
+    background-color: @cds_bg_active;
+}
+
+button:focus {
+    outline: 2px solid @mackes_accent;
+    outline-offset: -2px;
+}
+
+button.suggested-action, button.cds-button-primary {
+    background-color: @mackes_accent;
+    color: @cds_text_inverse;
+}
+
+button.suggested-action:hover, button.cds-button-primary:hover {
+    background-color: @mackes_accent_hover;
+}
+
+button.destructive-action, button.cds-button-danger {
+    background-color: #da1e28;
+    color: @cds_text_inverse;
+}
+
+button.cds-button-tertiary {
+    background-color: transparent;
+    border: 1px solid @mackes_accent;
+    color: @mackes_accent;
+}
+
+button.cds-button-ghost {
+    background-color: transparent;
+    color: @mackes_accent;
+    padding: 8px 12px;
+}
+
+
+/* ---- Entries (Carbon text input style) ---------------------------------- */
+
+entry, textview {
+    background-color: @cds_bg_layer_01;
+    color: @cds_text_primary;
+    border: none;
+    border-bottom: 1px solid @cds_border_subtle_01;
+    border-radius: 0;
+    padding: 8px 16px;
+    min-height: 32px;
+}
+
+entry:focus, textview:focus {
+    border-bottom: 1px solid @mackes_accent;
+    outline: none;
+}
+
+entry:disabled {
+    color: @cds_text_disabled;
+    background-color: @cds_bg_default;
+}
+
+
+/* ---- Switches, checks, radios ------------------------------------------- */
+
+switch {
+    background-color: @cds_bg_layer_03;
+    border-radius: 12px;
+    min-width: 48px;
+    min-height: 24px;
+}
+
+switch:checked {
+    background-color: @mackes_accent;
+}
+
+switch slider {
+    background-color: @cds_text_primary;
+    border-radius: 50%;
+    margin: 3px;
+}
+
+checkbutton check, radiobutton radio {
+    background-color: @cds_bg_layer_01;
+    border: 1px solid @cds_border_strong_01;
+    color: @cds_text_primary;
+}
+
+checkbutton check:checked, radiobutton radio:checked {
+    background-color: @mackes_accent;
+    border-color: @mackes_accent;
+}
+
+
+/* ---- Frames, separators, scrollbars ------------------------------------- */
+
+frame, .view {
+    background-color: @cds_bg_layer_01;
+    border: 1px solid @cds_border_subtle_00;
+    border-radius: 0;
+}
+
+separator {
+    background-color: @cds_border_subtle_00;
+    min-width: 1px;
+    min-height: 1px;
+}
+
+scrollbar slider {
+    background-color: @cds_bg_layer_03;
+    min-width: 8px;
+    min-height: 8px;
+    border-radius: 0;
+}
+
+scrollbar slider:hover { background-color: @cds_text_helper; }
+
+
+/* ---- Carbon utility classes for new widgets ----------------------------- */
+
+.cds-tile {
+    background-color: @cds_bg_layer_01;
+    border: 1px solid @cds_border_subtle_00;
+    padding: 16px;
+}
+
+.cds-tile:hover {
+    background-color: @cds_bg_hover;
+    border-color: @mackes_accent;
+}
+
+.cds-tile.cds-tile-clickable:hover {
+    cursor: pointer;
+}
+
+.cds-notification-info     { border-left: 3px solid @cds_support_info; }
+.cds-notification-success  { border-left: 3px solid @cds_support_success; }
+.cds-notification-warning  { border-left: 3px solid @cds_support_warning; }
+.cds-notification-error    { border-left: 3px solid @cds_support_error; }
+.cds-notification-highlight { border-left: 3px solid @mackes_accent; }
+
+.cds-skeleton {
+    background-color: @cds_skeleton;
+    min-height: 16px;
+}
+
+.cds-status-dot-running   { color: @cds_support_success; }
+.cds-status-dot-stopped   { color: @cds_text_helper; }
+.cds-status-dot-error     { color: @cds_support_error; }
+.cds-status-dot-warning   { color: @cds_support_warning; }
+
+
+/* ---- Status bar (Q-CB2 24px bottom strip) ------------------------------- */
+
+.cds-status-bar {
+    background-color: @mackes_accent;
+    color: @cds_text_inverse;
+    min-height: 24px;
+    padding: 0 16px;
+    font-size: 12px;
+}

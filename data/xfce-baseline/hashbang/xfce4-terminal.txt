@@ -1,0 +1,3 @@
+/font-name              Terminus 12
+/font-use-system        false
+/misc-default-geometry  120x34

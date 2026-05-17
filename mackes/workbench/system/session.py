@@ -16,16 +16,11 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
 from mackes.logging import log_action
-from mackes.session_manager import process_status, restart_process, start_process, stop_process
 from mackes.state import HOME
 from mackes.xfconf_bridge import XfconfError, get_bridge
 from mackes.workbench._common import (
     error_label, info_label, labeled_row, panel_box, section_header, title_label,
 )
-
-
-_STATE_TO_CLASS = {"ok": "success", "warn": "warning", "missing": "dim-label"}
-_STATE_TO_LABEL = {"ok": "running", "warn": "stopped", "missing": "not installed"}
 
 
 CHANNEL = "xfce4-session"
@@ -166,20 +161,6 @@ class SessionPanel(Gtk.Box):
                               lambda s, _g: xf.set(CHANNEL, "/general/AutoSave", s.get_active()))
             box.pack_start(labeled_row("Auto-save session periodically", auto_save), False, False, 0)
 
-        # Managed processes (session-manager extension — C11 lock)
-        box.pack_start(section_header("Managed processes"), False, False, 0)
-        box.pack_start(info_label(
-            "Processes Mackes spawns on session start (Polybar, Plank, dunst). "
-            "Picom is supervised but launched by its own autostart entry."
-        ), False, False, 0)
-        self._proc_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-        box.pack_start(self._proc_box, False, False, 0)
-        proc_actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        refresh_procs = Gtk.Button(label="Refresh processes")
-        refresh_procs.connect("clicked", lambda *_: self._refresh_processes())
-        proc_actions.pack_start(refresh_procs, False, False, 0)
-        box.pack_start(proc_actions, False, False, 0)
-
         # Autostart entries
         box.pack_start(section_header("Autostart"), False, False, 0)
         self._list_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
@@ -196,38 +177,6 @@ class SessionPanel(Gtk.Box):
 
         self.add(box)
         self._refresh()
-        self._refresh_processes()
-
-    def _refresh_processes(self) -> bool:
-        for child in list(self._proc_box.get_children()):
-            self._proc_box.remove(child)
-        for status in process_status():
-            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-            dot = Gtk.Label(label="●")
-            dot.get_style_context().add_class(_STATE_TO_CLASS.get(status.state, "dim-label"))
-            row.pack_start(dot, False, False, 0)
-            name_lbl = Gtk.Label(label=status.name)
-            name_lbl.set_xalign(0); name_lbl.set_size_request(120, -1)
-            row.pack_start(name_lbl, False, False, 0)
-            detail = _STATE_TO_LABEL[status.state]
-            if status.pid is not None:
-                detail = f"{detail} (pid {status.pid})"
-            detail_lbl = Gtk.Label(label=detail); detail_lbl.set_xalign(0)
-            detail_lbl.get_style_context().add_class("dim-label")
-            row.pack_start(detail_lbl, True, True, 0)
-
-            start_btn = Gtk.Button(label="Start"); start_btn.set_sensitive(status.installed and not status.running)
-            stop_btn = Gtk.Button(label="Stop"); stop_btn.set_sensitive(status.running)
-            restart_btn = Gtk.Button(label="Restart"); restart_btn.set_sensitive(status.installed)
-            start_btn.connect("clicked", lambda *_a, name=status.name: (start_process(name), GLib.idle_add(self._refresh_processes)))
-            stop_btn.connect("clicked", lambda *_a, name=status.name: (stop_process(name), GLib.idle_add(self._refresh_processes)))
-            restart_btn.connect("clicked", lambda *_a, name=status.name: (restart_process(name), GLib.idle_add(self._refresh_processes)))
-            row.pack_end(restart_btn, False, False, 0)
-            row.pack_end(stop_btn, False, False, 0)
-            row.pack_end(start_btn, False, False, 0)
-            self._proc_box.pack_start(row, False, False, 0)
-        self._proc_box.show_all()
-        return False
 
     def _refresh(self) -> bool:
         for child in list(self._list_box.get_children()):

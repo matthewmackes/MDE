@@ -1,0 +1,2 @@
+/applications/known_applications  [,FileZilla,notify-send,org.freedesktop.network-manager-applet,org.gnome.Software,org.mozilla.firefox,xfce4-power-manager,xfce4-settings-helper]
+/log-max-size-enabled             true

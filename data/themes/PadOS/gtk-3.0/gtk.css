@@ -1,0 +1,265 @@
+/*
+ * PadOS — Mackes Shell's vendored GTK3 theme.
+ *
+ * Built on the Carbon Design System Gray 100 palette so it stays
+ * coherent with the Mackes window chrome's tokens.css and the rest of
+ * the design system. Falls back to Adwaita-dark behavior anywhere this
+ * theme doesn't override.
+ *
+ * Loaded via xfconf's /Net/ThemeName = "PadOS".
+ *
+ * Color palette (Carbon Gray 100):
+ *   background:     #161616
+ *   layer-01:       #262626
+ *   layer-02:       #393939
+ *   layer-03:       #525252
+ *   text-primary:   #f4f4f4
+ *   text-secondary: #c6c6c6
+ *   text-helper:    #a8a8a8
+ *   accent (focus): per-preset; defaults to Carbon blue #0f62fe here
+ */
+
+/* Inherit the rest of Adwaita-dark — saves us redefining the entire theme. */
+@import url("resource:///org/gnome/Adwaita/styles/Adwaita-dark.css");
+
+@define-color cds_bg_default       #161616;
+@define-color cds_bg_layer_01      #262626;
+@define-color cds_bg_layer_02      #393939;
+@define-color cds_bg_layer_03      #525252;
+@define-color cds_text_primary     #f4f4f4;
+@define-color cds_text_secondary   #c6c6c6;
+@define-color cds_text_helper      #a8a8a8;
+@define-color cds_text_disabled    #525252;
+@define-color cds_border_subtle    #393939;
+
+@define-color cds_focus            #ffffff;
+@define-color cds_link             #78a9ff;
+@define-color cds_accent           #0f62fe;
+@define-color cds_accent_hover     alpha(@cds_accent, 0.85);
+
+/* Override Adwaita's bg/fg colors to Carbon Gray 100 */
+@define-color theme_bg_color           @cds_bg_default;
+@define-color theme_fg_color           @cds_text_primary;
+@define-color theme_base_color         @cds_bg_layer_01;
+@define-color theme_text_color         @cds_text_primary;
+@define-color theme_selected_bg_color  @cds_accent;
+@define-color theme_selected_fg_color  #ffffff;
+@define-color theme_insensitive_bg_color  @cds_bg_default;
+@define-color theme_insensitive_fg_color  @cds_text_disabled;
+@define-color theme_unfocused_bg_color    @cds_bg_default;
+@define-color theme_unfocused_fg_color    @cds_text_secondary;
+@define-color borders                  @cds_border_subtle;
+@define-color unfocused_borders        @cds_border_subtle;
+@define-color warning_color            #f1c21b;
+@define-color error_color              #ff8389;
+@define-color success_color            #42be65;
+
+/* ---- Window / headerbar -------------------------------------------- */
+
+window, .background {
+    background-color: @cds_bg_default;
+    color: @cds_text_primary;
+}
+
+headerbar {
+    background-color: @cds_bg_layer_02;
+    color: @cds_text_primary;
+    border-bottom: 1px solid @cds_border_subtle;
+    min-height: 48px;
+    padding-left: 16px;
+    padding-right: 8px;
+}
+
+headerbar .title {
+    font-weight: 600;
+    color: @cds_text_primary;
+}
+
+headerbar .subtitle {
+    color: @cds_text_helper;
+    font-size: 0.85em;
+}
+
+/* ---- Buttons ------------------------------------------------------- */
+
+button {
+    background-image: none;
+    background-color: @cds_bg_layer_02;
+    color: @cds_text_primary;
+    border: 1px solid transparent;
+    border-radius: 0;
+    padding: 8px 16px;
+    min-height: 32px;
+    text-shadow: none;
+}
+
+button:hover {
+    background-color: @cds_bg_layer_03;
+}
+
+button:active, button:checked {
+    background-color: @cds_bg_layer_03;
+}
+
+button:focus {
+    outline: 2px solid @cds_focus;
+    outline-offset: -2px;
+}
+
+button.suggested-action {
+    background-color: @cds_accent;
+    color: #ffffff;
+}
+
+button.suggested-action:hover { background-color: @cds_accent_hover; }
+
+button.destructive-action {
+    background-color: #da1e28;
+    color: #ffffff;
+}
+
+/* ---- Entries ------------------------------------------------------- */
+
+entry, textview, .view text {
+    background-color: @cds_bg_layer_01;
+    color: @cds_text_primary;
+    border: none;
+    border-bottom: 1px solid @cds_border_subtle;
+    border-radius: 0;
+    padding: 8px 16px;
+    min-height: 32px;
+}
+
+entry:focus {
+    border-bottom: 1px solid @cds_accent;
+    outline: none;
+}
+
+entry:disabled {
+    color: @cds_text_disabled;
+    background-color: @cds_bg_default;
+}
+
+/* ---- Menus --------------------------------------------------------- */
+
+menubar, menu {
+    background-color: @cds_bg_layer_01;
+    color: @cds_text_primary;
+    border: 1px solid @cds_border_subtle;
+}
+
+menuitem {
+    padding: 8px 16px;
+}
+
+menuitem:hover, menuitem:selected {
+    background-color: @cds_bg_layer_02;
+    color: @cds_text_primary;
+}
+
+/* ---- Lists, treeview, notebook -------------------------------------- */
+
+list, treeview {
+    background-color: @cds_bg_layer_01;
+    color: @cds_text_primary;
+}
+
+list row:selected, treeview:selected {
+    background-color: @cds_bg_layer_03;
+    color: @cds_text_primary;
+}
+
+notebook header {
+    background-color: @cds_bg_layer_01;
+    border-bottom: 1px solid @cds_border_subtle;
+}
+
+notebook tab {
+    background-color: transparent;
+    color: @cds_text_secondary;
+    padding: 12px 16px;
+    border: none;
+    border-bottom: 2px solid transparent;
+}
+
+notebook tab:checked {
+    color: @cds_text_primary;
+    border-bottom: 2px solid @cds_accent;
+}
+
+/* ---- Switches, checks, radios -------------------------------------- */
+
+switch {
+    background-color: @cds_bg_layer_03;
+    border-radius: 12px;
+    min-width: 48px;
+    min-height: 24px;
+}
+
+switch:checked {
+    background-color: @cds_accent;
+}
+
+switch slider {
+    background-color: @cds_text_primary;
+    border-radius: 50%;
+    margin: 3px;
+}
+
+checkbutton check, radiobutton radio {
+    background-color: @cds_bg_layer_01;
+    border: 1px solid @cds_text_helper;
+    color: @cds_text_primary;
+}
+
+checkbutton check:checked, radiobutton radio:checked {
+    background-color: @cds_accent;
+    border-color: @cds_accent;
+    color: #ffffff;
+}
+
+/* ---- Scrollbars ---------------------------------------------------- */
+
+scrollbar {
+    background-color: transparent;
+    border: none;
+}
+
+scrollbar slider {
+    background-color: @cds_bg_layer_03;
+    min-width: 8px;
+    min-height: 8px;
+    border-radius: 0;
+}
+
+scrollbar slider:hover { background-color: @cds_text_helper; }
+
+/* ---- Frames, separators -------------------------------------------- */
+
+frame {
+    background-color: @cds_bg_layer_01;
+    border: 1px solid @cds_border_subtle;
+    border-radius: 0;
+}
+
+separator {
+    background-color: @cds_border_subtle;
+    min-width: 1px;
+    min-height: 1px;
+}
+
+/* ---- Tooltips ------------------------------------------------------ */
+
+tooltip {
+    background-color: @cds_bg_layer_03;
+    color: @cds_text_primary;
+    border: 1px solid @cds_border_subtle;
+    border-radius: 0;
+    padding: 8px 12px;
+}
+
+/* ---- Links --------------------------------------------------------- */
+
+*:link, *:visited {
+    color: @cds_link;
+}

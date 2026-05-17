@@ -1,5 +1,8 @@
-/* #! — monochrome white-on-black (CrunchBang tint2 aesthetic). */
-@define-color mackes_accent     #ffffff;
-@define-color mackes_accent_dim alpha(@mackes_accent, 0.18);
-@define-color mackes_text       #e6e6e6;
-@define-color mackes_dim        alpha(@mackes_text, 0.55);
+/* #! — CrunchBang spirit, modern stack.
+ * Vibrant red accent against Carbon Gray 100. The brand's first impression.
+ */
+@define-color mackes_accent        #fa4d56;
+@define-color mackes_accent_hover  alpha(@mackes_accent, 0.85);
+@define-color mackes_accent_active alpha(@mackes_accent, 0.70);
+@define-color mackes_accent_dim    alpha(@mackes_accent, 0.20);
+@define-color mackes_accent_focus  @mackes_accent;

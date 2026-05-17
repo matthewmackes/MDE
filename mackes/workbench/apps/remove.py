@@ -1,9 +1,9 @@
-"""Apps → Remove — curated bloat removal + Lean XFCE.
+"""Apps → Remove — single combined bloat removal list (Q15 lock).
 
-C4, C9, X1, X2 locks. Two sub-sections in one panel:
-  • Fedora bloat — GNOME-on-XFCE apps + LibreOffice
-  • XFCE components replaced by Mackes — visually separated, with the
-    'replaced by' relationship called out per row.
+GNOME-on-XFCE apps + LibreOffice + XFCE extras (asunder/parole/pragha/xfburn/
+transmission-gtk/claws-mail/pidgin) merged into one Bloat list. The old
+'XFCE components replaced by Mackes' subsection was retired in the v1.0
+XFCE-provisioner pivot.
 """
 from __future__ import annotations
 
@@ -13,11 +13,8 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
-from mackes.app_mgmt import (
-    is_dnf_installed, remove_lean_xfce, remove_packages,
-)
+from mackes.app_mgmt import is_dnf_installed, remove_packages
 from mackes.presets import default_preset, load_preset
-from mackes.session_manager import process_status
 from mackes.state import MackesState
 from mackes.workbench._common import (
     info_label, panel_box, section_header, title_label,
@@ -42,14 +39,13 @@ class AppsRemovePanel(Gtk.Box):
         box = panel_box()
         box.pack_start(title_label("Remove apps"), False, False, 0)
         box.pack_start(info_label(
-            "Two groups: Fedora Workstation bloat (GNOME-on-XFCE apps + "
-            "LibreOffice) and XFCE components Mackes replaces. The XFCE "
-            "components only show as removable when their replacement "
-            "daemon is running — Mackes never leaves you panel-less."
+            "One combined Bloat list: GNOME-on-XFCE apps + LibreOffice + XFCE "
+            "extras (asunder, parole, pragha, xfburn, transmission-gtk, "
+            "claws-mail, pidgin). Tick the rows you want gone."
         ), False, False, 0)
 
-        # ----- Fedora bloat ------------------------------------------------
-        box.pack_start(section_header("Fedora bloat"), False, False, 0)
+        # ----- Bloat -------------------------------------------------------
+        box.pack_start(section_header("Bloat"), False, False, 0)
         self._bloat_rows_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         box.pack_start(self._bloat_rows_box, False, False, 0)
         self._bloat_checks: list[tuple[Gtk.CheckButton, str]] = []
@@ -59,22 +55,10 @@ class AppsRemovePanel(Gtk.Box):
         bloat_btn.get_style_context().add_class("destructive-action")
         bloat_btn.connect("clicked", lambda *_: self._remove_bloat_selected())
         bloat_bar.pack_start(bloat_btn, False, False, 0)
-        box.pack_start(bloat_bar, False, False, 0)
-
-        # ----- Lean XFCE ---------------------------------------------------
-        box.pack_start(section_header("XFCE components replaced by Mackes"), False, False, 0)
-        self._lean_rows_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-        box.pack_start(self._lean_rows_box, False, False, 0)
-
-        lean_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        lean_btn = Gtk.Button(label="Remove eligible XFCE components")
-        lean_btn.get_style_context().add_class("destructive-action")
-        lean_btn.connect("clicked", lambda *_: self._remove_lean())
-        lean_bar.pack_start(lean_btn, False, False, 0)
         refresh = Gtk.Button(label="Refresh")
         refresh.connect("clicked", lambda *_: self._refresh())
-        lean_bar.pack_start(refresh, False, False, 0)
-        box.pack_start(lean_bar, False, False, 0)
+        bloat_bar.pack_start(refresh, False, False, 0)
+        box.pack_start(bloat_bar, False, False, 0)
 
         # ----- Log ---------------------------------------------------------
         box.pack_start(section_header("Log"), False, False, 0)
@@ -92,7 +76,6 @@ class AppsRemovePanel(Gtk.Box):
     def _refresh(self) -> None:
         preset = _active_preset()
         bloat = list((preset.apps.get("remove_bloat") if preset else None) or [])
-        lean = list((preset.apps.get("lean_xfce_remove") if preset else None) or [])
 
         for child in list(self._bloat_rows_box.get_children()):
             self._bloat_rows_box.remove(child)
@@ -121,55 +104,6 @@ class AppsRemovePanel(Gtk.Box):
                 self._bloat_rows_box.pack_start(row, False, False, 0)
         self._bloat_rows_box.show_all()
 
-        statuses = {p.name: p for p in process_status()}
-        for child in list(self._lean_rows_box.get_children()):
-            self._lean_rows_box.remove(child)
-        if not lean:
-            self._lean_rows_box.pack_start(info_label(
-                "Active preset declares no `apps.lean_xfce_remove` list."
-            ), False, False, 0)
-        else:
-            for entry in lean:
-                if not isinstance(entry, dict):
-                    continue
-                pkg = entry.get("package", "")
-                repl = entry.get("replaced_by", "")
-                installed = is_dnf_installed(pkg)
-                repl_status = statuses.get(repl)
-                eligible = installed and repl_status is not None and repl_status.running
-                row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-                dot = Gtk.Label(label="●")
-                dot.get_style_context().add_class(
-                    "success" if eligible else ("warning" if installed else "dim-label")
-                )
-                row.pack_start(dot, False, False, 0)
-
-                name_lbl = Gtk.Label(label=pkg); name_lbl.set_xalign(0)
-                name_lbl.set_size_request(180, -1)
-                row.pack_start(name_lbl, False, False, 0)
-
-                repl_lbl = Gtk.Label(label=f"replaced by {repl}")
-                repl_lbl.set_xalign(0); repl_lbl.set_size_request(200, -1)
-                repl_lbl.get_style_context().add_class("dim-label")
-                row.pack_start(repl_lbl, False, False, 0)
-
-                if not installed:
-                    state_text = "not installed"
-                elif repl_status is None:
-                    state_text = f"replacement {repl!r} not installed — install first"
-                elif not repl_status.running:
-                    state_text = f"replacement {repl!r} not running — start it first"
-                else:
-                    state_text = "eligible for removal"
-                state_lbl = Gtk.Label(label=state_text); state_lbl.set_xalign(0)
-                state_lbl.set_line_wrap(True)
-                state_lbl.get_style_context().add_class(
-                    "success" if eligible else "dim-label"
-                )
-                row.pack_start(state_lbl, True, True, 0)
-                self._lean_rows_box.pack_start(row, False, False, 0)
-        self._lean_rows_box.show_all()
-
     # ---- actions -----------------------------------------------------------
 
     def _remove_bloat_selected(self) -> None:
@@ -179,15 +113,6 @@ class AppsRemovePanel(Gtk.Box):
             return
         self._append_log(f"--- removing bloat: {', '.join(pkgs)} ---")
         self._run_async(lambda: remove_packages(pkgs, category="bloat"))
-
-    def _remove_lean(self) -> None:
-        preset = _active_preset()
-        lean = list((preset.apps.get("lean_xfce_remove") if preset else None) or [])
-        if not lean:
-            self._append_log("(no lean_xfce_remove list)")
-            return
-        self._append_log("--- removing eligible XFCE components ---")
-        self._run_async(lambda: remove_lean_xfce(lean))
 
     def _run_async(self, fn) -> None:
         def worker() -> None:

@@ -1,5 +1,8 @@
-/* Daylight — cool Adwaita blue, light-mode text. */
-@define-color mackes_accent     #1c71d8;
-@define-color mackes_accent_dim alpha(@mackes_accent, 0.22);
-@define-color mackes_text       #2e3436;
-@define-color mackes_dim        alpha(@mackes_text, 0.6);
+/* Daylight — cool yellow (Carbon Yellow 30) on Gray 100.
+ * Even on a dark chrome, the accent should evoke daytime productivity.
+ */
+@define-color mackes_accent        #f1c21b;
+@define-color mackes_accent_hover  alpha(@mackes_accent, 0.85);
+@define-color mackes_accent_active alpha(@mackes_accent, 0.70);
+@define-color mackes_accent_dim    alpha(@mackes_accent, 0.20);
+@define-color mackes_accent_focus  @mackes_accent;

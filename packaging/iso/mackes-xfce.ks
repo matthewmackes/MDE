@@ -51,23 +51,20 @@ NetworkManager-vpnc
 NetworkManager-openvpn
 firewalld
 xfce4-power-manager
+xfce4-power-manager-plugin
 xfce4-pulseaudio-plugin
+xfce4-whiskermenu-plugin
+xfce4-docklike-plugin
 xfce4-clipman-plugin
 xfce4-notifyd
+openssh-server
+menulibre
 dnf-plugins-core
 flatpak
 mackes-shell
-# Polybar + Plank stack
-polybar
-plank
-rofi
-dunst
-picom
-# Fonts (curated)
-jetbrains-mono-fonts
-fira-code-fonts
-google-noto-sans-fonts
-papirus-icon-theme
+# Typography — Carbon Design System (IBM Plex)
+ibm-plex-sans-fonts
+ibm-plex-mono-fonts
 %end
 
 # ---- Post-install ------------------------------------------------------
@@ -93,10 +90,10 @@ if [ -x /usr/share/mackes-shell/install-helpers/install-recovery.sh ]; then
     /usr/share/mackes-shell/install-helpers/install-recovery.sh || true
 fi
 
-# Branding hooks (replace with real fastboot splash + display-manager wallpaper
-# when curated wallpapers ship).
-if [ -f /usr/share/mackes-shell/data/wallpapers/mackes.png ]; then
-    install -D -m 0644 /usr/share/mackes-shell/data/wallpapers/mackes.png \
+# Branding hook — install the standard Mackes wallpaper as the system-wide
+# default backdrop. Used by the LightDM greeter and the first-run wizard.
+if [ -f /usr/share/mackes-shell/branding/standard-wallpaper.png ]; then
+    install -D -m 0644 /usr/share/mackes-shell/branding/standard-wallpaper.png \
         /usr/share/backgrounds/mackes-default.png
 fi
 

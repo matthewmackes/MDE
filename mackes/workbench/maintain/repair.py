@@ -5,7 +5,6 @@ Common recovery operations:
   - Rebuild the menu folder (re-hide xfce4-settings entries)
   - Restore xfce4-settings menu entries (un-hide; for when Mackes is leaving)
   - Re-install the mackes-shell .desktop entry
-  - Re-write the Polybar launcher script
 """
 from __future__ import annotations
 
@@ -15,7 +14,6 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
-from mackes.logging import log_action
 from mackes.menu_integration import (
     hide_xfce_settings_entries, install_mackes_menu_entry, restore_xfce_settings_entries,
 )
@@ -70,7 +68,6 @@ class RepairPanel(Gtk.Box):
             ("Re-hide xfce4-settings menu",   self._rehide_menus),
             ("Restore xfce4-settings menu",   self._restore_menus),
             ("Re-install Mackes menu entry",  self._reinstall_entry),
-            ("Re-write Polybar launcher",     self._rewrite_launcher),
         ]
         for i, (label, fn) in enumerate(ops):
             btn = Gtk.Button(label=label)
@@ -121,15 +118,3 @@ class RepairPanel(Gtk.Box):
         if src is None:
             return ["mackes-shell.desktop not found in shipped data."]
         return install_mackes_menu_entry(src)
-
-    def _rewrite_launcher(self) -> list[str]:
-        """Re-write the Polybar launcher script + autostart entry."""
-        from mackes.shell_profiles import (
-            _write_polybar_launcher, _write_polybar_autostart,
-            POLYBAR_LAUNCHER, POLYBAR_AUTOSTART, POLYBAR_DIR,
-        )
-        config = POLYBAR_DIR / "config.ini"
-        _write_polybar_launcher(config)
-        _write_polybar_autostart()
-        log_action(f"repair: re-wrote {POLYBAR_LAUNCHER} + {POLYBAR_AUTOSTART}")
-        return [f"wrote {POLYBAR_LAUNCHER}", f"wrote {POLYBAR_AUTOSTART}"]

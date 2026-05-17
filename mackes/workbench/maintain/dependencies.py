@@ -28,20 +28,20 @@ PACKAGES: list[tuple[str, str, bool]] = [
     ("python3-gobject",         "PyGObject — GTK3 bindings",        True),
     ("gtk3",                    "GTK 3 runtime",                    True),
     ("python3-pyyaml",          "PyYAML — preset loader",           True),
-    # Shell stack
-    ("polybar",                 "Polybar — primary panel",          True),
-    ("plank",                   "Plank — dock",                     True),
-    ("rofi",                    "Rofi — launcher",                  True),
+    # XFCE shell pieces baked into the standard layout (Q19 lock)
+    ("xfce4-whiskermenu-plugin",   "Whisker Menu — panel start menu",   True),
+    ("xfce4-docklike-plugin",      "Docklike Taskbar — replaces Window Buttons", True),
+    ("xfce4-pulseaudio-plugin",    "Volume applet — panel",             True),
+    ("xfce4-power-manager-plugin", "Power applet — panel",              True),
     # Network
     ("NetworkManager",          "NetworkManager",                   True),
+    ("openssh-server",          "OpenSSH server — enabled by default", True),
     ("firewalld",               "firewalld",                        False),
     # Audio
     ("pulseaudio-utils",        "pactl — Sound panel backend",      False),
-    # Themes / icons / fonts (recommendations only)
-    ("papirus-icon-theme",      "Papirus icons",                    False),
-    ("arc-theme",               "Arc theme",                        False),
-    ("google-droid-sans-fonts", "Droid Sans (UI default)",          False),
-    ("jetbrains-mono-fonts",    "JetBrains Mono (monospace)",       False),
+    # Typography defaults — Carbon Design System
+    ("ibm-plex-sans-fonts",     "IBM Plex Sans (UI)",               False),
+    ("ibm-plex-mono-fonts",     "IBM Plex Mono (monospace)",        False),
 ]
 
 

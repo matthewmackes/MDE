@@ -1,8 +1,8 @@
 """App Management — install / remove / list packages.
 
-C1–C4, C9, C10, X1–X5 locks.
+C1–C4, C9, C10, Q15 locks.
 
-Three install backends, picked per package:
+Four install backends, picked per package:
   • `dnf`            — Fedora-repo packages (the default)
   • `dnf-thirdparty` — adds a Microsoft / VS Code / RPM Fusion repo first
   • `appimage`       — downloads an AppImage to ~/.local/bin (Cursor)
@@ -12,12 +12,9 @@ Every install action is logged. Third-party repo additions surface in the
 log so the user knows what got added.
 
 Curated lists are read from the active preset's `apps:` block:
-  • apps.install            — curated install set
-  • apps.remove_bloat       — Fedora bloat to drop
-  • apps.lean_xfce_remove   — XFCE components Mackes replaces (X1 lock)
-
-Removals tracked in state.json so `mackes --uninstall` can reinstall the
-XFCE components and restore stock XFCE (X5 lock).
+  • apps.install      — curated install set
+  • apps.remove_bloat — single combined Bloat list (GNOME-on-XFCE +
+                        LibreOffice + XFCE extras), Q15 lock.
 """
 from __future__ import annotations
 
@@ -65,8 +62,6 @@ CATALOG: dict[str, AppDef] = {
                  description="Two-pane file manager."),
     "neofetch": AppDef("neofetch", "neofetch", "dnf",
                        description="System info in the terminal."),
-    "dunst": AppDef("dunst", "dunst", "dnf",
-                    description="Lightweight notification daemon (replaces xfce4-notifyd)."),
     "microsoft-edge-stable": AppDef(
         "microsoft-edge-stable", "Microsoft Edge", "dnf-thirdparty",
         repo_setup=(
@@ -107,19 +102,18 @@ CATALOG: dict[str, AppDef] = {
 
 
 # ---------------------------------------------------------------------------
-# State tracking — what Mackes removed, so uninstall can reinstall.
+# State tracking — record what Mackes removed (informational).
 # ---------------------------------------------------------------------------
 
 
 def _load_removed_record() -> dict[str, list[str]]:
     if not REMOVED_BY_MACKES_FILE.exists():
-        return {"bloat": [], "lean_xfce": []}
+        return {"bloat": []}
     try:
         data = json.loads(REMOVED_BY_MACKES_FILE.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return {"bloat": [], "lean_xfce": []}
+        return {"bloat": []}
     data.setdefault("bloat", [])
-    data.setdefault("lean_xfce", [])
     return data
 
 
@@ -136,10 +130,6 @@ def record_removed(category: str, packages: list[str]) -> None:
     existing.update(packages)
     rec[category] = sorted(existing)
     _save_removed_record(rec)
-
-
-def removed_lean_xfce() -> list[str]:
-    return _load_removed_record().get("lean_xfce", [])
 
 
 # ---------------------------------------------------------------------------
@@ -318,49 +308,6 @@ def remove_packages(packages: list[str], *, category: str = "bloat") -> list[str
         # Glob-expanded names (libreoffice-*) get stored verbatim — reinstall
         # uses the same expression.
         record_removed(category, installed)
-    for line in actions:
-        log_action(line)
-    return actions
-
-
-def remove_lean_xfce(preset_entries: list[dict]) -> list[str]:
-    """Remove XFCE components Mackes replaces — only if the replacement is
-    running (X4 lock)."""
-    from mackes.session_manager import process_status
-    statuses = {p.name: p for p in process_status()}
-    actions: list[str] = []
-    to_remove: list[str] = []
-    for entry in preset_entries:
-        pkg = entry.get("package")
-        replacement = entry.get("replaced_by")
-        if not pkg or not replacement:
-            continue
-        repl_status = statuses.get(replacement)
-        if repl_status is None or not repl_status.running:
-            actions.append(
-                f"lean-xfce: skipping {pkg} (replacement {replacement!r} "
-                f"{'not installed' if repl_status is None else 'not running'})"
-            )
-            continue
-        to_remove.append(pkg)
-    if to_remove:
-        actions.extend(remove_packages(to_remove, category="lean_xfce"))
-    else:
-        actions.append("lean-xfce: no components eligible for removal")
-    for line in actions:
-        log_action(line)
-    return actions
-
-
-def reinstall_lean_xfce() -> list[str]:
-    """Called by `mackes --uninstall` (X5 lock) to restore stock XFCE."""
-    pkgs = removed_lean_xfce()
-    if not pkgs:
-        return ["lean-xfce: nothing to reinstall"]
-    rc, out = dnf_install(pkgs)
-    actions = [f"reinstall lean-xfce rc={rc}: {', '.join(pkgs)}"]
-    if out.strip():
-        actions.append(out.strip().splitlines()[-1])
     for line in actions:
         log_action(line)
     return actions

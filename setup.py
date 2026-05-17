@@ -1,9 +1,9 @@
 """setup.py — for sdist tarball generation used by the RPM build.
 
-Mackes installs its actual data (presets, shell-profiles, plank-themes,
-wallpapers, desktop entry, icon) via the .spec file's %install section,
-not via package_data, because the canonical install path is
-/usr/share/mackes-shell/, not inside the Python sitelib.
+Mackes installs its actual data (presets, wallpapers, desktop entry, icon)
+via the .spec file's %install section, not via package_data, because the
+canonical install path is /usr/share/mackes-shell/, not inside the Python
+sitelib.
 """
 from __future__ import annotations
 
@@ -12,12 +12,13 @@ from setuptools import find_packages, setup
 
 setup(
     name="mackes-shell",
-    version="0.1.1",
+    version="1.0.0",
     description="Mackes Shell — XFCE control panel and shell manager",
     long_description=(
         "GTK3 / PyGObject control panel that replaces xfce4-settings as the "
-        "daily interface on Fedora XFCE workstations. Bundles the Polybar / "
-        "Plank / Rofi shell stack and the erikdubois/plankthemes catalog."
+        "daily interface on Fedora XFCE workstations. Standard XFCE shell "
+        "underneath (Whisker Menu + xfce4-panel + xfdesktop), styled with "
+        "the Carbon Design System."
     ),
     long_description_content_type="text/plain",
     author="Matt Mackes",

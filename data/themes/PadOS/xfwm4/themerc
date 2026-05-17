@@ -1,0 +1,28 @@
+# PadOS — xfwm4 window-decoration theme.
+# Borders, title bar, close/min/max buttons. Plain Carbon Gray 100.
+
+active_text_color=#f4f4f4
+inactive_text_color=#a8a8a8
+
+title_horizontal_offset=0
+title_vertical_offset_active=2
+title_vertical_offset_inactive=2
+
+title_alignment=left
+title_shadow_active=false
+title_shadow_inactive=false
+
+button_offset=4
+button_spacing=2
+
+shadow_delta_height=4
+shadow_delta_width=8
+shadow_delta_x=4
+shadow_delta_y=8
+shadow_opacity=80
+
+show_app_icon=false
+full_width_title=true
+
+# Padding around the window edge (px)
+border_undecorated=false

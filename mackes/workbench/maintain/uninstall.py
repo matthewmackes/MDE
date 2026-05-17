@@ -20,16 +20,12 @@ from mackes.workbench._common import (
 
 _PLAN_LINES = [
     "1. Create pre-uninstall snapshot and tarball it to ~/Desktop/.",
-    "2. Stop polybar, plank, dunst, picom.",
-    "3. Reinstall any XFCE components Mackes removed during provisioning.",
-    "4. Reset xfconf channels to XFCE distribution defaults and signal xfsettingsd.",
-    "5. Re-enable and start xfce4-panel so the desktop still has a panel.",
-    "6. Run install-helpers/restore-xfce-settings.sh to un-hide xfce4-settings menus.",
-    "7. Delete ~/.config/mackes-shell, ~/.local/share/mackes-shell, snapshots,",
-    "   ~/.config/{polybar,plank,rofi,alacritty,gtk-3.0,gtk-4.0}, autostart entries.",
-    "8. Remove xfce11-unified v2.2 leftovers from known paths (QNM preserved).",
-    "9. Remove mackes-shell via dnf / pip / (git checkout left in place).",
-    "10. Write the uninstall log to ~/Desktop/mackes-shell-uninstall-<ts>.log.",
+    "2. Reset xfconf channels to XFCE distribution defaults and signal xfsettingsd.",
+    "3. Run install-helpers/restore-xfce-settings.sh to un-hide xfce4-settings menus.",
+    "4. Delete ~/.config/mackes-shell and ~/.local/share/mackes-shell (snapshots, logs).",
+    "5. Remove xfce11-unified v2.2 leftovers from known paths (QNM preserved).",
+    "6. Remove mackes-shell via dnf / pip / (git checkout left in place).",
+    "7. Write the uninstall log to ~/Desktop/mackes-shell-uninstall-<ts>.log.",
 ]
 
 
@@ -45,8 +41,8 @@ class UninstallPanel(Gtk.Box):
             "This removes Mackes Shell and every change it made to your "
             "system. A pre-uninstall snapshot will be written to "
             "~/Desktop/ as a tarball — that is the only artifact you can "
-            "restore from. The XFCE components Mackes replaced will be "
-            "reinstalled so you have a working desktop afterwards."
+            "restore from. The standard XFCE shell (xfce4-panel, xfdesktop, "
+            "Whisker Menu, etc.) keeps running afterwards."
         )
         warn.get_style_context().add_class("warning")
         box.pack_start(warn, False, False, 0)

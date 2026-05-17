@@ -107,14 +107,16 @@ def build(ctx, on_pick=None) -> Gtk.Widget:
     sub.set_halign(Gtk.Align.CENTER)
     box.pack_start(sub, False, False, 0)
 
-    presets = list_presets()
+    # Hide the headless 'node' preset from the GUI picker — it's auto-
+    # selected by `mackes init` when no display is present.
+    presets = [p for p in list_presets() if p.name != "node"]
     if not presets:
         err = Gtk.Label(label="No presets found in data/presets/.")
         err.get_style_context().add_class("error")
         box.pack_start(err, False, False, 0)
         return box
 
-    if ctx.selected_preset is None:
+    if ctx.selected_preset is None or ctx.selected_preset.name == "node":
         ctx.selected_preset = presets[0]
 
     def _set(preset):

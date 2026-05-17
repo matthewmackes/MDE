@@ -1,0 +1,8 @@
+{
+  "preset":     "hashbang",
+  "hostname":   "fedora",
+  "captured":   "2026-05-16T22:20:38-04:00",
+  "xfce4_version": "xfce4-about 4.20.2 (Xfce 4.20)",
+  "channels":   ["xsettings", "xfwm4", "xfce4-panel", "xfce4-desktop", "xfce4-notifyd", "xfce4-power-manager", "xfce4-session", "keyboards", "displays", "xfce4-terminal", "xfce4-keyboard-shortcuts"],
+  "skipped":    ["xfce4-appfinder", "thunar-volman", "keyboard-layout", "pointers"]
+}

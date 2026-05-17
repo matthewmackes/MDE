@@ -1,0 +1,4 @@
+[Thumbnailer Entry]
+TryExec=/usr/bin/python3
+Exec=/usr/bin/python3 -m mackes.mesh_thumbnailer --size %s %i %o
+MimeType=text/markdown;text/x-markdown

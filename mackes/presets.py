@@ -45,10 +45,10 @@ class Preset:
     display_name: str
     description: str
     appearance: dict[str, Any] = field(default_factory=dict)
-    shell: dict[str, Any] = field(default_factory=dict)
     devices: dict[str, Any] = field(default_factory=dict)
     network: dict[str, Any] = field(default_factory=dict)
     system: dict[str, Any] = field(default_factory=dict)
+    panel: dict[str, Any] = field(default_factory=dict)
     apps: dict[str, Any] = field(default_factory=dict)
     snapshot: dict[str, Any] = field(default_factory=dict)
     source_path: Optional[Path] = None
@@ -60,10 +60,10 @@ class Preset:
             display_name=str(data.get("display_name", data.get("name", "Unnamed"))),
             description=str(data.get("description", "")).strip(),
             appearance=dict(data.get("appearance") or {}),
-            shell=dict(data.get("shell") or {}),
             devices=dict(data.get("devices") or {}),
             network=dict(data.get("network") or {}),
             system=dict(data.get("system") or {}),
+            panel=dict(data.get("panel") or {}),
             apps=dict(data.get("apps") or {}),
             snapshot=dict(data.get("snapshot") or {}),
             source_path=source,
@@ -170,27 +170,15 @@ def apply_appearance(preset: Preset) -> list[str]:
             actions.append(f"set wallpaper -> {wp}")
         except XfconfError as e:
             actions.append(f"failed wallpaper: {e}")
-    return actions
 
-
-def apply_shell(preset: Preset) -> list[str]:
-    from mackes.shell_profiles import apply_polybar, apply_plank, apply_rofi, set_xfce_panel_enabled
-    from mackes.session_manager import apply_chupre_dotfiles
-    actions: list[str] = []
-    # Stage the chupre dotfiles bundle (alacritty, gtk-3.0, gtk-4.0) BEFORE
-    # applying shell-stack profiles, so GTK theme/font settings are in place
-    # when Polybar/Plank read them. Only runs when the preset opts in via
-    # `shell.apply_chupre_dotfiles: true` — defaults on for chupre itself.
-    if preset.shell.get("apply_chupre_dotfiles", False):
-        actions.extend(apply_chupre_dotfiles())
-    if "polybar_profile" in preset.shell:
-        actions.extend(apply_polybar(preset.shell["polybar_profile"]))
-    if "plank_profile" in preset.shell:
-        actions.extend(apply_plank(preset.shell["plank_profile"]))
-    if "rofi_profile" in preset.shell:
-        actions.extend(apply_rofi(preset.shell["rofi_profile"]))
-    if "xfce_panel_enabled" in preset.shell:
-        actions.extend(set_xfce_panel_enabled(bool(preset.shell["xfce_panel_enabled"])))
+    # LightDM greeter — mirror the preset's look on the login screen.
+    if preset.appearance:
+        try:
+            from mackes.lightdm import configure_from_preset
+            wp_path = Path(str(wp)) if wp else None
+            actions.extend(configure_from_preset(preset.name, wallpaper=wp_path))
+        except Exception as e:  # noqa: BLE001
+            actions.append(f"lightdm config: {e}")
     return actions
 
 
@@ -260,24 +248,120 @@ def apply_network(preset: Preset) -> list[str]:
     return actions
 
 
+def apply_panel(preset: Preset) -> list[str]:
+    """Apply xfce4-panel plugin overrides from preset.panel.
+
+    Today this writes the clock plugin's format/font/layout to every
+    plugin whose root value is 'clock' in the xfce4-panel xfconf channel.
+    Extensible: other plugin types (docklike, whiskermenu) can grow their
+    own preset.panel.<name> blocks the same way.
+    """
+    import subprocess
+    from mackes.xfconf_bridge import get_bridge, XfconfError
+    actions: list[str] = []
+    clock = preset.panel.get("clock") or {}
+    if not clock:
+        return actions
+    try:
+        xf = get_bridge()
+    except XfconfError as e:
+        actions.append(f"skip panel: {e}")
+        return actions
+    # Find every clock plugin in the live xfce4-panel xfconf channel.
+    try:
+        out = subprocess.check_output(
+            ["xfconf-query", "--channel", "xfce4-panel", "--list", "--verbose"],
+            stderr=subprocess.DEVNULL, text=True, timeout=5,
+        )
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+        actions.append(f"panel: could not list xfce4-panel channel: {e}")
+        return actions
+    clock_ids: list[str] = []
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[1] == "clock":
+            key = parts[0]
+            if key.startswith("/plugins/plugin-") and "/" not in key[len("/plugins/plugin-"):]:
+                clock_ids.append(key[len("/plugins/plugin-"):])
+    if not clock_ids:
+        actions.append("panel.clock: no clock plugin found in xfce4-panel (skipping)")
+        return actions
+    for pid in clock_ids:
+        for key, value in clock.items():
+            prop = f"/plugins/plugin-{pid}/{key}"
+            try:
+                if isinstance(value, str):
+                    xf.set("xfce4-panel", prop, value, type_hint="string")
+                else:
+                    xf.set("xfce4-panel", prop, value)
+                actions.append(f"panel clock-{pid}.{key} = {value!r}")
+            except XfconfError as e:
+                actions.append(f"panel clock-{pid}.{key} failed: {e}")
+    return actions
+
+
+def apply_mesh(preset: Preset) -> list[str]:
+    """Initialize mesh subsystems based on the preset's network block.
+
+    For 'node' preset (or any preset with network.mesh_*_enabled=true):
+      - ensure mesh-SSH keypair + publish pubkey
+      - ensure mesh-fs directories
+      - ensure mesh-sync bucket dirs
+      - install Thunar bookmarks pointing at QNM-* directories
+    """
+    actions: list[str] = []
+    net = preset.network or {}
+    if net.get("mesh_ssh_auto_keys", True):
+        try:
+            from mackes.mesh_ssh import ensure_mesh_keypair, publish_my_pubkey
+            actions.extend(ensure_mesh_keypair())
+            actions.extend(publish_my_pubkey())
+        except Exception as e:  # noqa: BLE001
+            actions.append(f"mesh-ssh init: {e}")
+    if net.get("mesh_fs_enabled", True):
+        try:
+            from mackes.mesh_fs import ensure_dirs as mfs_ensure
+            actions.extend(mfs_ensure())
+        except Exception as e:  # noqa: BLE001
+            actions.append(f"mesh-fs init: {e}")
+    if net.get("mesh_sync_enabled", True):
+        try:
+            from mackes.mesh_sync import ensure_buckets
+            actions.extend(ensure_buckets())
+        except Exception as e:  # noqa: BLE001
+            actions.append(f"mesh-sync init: {e}")
+    try:
+        from mackes.mesh_browser import ensure_layout, install_thunar_bookmarks
+        actions.extend(ensure_layout())
+        actions.extend(install_thunar_bookmarks())
+    except Exception as e:  # noqa: BLE001
+        actions.append(f"mesh-browser layout: {e}")
+    return actions
+
+
 def apply_preset(preset: Preset, *, sections: Optional[set[str]] = None) -> list[str]:
     """Apply selected (or all) sections of a preset.
 
-    sections: optional subset of {appearance, shell, devices, system, network}.
-    Returns a flat list of human-readable action lines, also written to mackes.log.
+    sections: optional subset of
+        {appearance, devices, system, network, panel, mesh}.
+    Returns a flat list of human-readable action lines, also written to
+    mackes.log.
     """
-    sections = sections or {"appearance", "shell", "devices", "system", "network"}
+    sections = sections or {"appearance", "devices", "system", "network",
+                            "panel", "mesh"}
     actions: list[str] = [f"--- apply preset: {preset.name} ---"]
     if "appearance" in sections:
         actions.extend(apply_appearance(preset))
-    if "shell" in sections:
-        actions.extend(apply_shell(preset))
     if "devices" in sections:
         actions.extend(apply_devices(preset))
     if "system" in sections:
         actions.extend(apply_system(preset))
     if "network" in sections:
         actions.extend(apply_network(preset))
+    if "panel" in sections:
+        actions.extend(apply_panel(preset))
+    if "mesh" in sections:
+        actions.extend(apply_mesh(preset))
     for line in actions:
         log_action(line)
     return actions
@@ -312,16 +396,6 @@ def _read_appearance_actual() -> dict[str, Any]:
     return out
 
 
-def _read_shell_actual() -> dict[str, Any]:
-    from mackes.shell_profiles import current_polybar_profile, current_plank_profile, current_rofi_profile, xfce_panel_enabled
-    return {
-        "polybar_profile":   current_polybar_profile(),
-        "plank_profile":     current_plank_profile(),
-        "rofi_profile":      current_rofi_profile(),
-        "xfce_panel_enabled": xfce_panel_enabled(),
-    }
-
-
 def _read_system_actual() -> dict[str, Any]:
     from mackes.xfconf_bridge import get_bridge, XfconfError
     try:
@@ -339,7 +413,6 @@ def detect_drift(preset: Preset) -> list[DriftItem]:
     items: list[DriftItem] = []
     sections: list[tuple[str, dict[str, Any], dict[str, Any]]] = [
         ("appearance", preset.appearance, _read_appearance_actual()),
-        ("shell",      preset.shell,      _read_shell_actual()),
         ("system",     preset.system,     _read_system_actual()),
     ]
     for section_name, expected_dict, actual_dict in sections:

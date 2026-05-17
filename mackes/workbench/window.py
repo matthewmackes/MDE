@@ -1,17 +1,18 @@
 """Workbench main window.
 
-Implements the navigation from Q3 (two-level hybrid) and the top tabs
-established by Q17 (Maintain) and Q18 (Network):
+Implements the navigation from Q3 (two-level hybrid) — top tabs route to
+object-level Stack/Sidebar pairs.
 
     Dashboard
     ├── Look & Feel
-    ├── Shell
     ├── Devices
     ├── Network
     ├── System
+    ├── Apps
     └── Maintain
 
-Native GTK look per Q11 — minimal custom CSS, standard widgets.
+The Shell tab — formerly Polybar/Plank/Rofi/Panel-Visibility — was retired
+in the v1.0 XFCE-provisioner pivot.
 """
 from __future__ import annotations
 
@@ -57,19 +58,6 @@ def _look_and_feel_tab() -> Gtk.Widget:
     ])
 
 
-def _shell_tab() -> Gtk.Widget:
-    from mackes.workbench.shell.polybar import PolybarPanel
-    from mackes.workbench.shell.plank import PlankPanel
-    from mackes.workbench.shell.rofi import RofiPanel
-    from mackes.workbench.shell.panel_visibility import PanelVisibilityPanel
-    return _build_tab([
-        ("polybar", "Polybar", PolybarPanel()),
-        ("plank", "Plank", PlankPanel()),
-        ("rofi", "Rofi Launcher", RofiPanel()),
-        ("panel_visibility", "XFCE Panel", PanelVisibilityPanel()),
-    ])
-
-
 def _devices_tab() -> Gtk.Widget:
     from mackes.workbench.devices.display import DisplayPanel
     from mackes.workbench.devices.keyboard import KeyboardPanel
@@ -90,10 +78,16 @@ def _network_tab() -> Gtk.Widget:
     from mackes.workbench.network.vpn import VpnPanel
     from mackes.workbench.network.qnm import QnmPanel
     from mackes.workbench.network.firewall import FirewallPanel
+    from mackes.workbench.network.mesh_vpn import MeshVpnPanel
+    from mackes.workbench.network.mesh_ssh import MeshSshPanel
+    from mackes.workbench.network.mesh_services import MeshServicesPanel
     return _build_tab([
         ("wifi", "Wi-Fi & Ethernet", WifiPanel()),
         ("vpn", "VPN", VpnPanel()),
         ("qnm", "Quick Network Mesh", QnmPanel()),
+        ("mesh_vpn", "Mesh VPN", MeshVpnPanel()),
+        ("mesh_ssh", "Mesh SSH", MeshSshPanel()),
+        ("mesh_services", "Mesh Services", MeshServicesPanel()),
         ("firewall", "Firewall", FirewallPanel()),
     ])
 
@@ -157,6 +151,13 @@ def _apps_tab() -> Gtk.Widget:
     ])
 
 
+def _help_tab() -> Gtk.Widget:
+    # Help is a single full-width pane (no sub-panel sidebar via _build_tab).
+    # The Help panel has its own internal topic sidebar.
+    from mackes.workbench.help import HelpPanel
+    return HelpPanel()
+
+
 # ---------------------------------------------------------------------------
 # Main window
 # ---------------------------------------------------------------------------
@@ -181,6 +182,7 @@ class WorkbenchWindow(Gtk.ApplicationWindow):
         menu = Gtk.Menu()
         for label, callback in [
             ("Run First-Run Wizard…", self._on_run_wizard),
+            ("Help / User Guide", self._on_help),
             ("Open Log", self._on_open_log),
             ("About Mackes Shell", self._on_about),
         ]:
@@ -191,6 +193,13 @@ class WorkbenchWindow(Gtk.ApplicationWindow):
         menu_button.set_popup(menu)
         header.pack_end(menu_button)
 
+        # Standalone Help button on the header for one-click access.
+        help_button = Gtk.Button()
+        help_button.set_image(Gtk.Image.new_from_icon_name("help-browser-symbolic", Gtk.IconSize.BUTTON))
+        help_button.set_tooltip_text("Help / User Guide")
+        help_button.connect("clicked", self._on_help)
+        header.pack_end(help_button)
+
         self._notebook = Gtk.Notebook()
         self._notebook.set_tab_pos(Gtk.PositionType.TOP)
 
@@ -199,12 +208,12 @@ class WorkbenchWindow(Gtk.ApplicationWindow):
 
         for label, builder in [
             ("Look & Feel", _look_and_feel_tab),
-            ("Shell", _shell_tab),
             ("Devices", _devices_tab),
             ("Network", _network_tab),
             ("System", _system_tab),
             ("Apps", _apps_tab),
             ("Maintain", lambda: _maintain_tab(state)),
+            ("Help", _help_tab),
         ]:
             self._notebook.append_page(builder(), Gtk.Label(label=label))
 
@@ -212,26 +221,28 @@ class WorkbenchWindow(Gtk.ApplicationWindow):
 
     # ---- Cross-panel navigation (used by Dashboard quick actions) --------
 
-    # Tab indices: 0 Dashboard, 1 L&F, 2 Shell, 3 Devices, 4 Network, 5 System, 6 Apps, 7 Maintain
+    # Tab indices: 0 Dashboard, 1 L&F, 2 Devices, 3 Network, 4 System, 5 Apps,
+    # 6 Maintain, 7 Help
     _TAB_INDEX = {
         "dashboard": 0,
         "look_and_feel": 1, "appearance": (1, "appearance"),
-        "shell": 2, "polybar": (2, "polybar"), "plank": (2, "plank"),
-        "rofi": (2, "rofi"), "panel_visibility": (2, "panel_visibility"),
-        "devices": 3, "display": (3, "display"), "keyboard": (3, "keyboard"),
-        "mouse": (3, "mouse"), "sound": (3, "sound"), "power": (3, "power"),
-        "network": 4, "wifi": (4, "wifi"), "vpn": (4, "vpn"),
-        "qnm": (4, "qnm"), "firewall": (4, "firewall"),
-        "system": 5, "wm": (5, "wm"), "workspaces": (5, "workspaces"),
-        "session": (5, "session"), "notifications": (5, "notifications"),
-        "default_apps": (5, "default_apps"), "removable": (5, "removable"),
-        "datetime": (5, "datetime"),
-        "apps": 6, "apps_install": (6, "apps_install"),
-        "apps_remove": (6, "apps_remove"), "apps_installed": (6, "apps_installed"),
-        "maintain": 7, "snapshots": (7, "snapshots"), "health": (7, "health"),
-        "deps": (7, "deps"), "logs": (7, "logs"),
-        "repair": (7, "repair"), "reset": (7, "reset"),
-        "uninstall": (7, "uninstall"),
+        "devices": 2, "display": (2, "display"), "keyboard": (2, "keyboard"),
+        "mouse": (2, "mouse"), "sound": (2, "sound"), "power": (2, "power"),
+        "network": 3, "wifi": (3, "wifi"), "vpn": (3, "vpn"),
+        "qnm": (3, "qnm"), "mesh_vpn": (3, "mesh_vpn"),
+        "mesh_ssh": (3, "mesh_ssh"), "mesh_services": (3, "mesh_services"),
+        "firewall": (3, "firewall"),
+        "system": 4, "wm": (4, "wm"), "workspaces": (4, "workspaces"),
+        "session": (4, "session"), "notifications": (4, "notifications"),
+        "default_apps": (4, "default_apps"), "removable": (4, "removable"),
+        "datetime": (4, "datetime"),
+        "apps": 5, "apps_install": (5, "apps_install"),
+        "apps_remove": (5, "apps_remove"), "apps_installed": (5, "apps_installed"),
+        "maintain": 6, "snapshots": (6, "snapshots"), "health": (6, "health"),
+        "deps": (6, "deps"), "logs": (6, "logs"),
+        "repair": (6, "repair"), "reset": (6, "reset"),
+        "uninstall": (6, "uninstall"),
+        "help": 7,
     }
 
     def go_to(self, target: str) -> None:
@@ -265,6 +276,9 @@ class WorkbenchWindow(Gtk.ApplicationWindow):
         from mackes.wizard.window import WizardWindow
         w = WizardWindow(application=self.get_application(), state=self.state)
         w.show_all()
+
+    def _on_help(self, *_):
+        self.go_to("help")
 
     def _on_open_log(self, *_):
         import subprocess

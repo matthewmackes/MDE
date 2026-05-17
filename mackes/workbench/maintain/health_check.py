@@ -37,15 +37,10 @@ def _run_all_checks() -> list[tuple[str, str, str, str]]:
     results: list[tuple[str, str, str, str]] = []
 
     # Core deps
-    for cmd in ("xfconf-query", "xfsettingsd", "xfce4-panel", "xfce4-session"):
+    for cmd in ("xfconf-query", "xfsettingsd", "xfce4-panel", "xfce4-session",
+                "xfdesktop", "xfce4-appfinder", "sshd"):
         sev = "ok" if have(cmd) else "fail"
         results.append(_check(f"binary: {cmd}", sev, "found in PATH" if sev == "ok" else "missing"))
-
-    # Shell stack
-    for cmd in ("polybar", "plank", "rofi"):
-        sev = "ok" if have(cmd) else "warn"
-        results.append(_check(f"binary: {cmd}", sev,
-                              "found" if sev == "ok" else "not installed (Maintain → Dependencies)"))
 
     # Network stack
     results.append(_check("binary: nmcli",
@@ -73,35 +68,13 @@ def _run_all_checks() -> list[tuple[str, str, str, str]]:
         str(SNAPSHOT_DIR), "snapshots",
     ))
 
-    # Live config dirs
-    for name in ("polybar", "plank", "rofi"):
-        d = HOME / ".config" / name
-        results.append(_check(f"config: ~/.config/{name}",
-                              "ok" if d.exists() else "info",
-                              "present" if d.exists() else "not yet created"))
-
-    # Polybar autostart (P1 lock — symptom from last version was Polybar
-    # not starting at login because no autostart entry was installed).
-    from mackes.shell_profiles import POLYBAR_AUTOSTART, POLYBAR_LAUNCHER, POLYBAR_STDERR_LOG
+    # Live config dir
+    xfce_dir = HOME / ".config" / "xfce4"
     results.append(_check(
-        "polybar: autostart entry",
-        "ok" if POLYBAR_AUTOSTART.exists() else "warn",
-        str(POLYBAR_AUTOSTART) if POLYBAR_AUTOSTART.exists() else "missing — pick a Polybar profile to install",
+        "config: ~/.config/xfce4",
+        "ok" if xfce_dir.exists() else "info",
+        "present" if xfce_dir.exists() else "not yet created",
     ))
-    results.append(_check(
-        "polybar: launcher script",
-        "ok" if POLYBAR_LAUNCHER.exists() else "warn",
-        str(POLYBAR_LAUNCHER) if POLYBAR_LAUNCHER.exists() else "missing",
-    ))
-    if POLYBAR_STDERR_LOG.exists():
-        try:
-            size = POLYBAR_STDERR_LOG.stat().st_size
-            results.append(_check_link(
-                "polybar: stderr log", "info",
-                f"{size} bytes at {POLYBAR_STDERR_LOG}", "logs",
-            ))
-        except OSError:
-            pass
 
     # xfconf reachability — try a no-op list
     if have("xfconf-query"):

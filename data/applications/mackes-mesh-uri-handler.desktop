@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Mackes Mesh
+Comment=Browse the Mackes mesh:// filesystem
+Exec=/usr/bin/mackes-mesh-open %u
+Icon=network-server
+Categories=Network;FileManager;
+MimeType=x-scheme-handler/mesh;inode/directory/mesh;
+Terminal=false
+NoDisplay=true
+StartupNotify=false

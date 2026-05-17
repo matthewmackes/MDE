@@ -82,12 +82,12 @@ def service_health() -> dict[str, str]:
     These drive the dashboard status strip.
     """
     return {
-        "Polybar": "ok" if is_running("polybar") else ("warn" if have("polybar") else "missing"),
-        "Plank": "ok" if is_running("plank") else ("warn" if have("plank") else "missing"),
-        "Rofi": "ok" if have("rofi") else "missing",
+        "xfce4-panel": "ok" if is_running("xfce4-panel") else ("warn" if have("xfce4-panel") else "fail"),
+        "xfdesktop": "ok" if is_running("xfdesktop") else ("warn" if have("xfdesktop") else "fail"),
         "xfsettingsd": "ok" if is_running("xfsettingsd") else "fail",
         "xfconf-query": "ok" if have("xfconf-query") else "fail",
         "NetworkManager": "ok" if is_running("NetworkManager") else "warn",
+        "sshd": "ok" if is_running("sshd") else ("warn" if have("sshd") else "missing"),
     }
 
 

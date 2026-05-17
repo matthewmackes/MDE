@@ -1,0 +1,34 @@
+[Unit]
+Description=Mackes Shell — mesh node services
+Documentation=file:///usr/share/mackes-shell/help/headless.md
+After=network-online.target headscale.service
+Wants=network-online.target
+PartOf=multi-user.target
+
+[Service]
+Type=notify
+ExecStart=/usr/bin/mackes daemon
+Restart=on-failure
+RestartSec=10s
+TimeoutStopSec=30s
+StandardOutput=journal
+StandardError=journal
+
+# Run as the mackes system user/group (created by RPM %post)
+User=mackes
+Group=mackes
+SupplementaryGroups=fuse
+WorkingDirectory=/var/lib/mackes
+
+# Resource hygiene — daemon is light, never grows past a few tens of MB
+MemoryHigh=256M
+MemoryMax=512M
+
+# Security hardening (only what doesn't conflict with sshfs/fuse needs)
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=no
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

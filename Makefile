@@ -58,7 +58,7 @@ iso:
 	    --volid "MACKES_XFCE"
 
 install-deps:
-	@echo 'On Fedora: sudo dnf install python3-pytest python3-pyyaml python3-gobject gtk3 xfconf polybar plank rofi'
+	@echo 'On Fedora: sudo dnf install python3-pytest python3-pyyaml python3-gobject gtk3 xfconf xfce4-whiskermenu-plugin xfce4-pulseaudio-plugin xfce4-power-manager-plugin'
 
 clean:
 	rm -rf build dist rpmbuild *.egg-info

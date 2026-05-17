@@ -14,18 +14,19 @@ import argparse
 import sys
 
 from mackes.presets import (
-    apply_appearance, apply_devices, apply_network, apply_shell, apply_system,
-    list_presets, load_preset,
+    apply_appearance, apply_devices, apply_mesh, apply_network, apply_panel,
+    apply_system, list_presets, load_preset,
 )
 from mackes.state import MackesState
 
 
 _STEPS = [
     ("appearance", apply_appearance),
-    ("shell",      apply_shell),
     ("devices",    apply_devices),
     ("system",     apply_system),
     ("network",    apply_network),
+    ("panel",      apply_panel),
+    ("mesh",       apply_mesh),
 ]
 
 

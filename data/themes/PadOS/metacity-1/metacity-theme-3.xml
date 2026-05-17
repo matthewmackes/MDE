@@ -1,0 +1,85 @@
+<?xml version="1.0"?>
+<!DOCTYPE metacity_theme SYSTEM "metacity-theme-3.dtd">
+<!-- PadOS — Metacity-3 theme (consumed by some non-xfwm WMs and by
+     CSD-less apps that fall back to Metacity decoration). Carbon Gray 100
+     palette to match the GTK3 theme. -->
+<metacity_theme>
+  <info>
+    <name>PadOS</name>
+    <author>Mackes Shell</author>
+    <copyright>GPL-3.0</copyright>
+    <date>2026-05-17</date>
+    <description>Carbon Gray 100 metacity decoration</description>
+  </info>
+
+  <constant name="C_TITLE_BG"       value="#393939"/>
+  <constant name="C_TITLE_BG_INACT" value="#262626"/>
+  <constant name="C_TITLE_FG"       value="#f4f4f4"/>
+  <constant name="C_TITLE_FG_INACT" value="#a8a8a8"/>
+  <constant name="C_BORDER"         value="#393939"/>
+
+  <frame_geometry name="default" rounded_top_left="0" rounded_top_right="0">
+    <distance name="left_width"            value="1"/>
+    <distance name="right_width"           value="1"/>
+    <distance name="bottom_height"         value="1"/>
+    <distance name="left_titlebar_edge"    value="8"/>
+    <distance name="right_titlebar_edge"   value="4"/>
+    <distance name="button_width"          value="24"/>
+    <distance name="button_height"         value="24"/>
+    <distance name="title_vertical_pad"    value="6"/>
+    <border name="title_border"     left="6" right="6" top="0" bottom="0"/>
+    <border name="button_border"    left="2" right="2" top="2" bottom="2"/>
+  </frame_geometry>
+
+  <draw_ops name="title_active">
+    <rectangle color="C_TITLE_BG" filled="true"
+               x="0" y="0" width="width" height="height"/>
+    <title color="C_TITLE_FG" x="title_x" y="title_y"/>
+  </draw_ops>
+  <draw_ops name="title_inactive">
+    <rectangle color="C_TITLE_BG_INACT" filled="true"
+               x="0" y="0" width="width" height="height"/>
+    <title color="C_TITLE_FG_INACT" x="title_x" y="title_y"/>
+  </draw_ops>
+
+  <frame_style name="normal_focused" geometry="default">
+    <piece position="entire_background">
+      <draw_ops>
+        <rectangle color="C_TITLE_BG" filled="true"
+                   x="0" y="0" width="width" height="height"/>
+      </draw_ops>
+    </piece>
+    <piece position="title">
+      <draw_ops name="title_active"/>
+    </piece>
+  </frame_style>
+  <frame_style name="normal_unfocused" geometry="default">
+    <piece position="entire_background">
+      <draw_ops>
+        <rectangle color="C_TITLE_BG_INACT" filled="true"
+                   x="0" y="0" width="width" height="height"/>
+      </draw_ops>
+    </piece>
+    <piece position="title">
+      <draw_ops name="title_inactive"/>
+    </piece>
+  </frame_style>
+
+  <frame_style_set name="normal">
+    <frame focus="yes"   state="normal"    style="normal_focused"/>
+    <frame focus="no"    state="normal"    style="normal_unfocused"/>
+    <frame focus="yes"   state="maximized" style="normal_focused"/>
+    <frame focus="no"    state="maximized" style="normal_unfocused"/>
+    <frame focus="yes"   state="shaded"    style="normal_focused"/>
+    <frame focus="no"    state="shaded"    style="normal_unfocused"/>
+    <frame focus="yes"   state="maximized_and_shaded" style="normal_focused"/>
+    <frame focus="no"    state="maximized_and_shaded" style="normal_unfocused"/>
+  </frame_style_set>
+
+  <window type="normal"    style_set="normal"/>
+  <window type="dialog"    style_set="normal"/>
+  <window type="modal_dialog" style_set="normal"/>
+  <window type="menu"      style_set="normal"/>
+  <window type="utility"   style_set="normal"/>
+  <window type="border"    style_set="normal"/>
+</metacity_theme>

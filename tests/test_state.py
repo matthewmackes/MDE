@@ -8,10 +8,10 @@ def test_state_round_trip(isolated_xdg):
     assert s.provisioned is False
     assert s.active_preset is None
 
-    s.mark_provisioned("chupre")
+    s.mark_provisioned("hashbang")
     s2 = MackesState.load()
     assert s2.provisioned is True
-    assert s2.active_preset == "chupre"
+    assert s2.active_preset == "hashbang"
     assert s2.last_apply  # ISO timestamp string
 
 

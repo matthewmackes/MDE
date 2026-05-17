@@ -1,0 +1,16 @@
+# Mackes Mesh — GVFS mount manifest.
+#
+# Installed at /usr/share/gvfs/mounts/mesh.mount so that gvfsd knows how
+# to route mesh:// URIs. The actual filesystem is a FUSE mount served by
+# mackes-gvfsd-mesh.service (user unit). GVFS shadow-mounts the FUSE
+# location so URIs of the form mesh:///Peers/laptop-mm/... resolve to
+# ~/.local/share/mackes-mesh-fuse/Peers/laptop-mm/... transparently in
+# Thunar, the file picker, gio, and any other GVFS-aware app.
+
+[Mount]
+Type=mesh
+Exec=/usr/bin/mackes-gvfsd-mesh
+AutoMount=true
+Scheme=mesh
+HostnameSupported=false
+DefaultPort=0

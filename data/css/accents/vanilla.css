@@ -1,5 +1,8 @@
-/* Vanilla — Adwaita default blue (matches Fedora-stock GTK). */
-@define-color mackes_accent     #3584e4;
-@define-color mackes_accent_dim alpha(@mackes_accent, 0.22);
-@define-color mackes_text       #2e3436;
-@define-color mackes_dim        alpha(@mackes_text, 0.6);
+/* Vanilla — Carbon Blue 60 (#0f62fe). The signature IBM blue.
+ * For users who want the chrome at its most IBM-faithful.
+ */
+@define-color mackes_accent        #0f62fe;
+@define-color mackes_accent_hover  alpha(@mackes_accent, 0.85);
+@define-color mackes_accent_active alpha(@mackes_accent, 0.70);
+@define-color mackes_accent_dim    alpha(@mackes_accent, 0.20);
+@define-color mackes_accent_focus  @mackes_accent;

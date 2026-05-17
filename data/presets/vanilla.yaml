@@ -2,24 +2,17 @@
 #
 # For users who want Mackes' control panel, snapshots, and repair tools but
 # none of its opinions about how the desktop should look or what apps belong
-# on it. Polybar/Plank/Rofi are not configured; xfce4-panel stays. No apps
-# installed, no bloat removed, no XFCE components stripped.
+# on it. No theme override, no apps installed, no bloat removed.
 
 name: vanilla
 display_name: "Vanilla"
 description: >
   Fedora XFCE defaults. Mackes manages snapshots and repair but does not
-  install a shell stack, change themes, or touch the app set. For users who
-  want the safety net without the styling.
+  change themes or touch the app set. For users who want the safety net
+  without the styling.
 
 appearance:
   # All omitted — xfconf keeps whatever Fedora set.
-
-shell:
-  apply_chupre_dotfiles: false
-  xfce_panel_enabled:    true
-  # polybar_profile / plank_profile / rofi_profile intentionally omitted;
-  # apply_shell skips a key when it's absent from the YAML.
 
 devices:
   display_scaling:    "auto"
@@ -35,9 +28,8 @@ system:
   autostart_extras: []
 
 apps:
-  install:         []
-  remove_bloat:    []
-  lean_xfce_remove: []
+  install:      []
+  remove_bloat: []
 
 snapshot:
   initial_snapshot_name: "vanilla-baseline"

@@ -17,8 +17,8 @@ from mackes.workbench._common import title_label, info_label
 
 def _hero_logo_path() -> Path | None:
     candidates = [
-        Path("/usr/share/mackes-shell/branding/MAP2-LOGO-CROPPED.png"),
-        Path(__file__).resolve().parents[3] / "branding" / "MAP2-LOGO-CROPPED.png",
+        Path("/usr/share/mackes-shell/branding/MACKES-XFCE-LOGO.png"),
+        Path(__file__).resolve().parents[3] / "branding" / "MACKES-XFCE-LOGO.png",
     ]
     for p in candidates:
         if p.exists():

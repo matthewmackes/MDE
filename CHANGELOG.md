@@ -3,6 +3,98 @@
 All notable user-facing and architectural changes. The current line is
 unreleased; tag versions get a date when they ship.
 
+## 1.0.0 — "XFCE Provisioner" (2026-05-16)
+
+### Identity
+- First non-private release. "MAP2 Sub Testing" markers fully removed across
+  packaging, spec, and runtime UI.
+- Repositioned from "shell stack manager" to "XFCE provisioner + mesh fabric".
+
+### The XFCE Pivot (Q1–Q20 survey)
+- Retired the Polybar / Plank / Rofi / picom / dunst shell stack entirely.
+  Mackes now provisions a standard XFCE shell: xfce4-panel + xfdesktop +
+  xfce4-appfinder + xfce4-notifyd, with Whisker Menu as the start menu and
+  Docklike Taskbar replacing Window Buttons.
+- Standard panel layout: Whisker (far-left) → Docklike taskbar → systray →
+  volume → power → clock (IBM Plex Sans).
+- PadOS locked as the default GTK theme; other themes greyed-out in the
+  Appearance picker.
+- Carbon Icons (Apache 2.0) as the system-wide GTK icon theme (replaced
+  the briefly-considered Clarity icons).
+- IBM Plex Sans (UI) + IBM Plex Mono (monospace) replace SF Pro / JetBrains
+  Mono throughout.
+- `branding/standard-wallpaper.png` is the locked desktop + LightDM greeter
+  wallpaper, vendored at 7.8 MB.
+- Bloat list collapsed to a single combined `remove_bloat` per preset; XFCE
+  extras (asunder, parole, pragha, xfburn, transmission-gtk, claws-mail,
+  pidgin) added alongside GNOME-on-XFCE apps + libreoffice-*.
+- `menulibre` added to install lists for hashbang / mackes / daylight.
+- ssh enabled by default on every Mackes install via RPM %post.
+- LightDM greeter silently configured to match preset theme/wallpaper/font.
+
+### Carbon Design System chrome (Q-CB1–Q-CB10)
+- Pixel-exact Gray 100 palette (#161616 / #262626 / #393939 / #525252 /
+  #f4f4f4 / #969696 / #2d2d30).
+- Carbon UI Shell layout: 48px top header + 256px left side nav + main +
+  24px status bar.
+- IBM Plex Sans UI / IBM Plex Mono monospace.
+- Per-preset accent (hashbang-red etc.) replaces Carbon blue at every
+  focus/highlight surface.
+- Carbon Icons everywhere (chrome + system theme).
+- Strict 8px grid via `--cds-spacing-01` … `--cds-spacing-13` tokens; CI
+  lint rejects raw `px` in `data/css/*.css`.
+- Centralized design tokens in `data/css/tokens.css`.
+- Full custom widget library locked in `mackes/carbon/`: Tile, DataTable,
+  Accordion, NumberInput, MultiSelect, Notification, Toast, Modal,
+  Skeleton, Button (5-tier), UIShell.
+
+### Mesh fabric (§8.10–§8.14)
+- **Mesh Thunar Extension** (Q-MX1–Q-MX20): `mesh:///` GVFS backend +
+  Tumbler thumbnailer. Four subtrees — Peers (SSHFS, live), Clipboard
+  (NATS-backed, 100-item ring + Saved/), Notifications (.md per entry),
+  Object Store (Themes / Snapshots / Presets / Drop). Live updates via
+  qnmd→FUSE inotify. 16-peer cap.
+- **Mesh VPN** (§8.11): Headscale + Tailscale clients. Auto-elected
+  control node with NATS-state replication + 30s snapshot. Tailscale-
+  bootstrap (Option C) for cross-network discovery — only seed peer signs
+  into Tailscale's free tier (1/100 node count forever).
+- **Headless Node Mode** (§8.12, Q-HL1–Q-HL7): full `mackes init` /
+  `mackes join` / `mackes status` / etc. CLI parity with the GUI panels.
+  Auto-detect missing display + logind graphical session. New
+  `data/presets/node.yaml` headless preset. `mackes-node.service` systemd
+  unit.
+- **Mesh Media Services** (§8.13, 5 layers): raw URLs / Media Hub panel /
+  Caddy gateway / bundled native clients / mDNS-over-mesh relay. Shared
+  catalog `data/media-services.yaml` consumed by all layers.
+- **Mesh SSH** (§8.14, 3 layers): SSH cheatsheet + auto-distributed
+  ed25519 keys via NATS + Tailscale-SSH identity-based access via
+  Headscale. Audit log in NATS `mesh.ssh-audit`.
+
+### Help / Documentation
+- New comprehensive Help system: `docs/help/*.md` covers every feature.
+  Surfaced via a Help tab in the workbench and `mackes help [topic]` in
+  headless mode.
+
+### Removals
+- Deleted: `mackes/polybar_catalog.py`, `mackes/polybar_gen.py`,
+  `mackes/shell_profiles.py`, `mackes/session_manager.py`,
+  `mackes/workbench/shell/{polybar,plank,rofi,panel_visibility}.py`,
+  `mackes/wizard/pages/shell.py`,
+  `tests/test_{polybar_catalog,shell_profiles,shell_profiles_save}.py`.
+- Deleted directories: `data/shell-profiles/` (8.7 MB of adi1090x families),
+  `data/plank-themes/` (440 KB of dock themes).
+- Net cleanup: ~1,200 file deletions; -631 / +191 lines across surviving
+  source files.
+
+### Packaging
+- RPM hard `Requires`: xfce4-session, xfce4-whiskermenu-plugin,
+  xfce4-docklike-plugin, xfce4-pulseaudio-plugin,
+  xfce4-power-manager-plugin, openssh-server, headscale, tailscale.
+- `Recommends`: caddy, jellyfin-media-player, strawberry,
+  ibm-plex-sans-fonts, ibm-plex-mono-fonts, firewalld, pulseaudio-utils.
+- Dropped: polybar, plank, rofi, dunst, picom, papirus-icon-theme,
+  arc-theme, google-droid-sans-fonts, jetbrains-mono-fonts.
+
 ## Unreleased (post-0.1.1 redesign)
 
 ### Identity

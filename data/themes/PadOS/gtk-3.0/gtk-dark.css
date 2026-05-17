@@ -1,0 +1,4 @@
+/* PadOS gtk-dark variant — identical to gtk.css (PadOS is dark-only by
+ * design; Q-CB7 lock). The dark variant alias exists so apps requesting
+ * "PadOS-dark" still find a theme. */
+@import url("gtk.css");

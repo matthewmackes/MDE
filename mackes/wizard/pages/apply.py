@@ -10,7 +10,8 @@ from gi.repository import GLib, Gtk  # noqa: E402
 
 from mackes.logging import log_action
 from mackes.presets import (
-    Preset, apply_appearance, apply_devices, apply_network, apply_shell, apply_system,
+    Preset, apply_appearance, apply_devices, apply_mesh, apply_network,
+    apply_panel, apply_system,
 )
 from mackes.snapshots import create_snapshot
 
@@ -82,21 +83,22 @@ class ApplyPage(Gtk.Box):
         merged = Preset(
             name=preset.name, display_name=preset.display_name, description=preset.description,
             appearance={**preset.appearance, **(ctx.overrides.get("appearance") or {})},
-            shell=     {**preset.shell,      **(ctx.overrides.get("shell") or {})},
             devices=   {**preset.devices,    **(ctx.overrides.get("devices") or {})},
             system=    {**preset.system,     **(ctx.overrides.get("system") or {})},
             network=   {**preset.network, "qnm_enabled": ctx.enable_qnm,
                         "firewall_default_zone": ctx.firewall_zone},
+            panel=     {**preset.panel,      **(ctx.overrides.get("panel") or {})},
             snapshot=  preset.snapshot,
         )
 
         steps = [
             ("Snapshot",   self._step_snapshot),
             ("Appearance", lambda: apply_appearance(merged)),
-            ("Shell",      lambda: apply_shell(merged)),
             ("Devices",    lambda: apply_devices(merged)),
             ("System",     lambda: apply_system(merged)),
             ("Network",    lambda: apply_network(merged)),
+            ("Panel",      lambda: apply_panel(merged)),
+            ("Mesh",       lambda: apply_mesh(merged)),
             ("VPN import", self._step_vpn),
             ("Menu",       self._step_menu),
             ("Finalize",   lambda: self._step_finalize(merged)),

@@ -168,9 +168,8 @@ class DriftPanel(Gtk.Box):
         self._refresh()
 
     # ---- Write-back ----------------------------------------------------
-    # Only appearance/system keys flow through xfconf; shell keys would need
-    # apply_polybar / apply_plank / apply_rofi, which is heavier. For now,
-    # shell drift can be reverted via "Reset to Preset" in the sibling panel.
+    # Only appearance/system keys flow through xfconf directly. Any heavier
+    # drift can be reverted via "Reset to Preset" in the sibling panel.
 
     def _write_back(self, preset: Preset, it: DriftItem) -> int:
         if it.section == "appearance":

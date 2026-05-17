@@ -1,0 +1,40 @@
+/Gdk/WindowScalingFactor        1
+/Gtk/ButtonImages               true
+/Gtk/CanChangeAccels            false
+/Gtk/ColorPalette               black:white:gray50:red:purple:blue:light blue:green:yellow:orange:lavender:brown:goldenrod4:dodger blue:pink:light green:gray10:gray30:gray75:gray90
+/Gtk/CursorBlinkTimeout         10
+/Gtk/CursorThemeName            XCursor-Pro-Dark
+/Gtk/CursorThemeSize            24
+/Gtk/DecorationLayout           icon,menu:minimize,maximize,close
+/Gtk/DialogsUseHeader           false
+/Gtk/EnableAnimations           true
+/Gtk/EnablePrimaryPaste         false
+/Gtk/FontName                   Inter Display 10
+/Gtk/IconSizes                  
+/Gtk/ImModule                   gtk-im-context-simple:xim
+/Gtk/KeynavUseCaret             false
+/Gtk/KeyThemeName               
+/Gtk/MenuBarAccel               F10
+/Gtk/MenuImages                 true
+/Gtk/MonospaceFontName          Hack Nerd Font Mono 10
+/Gtk/OverlayScrolling           true
+/Gtk/RecentFilesEnabled         true
+/Gtk/RecentFilesMaxAge          -1
+/Gtk/TitlebarDoubleClick        toggle-maximize
+/Gtk/TitlebarMiddleClick        lower
+/Gtk/TitlebarRightClick         menu
+/Net/CursorBlink                true
+/Net/CursorBlinkTime            1200
+/Net/DndDragThreshold           8
+/Net/DoubleClickDistance        5
+/Net/DoubleClickTime            400
+/Net/EnableEventSounds          false
+/Net/EnableInputFeedbackSounds  false
+/Net/IconThemeName              WhiteSur-dark
+/Net/SoundThemeName             default
+/Net/ThemeName                  ChromeOS-Dark
+/Xft/Antialias                  1
+/Xft/DPI                        96
+/Xft/Hinting                    1
+/Xft/HintStyle                  medium
+/Xft/RGBA                       vbgr

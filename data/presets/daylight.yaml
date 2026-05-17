@@ -1,35 +1,24 @@
 # Daylight — cool-light, day-mode productivity.
 #
 # Light theme, productivity-leaning app set (office suite, mail, image
-# editing). Polybar + Plank in a daylight palette. For users who live in
-# the daytime and want a tool set built around documents and communication.
-#
-# TODO (post-Polybar-Editor): ship `daylight` polybar/plank profiles in the
-# correct palette. Today falls back to the chupre profiles, which look wrong
-# against a light GTK theme.
+# editing). Standard XFCE shell. For users who live in the daytime and want
+# a tool set built around documents and communication.
 
 name: daylight
 display_name: "Daylight"
 description: >
-  Cool-light, day-mode. Adwaita light theme, productivity app set
+  Cool-light, day-mode. PadOS light theme, productivity app set
   (LibreOffice, Thunderbird, GIMP, Inkscape). For people who work in the
   daytime and care about document fidelity.
 
 appearance:
-  gtk_theme:      "Adwaita"
-  icon_theme:     "Papirus"
+  gtk_theme:      "PadOS"
+  icon_theme:     "Carbon"
   cursor_theme:   "Adwaita"
   cursor_size:    24
-  font_ui:        "SF Pro Text 11"
-  font_monospace: "JetBrains Mono 11"
-  wallpaper:      "/usr/share/mackes-shell/data/wallpapers/daylight.png"
-
-shell:
-  apply_chupre_dotfiles: true
-  polybar_profile:    "daylight"        # generated from upstream material family
-  plank_profile:      "daylight"
-  rofi_profile:       "daylight"
-  xfce_panel_enabled: false
+  font_ui:        "IBM Plex Sans 11"
+  font_monospace: "IBM Plex Mono 11"
+  wallpaper:      "/usr/share/mackes-shell/branding/standard-wallpaper.png"
 
 devices:
   display_scaling:    "auto"
@@ -46,6 +35,15 @@ system:
   notifications_enabled: true
   autostart_extras: []
 
+panel:
+  # Clock plugin — captured from live xfconf as the standard layout.
+  clock:
+    digital-layout:      1
+    digital-date-format: "%B %d, %Y"
+    digital-date-font:   "IBM Plex Sans 10"
+    digital-time-format: "%I:%M %p"
+    digital-time-font:   "IBM Plex Sans Bold 12"
+
 apps:
   install:
     - firefox
@@ -55,23 +53,23 @@ apps:
     - evince
     - gimp
     - inkscape
-    - dunst
+    - menulibre
 
-  # Light bloat removal — keep productivity-adjacent GNOME apps.
+  # Daylight intentionally keeps LibreOffice — it's the productivity preset.
+  # XFCE extras still removed (none of them are document-focused).
   remove_bloat:
     - gnome-software
     - gnome-tour
     - gnome-maps
     - gnome-music
     - totem
-
-  lean_xfce_remove:
-    - package: xfce4-panel
-      replaced_by: polybar
-    - package: xfce4-appfinder
-      replaced_by: rofi
-    - package: xfce4-notifyd
-      replaced_by: dunst
+    - asunder
+    - parole
+    - pragha
+    - xfburn
+    - transmission-gtk
+    - claws-mail
+    - pidgin
 
 snapshot:
   initial_snapshot_name: "daylight-baseline"

@@ -28,7 +28,6 @@ def build(ctx) -> Gtk.Widget:
     summary.append(f"Description: {p.description if p else ''}")
     summary.append("")
     summary.append(_render_section("appearance (preset)",  p.appearance if p else {}))
-    summary.append(_render_section("shell (preset)",       p.shell if p else {}))
     summary.append(_render_section("devices (preset)",     p.devices if p else {}))
     summary.append(_render_section("system (preset)",      p.system if p else {}))
     summary.append(_render_section("network (preset)",     p.network if p else {}))

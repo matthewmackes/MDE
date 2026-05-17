@@ -1,0 +1,19 @@
+[Unit]
+Description=Mackes Shell — mesh:// GVFS-backed FUSE filesystem
+Documentation=file:///usr/share/mackes-shell/help/mesh-thunar.md
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 -m mackes.mesh_gvfs.daemon
+ExecStop=/usr/bin/fusermount -u %h/.local/share/mackes-mesh-fuse
+Restart=on-failure
+RestartSec=5s
+
+# User-session unit — installed by systemctl --user enable from the
+# wizard / `mackes init`. Doesn't run as root; the fuse mount belongs
+# to the invoking user.
+
+[Install]
+WantedBy=graphical-session.target

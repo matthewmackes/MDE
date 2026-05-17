@@ -1,31 +1,22 @@
 # Mackes — the house style.
 #
-# Warm-dark, polished, opinionated. The aesthetic and app set that the project
-# was originally built around (formerly shipped as `chupre`). Polybar + Plank
-# dual-bar setup, rofi launcher, curated tool set for development work.
+# Warm-dark, polished, opinionated. The aesthetic and curated tool set the
+# project was built around. Standard XFCE shell underneath the house theme.
 
 name: mackes
 display_name: "Mackes"
 description: >
-  The house style — warm-dark, polished. WhiteSur-Dark theme, SF Pro Text UI,
-  polybar with workspaces / weather / battery / volume modules, plank dock,
-  rofi launcher. Curated development tool set.
+  The house style — warm-dark, polished. PadOS theme, IBM Plex typography,
+  curated development tool set. Standard XFCE shell.
 
 appearance:
-  gtk_theme:      "WhiteSur-Dark"
-  icon_theme:     "WhiteSur-dark"
-  cursor_theme:   "XCursor-Pro-Dark"
+  gtk_theme:      "PadOS"
+  icon_theme:     "Carbon"
+  cursor_theme:   "Adwaita"
   cursor_size:    24
-  font_ui:        "SF Pro Text 11"
-  font_monospace: "JetBrains Mono 11"
-  wallpaper:      "/usr/share/mackes-shell/data/wallpapers/mackes.png"
-
-shell:
-  apply_chupre_dotfiles: true
-  polybar_profile:    "mackes"          # generated from upstream forest family
-  plank_profile:      "mackes"
-  rofi_profile:       "mackes"
-  xfce_panel_enabled: false
+  font_ui:        "IBM Plex Sans 11"
+  font_monospace: "IBM Plex Mono 11"
+  wallpaper:      "/usr/share/mackes-shell/branding/standard-wallpaper.png"
 
 devices:
   display_scaling:    "auto"
@@ -40,8 +31,16 @@ system:
   workspace_count:       9
   window_manager_theme:  "Default"
   notifications_enabled: true
-  autostart_extras:
-    - picom.desktop
+  autostart_extras: []
+
+panel:
+  # Clock plugin — captured from live xfconf as the standard layout.
+  clock:
+    digital-layout:      1
+    digital-date-format: "%B %d, %Y"
+    digital-date-font:   "IBM Plex Sans 10"
+    digital-time-format: "%I:%M %p"
+    digital-time-font:   "IBM Plex Sans Bold 12"
 
 apps:
   install:
@@ -55,7 +54,7 @@ apps:
     - remmina
     - mc
     - neofetch
-    - dunst
+    - menulibre
 
   remove_bloat:
     - gnome-software
@@ -68,16 +67,13 @@ apps:
     - gnome-music
     - totem
     - "libreoffice-*"
-
-  lean_xfce_remove:
-    - package: xfce4-panel
-      replaced_by: polybar
-    - package: xfce4-appfinder
-      replaced_by: rofi
-    - package: xfdesktop
-      replaced_by: plank
-    - package: xfce4-notifyd
-      replaced_by: dunst
+    - asunder
+    - parole
+    - pragha
+    - xfburn
+    - transmission-gtk
+    - claws-mail
+    - pidgin
 
 snapshot:
   initial_snapshot_name: "mackes-baseline"

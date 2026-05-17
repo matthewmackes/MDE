@@ -11,7 +11,7 @@ from gi.repository import Gtk  # noqa: E402
 from mackes.state import hardware_summary
 
 
-REQUIRED_BINS = ["xfconf-query", "xfsettingsd", "xfce4-panel", "polybar", "plank", "rofi"]
+REQUIRED_BINS = ["xfconf-query", "xfsettingsd", "xfce4-panel", "xfdesktop", "xfce4-appfinder"]
 RECOMMENDED_BINS = ["nmcli", "firewall-cmd", "pactl", "timedatectl", "gsettings"]
 
 

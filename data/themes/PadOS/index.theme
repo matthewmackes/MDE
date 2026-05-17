@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=X-GNOME-Metatheme
+Name=PadOS
+Comment=Mackes Shell — Carbon Gray 100 GTK theme (replaces the unavailable upstream PadOS reference)
+Encoding=UTF-8
+
+[X-GNOME-Metatheme]
+GtkTheme=PadOS
+MetacityTheme=PadOS
+IconTheme=Carbon
+CursorTheme=Adwaita
+ButtonLayout=:minimize,maximize,close

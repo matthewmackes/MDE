@@ -1,0 +1,18 @@
+/ActiveProfile               Default
+/AutoEnableProfiles          3
+/Default/DP-1-1              VIZIO, Inc 64"
+/Default/DP-1-1/Active       true
+/Default/DP-1-1/EDID         57db1db2fa258ce575a5f9bc9a32e194d2460a39
+/Default/DP-1-1/ModeFlags    5
+/Default/DP-1-1/Position/X   0
+/Default/DP-1-1/Position/Y   0
+/Default/DP-1-1/Primary      true
+/Default/DP-1-1/Reflection   0
+/Default/DP-1-1/RefreshRate  60.000000
+/Default/DP-1-1/Resolution   1920x1080
+/Default/DP-1-1/Rotation     0
+/Default/DP-1-1/Scale        1.000000
+/Default/eDP-1               Laptop
+/Default/eDP-1/Active        false
+/Default/eDP-1/EDID          c03580f2db80b8723e70719b700004e0d78b8088
+/Notify                      1

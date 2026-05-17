@@ -18,7 +18,6 @@ from gi.repository import Gtk  # noqa: E402
 from pathlib import Path
 
 from mackes.presets import active_preset_drift
-from mackes.session_manager import process_status
 from mackes.snapshots import create_snapshot
 from mackes.state import (
     LOG_DIR,
@@ -30,10 +29,10 @@ from mackes.state import (
 
 
 def _hero_logo_path() -> Optional[Path]:
-    """Return the MAP2 hero logo path if shipped; None otherwise."""
+    """Return the Mackes Shell hero logo path if shipped; None otherwise."""
     candidates = [
-        Path("/usr/share/mackes-shell/branding/MAP2-LOGO-CROPPED.png"),
-        Path(__file__).resolve().parents[2] / "branding" / "MAP2-LOGO-CROPPED.png",
+        Path("/usr/share/mackes-shell/branding/MACKES-XFCE-LOGO.png"),
+        Path(__file__).resolve().parents[2] / "branding" / "MACKES-XFCE-LOGO.png",
     ]
     for p in candidates:
         if p.exists():
@@ -157,21 +156,6 @@ class DashboardView(Gtk.Box):
         meta.pack_start(snap_label, False, False, 0)
 
         content.pack_start(meta, False, False, 0)
-
-        # Managed processes (C11 lock — per-process dots on the Dashboard).
-        proc_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=18)
-        proc_row.set_margin_top(4)
-        proc_label = Gtk.Label(label="Managed:"); proc_label.set_xalign(0)
-        proc_label.get_style_context().add_class("dim-label")
-        proc_row.pack_start(proc_label, False, False, 0)
-        for status in process_status():
-            cell = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-            dot = Gtk.Label(label=_STATUS_DOTS.get(status.state, "○"))
-            dot.get_style_context().add_class(_STATUS_CLASSES.get(status.state, "dim-label"))
-            cell.pack_start(dot, False, False, 0)
-            cell.pack_start(Gtk.Label(label=status.name), False, False, 0)
-            proc_row.pack_start(cell, False, False, 0)
-        content.pack_start(proc_row, False, False, 0)
         return outer
 
     # ---- Section 2: drift card (conditional) -----------------------------
@@ -244,10 +228,10 @@ class DashboardView(Gtk.Box):
         actions: list[tuple[str, str, Callable[[], None]]] = [
             ("Open Appearance",        "preferences-desktop",
              lambda: self.navigate("appearance")),
-            ("Switch Polybar Profile", "preferences-desktop-display",
-             lambda: self.navigate("polybar")),
-            ("Open Plank",             "preferences-desktop-display",
-             lambda: self.navigate("plank")),
+            ("Open Display",           "preferences-desktop-display",
+             lambda: self.navigate("display")),
+            ("Open Network",           "network-wired",
+             lambda: self.navigate("network")),
             ("Create Snapshot",        "document-save",
              self._on_snapshot),
             ("Health Check",           "emblem-system",

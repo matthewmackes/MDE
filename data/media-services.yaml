@@ -1,0 +1,299 @@
+# Mackes Mesh Services catalog (§8.13 lock).
+#
+# Authoritative list of HTTP services Mackes probes for on every mesh peer.
+# Consumed by all five mesh-services layers:
+#   - Layer 1: rendered into the raw-URL cheatsheet in Help
+#   - Layer 2: Media Hub panel uses (port, icon, display-name) for Tiles
+#   - Layer 3: Caddy proxy generates a route per discovered (service, peer)
+#   - Layer 4: native-client autoconfig narrows to entries where `native-client` is set
+#   - Layer 5: mDNS relay subscribes to entries where `mdns-type` is set
+#
+# Users can add overrides at ~/.config/mackes-shell/media-services.yaml;
+# entries with matching `name` override the shipped values.
+
+services:
+
+  # ---- Media ------------------------------------------------------------
+  - name:          jellyfin
+    display:       "Jellyfin"
+    category:      media
+    port:          8096
+    https-port:    8920
+    path:          "/"
+    icon:          jellyfin
+    mdns-type:     "_jellyfin._tcp"
+    native-client: jellyfin-media-player
+    description:   "Open-source media server (video, music, photos)."
+
+  - name:          airsonic
+    display:       "Airsonic / Subsonic"
+    category:      media
+    port:          4040
+    path:          "/"
+    icon:          airsonic
+    mdns-type:     "_subsonic._tcp"
+    native-client: strawberry
+    description:   "Music streaming server (Subsonic-compatible API)."
+
+  - name:          plex
+    display:       "Plex"
+    category:      media
+    port:          32400
+    path:          "/web"
+    icon:          plex
+    mdns-type:     "_plex._tcp"
+    description:   "Plex Media Server."
+
+  - name:          navidrome
+    display:       "Navidrome"
+    category:      media
+    port:          4533
+    path:          "/"
+    icon:          navidrome
+    native-client: strawberry
+    description:   "Modern music server (Subsonic-compatible API)."
+
+  - name:          kodi
+    display:       "Kodi (web)"
+    category:      media
+    port:          8080
+    path:          "/"
+    icon:          kodi
+    description:   "Kodi web interface."
+
+  - name:          komga
+    display:       "Komga"
+    category:      media
+    port:          25600
+    path:          "/"
+    icon:          komga
+    description:   "Comic and ebook server."
+
+  # ---- Download / media management --------------------------------------
+  - name:          sonarr
+    display:       "Sonarr"
+    category:      media-mgmt
+    port:          8989
+    path:          "/"
+    icon:          sonarr
+    description:   "TV series management."
+
+  - name:          radarr
+    display:       "Radarr"
+    category:      media-mgmt
+    port:          7878
+    path:          "/"
+    icon:          radarr
+    description:   "Movie management."
+
+  - name:          lidarr
+    display:       "Lidarr"
+    category:      media-mgmt
+    port:          8686
+    path:          "/"
+    icon:          lidarr
+    description:   "Music collection management."
+
+  - name:          prowlarr
+    display:       "Prowlarr"
+    category:      media-mgmt
+    port:          9696
+    path:          "/"
+    icon:          prowlarr
+    description:   "Indexer manager for the *arr suite."
+
+  - name:          qbittorrent
+    display:       "qBittorrent"
+    category:      media-mgmt
+    port:          8080
+    path:          "/"
+    icon:          qbittorrent
+    description:   "Torrent client web UI."
+
+  - name:          transmission
+    display:       "Transmission"
+    category:      media-mgmt
+    port:          9091
+    path:          "/transmission/web/"
+    icon:          transmission
+    description:   "Lightweight torrent client web UI."
+
+  # ---- Home automation / IoT --------------------------------------------
+  - name:          home-assistant
+    display:       "Home Assistant"
+    category:      iot
+    port:          8123
+    path:          "/"
+    icon:          home-assistant
+    mdns-type:     "_home-assistant._tcp"
+    description:   "Open-source home automation platform."
+
+  - name:          node-red
+    display:       "Node-RED"
+    category:      iot
+    port:          1880
+    path:          "/"
+    icon:          node-red
+    description:   "Flow-based programming for IoT."
+
+  - name:          esphome
+    display:       "ESPHome Dashboard"
+    category:      iot
+    port:          6052
+    path:          "/"
+    icon:          esphome
+    description:   "ESP8266/ESP32 firmware builder."
+
+  # ---- Storage / sync ---------------------------------------------------
+  - name:          nextcloud
+    display:       "Nextcloud"
+    category:      storage
+    port:          80
+    https-port:    443
+    path:          "/"
+    icon:          nextcloud
+    description:   "Self-hosted file sync and collaboration."
+
+  - name:          syncthing
+    display:       "Syncthing"
+    category:      storage
+    port:          8384
+    path:          "/"
+    icon:          syncthing
+    mdns-type:     "_syncthing._tcp"
+    description:   "Continuous file synchronization between devices."
+
+  - name:          filebrowser
+    display:       "File Browser"
+    category:      storage
+    port:          8080
+    path:          "/"
+    icon:          filebrowser
+    description:   "Web-based file manager."
+
+  # ---- Networking / security -------------------------------------------
+  - name:          pihole
+    display:       "Pi-hole"
+    category:      networking
+    port:          80
+    path:          "/admin/"
+    icon:          pihole
+    description:   "Network-wide ad blocker (admin UI)."
+
+  - name:          adguard-home
+    display:       "AdGuard Home"
+    category:      networking
+    port:          3000
+    https-port:    443
+    path:          "/"
+    icon:          adguard
+    description:   "DNS-level ad blocker and parental controls."
+
+  - name:          vaultwarden
+    display:       "Vaultwarden"
+    category:      security
+    port:          80
+    https-port:    443
+    path:          "/"
+    icon:          vaultwarden
+    description:   "Self-hosted Bitwarden-compatible password manager."
+
+  - name:          authelia
+    display:       "Authelia"
+    category:      security
+    port:          9091
+    path:          "/"
+    icon:          authelia
+    description:   "Authentication and single sign-on for web apps."
+
+  # ---- Monitoring / observability --------------------------------------
+  - name:          grafana
+    display:       "Grafana"
+    category:      monitoring
+    port:          3000
+    path:          "/"
+    icon:          grafana
+    description:   "Metrics dashboards."
+
+  - name:          prometheus
+    display:       "Prometheus"
+    category:      monitoring
+    port:          9090
+    path:          "/"
+    icon:          prometheus
+    description:   "Time-series metrics scraper and query engine."
+
+  - name:          uptime-kuma
+    display:       "Uptime Kuma"
+    category:      monitoring
+    port:          3001
+    path:          "/"
+    icon:          uptime-kuma
+    description:   "Self-hosted uptime monitor."
+
+  - name:          netdata
+    display:       "Netdata"
+    category:      monitoring
+    port:          19999
+    path:          "/"
+    icon:          netdata
+    mdns-type:     "_netdata._tcp"
+    description:   "Real-time system performance monitoring."
+
+  # ---- Dev / tooling ----------------------------------------------------
+  - name:          gitea
+    display:       "Gitea"
+    category:      dev
+    port:          3000
+    path:          "/"
+    icon:          gitea
+    description:   "Self-hosted Git server."
+
+  - name:          forgejo
+    display:       "Forgejo"
+    category:      dev
+    port:          3000
+    path:          "/"
+    icon:          forgejo
+    description:   "Community fork of Gitea."
+
+  - name:          code-server
+    display:       "code-server"
+    category:      dev
+    port:          8080
+    path:          "/"
+    icon:          vscode
+    description:   "VS Code in the browser."
+
+  - name:          jupyter
+    display:       "Jupyter"
+    category:      dev
+    port:          8888
+    path:          "/"
+    icon:          jupyter
+    description:   "Jupyter notebook / lab server."
+
+  # ---- Discovery-only (mDNS-relayed, no port probe) --------------------
+  - name:          chromecast
+    display:       "Chromecast"
+    category:      cast
+    mdns-type:     "_googlecast._tcp"
+    description:   "Google Cast receivers (TVs, smart speakers)."
+
+  - name:          airplay
+    display:       "AirPlay"
+    category:      cast
+    mdns-type:     "_airplay._tcp"
+    description:   "Apple AirPlay receivers."
+
+  - name:          spotify-connect
+    display:       "Spotify Connect"
+    category:      cast
+    mdns-type:     "_spotify-connect._tcp"
+    description:   "Spotify Connect speakers and apps."
+
+  - name:          printer
+    display:       "Network printer (IPP)"
+    category:      hardware
+    mdns-type:     "_ipp._tcp"
+    description:   "IPP-discoverable printers on peer LANs."

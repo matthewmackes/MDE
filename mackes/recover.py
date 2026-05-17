@@ -51,8 +51,8 @@ def _prompt_choice(snaps: list[Snapshot]) -> Snapshot | None:
 
 def _confirm(snap: Snapshot) -> bool:
     print()
-    print(f"About to restore snapshot:  {snap.label}  ({snap.timestamp})")
-    print("This overwrites the current xfconf channels and ~/.config/{polybar,plank,rofi}.")
+    print(f"About to restore snapshot:  {snap.display_label()}")
+    print("This overwrites the current xfconf channels and ~/.config/xfce4.")
     try:
         raw = input("Type YES to proceed: ").strip()
     except (EOFError, KeyboardInterrupt):

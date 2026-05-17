@@ -37,23 +37,19 @@ def test_hashbang_has_minimal_modern_apps(isolated_xdg):
     # Spirit-of-CrunchBang: alacritty/neovim/firefox/mpv/conky
     assert "alacritty" in install
     assert "neovim" in install
-    lean = p.apps.get("lean_xfce_remove") or []
-    packages = {entry["package"] for entry in lean if isinstance(entry, dict)}
-    assert "xfce4-panel" in packages  # replaced by polybar
+    # XFCE extras get removed via the combined Bloat list (Q15)
+    bloat = p.apps.get("remove_bloat", [])
+    assert "asunder" in bloat
+    assert "xfburn" in bloat
 
 
 def test_vanilla_is_invisible(isolated_xdg):
     from mackes.presets import load_preset
     p = load_preset("vanilla")
     assert p is not None
-    # Vanilla means "don't touch": empty install, empty bloat-removal,
-    # native xfce4-panel kept.
+    # Vanilla means "don't touch": empty install, empty bloat-removal.
     assert p.apps.get("install", []) == []
     assert p.apps.get("remove_bloat", []) == []
-    assert p.shell.get("xfce_panel_enabled") is True
-    # No polybar/plank/rofi keys at all
-    assert "polybar_profile" not in p.shell
-    assert "plank_profile" not in p.shell
 
 
 def test_each_preset_has_required_top_level_keys(isolated_xdg):
@@ -64,7 +60,6 @@ def test_each_preset_has_required_top_level_keys(isolated_xdg):
         # description allowed to be empty
         # appearance is a dict (possibly empty)
         assert isinstance(p.appearance, dict)
-        assert isinstance(p.shell, dict)
 
 
 def test_user_preset_overrides_shipped(isolated_xdg):

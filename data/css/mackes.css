@@ -1,67 +1,46 @@
-/* Mackes Shell typography + panel grammar.
+/* Mackes Shell — legacy panel grammar.
  *
- * Loaded at STYLE_PROVIDER_PRIORITY_APPLICATION (process-scoped, doesn't
- * leak to other GTK apps). The active preset's accent override is loaded
- * second at a higher priority to swap the @define-color defaults below.
+ * tokens.css now owns typography, palette, and the Carbon utility classes.
+ * This file keeps the `mackes-*` CSS classes used by older workbench
+ * widgets (workbench/_common.py, workbench/dashboard.py, etc.) until they
+ * migrate to Carbon-native classes from mackes/carbon/.
  *
- * Polybar runs as a separate process; monospace surfaces are preserved.
+ * Every color reference here resolves through tokens.css's @define-color
+ * cascade — preset accent swaps still work transparently.
  */
 
-@define-color mackes_accent     #3584e4;
-@define-color mackes_accent_dim alpha(@mackes_accent, 0.25);
-@define-color mackes_text       #2e3436;
-@define-color mackes_dim        alpha(@mackes_text, 0.6);
 
-
-/* ---- Typography stack ---------------------------------------------------- */
-
-* {
-    font-family: "SF Pro Text", "Cantarell", "system-ui", sans-serif;
-}
-
-.title-1,
-.title-2,
-.title-3,
-.heading,
-.mackes-panel-title,
-.mackes-section-header {
-    font-family: "SF Pro Display", "SF Pro Text", "Cantarell", sans-serif;
-}
-
-textview.monospace,
-textview.monospace text,
-.monospace {
-    font-family: "JetBrains Mono", "Iosevka", "Fira Code", monospace;
-}
-
-
-/* ---- Panel grammar ------------------------------------------------------- */
+/* ---- Panel grammar (legacy mackes-* classes) ---------------------------- */
 
 .mackes-panel-title {
-    font-size: 22px;
-    font-weight: 500;
-    letter-spacing: -0.01em;
-    color: @mackes_accent;
-    margin-bottom: 4px;
+    font-size: 20px;
+    line-height: 28px;
+    font-weight: 400;
+    color: @cds_text_primary;
+    margin-bottom: 8px;
 }
 
 .mackes-section-header {
-    font-size: 13px;
+    font-size: 12px;
+    line-height: 16px;
     font-weight: 600;
     letter-spacing: 0.06em;
-    color: @mackes_accent;
+    text-transform: uppercase;
+    color: @cds_text_helper;
     padding-bottom: 4px;
-    border-bottom: 1px solid @mackes_accent_dim;
-    margin-top: 4px;
+    border-bottom: 1px solid @cds_border_subtle_00;
+    margin-top: 16px;
     margin-bottom: 8px;
 }
 
 .mackes-info {
-    font-size: 12px;
-    color: @mackes_dim;
+    font-size: 14px;
+    line-height: 20px;
+    color: @cds_text_helper;
 }
 
 .mackes-row-label {
-    font-weight: 500;
+    font-weight: 400;
     min-width: 180px;
+    color: @cds_text_primary;
 }

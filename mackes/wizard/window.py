@@ -15,7 +15,7 @@ from mackes.state import MackesState
 from mackes.wizard.context import WizardContext
 from mackes.wizard.pages import (
     appearance, apply, env_scan, hardware, network, preset_pick, review,
-    shell, snapshot, welcome,
+    snapshot, welcome,
 )
 
 
@@ -29,11 +29,11 @@ class WizardWindow(Gtk.Assistant):
 
         self._apply_page = apply.ApplyPage(self.ctx)
 
-        # Q2 lock: when only one preset ships, auto-select it and skip Screen 3
-        # entirely (no "Choose Preset" page). User-preset overrides in
-        # ~/.config/mackes-shell/presets/ are still respected; if a user has
-        # added one, the picker comes back automatically.
-        shipped_presets = list_presets()
+        # Q2 lock: when only one GUI-visible preset ships, auto-select it and
+        # skip Screen 3 entirely. The headless 'node' preset is filtered out
+        # of the GUI wizard (Q-HL4 lock) — it's auto-selected by `mackes init`
+        # when no display is present.
+        shipped_presets = [p for p in list_presets() if p.name != "node"]
         single_preset = len(shipped_presets) == 1
         if single_preset:
             self.ctx.selected_preset = shipped_presets[0]
@@ -49,7 +49,6 @@ class WizardWindow(Gtk.Assistant):
             )
         self._pages.extend([
             (appearance.build(self.ctx),    Gtk.AssistantPageType.CONTENT,  "Appearance"),
-            (shell.build(self.ctx),         Gtk.AssistantPageType.CONTENT,  "Shell Layout"),
             (hardware.build(self.ctx),      Gtk.AssistantPageType.CONTENT,  "Hardware"),
             (network.build(self.ctx),       Gtk.AssistantPageType.CONTENT,  "Network"),
             (snapshot.build(self.ctx),      Gtk.AssistantPageType.CONTENT,  "Restore Point"),

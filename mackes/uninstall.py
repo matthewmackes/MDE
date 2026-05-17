@@ -1,28 +1,22 @@
 """Uninstall — removes all Mackes changes, files, and previous-version residue.
 
-Locks: Q8 (Maintain panel) — Q30 (spec edits), plus X5 (reinstall lean-XFCE).
+Locks: Q8 (Maintain panel), Q16 (drop daemon kills + lean-XFCE reinstall).
 
 The uninstall is *destructive by design*. It:
 
   1. Creates a pre-uninstall snapshot and copies it to ~/Desktop/ as a
      tarball (Q11, Q12) — the only artifact that survives.
-  2. Stops Mackes-managed daemons (Q16): polybar, plank, dunst, picom.
-  3. Reinstalls XFCE components that Mackes removed during provisioning
-     (X5), so the user gets working stock XFCE back.
-  4. Resets xfconf channels to distribution defaults (Q14) and signals
+  2. Resets xfconf channels to distribution defaults (Q14) and signals
      xfsettingsd (Q40).
-  5. Re-enables and starts xfce4-panel (Q17).
-  6. Deletes user-owned Mackes files: ~/.config/mackes-shell/, the
-     snapshots/logs trees, and the shell-stack dirs (~/.config/polybar,
-     plank, rofi) per Q15.
-  7. Removes the Polybar autostart entry and launcher script.
-  8. Removes xfce11-unified v2.2 leftovers from a known path list (Q19–Q21),
+  3. Deletes user-owned Mackes files: ~/.config/mackes-shell/ and the
+     snapshots/logs trees (Q15).
+  4. Removes xfce11-unified v2.2 leftovers from a known path list (Q19–Q21),
      preserving quick-network-mesh (Q20).
-  9. Runs install-helpers/restore-xfce-settings.sh explicitly (Q18) to
+  5. Runs install-helpers/restore-xfce-settings.sh explicitly (Q18) to
      un-hide xfce4-settings menu entries.
- 10. Removes the Mackes package itself — adapting to RPM / pip / git
+  6. Removes the Mackes package itself — adapting to RPM / pip / git
      install modes (Q29).
- 11. Writes a log of every step to ~/Desktop/mackes-shell-uninstall-<ts>.log
+  7. Writes a log of every step to ~/Desktop/mackes-shell-uninstall-<ts>.log
      (Q27) and returns a structured report.
 
 Best-effort (Q26): each step catches and records its own failure. The
@@ -137,19 +131,6 @@ def _detect_install_mode() -> str:
     return "unknown"
 
 
-def _stop_managed_daemons(report, log_handle, progress) -> None:
-    from mackes.session_manager import MANAGED_PROCESSES
-    for proc in MANAGED_PROCESSES:
-        if shutil.which("pkill"):
-            rc = subprocess.call(["pkill", "-x", proc.name])
-            _emit(report, log_handle, progress,
-                  f"stop daemon: {proc.name}", True,
-                  f"pkill rc={rc} (0=killed, 1=none)")
-        else:
-            _emit(report, log_handle, progress,
-                  f"stop daemon: {proc.name}", False, "pkill missing")
-
-
 def _create_pre_uninstall_snapshot(report, log_handle, progress) -> Optional[Path]:
     """Q11 + Q12 lock — auto-snapshot, tarball to ~/Desktop/."""
     try:
@@ -179,15 +160,6 @@ def _create_pre_uninstall_snapshot(report, log_handle, progress) -> Optional[Pat
     except Exception as e:  # noqa: BLE001
         _emit(report, log_handle, progress, "snapshot tarball", False, str(e))
         return None
-
-
-def _reinstall_lean_xfce(report, log_handle, progress) -> None:
-    from mackes.app_mgmt import reinstall_lean_xfce
-    actions = reinstall_lean_xfce()
-    detail = actions[0] if actions else "no record"
-    ok = "rc=0" in detail or "nothing to reinstall" in detail
-    _emit(report, log_handle, progress,
-          "reinstall lean-XFCE components", ok, detail)
 
 
 def _reset_xfconf_defaults(report, log_handle, progress) -> None:
@@ -220,44 +192,13 @@ def _reset_xfconf_defaults(report, log_handle, progress) -> None:
               "xfsettingsd signaled", True, "SIGHUP")
 
 
-def _reenable_xfce_panel(report, log_handle, progress) -> None:
-    """Q17 lock: re-enable xfce4-panel autostart and start it now."""
-    from mackes.shell_profiles import set_xfce_panel_enabled
-    try:
-        actions = set_xfce_panel_enabled(True)
-        _emit(report, log_handle, progress,
-              "xfce4-panel autostart re-enabled", True, " ; ".join(actions))
-    except Exception as e:  # noqa: BLE001
-        _emit(report, log_handle, progress,
-              "xfce4-panel re-enable", False, str(e))
-        return
-    if shutil.which("xfce4-panel"):
-        try:
-            subprocess.Popen(["xfce4-panel"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            _emit(report, log_handle, progress, "xfce4-panel started", True, "")
-        except OSError as e:
-            _emit(report, log_handle, progress,
-                  "xfce4-panel start", False, str(e))
-
-
 def _remove_user_files(report, log_handle, progress) -> None:
-    """Q13 + Q15 lock: wipe Mackes user data + shell-stack dirs."""
-    from mackes.shell_profiles import (
-        POLYBAR_AUTOSTART, POLYBAR_LAUNCHER, POLYBAR_DIR,
-    )
+    """Q15 lock: wipe Mackes-owned user data."""
     targets = [
-        CONFIG_DIR,                         # ~/.config/mackes-shell
-        DATA_DIR,                           # ~/.local/share/mackes-shell
-        SNAPSHOT_DIR,                       # ~/.local/share/mackes-shell/snapshots (Q13)
+        CONFIG_DIR,    # ~/.config/mackes-shell
+        DATA_DIR,      # ~/.local/share/mackes-shell
+        SNAPSHOT_DIR,  # ~/.local/share/mackes-shell/snapshots
         LOG_DIR,
-        POLYBAR_DIR,                        # ~/.config/polybar (Q15)
-        HOME / ".config" / "plank",
-        HOME / ".config" / "rofi",
-        HOME / ".config" / "alacritty",     # part of the chupre bundle
-        HOME / ".config" / "gtk-3.0",       # part of the chupre bundle
-        HOME / ".config" / "gtk-4.0",       # part of the chupre bundle
-        POLYBAR_AUTOSTART,
-        POLYBAR_LAUNCHER,
     ]
     for tgt in targets:
         try:
@@ -381,10 +322,7 @@ def run_uninstall(*, progress: ProgressCb = None) -> UninstallReport:
         )
 
         report.desktop_tarball = _create_pre_uninstall_snapshot(report, log_handle, progress)
-        _stop_managed_daemons(report, log_handle, progress)
-        _reinstall_lean_xfce(report, log_handle, progress)
         _reset_xfconf_defaults(report, log_handle, progress)
-        _reenable_xfce_panel(report, log_handle, progress)
         _run_restore_xfce_settings(report, log_handle, progress)
         _remove_user_files(report, log_handle, progress)
         _remove_v22_leftovers(report, log_handle, progress)

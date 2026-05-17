@@ -1,0 +1,16 @@
+[Unit]
+Description=Mackes Mesh — mDNS-over-mesh relay (§8.13 Layer 5)
+After=network-online.target avahi-daemon.service
+Wants=network-online.target avahi-daemon.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 -m mackes.mdns_relay_daemon
+Restart=on-failure
+RestartSec=15s
+
+User=mackes
+Group=mackes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# mackes-gvfsd-mesh — system wrapper for the mesh:// FUSE daemon.
+# Called by data/gvfs/mesh.mount (when a mesh:// URI is requested via gio)
+# and by data/systemd/mackes-gvfsd-mesh.service (user unit).
+exec /usr/bin/python3 -m mackes.mesh_gvfs.daemon "$@"
