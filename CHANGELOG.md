@@ -5,6 +5,31 @@ unreleased; tag versions get a date when they ship.
 
 ## 1.6.2 — 1.6.2 rollup (unreleased)
 
+**Mesh perf #1 + #4 + #7 — mDNS-SD bridge, private DERP, Headscale
+postgres.**
+
+* `mackes.mesh_mdns` — push-based service discovery via avahi-publish
+  (announcer) + python-zeroconf (listener). MDNSListener streams
+  add/remove/update events; scan_once() returns a static snapshot.
+  Discovery latency drops from a 30 s scan window to sub-second.
+  Falls back gracefully when either dependency is missing.
+* `mackes.mesh_derp` — private DERP relay (Tailscale's open-source
+  `tailscale.com/cmd/derper`). install() builds from source via the
+  Go toolchain, drops a systemd unit + state dir at
+  /var/lib/mackes-derper, registers the relay with Headscale via a
+  DERPMap JSON file. Eliminates dependency on Tailscale's public
+  DERP for cross-NAT peer traversal.
+* `mackes.headscale_postgres` — full SQLite → embedded Postgres
+  migration. Spins up a dedicated cluster at
+  /var/lib/mackes-headscale-pg on port 5433 (separate from any host
+  Postgres), creates the `mackes_headscale` role + db, patches
+  /etc/headscale/config.yaml to use the postgres backend, and
+  restarts headscale. Each step idempotent.
+
+All three surface in the Mesh Performance panel's status lines.
+
+
+
 **Mesh perf #8 + #10 + new panel — Prometheus exporter, Wake-on-LAN,
 Mesh Performance panel.**
 

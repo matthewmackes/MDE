@@ -325,12 +325,33 @@ class MeshPerformancePanel(Gtk.Box):
                 else "Default kernel buffers — apply to enable bursts."
             )
             # Stub statuses
-            self._discovery_status.set_text(
-                "Polling-based discovery (active). "
-                "mDNS push-based bridge ships in a follow-up.")
-            self._relay_status.set_text(
-                "Using Tailscale public DERP. "
-                "Private DERP on the control peer ships in a follow-up.")
+            from mackes import mesh_mdns, mesh_derp
+            if mesh_mdns.is_available():
+                self._discovery_status.set_text(
+                    "✓ mDNS-SD ready (python-zeroconf + avahi-publish "
+                    "installed). Services announce on the mesh "
+                    "interface in real-time.")
+            elif mesh_mdns.has_avahi_publish():
+                self._discovery_status.set_text(
+                    "avahi-publish installed but python-zeroconf is "
+                    "missing — listener path unavailable. "
+                    "`pip install zeroconf` (or `dnf install "
+                    "python3-zeroconf`).")
+            else:
+                self._discovery_status.set_text(
+                    "Polling-based discovery (active). Install avahi "
+                    "+ python3-zeroconf for push-based mDNS.")
+            ds = mesh_derp.status()
+            if ds["running"]:
+                self._relay_status.set_text(
+                    f"✓ Private DERP running on :{ds['ports']['derp']}")
+            elif ds["installed"]:
+                self._relay_status.set_text(
+                    "DERP binary installed but service not running.")
+            else:
+                self._relay_status.set_text(
+                    "Using Tailscale public DERP. Install a private "
+                    "relay on the control peer for LAN-local latency.")
             from mackes.mesh_metrics import prometheus_status
             ps = prometheus_status()
             if ps["exporter_running"]:
@@ -343,9 +364,22 @@ class MeshPerformancePanel(Gtk.Box):
                 self._metrics_status.set_text(
                     "Not installed. Click Install to download the "
                     "exporter (~5 MB) and start it.")
-            self._storage_status.set_text(
-                "Headscale SQLite backend. "
-                "Postgres migration is opt-in via wizard.")
+            from mackes import headscale_postgres as hp
+            hs = hp.status()
+            if hs["backend"] == "postgres":
+                pg_state = ("✓ running" if hs["pg_running"]
+                            else "configured but cluster not running")
+                self._storage_status.set_text(
+                    f"Headscale on Postgres ({pg_state}, port "
+                    f"{hs['pg_port']}).")
+            elif hs["backend"] == "sqlite":
+                self._storage_status.set_text(
+                    "Headscale on SQLite (default). On a fleet >20 "
+                    "peers, migrate to Postgres for parallel writes.")
+            else:
+                self._storage_status.set_text(
+                    "Headscale config not detected — install via "
+                    "Mesh Setup Wizard.")
             self._stream_status.set_text(
                 "Filesystem-based sync (active). "
                 "NATS JetStream upgrade ships in a follow-up.")
