@@ -1,4 +1,4 @@
 """Mackes Shell — XFCE control panel and shell manager."""
 
-__version__ = "1.4.7"
+__version__ = "1.5.0"
 __all__ = ["__version__"]

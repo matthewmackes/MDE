@@ -1,0 +1,17 @@
+[Unit]
+Description=Mackes Mesh Clipboard — XA_CLIPBOARD watcher + mesh-sync publisher
+Documentation=https://github.com/matthewmackes/MAP2-RELEASES
+After=graphical-session.target
+PartOf=graphical-session.target
+ConditionEnvironment=DISPLAY
+ConditionPathExists=!%h/.config/mackes-shell/clipboard.disabled
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 -m mackes.clipboard_app --daemon
+Restart=on-failure
+RestartSec=5
+Nice=10
+
+[Install]
+WantedBy=graphical-session.target

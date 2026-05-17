@@ -3,7 +3,7 @@
 Each function is idempotent (safe to re-run via Maintain → Reset to Preset)
 and returns a `list[str]` of action lines for the wizard's apply page log.
 
-These are the twelve "birthright" items the v1.4.1 wizard runs in
+These are the thirteen "birthright" items the v1.5.0 wizard runs in
 addition to the v1.0.x xfconf-only apply pipeline:
 
   1. apply_themes              — deploy PadOS GTK theme + Carbon icon theme files
@@ -24,8 +24,11 @@ addition to the v1.0.x xfconf-only apply pipeline:
  12. apply_maximize_all        — every new top-level window starts maximized,
                                   via the mackes-maximizer user service
                                   (v1.4.1 lock)
+ 13. apply_clipboard_daemon    — mesh clipboard daemon: bidirectional sync
+                                  between XA_CLIPBOARD and QNM-Shared
+                                  clipboard bucket (v1.5.0 lock)
 
-All twelve are wired into mackes/wizard/pages/apply.py between Panel and Mesh.
+All thirteen are wired into mackes/wizard/pages/apply.py between Panel and Mesh.
 """
 from __future__ import annotations
 
@@ -969,6 +972,55 @@ def apply_maximize_all(_preset: Preset) -> List[str]:
 
     actions.append(
         "maximize-all: ready — toggle via Tweaks → 'Always maximize windows'"
+    )
+    for line in actions:
+        log_action(line)
+    return actions
+
+
+# ---------------------------------------------------------------------------
+# 13. Mesh clipboard — XA_CLIPBOARD ↔ QNM-Shared sync (v1.5.0 birthright)
+# ---------------------------------------------------------------------------
+
+
+def apply_clipboard_daemon(_preset: Preset) -> List[str]:
+    """Install + enable mackes-clipboard-daemon.service (user unit).
+
+    The daemon watches the X11 clipboard and publishes every new text /
+    image item to ~/QNM-Shared/.qnm-sync/clipboard/<me>/<ts>.{txt,png}.
+    Other peers' subdirs are surfaced by the existing mackes-clipboard
+    GUI + the C panel plugin. Heuristic secret filter on by default;
+    toggleable via Tweaks → 'Sync sensitive items'.
+    """
+    actions: List[str] = []
+
+    # The service file is installed by the RPM; just enable it.
+    if shutil.which("systemctl") is None:
+        actions.append("clipboard: systemctl not available — skipping")
+        return actions
+    rc, _ = _run(["systemctl", "--user", "enable", "--now",
+                   "mackes-clipboard-daemon.service"], timeout=10)
+    if rc == 0:
+        actions.append("clipboard: mackes-clipboard-daemon.service enabled + started")
+    else:
+        actions.append(
+            "clipboard: user-systemctl enable failed; will rely on "
+            "XDG autostart at next graphical login"
+        )
+
+    # Clear any leftover disable flag from a previous opt-out.
+    disabled_flag = Path(os.path.expanduser(
+        "~/.config/mackes-shell/clipboard.disabled"))
+    if disabled_flag.exists():
+        try:
+            disabled_flag.unlink()
+            actions.append("clipboard: cleared disable flag")
+        except OSError:
+            pass
+
+    actions.append(
+        "clipboard: ready — open Mesh Clipboard from the panel or "
+        "`mackes-clipboard` from a terminal to see peer history"
     )
     for line in actions:
         log_action(line)

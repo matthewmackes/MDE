@@ -3,6 +3,52 @@
 All notable user-facing and architectural changes. The current line is
 unreleased; tag versions get a date when they ship.
 
+## 1.5.0 — Mesh clipboard (bidirectional sync) (2026-05-17)
+
+The clipboard plumbing is now bidirectional — every system-clipboard
+change publishes into the mesh bucket, and every peer's items show up
+in the viewer. Built as a Python rewrite of `mackes/clipboard_app.py`
+instead of a C-fork of `xfce4-clipman-plugin` — same surface, far
+less infrastructure to maintain.
+
+### New modules + units
+
+`mackes/clipboard_app.py` rewritten with three CLI modes:
+
+  --daemon   headless XA_CLIPBOARD watcher. Publishes every new text
+             or image (PNG via GdkPixbuf) to
+             `~/QNM-Shared/.qnm-sync/clipboard/<me>/<ts>.{txt,png}`.
+             Heuristic secret filter on by default (shannon entropy
+             ≥ 4.5 bits/char on no-whitespace strings, or matches
+             known prefixes like `sk-`, `ghp_`, `AKIA…`, BEGIN PRIVATE
+             KEY blobs). Settings live at
+             `~/.config/mackes-shell/clipboard-daemon.json` and are
+             re-read every 10s.
+
+  --viewer   foreground GTK window: one tab per peer, listbox of
+             recent items (200 max), double-click an entry to paste
+             it into THIS peer's clipboard. Images render as
+             `<image Nb>` rows; text shows first 120 chars.
+
+  (no flag)  defaults to --viewer (legacy launcher path stays).
+
+`data/systemd/mackes-clipboard-daemon.service` (user unit) supervises
+the daemon. ConditionEnvironment=DISPLAY + ConditionPathExists=
+!`~/.config/mackes-shell/clipboard.disabled` so it's both
+display-aware and toggleable.
+
+### 13th birthright step
+
+`apply_clipboard_daemon` enables `mackes-clipboard-daemon.service`
+via `systemctl --user enable --now …`. Wired into the wizard apply
+pipeline between Maximize windows and Mesh.
+
+### Companion C panel plugin
+
+The existing `xfce4-panel/plugins/mackes-clipboard` plugin (read side)
+keeps working unchanged — it surfaces every peer's bucket in a
+panel-popover. The daemon adds the write side that was missing.
+
 ## 1.4.7 — Conky Nerd Font glyphs (2026-05-17)
 
 The Conky HUD now uses Nerd Font (Cascadia Code NF, the only patched

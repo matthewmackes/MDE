@@ -5,7 +5,7 @@
 %global debug_package %{nil}
 
 Name:           mackes-shell
-Version:        1.4.7
+Version:        1.5.0
 Release:        1%{?dist}
 Summary:        Mackes Shell — XFCE control panel and shell manager for Fedora
 
@@ -276,6 +276,8 @@ install -m 0644 data/systemd/mackes-ansible-pull.timer       %{buildroot}%{_unit
 # Always-maximize windows (v1.4.1) — user-level systemd unit
 install -d %{buildroot}%{_userunitdir}
 install -m 0644 data/systemd/mackes-maximizer.service        %{buildroot}%{_userunitdir}/
+# Mesh clipboard daemon (v1.5.0) — XA_CLIPBOARD watcher
+install -m 0644 data/systemd/mackes-clipboard-daemon.service %{buildroot}%{_userunitdir}/
 # Sudoers drop-in (v1.4.1) — grants NOPASSWD on Mackes-managed commands
 install -D -m 0440 data/sudoers.d/mackes-shell               %{buildroot}/etc/sudoers.d/mackes-shell
 # Maximizer binary
@@ -371,6 +373,7 @@ fi
 %{_unitdir}/mackes-ansible-pull.timer
 %{_userunitdir}/mackes-gvfsd-mesh.service
 %{_userunitdir}/mackes-maximizer.service
+%{_userunitdir}/mackes-clipboard-daemon.service
 %config(noreplace) /etc/sudoers.d/mackes-shell
 # C panel plugin + its descriptor
 %{_libdir}/xfce4/panel/plugins/mackes-clipboard
