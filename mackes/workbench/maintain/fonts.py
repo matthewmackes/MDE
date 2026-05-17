@@ -121,16 +121,31 @@ class FontsPanel(Gtk.Box):
     # ---- Logic --------------------------------------------------------
 
     def _reload_families(self) -> bool:
-        self._families = _installed_families()
+        # fc-list returns 600–2000 families on a stock Fedora install;
+        # the call is 50–300ms but compounds across panels. Cache it and
+        # run off-thread so the GTK loop never blocks here.
+        import threading
+        from mackes.probe_cache import cached, invalidate
+
+        def worker():
+            families = cached("fc-list.families",
+                              factory=_installed_families, ttl_s=120)
+            GLib.idle_add(self._apply_families, families)
+        # After a font *install* we explicitly invalidate the cache —
+        # see _on_install_done; the call from _build sees an empty cache.
+        threading.Thread(target=worker, daemon=True).start()
+        return False
+
+    def _apply_families(self, families: list[str]) -> bool:
+        self._families = families
         self._family_combo.remove_all()
-        for fam in self._families:
+        for fam in families:
             self._family_combo.append(fam, fam)
-        # Default to SF Pro Text if present, else first
         idx = 0
-        for i, fam in enumerate(self._families):
+        for i, fam in enumerate(families):
             if fam == "SF Pro Text":
                 idx = i; break
-        if self._families:
+        if families:
             self._family_combo.set_active(idx)
         return False
 
@@ -158,6 +173,9 @@ class FontsPanel(Gtk.Box):
                 text=True, timeout=60,
             )
             self._append(f"fc-cache: {out.strip() or 'rebuilt'}\n")
+            # Bust the cache before reloading so the new families show up.
+            from mackes.probe_cache import invalidate
+            invalidate("fc-list.families")
             GLib.idle_add(self._reload_families)
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as e:
             self._append(f"fc-cache failed: {e}\n")
@@ -189,6 +207,8 @@ class FontsPanel(Gtk.Box):
             return True
         rc = proc.wait()
         self._append(f"[exit {rc}]\n")
+        from mackes.probe_cache import invalidate
+        invalidate("fc-list.families")
         GLib.idle_add(self._reload_families)
         return False
 

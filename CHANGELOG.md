@@ -3,7 +3,30 @@
 All notable user-facing and architectural changes. The current line is
 unreleased; tag versions get a date when they ship.
 
-## 1.6.2 — Conky perf + panel snapshot + new panels + GUI refresh + GTK perf (unreleased)
+## 1.6.2 — Conky perf + panel snapshot + new panels + GUI refresh + GTK perf v3 (unreleased)
+
+**GTK perf round 3 + lint-css.sh.** Heaviest panel-construct probes
+moved off the GTK main loop and through `probe_cache`:
+
+* `maintain/fonts.py` — `fc-list` (600–2000 families, 50–300 ms) runs
+  on a daemon thread, cached for 120 s. `fc-cache -f` and font
+  installs invalidate the cache so freshly added families show up
+  immediately.
+* `look_and_feel/appearance.py` — monitor list now prefers
+  `mackes.displays.xrandr_outputs_for_conky()` (xfconf, instant) over
+  the xrandr CLI; cached 60 s.
+* `devices/display.py` — display summary likewise reads
+  `mackes.displays.list_outputs()` first; xrandr is the fallback only.
+  Cached 60 s.
+
+**install-helpers/lint-css.sh** — the CSS lint gate from CLAUDE.md
+§0.7 that was missing from the tree is restored as a thin
+`GtkCssProvider` load check. Whitelists four pre-existing warnings
+(`text-transform`, `font-feature-settings`, `cursor`, `line-height`)
+that GTK CSS doesn't implement but the codebase has carried since the
+1.1.0 Carbon refresh. Exits non-zero on any new real CSS error.
+
+
 
 **GTK perf round 2.** Two more main-loop blockers fixed:
 

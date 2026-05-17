@@ -21,15 +21,38 @@ from mackes.workbench._common import (
 
 
 def _xrandr_summary() -> str:
-    try:
-        out = subprocess.check_output(["xrandr", "--query"], text=True, stderr=subprocess.DEVNULL)
-    except (FileNotFoundError, subprocess.CalledProcessError):
-        return "xrandr not available."
-    lines = []
-    for line in out.splitlines():
-        if " connected" in line or " disconnected" in line:
-            lines.append(line.split(" (")[0])
-    return "\n".join(lines) or "No displays detected."
+    """One-line-per-output summary. Reads xfsettings `displays` channel
+    when xrandr isn't installed (the common minimal-Fedora case)."""
+    from mackes.probe_cache import cached
+
+    def _probe() -> str:
+        # Prefer the xfsettings channel — no shell-out, instant.
+        try:
+            from mackes.displays import list_outputs
+            outs = list_outputs()
+            if outs:
+                lines = []
+                for o in outs:
+                    state = "primary" if o.primary else (
+                        "active" if o.active else "off")
+                    res = f"{o.width}x{o.height}" if o.active else "(off)"
+                    lines.append(f"{o.name:10s} {state:8s} {res}")
+                return "\n".join(lines)
+        except Exception:  # noqa: BLE001
+            pass
+        # Fallback: xrandr CLI
+        try:
+            out = subprocess.check_output(
+                ["xrandr", "--query"], text=True, stderr=subprocess.DEVNULL)
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            return "xrandr not available."
+        lines = []
+        for line in out.splitlines():
+            if " connected" in line or " disconnected" in line:
+                lines.append(line.split(" (")[0])
+        return "\n".join(lines) or "No displays detected."
+
+    return cached("devices.display_summary", factory=_probe, ttl_s=60)
 
 
 class DisplayPanel(Gtk.Box):

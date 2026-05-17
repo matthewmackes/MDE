@@ -71,18 +71,35 @@ def _discover_cursor_themes() -> list[str]:
 
 
 def _list_monitors() -> list[str]:
-    """Best-effort list of connected monitor names from xrandr."""
-    import subprocess
-    try:
-        out = subprocess.check_output(["xrandr", "--query"], text=True,
-                                      stderr=subprocess.DEVNULL, timeout=4)
-    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        return ["monitor0"]
-    mons = []
-    for line in out.splitlines():
-        if " connected" in line:
-            mons.append(line.split(" ", 1)[0])
-    return mons or ["monitor0"]
+    """Connected monitor names. Prefers `mackes.displays.list_outputs()`
+    (xfsettings displays channel — instant; no shell-out), falling back
+    to xrandr only if the channel is unreadable."""
+    from mackes.probe_cache import cached
+
+    def _probe() -> list[str]:
+        try:
+            from mackes.displays import xrandr_outputs_for_conky
+            outs = xrandr_outputs_for_conky()
+            names = [o["name"] for o in outs]
+            if names:
+                return names
+        except Exception:  # noqa: BLE001
+            pass
+        # Fallback: xrandr CLI (rarely installed on minimal Fedora).
+        import subprocess
+        try:
+            out = subprocess.check_output(["xrandr", "--query"], text=True,
+                                          stderr=subprocess.DEVNULL, timeout=4)
+        except (FileNotFoundError, subprocess.CalledProcessError,
+                subprocess.TimeoutExpired):
+            return ["monitor0"]
+        mons = []
+        for line in out.splitlines():
+            if " connected" in line:
+                mons.append(line.split(" ", 1)[0])
+        return mons or ["monitor0"]
+
+    return cached("appearance.monitors", factory=_probe, ttl_s=60)
 
 
 # ---- Carbon refresh helpers (v1.1.1) -------------------------------------
