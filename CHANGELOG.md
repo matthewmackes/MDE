@@ -3,6 +3,34 @@
 All notable user-facing and architectural changes. The current line is
 unreleased; tag versions get a date when they ship.
 
+## 1.0.4 — fix xfconf_bridge int/float coercion (2026-05-17)
+
+After installing 1.0.3 and running the wizard, three provisioner steps
+all failed with the same exception:
+
+    →  Appearance
+       ERROR: expected str, bytes or os.PathLike object, not int
+    →  System
+       ERROR: expected str, bytes or os.PathLike object, not int
+    →  Panel
+       ERROR: expected str, bytes or os.PathLike object, not int
+
+Root cause in `mackes/xfconf_bridge.py::XfconfBridge.set`: when `value`
+was an `int` (e.g. `cursor_size`, `workspace_count`, `/notify-location`)
+or a `float` and no `type_hint` was given, the code set the right
+`--type` flag but forgot to stringify `value`. The `int`/`float` then
+went straight into the `subprocess.check_call` argv list, which only
+accepts `str | bytes | os.PathLike`, so subprocess refused it before
+xfconf-query was ever invoked.
+
+Fix: in the int branch, `value = str(int(value))`; in the float branch,
+`value = repr(float(value))`. The bool/string branches already
+stringified correctly; explicit-type-hint callers already get
+`value = str(value)`.
+
+Verified with a 5-call regression test (bool / int / float / str /
+explicit-type-hint) — all reach subprocess with str-only argv.
+
 ## 1.0.3 — fix MackesApp import (2026-05-17)
 
 Install + launch flow surfaced an ImportError immediately after install:

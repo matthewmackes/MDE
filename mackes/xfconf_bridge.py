@@ -63,8 +63,10 @@ class XfconfBridge:
                 value = "true" if value else "false"
             elif isinstance(value, int):
                 type_hint = "int"
+                value = str(int(value))
             elif isinstance(value, float):
                 type_hint = "double"
+                value = repr(float(value))
             else:
                 type_hint = "string"
                 value = str(value)
