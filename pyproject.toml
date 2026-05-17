@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mackes-shell"
-version = "1.0.1"
+version = "1.0.2"
 description = "Mackes Shell — XFCE control panel and shell manager"
 readme = "README.md"
 license = { text = "GPL-3.0" }

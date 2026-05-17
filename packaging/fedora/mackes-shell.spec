@@ -5,7 +5,7 @@
 %global debug_package %{nil}
 
 Name:           mackes-shell
-Version:        1.0.1
+Version:        1.0.2
 Release:        1%{?dist}
 Summary:        Mackes Shell — XFCE control panel and shell manager for Fedora
 
@@ -194,7 +194,11 @@ install -d %{buildroot}%{_unitdir}
 install -m 0644 data/systemd/mackes-node.service             %{buildroot}%{_unitdir}/
 install -m 0644 data/systemd/mackes-tailscale-bootstrap.service %{buildroot}%{_unitdir}/
 install -m 0644 data/systemd/mackes-mdns-relay.service       %{buildroot}%{_unitdir}/
-install -m 0644 data/systemd/headscale.service               %{buildroot}%{_unitdir}/
+# headscale.service is owned by the upstream `headscale` RPM at the same
+# path; shipping our copy would cause a file-conflict on dnf install.
+# Our data/systemd/headscale.service is kept in the source tree as a
+# reference but not installed. To customize (MemoryHigh, etc.), drop a
+# systemd drop-in at /etc/systemd/system/headscale.service.d/mackes.conf.
 install -d %{buildroot}%{_userunitdir}
 install -m 0644 data/systemd/mackes-gvfsd-mesh.service       %{buildroot}%{_userunitdir}/
 
@@ -267,7 +271,6 @@ fi
 %{_unitdir}/mackes-node.service
 %{_unitdir}/mackes-tailscale-bootstrap.service
 %{_unitdir}/mackes-mdns-relay.service
-%{_unitdir}/headscale.service
 %{_userunitdir}/mackes-gvfsd-mesh.service
 # C panel plugin + its descriptor
 %{_libdir}/xfce4/panel/plugins/mackes-clipboard

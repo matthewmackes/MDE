@@ -3,6 +3,26 @@
 All notable user-facing and architectural changes. The current line is
 unreleased; tag versions get a date when they ship.
 
+## 1.0.2 — headscale.service file conflict (2026-05-17)
+
+`dnf install` failed on the v1.0.1 RPM with:
+
+    file /usr/lib/systemd/system/headscale.service conflicts between
+    attempted installs of mackes-shell-1.0.1-1.fc44.x86_64
+    and headscale-0.28.0-1.fc44.x86_64
+
+The upstream `headscale` RPM (which we Require) ships its own
+`headscale.service` at the same path. We were shipping a near-identical
+copy with two extra knobs (MemoryHigh/MemoryMax). Fixed by dropping our
+copy from the RPM — the upstream unit is used as-is.
+
+`data/systemd/headscale.service` stays in the source tree as a reference
+template. To apply Mackes-specific resource limits at deploy time, drop
+a systemd override at `/etc/systemd/system/headscale.service.d/mackes.conf`
+with the desired directives.
+
+No code changes.
+
 ## 1.0.1 — Fedora 44 dep hotfix (2026-05-17)
 
 `curl … install.sh | bash` was failing on stock Fedora 44 because three
