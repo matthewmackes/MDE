@@ -3,7 +3,7 @@
 All notable user-facing and architectural changes. The current line is
 unreleased; tag versions get a date when they ship.
 
-## 1.6.2 — 1.6.2 rollup (unreleased)
+## 1.6.2 — Slide-out popover + mesh perf overhaul + new default themes (2026-05-17)
 
 **Final-pass tasklist clear-out — panel button + tray + GTK3 port.**
 
