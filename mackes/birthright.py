@@ -1291,6 +1291,38 @@ def apply_thunar_autostart(_preset: Preset) -> List[str]:
     return actions
 
 
+def apply_hotkey(_preset: Preset) -> List[str]:
+    """Bind <Super>m to `mackes --popover` via xfconf.
+
+    v1.6.2 GUI redesign Q8 lock — the slide-out popover is reachable
+    via panel button (follow-up), tray icon (follow-up), AND this
+    keyboard shortcut. Idempotent on re-run.
+    """
+    actions: List[str] = []
+    if shutil.which("xfconf-query") is None:
+        actions.append("hotkey: xfconf-query not installed — skipping")
+        return actions
+    # Find the actual mackes binary so the binding works even if PATH
+    # is exotic at session start.
+    mackes_bin = shutil.which("mackes") or "/usr/bin/mackes"
+    command = f"{mackes_bin} --popover"
+    key = "/commands/custom/<Super>m"
+    rc, out = _run(
+        ["xfconf-query", "--channel", "xfce4-keyboard-shortcuts",
+         "--property", key, "--create", "--type", "string",
+         "--set", command],
+        timeout=5,
+    )
+    if rc == 0:
+        actions.append(f"hotkey: bound <Super>m → {command}")
+    else:
+        last = (out.strip().splitlines()[-1] if out.strip() else rc)
+        actions.append(f"hotkey: bind failed: {last}")
+    for line in actions:
+        log_action(line)
+    return actions
+
+
 def apply_flathub(_preset: Preset) -> List[str]:
     """Add the Flathub remote so flatpak apps are discoverable.
 

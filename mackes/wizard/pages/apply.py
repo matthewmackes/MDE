@@ -47,7 +47,7 @@ from gi.repository import GLib, Gtk  # noqa: E402
 from mackes.logging import log_action
 from mackes.birthright import (
     apply_apps, apply_clipboard_daemon, apply_conky, apply_dnf_update,
-    apply_flathub, apply_fleet, apply_fonts, apply_lightdm,
+    apply_flathub, apply_fleet, apply_fonts, apply_hotkey, apply_lightdm,
     apply_maximize_all, apply_panel_layout, apply_plymouth, apply_qnm,
     apply_remote_desktop, apply_themes, apply_third_party_repos,
     apply_thunar_autostart,
@@ -350,6 +350,7 @@ class ApplyPage(Gtk.Box):
             _Step("Mesh clipboard",    lambda: apply_clipboard_daemon(merged)),
             _Step("Quick Network Mesh", lambda: apply_qnm(merged)),
             _Step("Thunar on login",   lambda: apply_thunar_autostart(merged)),
+            _Step("Super+M hotkey",    lambda: apply_hotkey(merged)),
             _Step("Mesh",              lambda: apply_mesh(merged)),
             _Step("VPN import",        self._step_vpn),
             _Step("Menu",              self._step_menu),
