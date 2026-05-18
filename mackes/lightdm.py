@@ -100,8 +100,8 @@ def _pkexec_mkdir(path: Path) -> tuple[int, str]:
 
 def configure_greeter(
     *,
-    gtk_theme: str = "PadOS",
-    icon_theme: str = "Carbon",
+    gtk_theme: str = "Shiki-Statler",
+    icon_theme: str = "Black-Sun",
     font_name: str = "IBM Plex Sans 11",
     wallpaper: Optional[Path] = None,
     accent_color: str = "#fa4d56",

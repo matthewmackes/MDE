@@ -238,11 +238,15 @@ fi
 install -D -m 0644 data/applications/mackes-conky.desktop \
     %{buildroot}%{_datadir}/applications/mackes-conky.desktop
 cp -r data/systemd        %{buildroot}%{_datadir}/%{name}/data/
-# Vendored PadOS GTK theme + Carbon GTK icon theme — system-wide install
+# Vendored PadOS GTK theme + Carbon + Black-Sun icon themes —
+# system-wide install. Black-Sun is the v1.6.2 default; Carbon stays
+# bundled as an alternative.
 install -d %{buildroot}%{_datadir}/themes
 cp -r data/themes/PadOS   %{buildroot}%{_datadir}/themes/
+cp -r data/themes/Shiki-Statler %{buildroot}%{_datadir}/themes/
 install -d %{buildroot}%{_datadir}/icons
 cp -r data/icons/Carbon   %{buildroot}%{_datadir}/icons/
+cp -r data/icons/Black-Sun %{buildroot}%{_datadir}/icons/
 # Plymouth Mackes boot theme — installed but NOT activated at %post; the
 # wizard's birthright step (mackes.birthright.apply_plymouth) activates it
 # only when the user opts in (initrd rebuild is heavy and disruptive).
@@ -365,8 +369,9 @@ systemctl daemon-reload || :
 # never break the host's sudo behavior.
 visudo -c -f /etc/sudoers.d/mackes-shell >/dev/null 2>&1 \
     || rm -f /etc/sudoers.d/mackes-shell
-# Rebuild the GTK icon cache for the vendored Carbon icon theme
-gtk-update-icon-cache -f -t %{_datadir}/icons/Carbon 2>/dev/null || :
+# Rebuild the GTK icon cache for the vendored icon themes
+gtk-update-icon-cache -f -t %{_datadir}/icons/Carbon    2>/dev/null || :
+gtk-update-icon-cache -f -t %{_datadir}/icons/Black-Sun 2>/dev/null || :
 
 %preun
 # Only on uninstall, not upgrade ($1 == 0 → final removal)
@@ -409,8 +414,14 @@ fi
 %{_datadir}/xfce4/panel/plugins/mackes-clipboard.desktop
 # Vendored PadOS GTK theme
 %{_datadir}/themes/PadOS/
+# Vendored Shiki-Statler GTK2 + xfwm4 theme (v1.6.2 default)
+# Upstream: archbangretro on SourceForge (GPL)
+%{_datadir}/themes/Shiki-Statler/
 # Vendored Carbon GTK icon theme
 %{_datadir}/icons/Carbon/
+# Vendored Black-Sun GTK icon theme (v1.6.2 default)
+# Upstream: https://github.com/SethStormR/Black-Sun (GPL-3.0)
+%{_datadir}/icons/Black-Sun/
 # Plymouth Mackes boot theme (theme files only; not activated at install
 # time — activation happens in the wizard's birthright step)
 %{_datadir}/plymouth/themes/mackes/

@@ -105,17 +105,24 @@ def _run(cmd: list[str], *, timeout: int = 60) -> tuple[int, str]:
 
 
 def apply_themes(_preset: Preset) -> List[str]:
-    """Deploy PadOS + Carbon to /usr/share/{themes,icons}/ and refresh caches.
+    """Deploy PadOS GTK + Carbon + Black-Sun icon themes to
+    /usr/share/{themes,icons}/ and refresh caches.
 
-    Source: data/themes/PadOS/ and data/icons/Carbon/ (shipped by the RPM).
+    Source: data/themes/PadOS/, data/icons/Carbon/, data/icons/Black-Sun/
+    (all shipped by the RPM). Black-Sun is the default icon theme per
+    v1.6.2 — Carbon stays installed as an alternative.
     Idempotent: skips if the destination is newer than the source.
     """
     actions: List[str] = []
 
     pad_src = _find_data("themes", "PadOS")
+    shiki_src = _find_data("themes", "Shiki-Statler")
     carbon_src = _find_data("icons", "Carbon")
+    blacksun_src = _find_data("icons", "Black-Sun")
     pad_dst = Path("/usr/share/themes/PadOS")
+    shiki_dst = Path("/usr/share/themes/Shiki-Statler")
     carbon_dst = Path("/usr/share/icons/Carbon")
+    blacksun_dst = Path("/usr/share/icons/Black-Sun")
 
     # PadOS GTK theme ---------------------------------------------------
     if pad_src is None:
@@ -131,6 +138,28 @@ def apply_themes(_preset: Preset) -> List[str]:
             actions.append(f"themes: installed PadOS to {pad_dst}")
         else:
             actions.append(f"themes: PadOS install failed: {out.strip().splitlines()[-1] if out.strip() else 'rc='+str(rc)}")
+
+    # Shiki-Statler GTK2 + xfwm4 theme (v1.6.2 default) ----------------
+    # Upstream: https://sourceforge.net/projects/archbangretro/files/
+    #   Shiki-Statler.tar.xz (GPL, md5 98ce6f2e0e3588107f6dc6330ed524b5)
+    # Ships gtk-2.0/ + xfwm4/ + openbox-3/ only — GTK3+ apps fall back
+    # to their inherited theme. We ship it for window-border styling +
+    # GTK2 app compatibility; modern apps stay on their own defaults.
+    if shiki_src is None:
+        actions.append("themes: Shiki-Statler source missing — skipping")
+    elif _newer_than(shiki_dst, shiki_src):
+        actions.append(f"themes: Shiki-Statler already installed at {shiki_dst} (up to date)")
+    else:
+        rc, out = _run_root(
+            ["cp", "-rT", str(shiki_src), str(shiki_dst)],
+            timeout=60,
+        )
+        if rc == 0:
+            actions.append(f"themes: installed Shiki-Statler to {shiki_dst}")
+        else:
+            last = (out.strip().splitlines()[-1]
+                    if out.strip() else f"rc={rc}")
+            actions.append(f"themes: Shiki-Statler install failed: {last}")
 
     # Carbon icon theme -------------------------------------------------
     if carbon_src is None:
@@ -150,6 +179,34 @@ def apply_themes(_preset: Preset) -> List[str]:
                 actions.append("themes: rebuilt Carbon icon cache")
         else:
             actions.append(f"themes: Carbon install failed: {out.strip().splitlines()[-1] if out.strip() else 'rc='+str(rc)}")
+
+    # Black-Sun icon theme (v1.6.2 default) -----------------------------
+    # Upstream: https://github.com/SethStormR/Black-Sun (GPL-3.0)
+    # Vendored at data/icons/Black-Sun/ in the repo so RPM builds
+    # don't need network access. The theme inherits from Papirus-Dark
+    # / breeze-dark / Cosmic / Adwaita / hicolor; missing icons fall
+    # through the chain.
+    if blacksun_src is None:
+        actions.append("themes: Black-Sun source missing — skipping")
+    elif _newer_than(blacksun_dst, blacksun_src):
+        actions.append(f"themes: Black-Sun already installed at {blacksun_dst} (up to date)")
+    else:
+        rc, out = _run_root(
+            ["cp", "-rT", str(blacksun_src), str(blacksun_dst)],
+            timeout=300,
+        )
+        if rc == 0:
+            actions.append(f"themes: installed Black-Sun to {blacksun_dst}")
+            if shutil.which("gtk-update-icon-cache"):
+                _run_root(
+                    ["gtk-update-icon-cache", "-f", "-t", str(blacksun_dst)],
+                    timeout=60,
+                )
+                actions.append("themes: rebuilt Black-Sun icon cache")
+        else:
+            last = (out.strip().splitlines()[-1]
+                    if out.strip() else f"rc={rc}")
+            actions.append(f"themes: Black-Sun install failed: {last}")
 
     for line in actions:
         log_action(line)

@@ -12,8 +12,8 @@ description: >
   daytime and care about document fidelity.
 
 appearance:
-  gtk_theme:      "PadOS"
-  icon_theme:     "Carbon"
+  gtk_theme:      "Shiki-Statler"
+  icon_theme:     "Black-Sun"
   cursor_theme:   "Adwaita"
   cursor_size:    24
   font_ui:        "IBM Plex Sans 11"
@@ -31,7 +31,7 @@ network:
 
 system:
   workspace_count:       4
-  window_manager_theme:  "Default"
+  window_manager_theme:  "Shiki-Statler"
   notifications_enabled: true
   autostart_extras: []
 

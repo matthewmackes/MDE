@@ -5,6 +5,27 @@ unreleased; tag versions get a date when they ship.
 
 ## 1.6.2 — 1.6.2 rollup (unreleased)
 
+**New default themes — Black-Sun (icons) + Shiki-Statler (GTK/xfwm).**
+
+* `data/icons/Black-Sun/` — vendored from
+  https://github.com/SethStormR/Black-Sun (GPL-3.0). 2,524 SVGs.
+  Inherits from Papirus-Dark / breeze-dark / Cosmic / Adwaita /
+  hicolor. Set as `icon_theme` in every preset (hashbang / mackes /
+  daylight) and as the LightDM greeter `icon-theme-name` default.
+* `data/themes/Shiki-Statler/` — vendored from
+  https://sourceforge.net/projects/archbangretro/files/Shiki-Statler.tar.xz
+  (GPL, md5 verified). Set as `gtk_theme` + `window_manager_theme`
+  in every preset and as the LightDM greeter default. **Limitation:**
+  the upstream ships only `gtk-2.0/` + `xfwm4/` + `openbox-3/`;
+  GTK3+ apps (Mackes Shell itself, modern XFCE apps) fall back to
+  their inherited theme. A GTK3 port of Shiki-Statler is captured
+  as a follow-up.
+* `apply_themes` extended to deploy both vendored themes to
+  `/usr/share/{themes,icons}/`. RPM ships both. `gtk-update-icon-cache`
+  refreshes the Black-Sun cache at `%post`.
+
+
+
 **GUI redesign v1 — slide-out popover.** Locked via 10-question
 survey 2026-05-17. Mackes Shell now ships in two shapes:
 

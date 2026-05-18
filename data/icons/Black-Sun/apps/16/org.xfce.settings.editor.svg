@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="64"
+   height="64"
+   version="1.1"
+   viewBox="0 0 16.933 16.933"
+   id="svg7"
+   sodipodi:docname="org.xfce.settings.editor.svg"
+   inkscape:version="1.4 (e7c3feb100, 2024-10-09)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <sodipodi:namedview
+     id="namedview7"
+     pagecolor="#9c4444"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="6.15625"
+     inkscape:cx="15.837563"
+     inkscape:cy="29.725888"
+     inkscape:window-width="1183"
+     inkscape:window-height="941"
+     inkscape:window-x="35"
+     inkscape:window-y="32"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="svg7"
+     showgrid="false" />
+  <defs
+     id="defs2">
+    <rect
+       x="67.489848"
+       y="35.60533"
+       width="15.337563"
+       height="22.51269"
+       id="rect3808" />
+    <filter
+       style="color-interpolation-filters:sRGB;"
+       inkscape:label="Blur"
+       id="filter1283"
+       x="-0.082344266"
+       y="-0.082344266"
+       width="1.1646885"
+       height="1.1646885">
+      <feGaussianBlur
+         stdDeviation="0.5 0.5"
+         result="blur"
+         id="feGaussianBlur1281" />
+    </filter>
+    <filter
+       style="color-interpolation-filters:sRGB;"
+       inkscape:label="Blur"
+       id="filter1694"
+       x="-0.94955398"
+       y="-0.2118907"
+       width="2.899108"
+       height="1.4237814">
+      <feGaussianBlur
+         stdDeviation="0.2 0.2"
+         result="blur"
+         id="feGaussianBlur1692" />
+    </filter>
+    <filter
+       style="color-interpolation-filters:sRGB;"
+       inkscape:label="Blur"
+       id="filter3148"
+       x="-0.94955398"
+       y="-0.2118907"
+       width="2.899108"
+       height="1.4237814">
+      <feGaussianBlur
+         stdDeviation="0.2 0.2"
+         result="blur"
+         id="feGaussianBlur3146" />
+    </filter>
+    <clipPath
+       clipPathUnits="userSpaceOnUse"
+       id="clipPath44">
+      <path
+         id="path46"
+         style="display:block;opacity:0.85;fill:#f2f2f2;stroke-width:4.39162"
+         d="m 17.570312,8.4453125 a 6.5431988,7.4283052 9.9958727e-8 0 0 -6.535156,7.4394535 6.5431988,7.4283052 9.9958727e-8 0 0 6.552735,7.417968 6.5431988,7.4283052 9.9958727e-8 0 0 6.535156,-7.4375 6.5431988,7.4283052 9.9958727e-8 0 0 -6.552735,-7.4199215 z M 45.646484,41.177734 a 6.5431986,7.0703472 2.4665357e-6 0 0 -6.533203,7.080078 6.5431986,7.0703472 2.4665357e-6 0 0 6.550781,7.060547 6.5431986,7.0703472 2.4665357e-6 0 0 6.535157,-7.080078 6.5431986,7.0703472 2.4665357e-6 0 0 -6.552735,-7.060547 z" />
+    </clipPath>
+    <inkscape:path-effect
+       effect="powerclip"
+       id="path-effect48"
+       is_visible="true"
+       lpeversion="1"
+       inverse="true"
+       flatten="false"
+       hide_clip="false"
+       message="" />
+  </defs>
+  <metadata
+     id="metadata2">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <path
+     id="path1"
+     style="fill:#f9f9f9;stroke:none;stroke-width:0.0812183;stroke-opacity:0.6"
+     d="M 23.441407 11.06836 C 16.212953 11.069597 14.733422 11.125454 14.019532 11.291016 C 10.999426 11.991426 8.6075211 14.101636 7.4902345 17.052735 C 6.9150659 18.571933 6.8939766 21.350851 7.4453126 22.947266 C 8.4280283 25.792758 10.857876 28.035366 13.806641 28.820313 C 14.568795 29.023196 17.314478 29.054674 32.488282 29.027344 L 50.273438 28.994141 L 51.238282 28.63086 C 54.046489 27.57126 56.196107 25.389373 57.033204 22.751954 C 57.47774 21.351378 57.512911 18.997564 57.109376 17.63086 C 56.278307 14.816173 54.319507 12.681805 51.552735 11.574219 L 50.437501 11.126953 L 32.771485 11.082031 C 28.899758 11.072364 25.850891 11.067947 23.441407 11.06836 z M 46.59961 14.056641 C 48.331676 13.983787 50.109586 14.560001 51.488282 15.84961 C 54.008066 18.206574 53.994583 21.927074 51.458985 24.298829 C 51.024801 24.704957 50.251087 25.230661 49.740235 25.466797 C 48.50722 26.036743 46.012378 26.157363 44.750001 25.707032 C 42.905119 25.048903 41.820242 24.13582 40.97461 22.53125 C 40.574112 21.771311 40.527457 21.5183 40.527345 20.060547 C 40.527226 18.518616 40.555545 18.384801 41.083985 17.410157 C 42.219586 15.315678 44.372669 14.15031 46.59961 14.056641 z M 32.394532 36.712891 C 20.795561 36.711274 14.852005 36.767132 14.203125 36.884766 C 11.651927 37.347269 9.0571964 39.352048 7.9121095 41.746095 C 6.2006014 45.324365 6.9834188 49.326818 9.9277346 52.052735 C 10.996332 53.042068 12.789672 53.987814 14.050782 54.226564 C 14.526229 54.316572 22.002557 54.385532 32.082032 54.394532 C 51.031583 54.411422 50.53975 54.436021 52.628907 53.416017 C 53.894123 52.798292 55.748243 51.005047 56.41211 49.757813 C 56.9562 48.735608 57.501954 46.677464 57.501954 45.648438 C 57.501954 42.440082 55.606917 39.256162 52.826173 37.794923 C 50.687604 36.671134 51.511137 36.715591 32.394532 36.712891 z M 17.462891 39.611329 C 19.909602 39.611329 22.115846 40.683064 23.267579 42.431641 C 24.000741 43.544738 24.244141 44.321957 24.244141 45.562501 C 24.244141 46.803044 24.000741 47.582215 23.267579 48.695313 C 22.571679 49.751837 21.247553 50.722235 19.923829 51.146485 C 16.401948 52.275237 12.817999 50.977465 11.234375 48.000001 C 10.84964 47.276643 10.802735 47.009217 10.802735 45.562501 C 10.802735 44.115784 10.849643 43.850312 11.234375 43.126954 C 12.422849 40.892434 14.693832 39.611329 17.462891 39.611329 z "
+     transform="scale(0.26457812)" />
+  <text
+     xml:space="preserve"
+     transform="scale(0.26457812)"
+     id="text3806"
+     style="fill:#999999;stroke-width:2;font-size:6.66666667px;white-space:pre;shape-inside:url(#rect3808)" />
+</svg>

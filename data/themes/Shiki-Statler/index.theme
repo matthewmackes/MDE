@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=X-GNOME-Metatheme
+Name=Shiki-Statler
+Comment=Classic Shiki-Colors dark blue-grey variant (Muppets-character themed). GTK2 + xfwm4 + openbox-3. GTK3 apps fall back to their parent.
+Encoding=UTF-8
+
+[X-GNOME-Metatheme]
+GtkTheme=Shiki-Statler
+MetacityTheme=Shiki-Statler
+IconTheme=Black-Sun

@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="64"
+   height="64"
+   version="1.1"
+   viewBox="0 0 16.933 16.933"
+   id="svg7"
+   sodipodi:docname="kvantummanager.svg"
+   inkscape:version="1.4 (e7c3feb100, 2024-10-09)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <sodipodi:namedview
+     id="namedview7"
+     pagecolor="#9c4444"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="6.15625"
+     inkscape:cx="15.756345"
+     inkscape:cy="29.563452"
+     inkscape:window-width="1226"
+     inkscape:window-height="669"
+     inkscape:window-x="241"
+     inkscape:window-y="146"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="svg7"
+     showgrid="false" />
+  <defs
+     id="defs2">
+    <rect
+       x="67.489848"
+       y="35.60533"
+       width="15.337563"
+       height="22.51269"
+       id="rect3808" />
+    <filter
+       style="color-interpolation-filters:sRGB;"
+       inkscape:label="Blur"
+       id="filter1283"
+       x="-0.082344266"
+       y="-0.082344266"
+       width="1.1646885"
+       height="1.1646885">
+      <feGaussianBlur
+         stdDeviation="0.5 0.5"
+         result="blur"
+         id="feGaussianBlur1281" />
+    </filter>
+    <filter
+       style="color-interpolation-filters:sRGB;"
+       inkscape:label="Blur"
+       id="filter1694"
+       x="-0.94955398"
+       y="-0.2118907"
+       width="2.899108"
+       height="1.4237814">
+      <feGaussianBlur
+         stdDeviation="0.2 0.2"
+         result="blur"
+         id="feGaussianBlur1692" />
+    </filter>
+    <filter
+       style="color-interpolation-filters:sRGB;"
+       inkscape:label="Blur"
+       id="filter3148"
+       x="-0.94955398"
+       y="-0.2118907"
+       width="2.899108"
+       height="1.4237814">
+      <feGaussianBlur
+         stdDeviation="0.2 0.2"
+         result="blur"
+         id="feGaussianBlur3146" />
+    </filter>
+  </defs>
+  <metadata
+     id="metadata2">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <path
+     d="m 1.9339176,1.2768349 v 0.00367 2.8665678 2.8665671 2.8665681 0.9495061 1.917065 0.472948 0.476556 a 1.7804835,1.9134526 0 0 0 1.7771249,1.909832 H 3.2440856 l 0.030233,0.0036 h 1.3336828 2.6673653 2.6673652 2.6673671 2.667365 v -2.86653 H 12.610099 9.9427343 8.2495959 L 9.7176541,11.8334 12.025562,10.400114 14.336832,8.9668303 13.00315,6.4865621 10.691879,7.9198457 8.3839724,9.3531313 6.9226311,10.259312 7.7658424,8.6888371 9.0995246,6.2085697 10.433207,3.7246923 8.1152195,2.2877991 6.7815369,4.7716763 5.447854,7.2519437 4.601285,8.8296389 V 7.0100503 4.1434825 1.2769139 Z M 3.7110425,12.739497 c 0.2351567,0 0.4602391,0.10108 0.6282078,0.277991 0.1679714,0.176909 0.2586729,0.422404 0.2586729,0.675125 0,0.252719 -0.094061,0.494608 -0.2586729,0.675123 -0.1646122,0.1805 -0.3930511,0.277991 -0.6282078,0.277991 -0.2351579,0 -0.4602397,-0.101099 -0.6282092,-0.277991 -0.1679695,-0.176909 -0.2586732,-0.422404 -0.2586732,-0.675123 0,-0.252721 0.094063,-0.494608 0.2586732,-0.675125 0.1646103,-0.1805 0.3930513,-0.277991 0.6282092,-0.277991 z"
+     fill="#bebebe"
+     id="path2-3"
+     style="fill:#f9f9f9;fill-opacity:1;stroke:none;stroke-width:0.478061;stroke-dasharray:none;stroke-opacity:0.3" />
+  <text
+     xml:space="preserve"
+     transform="scale(0.26457812)"
+     id="text3806"
+     style="fill:#999999;stroke-width:2;font-size:6.66666667px;white-space:pre;shape-inside:url(#rect3808)" />
+</svg>
