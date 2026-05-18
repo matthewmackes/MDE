@@ -17,6 +17,7 @@
 mod config_store;
 mod dock;
 mod icons;
+mod mesh_sync;
 mod top_bar;
 
 use std::path::{Path, PathBuf};
