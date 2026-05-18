@@ -99,7 +99,7 @@ blocked until fixed. See Phase 9.4 below.
 - [ ] **9.1 Unit tests** — every pure-logic module (config parsing, mesh-resource scoring, icon lookup, hotkey parser). Target: 80% line coverage.
 - [ ] **9.2 GTK widget tests** — gtk-test harness around dock, status cluster, Apple menu, calendar dropdown. Headless via Xvfb in CI.
 - [ ] **9.3 E2E tests** — xdotool-driven smoke: launch panel, click Mackes button, navigate Applications submenu, launch Firefox via dock, verify running indicator appears. Runs nightly.
-- [ ] **9.4 Performance benchmarks** — measure RSS / cold-start / idle CPU on every CI run; gate at **< 200 ms start, < 1% idle, ≤ 150 MB RSS** (Q41 revised). PRs that regress any metric fail CI.
+- [>] **9.4 Performance benchmarks** — `install-helpers/bench-panel.sh` launches the panel under a clean Xvfb, samples `/proc/<pid>/{stat,status}` for cold-start / RSS / idle-CPU, gates at the Q41 revised targets and exits 1 on regression. **First measurement run 2026-05-18 vs commit `99e2680`: cold start 5 ms · RSS 85 MB · idle CPU 0.0% — all three gates pass with significant margin.** CI integration (run on every push) lands in a follow-up.
 
 ## Phase 10 — Migration + cutover (2 weeks)
 

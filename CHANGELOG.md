@@ -3,6 +3,53 @@
 All notable user-facing and architectural changes. The current line is
 unreleased; tag versions get a date when they ship.
 
+## Unreleased — Mackes XFCE Workstation 1.0.0 (in development)
+
+Foundation for the v3.0.0 / 1.0.0 rebrand per
+`docs/design/v3.0.0-mackes-xfce-workstation.md`. Tracked in
+`docs/PROJECT_WORKLIST.md`; currently 29 of 67 worklist items complete.
+
+* **`mackes-panel`** — new Rust binary (`/usr/bin/mackes-panel`) that
+  renders the top status bar + bottom dock + wallpaper. Three crates
+  in the workspace: `mackes-mesh-types`, `mackes-config`, `mackes-panel`.
+  ~2,290 lines of Rust, 38 unit tests, no `unsafe` (forbidden at the
+  module level), clippy pedantic+nursery clean.
+
+* **Performance gate measured.** `install-helpers/bench-panel.sh`
+  runs the binary under Xvfb and samples `/proc/<pid>/`. First
+  measurement (commit `99e2680`):
+
+      cold start  5 ms       (target < 200 ms)
+      RSS         85 MB      (target ≤ 150 MB)
+      idle CPU    0.0 %      (target < 1 %)
+
+  All three Q41-revised gates pass with significant margin.
+
+* **What runs today.** Wallpaper layer (replaces xfdesktop). Top
+  bar with Apple-menu button → real `gtk::Menu` dropdown with
+  categorized Applications submenu + working system actions
+  (`loginctl suspend|reboot|poweroff|lock-session`). HH:MM clock
+  (wall-clock synced). Status cluster opens the existing Python
+  Notification Drawer with section focus. Bottom dock reads
+  `~/.config/mackes-panel/panel.toml` and renders pinned apps as
+  monochrome Carbon glyphs via the new app→Carbon icon mapping.
+
+* **Config persistence.** Panel config lives in TOML, mesh-replicated
+  to `~/.qnm-sync/mackes-panel/panel.toml`, hot-reloaded via
+  `gio::FileMonitor`, drift-detected per peer via SHA-256.
+
+* **Packaging.** Mackes installs now ship
+  `/etc/xdg/autostart/mackes-panel.desktop` (brings up the Rust panel)
+  and `/etc/xdg/autostart/xfdesktop.desktop` (overrides upstream
+  xfdesktop with `Hidden=true` so it never starts on Mackes).
+
+* **Still gating actual 1.0.0 release** (see worklist Phase 5.2-5.3,
+  Phase 6, Phase 4.3, Phase 9.1-9.3, Phase 10): libwnck-driven
+  running-app / window switching, global hotkeys, Rust port of the
+  Notification Drawer, GTK widget + xdotool E2E test pyramid,
+  RPM rename to `mackes-xfce-workstation`, first-launch migration
+  wizard.
+
 ## 2.3.0 — Mackes-Carbon icon theme (2026-05-18)
 
 * **New default icon theme: `Mackes-Carbon`.** A symbolic, single-color
