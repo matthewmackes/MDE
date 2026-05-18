@@ -3,6 +3,41 @@
 All notable user-facing and architectural changes. The current line is
 unreleased; tag versions get a date when they ship.
 
+## Unreleased — Polish + wizard sweep
+
+Six small, focused commits sitting on `main` after 1.6.7. Each lands one
+issue end-to-end; no version bump yet.
+
+* **Drop orphan PadOS GTK theme and Carbon icon theme.** Slim
+  `apply_themes()` to a data-driven `_VENDORED_THEMES` tuple over only
+  the three themes we actually ship (Orchis-Dark / Shiki-Statler /
+  Black-Sun). Removes 2522 stale SVGs plus
+  `install-carbon-icons.sh`.
+* **Fix wizard Next button click-through during install.** The Apply
+  page's worker thread now drives an `on_complete` callback that gates
+  the Next button, so the user can't skip into the summary while
+  installation is still running.
+* **Make wizard Appearance step static, no user options.** Theme /
+  icon / font / wallpaper are platform-fixed and apply automatically.
+  The step renders a read-only summary of what's about to install;
+  later tuning lives in Look & Feel → Appearance.
+* **Simplify Network nav and mesh setup chooser.** Network sidebar
+  collapses from 11 flat items to four: Wi-Fi · Mesh · Mesh Remote ·
+  Advanced (sub-nav over Mesh Health / Performance / VPN / SSH /
+  Services / Firewall / VPN / QNM). Headscale setup wizard's three-card
+  Seed/Join/Reconfig chooser folds into two outcome cards: Join an
+  existing mesh / Host a new mesh. Pre-fills the join link from the
+  clipboard if a `mackes://` URL is already there.
+* **AppStream metainfo + Desktop Actions.** Ship
+  `io.github.matthewmackes.MackesShell.metainfo.xml` to
+  `/usr/share/metainfo/` so Mackes surfaces in GNOME Software / KDE
+  Discover. Add `Actions=Wizard;Popover;` to the main `.desktop`,
+  exposing the existing `--wizard` and `--popover` flags as jump-list
+  entries.
+* **Wizard keyboard + accessibility wires.** Escape closes the wizard
+  (except mid-install). Next button is the default action so Enter
+  advances. Tooltips + accessible names on Back / Cancel / Next.
+
 ## 1.6.7 — apply_panel_layout uses xfce4-panel-profiles (2026-05-18)
 
 Every "Plugin (null) could not be loaded" + `g_value_get_int`
