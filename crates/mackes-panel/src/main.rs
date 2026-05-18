@@ -14,6 +14,7 @@
 
 #![forbid(unsafe_code)]
 
+mod apple_menu;
 mod config_store;
 mod desktop_files;
 mod dock;

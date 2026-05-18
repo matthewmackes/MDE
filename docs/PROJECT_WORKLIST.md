@@ -51,7 +51,7 @@ blocked until fixed. See Phase 9.4 below.
 ## Phase 3 — Apple menu + app discovery (2 weeks)
 
 - [✓] **3.1 .desktop scanner** — `desktop_files::scan()` walks `/usr/share/applications/`, `/usr/local/share/applications/`, `~/.local/share/applications/` and parses each entry. Honors `NoDisplay`/`Hidden`. User-side shadows system-side by basename. `parse_text()` is public so 8 unit tests exercise the parser without filesystem hits.
-- [ ] **3.2 Applications submenu builder** — group .desktop entries by Categories (AudioVideo / Development / Game / Graphics / Internet / Office / Settings / System / Utility), build a fan-out submenu structure.
+- [✓] **3.2 Applications submenu builder** — `apple_menu::build(entries)` groups DesktopEntry items into 8 canonical buckets (Internet / Multimedia / Graphics / Office / Development / Games / System / Utilities) plus an `Other` catch-all. Each bucket carries its Mackes-Carbon icon name + entries sorted case-insensitively by Name. First-match wins on Categories with multiple tags. 5 unit tests (bucketing, sort, dedup, Other fallback, empty input).
 - [ ] **3.3 Apple-menu chrome** — narrow dropdown that drops down from the Mackes button, themed to match top bar. Renders the static items (About, Settings, etc.) plus the dynamic Recent Items and Applications submenus.
 - [ ] **3.4 Recent Items source** — read GTK's `recently-used.xbel` + Mackes-shell-tracked recents; show last 10.
 - [ ] **3.5 System action wiring** — Sleep / Restart / Shut Down via `loginctl`, Lock via `loginctl lock-session`, Sign Out via `xfce4-session-logout --logout`. All routed through `mackes.admin_session.AdminSession` for consent.
