@@ -14,6 +14,7 @@
 
 use crate::desktop_files::DesktopEntry;
 use crate::dock::{DockModule, DockState};
+use crate::icons;
 use crate::top_bar::launch_exec;
 
 /// One pinned dock item backed by a `.desktop` entry.
@@ -51,12 +52,14 @@ impl DockModule for AppModule {
     }
 
     fn icon_name(&self) -> &str {
-        // Fall back to the freedesktop generic-app icon when the
-        // .desktop didn't ship an Icon field.
+        // Route through icons::resolve so well-known apps wear a Carbon
+        // symbolic glyph (Q14 — monochrome dock). Falls back to the
+        // freedesktop generic-app icon when the .desktop shipped no
+        // Icon at all.
         self.entry
             .icon
             .as_deref()
-            .unwrap_or("applications-other-symbolic")
+            .map_or("applications-other-symbolic", icons::resolve)
     }
 
     fn tooltip(&self) -> &str {

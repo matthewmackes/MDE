@@ -83,7 +83,7 @@ blocked until fixed. See Phase 9.4 below.
 
 ## Phase 7 — Iconography + theming (1–2 weeks)
 
-- [ ] **7.1 App → Carbon icon mapping table** — extend `install-helpers/mackes-carbon.map` (or sibling file) with `.desktop Name → carbon-basename` rows. Curate top ~50 common apps (firefox, thunderbird, code, terminal, …). Generic fallback = `application.svg`.
+- [✓] **7.1 App → Carbon icon mapping table** — `icons::resolve()` maps common `.desktop Icon=` values to Mackes-Carbon symbolic glyphs (firefox→earth, thunar→folder--open, vlc→play--filled-alt, etc.). `AppModule::icon_name()` routes through it so well-known apps wear Carbon by default. ~45 entries, case-insensitive, strips paths + extensions. 3 unit tests.
 - [ ] **7.2 Inline Nerd Font glyphs** — in Apple-menu status-line items and Drawer mini-indicators, use Nerd Font (Red Hat Mono Nerd?) where Carbon SVG would be too small (Q32).
 - [ ] **7.3 Force monochrome on all dock icons** — even when an app ships a colorful PNG, dock loader maps it via 7.1 table or applies a monochrome-Carbon fallback (Q14).
 

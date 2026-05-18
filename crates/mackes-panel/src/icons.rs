@@ -43,6 +43,79 @@ thread_local! {
     static CACHE: RefCell<HashMap<(String, i32), Pixbuf>> = RefCell::new(HashMap::new());
 }
 
+/// Curated map of app `.desktop` Icon= values → Mackes-Carbon symbolic
+/// names per Q14 (monochrome Carbon for every dock item). When a dock
+/// `AppModule` asks for its icon, we route through `resolve()` first so
+/// well-known apps wear the Carbon look even if their `.desktop` shipped
+/// a brand-colored Icon=.
+const APP_TO_CARBON: &[(&str, &str)] = &[
+    // Browsers
+    ("firefox", "earth"),
+    ("firefox-nightly", "earth"),
+    ("google-chrome", "earth"),
+    ("chromium", "earth"),
+    ("brave-browser", "earth"),
+    // Mail / chat
+    ("thunderbird", "email"),
+    ("evolution", "email"),
+    ("element-desktop", "chat"),
+    ("slack", "chat"),
+    ("discord", "chat"),
+    // Files / utilities
+    ("thunar", "folder--open"),
+    ("nautilus", "folder--open"),
+    ("file-roller", "archive"),
+    ("gnome-calculator", "calculator"),
+    ("gnome-system-monitor", "analytics"),
+    ("htop", "analytics"),
+    // Terminals / dev
+    ("xfce4-terminal", "terminal"),
+    ("gnome-terminal", "terminal"),
+    ("alacritty", "terminal"),
+    ("kitty", "terminal"),
+    ("code", "code"),
+    ("code-oss", "code"),
+    ("idea", "code"),
+    ("clion", "code"),
+    // Media
+    ("vlc", "play--filled-alt"),
+    ("mpv", "play--filled-alt"),
+    ("sublime-music", "music"),
+    ("rhythmbox", "music"),
+    ("delfin", "video"),
+    // Office
+    ("libreoffice-writer", "document"),
+    ("libreoffice-calc", "table"),
+    ("libreoffice-impress", "presentation-file"),
+    ("libreoffice-startcenter", "document"),
+    // Graphics
+    ("gimp", "image"),
+    ("krita", "image"),
+    ("inkscape", "image"),
+    ("blender", "cube"),
+    // Mackes (our own)
+    ("mackes-shell", "settings--adjust"),
+    ("mackes-clipboard", "paste"),
+];
+
+/// Look up a `.desktop` Icon= value in the app→Carbon table. Returns
+/// the Carbon symbolic name on hit, or the original (so `load()` can
+/// still try the freedesktop hierarchy) on miss.
+#[must_use]
+pub fn resolve(desktop_icon: &str) -> &str {
+    let key = desktop_icon
+        .rsplit('/')
+        .next()
+        .and_then(|n| n.split('.').next())
+        .unwrap_or(desktop_icon);
+    for (k, v) in APP_TO_CARBON {
+        if k.eq_ignore_ascii_case(key) {
+            return v;
+        }
+    }
+    desktop_icon
+}
+
 /// Look up an icon by freedesktop name and return a `Pixbuf` sized to
 /// `size_px`. Returns `None` only if the file is genuinely missing or
 /// fails to parse — never panics.
@@ -114,5 +187,26 @@ mod tests {
         // in the test environment. Either way the function shouldn't
         // panic — that's the assertion.
         let _ = locate_svg("definitely-not-a-real-icon-name");
+    }
+
+    #[test]
+    fn resolve_maps_known_app() {
+        assert_eq!(resolve("firefox"), "earth");
+        assert_eq!(resolve("thunar"), "folder--open");
+        assert_eq!(resolve("FIREFOX"), "earth"); // case-insensitive
+    }
+
+    #[test]
+    fn resolve_strips_path_and_extension() {
+        assert_eq!(resolve("/usr/share/icons/firefox.png"), "earth");
+        assert_eq!(resolve("firefox.svg"), "earth");
+    }
+
+    #[test]
+    fn resolve_falls_through_on_miss() {
+        assert_eq!(
+            resolve("definitely-not-mapped-symbolic"),
+            "definitely-not-mapped-symbolic"
+        );
     }
 }
