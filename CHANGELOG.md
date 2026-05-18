@@ -3,7 +3,22 @@
 All notable user-facing and architectural changes. The current line is
 unreleased; tag versions get a date when they ship.
 
-## Unreleased — Mackes XFCE Workstation 1.0.0 (in development)
+## 1.0.0-rc1 — Mackes XFCE Workstation, preview cut (2026-05-18)
+
+First tagged preview of the v1.0.0 rebrand. RPM name flips from
+`mackes-shell` to `mackes-xfce-workstation`; `Obsoletes: mackes-shell
+< 3.0` so `dnf upgrade` auto-replaces 2.x installs. Filesystem paths
+(`~/.config/mackes-shell/`, `/usr/share/mackes-shell/`, `mackes/`
+Python package) stay unchanged so existing user data keeps working —
+the rename is brand + package surface only per Q44 of the design
+lock.
+
+This is a **preview release**. Final 1.0.0 ships once the M1 items
+still marked open in `docs/PROJECT_WORKLIST.md` land (libwnck-driven
+running-app/window-mgmt, Phase 4.3 drawer port, Phase 9 test pyramid,
+LightDM/Plymouth chrome).
+
+## Unreleased — Mackes XFCE Workstation 1.0.0 (continuing)
 
 Foundation for the v3.0.0 / 1.0.0 rebrand per
 `docs/design/v3.0.0-mackes-xfce-workstation.md`. Tracked in

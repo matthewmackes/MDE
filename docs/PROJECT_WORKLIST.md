@@ -103,7 +103,7 @@ blocked until fixed. See Phase 9.4 below.
 
 ## Phase 10 — Migration + cutover (2 weeks)
 
-- [ ] **10.1 RPM rename** — change package name to `mackes-xfce-workstation`, add `Obsoletes: mackes-shell < 3.0` so 2.x dnf upgrades replace cleanly (Q49).
+- [✓] **10.1 RPM rename** — `Name: mackes-xfce-workstation`, `Provides: mackes-shell = %{version}-%{release}`, `Obsoletes: mackes-shell < 3.0`. Source tarball still ships under the legacy `mackes-shell-%{version}.tar.gz` filename so the build pipeline doesn't need a rename. Verified: `make rpm` produces `mackes-xfce-workstation-1.0.0-0.1.rc1.fc44.x86_64.rpm`; `rpm -q --obsoletes` shows the Obsoletes line. Filesystem paths intentionally unchanged (Q44 brand-only rename).
 - [ ] **10.2 First-launch wizard** — detect `~/.config/mackes-shell/` leftovers from 2.x; import preset + active wallpaper + pinned apps into `~/.config/mackes-panel/panel.toml`. Show what's being migrated.
 - [ ] **10.3 Brand surfacing** — About dialog text, `.desktop` Name field, greeter banner, Plymouth header all say "Mackes XFCE Workstation."
 - [ ] **10.4 CHANGELOG 1.0.0 section** — write the user-visible summary referencing the design doc.

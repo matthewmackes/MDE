@@ -4,14 +4,21 @@
 # from rpmbuild on Fedora 40+.
 %global debug_package %{nil}
 
-Name:           mackes-shell
-Version:        2.3.0
-Release:        1%{?dist}
-Summary:        Mackes Shell — XFCE control panel and shell manager for Fedora
+Name:           mackes-xfce-workstation
+Version:        1.0.0
+Release:        0.1.rc1%{?dist}
+Summary:        Mackes XFCE Workstation — unified shell, panel, dock, and mesh for Fedora
 
 License:        GPL-3.0
 URL:            https://github.com/matthewmackes/MAP2-RELEASES
-Source0:        %{name}-%{version}.tar.gz
+# Source tarball still ships under the legacy name so dist/mackes-shell-...
+# keeps working; the package itself is renamed via Provides/Obsoletes.
+Source0:        mackes-shell-%{version}.tar.gz
+
+# Phase 10.1 rename: this package supersedes the legacy mackes-shell
+# package. dnf upgrade auto-replaces installations on the 2.x train.
+Provides:       mackes-shell = %{version}-%{release}
+Obsoletes:      mackes-shell < 3.0
 
 # Arch-specific (was BuildArch:noarch in 0.x): the package now carries a
 # compiled C xfce4-panel external plugin under %{_libdir}/xfce4/panel/
