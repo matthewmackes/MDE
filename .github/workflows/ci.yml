@@ -55,9 +55,7 @@ jobs:
 
       - name: import smoke
         run: |
-          python3 -c "import importlib, pkgutil, mackes; \
-[importlib.import_module(n) for _,n,_ in pkgutil.walk_packages(mackes.__path__, prefix='mackes.')]; \
-print('all modules import')"
+          python3 -c "import importlib, pkgutil, mackes; [importlib.import_module(n) for _,n,_ in pkgutil.walk_packages(mackes.__path__, prefix='mackes.')]; print('all modules import')"
 
   rust:
     name: rust (Fedora 44)
