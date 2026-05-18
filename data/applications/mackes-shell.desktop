@@ -1,15 +1,15 @@
 [Desktop Entry]
 Type=Application
-Name=Mackes Shell
+Name=Mackes XFCE Workstation
 GenericName=Settings & Mesh
-Comment=Unified XFCE control panel — settings, mesh networking, fleet management
+Comment=Unified XFCE workstation — panel, dock, settings, mesh networking, fleet management
 Exec=mackes
 Icon=mackes-shell
 Terminal=false
 Categories=Settings;System;X-XFCE-SettingsDialog;DesktopSettings;
-Keywords=settings;preferences;control;panel;xfce;shell;mesh;tailscale;headscale;fleet;ansible;
+Keywords=settings;preferences;control;panel;xfce;shell;mesh;tailscale;headscale;fleet;ansible;workstation;
 StartupNotify=true
-StartupWMClass=Mackes Shell
+StartupWMClass=Mackes XFCE Workstation
 Actions=Wizard;Drawer;
 
 [Desktop Action Wizard]

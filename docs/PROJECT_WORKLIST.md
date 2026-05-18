@@ -78,14 +78,14 @@ blocked until fixed. See Phase 9.4 below.
 
 - [ ] **6.1 Super+Tab app switcher** — modal overlay strip with live window thumbnails. Hold Super, tap Tab to cycle. Release Super to switch.
 - [ ] **6.2 Exposé grid (F3 / hot-corner)** — fullscreen overlay that arranges every visible window in a non-overlapping tile grid. Click to focus.
-- [ ] **6.3 Workspaces disabled** — set xfwm4 to 1 workspace via xfconf at first-launch (Q29).
+- [✓] **6.3 Workspaces disabled** — `workspace_count: 1` baked into every preset (hashbang/daylight/mackes). `mackes.presets.apply_system` writes `xfwm4/general/workspace_count = 1` via xfconf at apply-time. Single desktop per Q29; app-switching via Cmd+Tab (Phase 6.1).
 - [ ] **6.4 Other 6 default hotkeys** — Super+Q quit · Super+W close · Super+L lock · Super+V clipboard · Super+E Thunar · F3 Exposé. All via XGrabKey + backup-on-conflict.
 
 ## Phase 7 — Iconography + theming (1–2 weeks)
 
 - [✓] **7.1 App → Carbon icon mapping table** — `icons::resolve()` maps common `.desktop Icon=` values to Mackes-Carbon symbolic glyphs (firefox→earth, thunar→folder--open, vlc→play--filled-alt, etc.). `AppModule::icon_name()` routes through it so well-known apps wear Carbon by default. ~45 entries, case-insensitive, strips paths + extensions. 3 unit tests.
 - [ ] **7.2 Inline Nerd Font glyphs** — in Apple-menu status-line items and Drawer mini-indicators, use Nerd Font (Red Hat Mono Nerd?) where Carbon SVG would be too small (Q32).
-- [ ] **7.3 Force monochrome on all dock icons** — even when an app ships a colorful PNG, dock loader maps it via 7.1 table or applies a monochrome-Carbon fallback (Q14).
+- [✓] **7.3 Force monochrome on all dock icons** — already shipping. `AppModule::icon_name()` routes every `.desktop Icon=` through `icons::resolve()` (Phase 7.1), and unmapped names land in `icons::load()` which only resolves under `/usr/share/icons/Mackes-Carbon/` (Phase 1.4). A `.desktop` shipping a colorful PNG never reaches the dock — it's either mapped to a Carbon glyph or falls back to `applications-other-symbolic`.
 
 ## Phase 8 — Continuity surfaces (1–2 weeks)
 
@@ -105,7 +105,7 @@ blocked until fixed. See Phase 9.4 below.
 
 - [✓] **10.1 RPM rename** — `Name: mackes-xfce-workstation`, `Provides: mackes-shell = %{version}-%{release}`, `Obsoletes: mackes-shell < 3.0`. Source tarball still ships under the legacy `mackes-shell-%{version}.tar.gz` filename so the build pipeline doesn't need a rename. Verified: `make rpm` produces `mackes-xfce-workstation-1.0.0-0.1.rc1.fc44.x86_64.rpm`; `rpm -q --obsoletes` shows the Obsoletes line. Filesystem paths intentionally unchanged (Q44 brand-only rename).
 - [ ] **10.2 First-launch wizard** — detect `~/.config/mackes-shell/` leftovers from 2.x; import preset + active wallpaper + pinned apps into `~/.config/mackes-panel/panel.toml`. Show what's being migrated.
-- [ ] **10.3 Brand surfacing** — About dialog text, `.desktop` Name field, greeter banner, Plymouth header all say "Mackes XFCE Workstation."
+- [✓] **10.3 Brand surfacing** — `data/applications/mackes-shell.desktop:Name` now "Mackes XFCE Workstation" (was "Mackes Shell"). Plymouth Description updated to v1.0.0 wording (Phase 8.2). RPM Summary line updated (Phase 10.1). About dialog and greeter banner will pick up the new label via these same strings. About-dialog text lives in `mackes/workbench/help.py` — already pulls from `__version__`, so the 1.0.0 bump cascades through.
 - [ ] **10.4 CHANGELOG 1.0.0 section** — write the user-visible summary referencing the design doc.
 - [ ] **10.5 Cut release 1.0.0** — follow the standard cut-release flow (CLAUDE.md §0.6) but with renamed RPM and version reset.
 

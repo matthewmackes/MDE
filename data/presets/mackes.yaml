@@ -28,7 +28,7 @@ network:
   firewall_default_zone: "FedoraWorkstation"
 
 system:
-  workspace_count:       9
+  workspace_count:       1   # Q29 lock: workspaces dropped — single desktop, Cmd+Tab for app switch
   window_manager_theme:  "Shiki-Statler"
   notifications_enabled: true
   autostart_extras: []
