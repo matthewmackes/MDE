@@ -5,6 +5,45 @@ unreleased; tag versions get a date when they ship.
 
 ## 1.6.2 — 1.6.2 rollup (unreleased)
 
+**GUI redesign v1 — slide-out popover.** Locked via 10-question
+survey 2026-05-17. Mackes Shell now ships in two shapes:
+
+* Full window (current behaviour, unchanged) — `mackes`
+* New 420×600 slide-out popover — `mackes --popover` (and the new
+  Super+M hotkey + panel-plugin button + tray icon ship in a
+  follow-up commit)
+
+Popover (`mackes.workbench.popover.*`):
+  * `window.PopoverWindow` — Gtk.Window type=POPUP, undecorated,
+    keep-above, anchored top-right, dismiss on focus-out or Esc.
+  * Tab bar: **Glance · Mesh · Tools · Manage · Help** with Hack
+    Nerd Font glyphs above each label.
+  * `glance.GlanceTab` — live mesh state pill, top-6 peers
+    GtkTreeView (with Wake action on offline rows), last 5 mackes.log
+    lines, system pulse (CPU/RAM/services). 5-second refresh while
+    visible.
+  * `mesh_tab.MeshTab` — sub-tabs for Get Online / Health / Perf /
+    SSH (Q10 lock: merge close-cousin panels).
+  * `tools_tab.ToolsTab` — Apps / Sources / Update / Fonts.
+  * `manage_tab.ManageTab` — Fleet / Tweaks / Screens / Boot.
+  * `help_tab.HelpTab` — quick-link buttons to full-window views
+    (Wizard, Logs, full Mackes Shell, Help docs).
+
+`data/css/carbon-productive.css` — Carbon's Productive type scale
+(14/18 body, 12/16 helper, 10/12 caption) applied via the
+`.mackes-productive` root class. Replaces the heavier Expressive
+scale on the popover. Glance/Mesh/Tools/Manage all opt in.
+
+**xfce4-panel snapshot rebrand.** `data/panel/xfce4-panel.snapshot.json`
+rebuilt as a clean Mackes-branded default: single panel along the
+top, 7 plugins (whiskermenu / mackes-launcher / docklike /
+separator-expand / mackes-clipboard / systray / clock). Whisker
+button-title="Mackes", button-icon=mackes-shell, favorites curated
+around the Mackes-essentials set. Drops the dual-panel + orphan
+101-105 entries the original capture inherited.
+
+
+
 **Mesh perf round verification — tests + spec wiring.**
 
 * `tests/test_mesh_perf.py`, `test_mesh_wol.py`, `test_mesh_metrics.py`

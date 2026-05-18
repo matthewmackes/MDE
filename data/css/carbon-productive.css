@@ -1,0 +1,171 @@
+/* Carbon Productive type scale — applied to .mackes-productive root.
+ *
+ * Q6 lock (2026-05-17): redesign uses IBM Carbon's productive scale
+ * rather than the expressive one we used pre-1.6.2. Productive is
+ * designed for high-data-density enterprise products (DBA tools,
+ * monitoring dashboards) — IBM's recommendation when your UI is
+ * about getting things done, not marketing.
+ *
+ * Scale (from IBM Carbon's Productive type set):
+ *   helper-text-01      12 / 16
+ *   body-compact-01     14 / 18   (default body)
+ *   body-compact-02     16 / 22
+ *   heading-compact-01  14 / 18   (bold)
+ *   heading-compact-02  16 / 22   (bold)
+ *   code-01             12 / 16   (mono)
+ *   code-02             14 / 20   (mono)
+ */
+
+.mackes-productive,
+.mackes-productive label,
+.mackes-productive button,
+.mackes-productive entry {
+    font-family: "IBM Plex Sans", "Inter", "Cantarell", sans-serif;
+    font-size: 14px;
+}
+
+.mackes-productive .mackes-popover-title {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.mackes-productive .mackes-popover-version {
+    color: @cds_text_helper;
+    font-size: 11px;
+    padding-left: 4px;
+}
+
+.mackes-productive .mackes-popover-iconbtn {
+    font-family: "Hack Nerd Font Mono";
+    font-size: 14px;
+    color: @cds_text_secondary;
+    padding: 4px 6px;
+    min-height: 0;
+    min-width: 0;
+    border: none;
+    background: transparent;
+}
+
+.mackes-productive .mackes-popover-iconbtn:hover {
+    background: alpha(@cds_text_secondary, 0.08);
+    color: @cds_text_primary;
+}
+
+/* Tab bar (top of popover) */
+.mackes-productive .mackes-popover-tabbar {
+    background: @cds_bg_layer_01;
+    border-bottom: 1px solid @cds_border_subtle_00;
+}
+
+.mackes-productive .mackes-popover-tabbar button {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 6px 4px;
+    min-height: 0;
+}
+
+.mackes-productive .mackes-popover-tabbar button:checked {
+    border-bottom-color: @mackes_accent;
+    background: alpha(@mackes_accent, 0.05);
+}
+
+.mackes-productive .mackes-popover-tabbar button:hover {
+    background: alpha(@cds_text_secondary, 0.04);
+}
+
+.mackes-productive .mackes-popover-tabglyph {
+    font-family: "Hack Nerd Font Mono";
+    font-size: 16px;
+    color: @cds_text_secondary;
+}
+
+.mackes-productive .mackes-popover-tabbar button:checked .mackes-popover-tabglyph {
+    color: @mackes_accent;
+}
+
+.mackes-productive .mackes-popover-tablabel {
+    font-size: 10px;
+    font-weight: 500;
+    color: @cds_text_secondary;
+    letter-spacing: 0.02em;
+}
+
+.mackes-productive .mackes-popover-tabbar button:checked .mackes-popover-tablabel {
+    color: @cds_text_primary;
+}
+
+/* Sub-tab strip inside Mesh / Tools / Manage tabs */
+.mackes-productive .mackes-subtab-bar {
+    background: @cds_bg_layer_02;
+    border-bottom: 1px solid @cds_border_subtle_00;
+}
+
+.mackes-productive .mackes-subtab-bar button {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 4px 6px;
+    min-height: 0;
+}
+
+.mackes-productive .mackes-subtab-bar button:checked {
+    border-bottom-color: @mackes_accent_dim;
+}
+
+.mackes-productive .mackes-subtab-glyph {
+    font-family: "Hack Nerd Font Mono";
+    font-size: 12px;
+    color: @cds_text_secondary;
+    padding-right: 4px;
+}
+
+.mackes-productive .mackes-subtab-label {
+    font-size: 11px;
+    color: @cds_text_secondary;
+}
+
+.mackes-productive .mackes-subtab-bar button:checked .mackes-subtab-label,
+.mackes-productive .mackes-subtab-bar button:checked .mackes-subtab-glyph {
+    color: @cds_text_primary;
+}
+
+/* Glance tab */
+.mackes-productive .mackes-glance-pill {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 10px;
+    background: @cds_bg_layer_01;
+    border: 1px solid @cds_border_subtle_00;
+}
+
+.mackes-productive .mackes-glance-heading {
+    font-size: 10px;
+    font-weight: 600;
+    color: @cds_text_helper;
+    padding-top: 6px;
+    padding-bottom: 2px;
+}
+
+.mackes-productive .mackes-glance-meta {
+    font-family: "Hack Nerd Font Mono";
+    font-size: 11px;
+    color: @cds_text_secondary;
+}
+
+.mackes-productive .mackes-glance-table {
+    font-family: "Hack Nerd Font Mono";
+    font-size: 11px;
+}
+
+/* Help tab quick-link rows */
+.mackes-productive .mackes-help-link {
+    font-size: 12px;
+    padding: 4px 6px;
+    color: @cds_text_primary;
+}
+
+.mackes-productive .mackes-help-link:hover {
+    background: alpha(@mackes_accent, 0.06);
+}

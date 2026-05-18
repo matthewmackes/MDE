@@ -5,9 +5,7 @@
   },
   "/panels": {
     "type": "array-uint",
-    "value": [
-      0
-    ]
+    "value": [0]
   },
   "/panels/dark-mode": {
     "type": "bool",
@@ -17,18 +15,9 @@
     "type": "uint",
     "value": 0
   },
-  "/panels/panel-0/background-rgba": {
-    "type": "array-double",
-    "value": [
-      0.0,
-      0.0,
-      0.0,
-      1.0
-    ]
-  },
   "/panels/panel-0/background-style": {
     "type": "uint",
-    "value": 1
+    "value": 0
   },
   "/panels/panel-0/icon-size": {
     "type": "uint",
@@ -37,18 +26,6 @@
   "/panels/panel-0/length": {
     "type": "uint",
     "value": 100
-  },
-  "/panels/panel-0/plugin-ids": {
-    "type": "array-uint",
-    "value": [
-      1,
-      2,
-      7,
-      3,
-      4,
-      5,
-      6
-    ]
   },
   "/panels/panel-0/position": {
     "type": "string",
@@ -62,263 +39,145 @@
     "type": "uint",
     "value": 32
   },
-  "/panels/panel-1/background-style": {
-    "type": "uint",
-    "value": 0
-  },
-  "/panels/panel-1/enable-struts": {
-    "type": "bool",
-    "value": true
-  },
-  "/panels/panel-1/icon-size": {
-    "type": "uint",
-    "value": 21
-  },
-  "/panels/panel-1/length": {
-    "type": "double",
-    "value": 100.0
-  },
-  "/panels/panel-1/length-adjust": {
-    "type": "bool",
-    "value": true
-  },
-  "/panels/panel-1/plugin-ids": {
+  "/panels/panel-0/plugin-ids": {
     "type": "array-uint",
-    "value": [
-      4,
-      5,
-      7,
-      2,
-      3,
-      6,
-      8
-    ]
+    "value": [1, 2, 3, 4, 5, 6, 7]
   },
-  "/panels/panel-1/position": {
-    "type": "string",
-    "value": "p=0;x=246;y=989"
-  },
-  "/panels/panel-1/position-locked": {
-    "type": "bool",
-    "value": true
-  },
-  "/panels/panel-1/size": {
-    "type": "uint",
-    "value": 33
-  },
+
   "/plugins/plugin-1": {
     "type": "string",
     "value": "whiskermenu"
   },
-  "/plugins/plugin-1/favorites": {
-    "type": "array-string",
-    "value": [
-      "xfce4-file-manager.desktop",
-      "xfce4-terminal-emulator.desktop",
-      "mackes-clipboard.desktop",
-      "mackes-shell.desktop",
-      "code.desktop",
-      "terminator.desktop",
-      "org.xfce.mousepad.desktop",
-      "thunar.desktop"
-    ]
-  },
-  "/plugins/plugin-1/menu-height": {
-    "type": "uint",
-    "value": 616
-  },
-  "/plugins/plugin-1/menu-width": {
-    "type": "uint",
-    "value": 615
-  },
-  "/plugins/plugin-101": {
-    "type": "string",
-    "value": "whiskermenu"
-  },
-  "/plugins/plugin-101/button-icon": {
-    "type": "string",
-    "value": "mackes-shell"
-  },
-  "/plugins/plugin-101/button-title": {
+  "/plugins/plugin-1/button-title": {
     "type": "string",
     "value": "Mackes"
   },
-  "/plugins/plugin-101/category-icon-size": {
-    "type": "uint",
+  "/plugins/plugin-1/button-icon": {
+    "type": "string",
+    "value": "mackes-shell"
+  },
+  "/plugins/plugin-1/show-button-title": {
+    "type": "bool",
+    "value": true
+  },
+  "/plugins/plugin-1/show-button-icon": {
+    "type": "bool",
+    "value": true
+  },
+  "/plugins/plugin-1/launcher-show-name": {
+    "type": "bool",
+    "value": true
+  },
+  "/plugins/plugin-1/launcher-show-description": {
+    "type": "bool",
+    "value": true
+  },
+  "/plugins/plugin-1/category-icon-size": {
+    "type": "int",
     "value": 1
   },
-  "/plugins/plugin-101/favorites": {
-    "type": "string",
-    "value": "mackes-shell.desktop"
-  },
-  "/plugins/plugin-101/item-icon-size": {
-    "type": "uint",
+  "/plugins/plugin-1/item-icon-size": {
+    "type": "int",
     "value": 2
   },
-  "/plugins/plugin-101/launcher-show-description": {
-    "type": "bool",
-    "value": true
-  },
-  "/plugins/plugin-101/launcher-show-name": {
-    "type": "bool",
-    "value": true
-  },
-  "/plugins/plugin-101/menu-height": {
-    "type": "uint",
-    "value": 560
-  },
-  "/plugins/plugin-101/menu-opacity": {
-    "type": "uint",
-    "value": 100
-  },
-  "/plugins/plugin-101/menu-width": {
+  "/plugins/plugin-1/menu-width": {
     "type": "uint",
     "value": 440
   },
-  "/plugins/plugin-101/position-categories-alternate": {
-    "type": "bool",
-    "value": true
-  },
-  "/plugins/plugin-101/position-search-alternate": {
-    "type": "bool",
-    "value": true
-  },
-  "/plugins/plugin-101/recent-items-max": {
+  "/plugins/plugin-1/menu-height": {
     "type": "uint",
+    "value": 560
+  },
+  "/plugins/plugin-1/menu-opacity": {
+    "type": "int",
+    "value": 100
+  },
+  "/plugins/plugin-1/position-search-alternate": {
+    "type": "bool",
+    "value": true
+  },
+  "/plugins/plugin-1/position-categories-alternate": {
+    "type": "bool",
+    "value": true
+  },
+  "/plugins/plugin-1/search-actions-enabled": {
+    "type": "bool",
+    "value": true
+  },
+  "/plugins/plugin-1/recent-items-max": {
+    "type": "int",
     "value": 10
   },
-  "/plugins/plugin-101/search-actions-enabled": {
-    "type": "bool",
-    "value": true
+  "/plugins/plugin-1/favorites": {
+    "type": "array-string",
+    "value": [
+      "mackes-shell.desktop",
+      "xfce4-terminal-emulator.desktop",
+      "thunar.desktop",
+      "firefox.desktop",
+      "mackes-clipboard.desktop"
+    ]
   },
-  "/plugins/plugin-101/show-button-icon": {
-    "type": "bool",
-    "value": true
+
+  "/plugins/plugin-2": {
+    "type": "string",
+    "value": "mackes-launcher"
   },
-  "/plugins/plugin-101/show-button-title": {
-    "type": "bool",
-    "value": true
-  },
-  "/plugins/plugin-102": {
+
+  "/plugins/plugin-3": {
     "type": "string",
     "value": "docklike"
   },
-  "/plugins/plugin-103": {
+
+  "/plugins/plugin-4": {
     "type": "string",
     "value": "separator"
   },
-  "/plugins/plugin-103/expand": {
+  "/plugins/plugin-4/expand": {
     "type": "bool",
     "value": true
   },
-  "/plugins/plugin-103/style": {
+  "/plugins/plugin-4/style": {
     "type": "uint",
     "value": 0
   },
-  "/plugins/plugin-104": {
+
+  "/plugins/plugin-5": {
+    "type": "string",
+    "value": "mackes-clipboard"
+  },
+
+  "/plugins/plugin-6": {
     "type": "string",
     "value": "systray"
   },
-  "/plugins/plugin-105": {
+
+  "/plugins/plugin-7": {
     "type": "string",
     "value": "clock"
   },
-  "/plugins/plugin-105/digital-date-font": {
-    "type": "string",
-    "value": "IBM Plex Sans 10"
-  },
-  "/plugins/plugin-105/digital-date-format": {
-    "type": "string",
-    "value": "%B %d, %Y"
-  },
-  "/plugins/plugin-105/digital-layout": {
-    "type": "uint",
-    "value": 1
-  },
-  "/plugins/plugin-105/digital-time-font": {
+  "/plugins/plugin-7/digital-time-font": {
     "type": "string",
     "value": "IBM Plex Sans Bold 12"
   },
-  "/plugins/plugin-105/digital-time-format": {
+  "/plugins/plugin-7/digital-time-format": {
     "type": "string",
     "value": "%I:%M %p"
   },
-  "/plugins/plugin-105/mode": {
+  "/plugins/plugin-7/digital-date-font": {
+    "type": "string",
+    "value": "IBM Plex Sans 10"
+  },
+  "/plugins/plugin-7/digital-date-format": {
+    "type": "string",
+    "value": "%B %d, %Y"
+  },
+  "/plugins/plugin-7/digital-layout": {
+    "type": "uint",
+    "value": 1
+  },
+  "/plugins/plugin-7/mode": {
     "type": "uint",
     "value": 2
-  },
-  "/plugins/plugin-2": {
-    "type": "string",
-    "value": "tasklist"
-  },
-  "/plugins/plugin-3": {
-    "type": "string",
-    "value": "power-manager-plugin"
-  },
-  "/plugins/plugin-4": {
-    "type": "string",
-    "value": "pulseaudio"
-  },
-  "/plugins/plugin-4/enable-keyboard-shortcuts": {
-    "type": "bool",
-    "value": true
-  },
-  "/plugins/plugin-5": {
-    "type": "string",
-    "value": "systray"
-  },
-  "/plugins/plugin-5/known-items": {
-    "type": "array-string",
-    "value": [
-      "blueman",
-      "remmina-icon",
-      "dnfdragora-updater"
-    ]
-  },
-  "/plugins/plugin-5/known-legacy-items": {
-    "type": "array-string",
-    "value": [
-      "seapplet",
-      "networkmanager applet",
-      "wi-fi network connection \u201cfranks-redhots\u201d active: franks-redhots (79%)",
-      "filezilla",
-      "selinux troubleshooter"
-    ]
-  },
-  "/plugins/plugin-6": {
-    "type": "string",
-    "value": "clock"
-  },
-  "/plugins/plugin-7": {
-    "type": "string",
-    "value": "separator"
-  },
-  "/plugins/plugin-7/expand": {
-    "type": "bool",
-    "value": true
-  },
-  "/plugins/plugin-7/style": {
-    "type": "uint",
-    "value": 0
-  },
-  "/plugins/plugin-8": {
-    "type": "string",
-    "value": "tasklist"
-  },
-  "/plugins/plugin-8/flat-buttons": {
-    "type": "bool",
-    "value": true
-  },
-  "/plugins/plugin-8/show-handle": {
-    "type": "bool",
-    "value": false
-  },
-  "/plugins/plugin-8/show-labels": {
-    "type": "bool",
-    "value": false
-  },
-  "/plugins/plugin-8/show-tooltips": {
-    "type": "bool",
-    "value": false
   }
 }
