@@ -17,9 +17,12 @@ mackes-config     = { path = "../mackes-config" }
 mackes-mesh-types = { path = "../mackes-mesh-types" }
 gtk               = { version = "0.18", package = "gtk", features = ["v3_24"] }
 gdk               = { version = "0.18" }
+gdk-pixbuf        = { version = "0.18" }
 gio               = { version = "0.18" }
 glib              = { version = "0.18" }
 libc              = "0.2"
+serde             = { version = "1", features = ["derive"] }
+serde_json        = "1"
 
 [lints]
 workspace = true
