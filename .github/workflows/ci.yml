@@ -38,7 +38,7 @@ jobs:
             git \
             python3 python3-pip python3-pyyaml \
             python3-gobject gtk3 xfconf \
-            python3-pytest pyflakes
+            python3-pytest ruff
           # GUI panels won't initialize headlessly; pytest sees only logic modules.
 
       - name: Checkout
@@ -47,8 +47,10 @@ jobs:
       - name: Mark workspace safe for git
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
-      - name: pyflakes
-        run: pyflakes mackes/ tests/
+      - name: ruff (pyflakes-equivalent F-codes)
+        # Ruff is faster than pyflakes AND honors `# noqa: F401` for the
+        # try/except ImportError feature-detection imports across mesh_*.
+        run: ruff check --select F401,F541,F811,F841 mackes/ tests/
 
       - name: pytest
         run: python3 -m pytest tests/ -v --tb=short

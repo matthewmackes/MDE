@@ -431,7 +431,7 @@ class HeadscaleSetupWindow(Gtk.Window):
         if self._mode == "join":
             return [
                 _Step("Parse join link",         self._s_parse_link),
-                _Step("Run tailscale up",        self._s_tailscale_join_up),
+                _Step("Join via tailscale up",   self._s_tailscale_join_up),
                 _Step("Verify status",           self._s_verify),
                 _Step("Confirm peer visibility", self._s_list_peers),
             ]
@@ -676,7 +676,7 @@ _SUBTITLES = {
     "Generate join link":      "Build a mackes://join/… URL to share with other peers.",
 
     "Parse join link":         "Decode the mackes:// URL — mesh-id, control URL, pre-auth.",
-    "Run tailscale up":        "tailscale up --login-server=… --authkey=… --advertise-routes=.",
+    "Join via tailscale up":   "tailscale up --login-server=… --authkey=… --advertise-routes=.",
     "Confirm peer visibility": "Ask Headscale for the live peer list to confirm registration.",
 
     "Inspect current state":   "Read MeshState + tailscale status to learn what's running.",
