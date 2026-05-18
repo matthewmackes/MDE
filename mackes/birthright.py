@@ -1419,3 +1419,41 @@ def apply_panel_swap(_preset: Preset) -> List[str]:
     for line in actions:
         log_action(line)
     return actions
+
+
+# ---------------------------------------------------------------------------
+# 16. apply_panel_archive — Phase 10.6.7 of the v1.0.0 work.
+# ---------------------------------------------------------------------------
+
+def apply_panel_archive(_preset: Preset) -> List[str]:
+    """Archive the user's pre-1.0 xfce4-panel state under
+    ~/.config/mackes-panel/legacy-xfce-panel/ before the rename pass.
+
+    Idempotent — second runs detect the existing archive dir and skip.
+    """
+    actions: List[str] = []
+    home = Path(os.path.expanduser("~"))
+    src = home / ".config" / "xfce4" / "panel"
+    dst = home / ".config" / "mackes-panel" / "legacy-xfce-panel"
+
+    if not src.is_dir():
+        actions.append("panel-archive: no legacy xfce4 panel state to archive")
+        for line in actions:
+            log_action(line)
+        return actions
+    if dst.exists():
+        actions.append(f"panel-archive: already archived to {dst}")
+        for line in actions:
+            log_action(line)
+        return actions
+
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        shutil.copytree(src, dst)
+        actions.append(f"panel-archive: copied {src} → {dst}")
+    except OSError as e:
+        actions.append(f"panel-archive: copytree failed: {e}")
+
+    for line in actions:
+        log_action(line)
+    return actions
