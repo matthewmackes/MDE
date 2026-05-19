@@ -79,8 +79,12 @@ impl ShutdownToken {
 // v2.0.0 Phase B workers reparented under workers/. Each is a thin
 // adapter over an existing sync implementation today; they grow real
 // bodies as Phase B fills in.
+pub mod ansible_pull;
 pub mod heartbeat;
 pub mod kdc_bridge;
+pub mod media_sync;
+pub mod remmina_sync;
+pub mod subprocess_tick;
 
 /// Every worker registered with the supervisor implements this
 /// trait. The trait is `async_trait` because the supervisor stores

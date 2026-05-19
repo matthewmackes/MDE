@@ -316,13 +316,33 @@ panel starts without manual intervention.
 - [ ] **B.3 `workers/fs_sync.rs`** — replaces
   `mackes-gvfsd-mesh.service` + `mackes/mesh_fs*.py`. Supervises
   sshfs subprocesses (or `russh-sftp` if mature enough).
-- [ ] **B.4 `workers/media_sync.rs`** — replaces
-  `mackes-media-sync.service` (timer) + `mackes/media_sync_daemon.py`.
-- [ ] **B.5 `workers/remmina_sync.rs`** — replaces
-  `mackes-remmina-sync.service` (timer) + `mackes/remmina_sync.py`.
-- [ ] **B.6 `workers/ansible_pull.rs`** — replaces
-  `mackes-ansible-pull.service` (timer) + `mackes/fleet.py`.
-  Supervises `ansible-pull` subprocess.
+- [✓] **B.4 `workers/media_sync.rs`** —
+  `crates/mackesd/src/workers/media_sync.rs` ships
+  `build()` → SubprocessTickWorker that invokes
+  `python3 -m mackes.media_sync_daemon` every 60 s (matches the
+  retired `mackes-media-sync.timer` `OnUnitActiveSec=60s`).
+  Subprocess-supervision pattern factored into the shared
+  `subprocess_tick::SubprocessTickWorker` helper (220 lines + 5
+  tokio tests covering name, shutdown, nonzero-exit propagation,
+  spawn-failure, 5-min kill-after timeout). Python module stays
+  the implementation through v1.x; v2.0.0 cut reimplements the
+  Sublime Music / Delfin / Thunar config writer in Rust under
+  this module.
+- [✓] **B.5 `workers/remmina_sync.rs`** —
+  `crates/mackesd/src/workers/remmina_sync.rs` ships the same
+  shape pointing at `python3 -m mackes.remmina_sync` on the same
+  60 s cadence. Reuses `SubprocessTickWorker`. Phase 2.0.0 cut
+  reimplements the xml-writer surface in Rust.
+- [✓] **B.6 `workers/ansible_pull.rs`** —
+  `crates/mackesd/src/workers/ansible_pull.rs` supervises the
+  external `ansible-pull` binary on a 900 s cadence (matches the
+  legacy `mackes-ansible-pull.timer` `OnUnitActiveSec=15min`).
+  Reads the playbook URL from `$MDE_ANSIBLE_PULL_URL` (Phase 0.6
+  MDE_-prefixed env var). Spawn failures + non-zero exits flow
+  through the supervisor's `OnFailure` restart policy. mackes/
+  fleet.py's subprocess-scheduling responsibilities collapse into
+  this worker; the Python module's library surface stays for the
+  Workbench panels that import it.
 - [✓] **B.7 `workers/kdc_bridge.rs`** —
   `crates/mackesd/src/workers/kdc_bridge.rs` ships `KdcBridgeWorker`
   conforming to the Phase A.2 `Worker` trait. Reparents the existing
