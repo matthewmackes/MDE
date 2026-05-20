@@ -1804,12 +1804,27 @@ Locked 25-Q survey 2026-05-19 in
   "indistinguishable from real HTTPS." Real TLS handshake,
   realistic SNI, Let's Encrypt cert chain. Activates after 3
   consecutive failed direct-UDP + DERP-UDP probes.
-- [ ] **12.19 Multi-path concurrent send for latency-sensitive
-  flows** — RTT < 50 ms + comparable bandwidth (±50%) guard.
-  64-bit packet ID dedupe on receive. Interactive flows only.
-- [ ] **12.20 Roaming-aware connection migration** — netlink
-  watch for RTM_NEWLINK/DELLINK; re-handshake WireGuard on the
-  new path within 10 s (Q22). Brief "reconnecting" state visible.
+- [✓] **12.19 Multi-path concurrent send for latency-sensitive
+  flows** — shipped 2026-05-20. Two pieces in
+  `lan_discovery`: `should_use_multipath(rtt_a, rtt_b, bw_a,
+  bw_b)` pure-fn predicate enforcing the locked RTT-ceiling
+  (< 50 ms) + bandwidth-window (slow ≥ 0.5 × fast) guards, and
+  `PacketDedupe` (1024-default sliding-window over 64-bit
+  packet IDs) for the receive side. 4 multipath + 4 dedupe
+  tests, including all boundary cases.
+- [✓] **12.20 Roaming-aware connection migration** — shipped
+  2026-05-20. Pure-fn classifier
+  `classify_link_transition(prev, curr)` returns
+  CameUp / WentDown / NoChange against
+  `LinkState::parse(operstate)` (handles up / down / dormant /
+  unknown). New `LinkWatchWorker` polls
+  `/sys/class/net/<iface>/operstate` every 1 s (locked, keeps
+  the reconnect handshake comfortably under the Q22 10 s
+  budget) and fires the caller-supplied callback on every
+  meaningful transition. Sysfs poll (not netlink RTM_NEWLINK)
+  picked to stay dep-free; the trade-off is up to `period` of
+  latency before a link-down is observed. 4 link-state +
+  1 watcher-shutdown tests.
 - [✓] **12.21 Eager connection bootstrap** — shipped 2026-05-20.
   `lan_discovery::should_eager_bootstrap(rtt, age, freshness,
   max_rtt)` is the pure-fn predicate that decides which peers

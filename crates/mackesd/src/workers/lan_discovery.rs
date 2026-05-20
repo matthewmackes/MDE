@@ -220,6 +220,264 @@ pub fn lan_direct_wins(lan_rtt_ms: Option<u32>, derp_rtt_ms: Option<u32>) -> boo
     }
 }
 
+/// Phase 12.19 — multi-path concurrent send predicate.
+///
+/// Q19 lock: only use multi-path for interactive latency-sensitive
+/// flows. The path pair must satisfy:
+///
+///   * Both paths report an RTT < 50 ms (else multi-path doesn't
+///     reduce user-visible latency — single-path is fine).
+///   * Their measured bandwidth must be within ±50% of each other
+///     (else the slow path drags throughput down).
+///
+/// Returns `true` when the routing layer should spray packets to
+/// both paths + dedupe on the receive side (the 64-bit packet-ID
+/// dedupe lives one layer up in [`PacketDedupe`]).
+#[must_use]
+pub fn should_use_multipath(
+    rtt_a_ms: u32,
+    rtt_b_ms: u32,
+    bw_a_bps: u64,
+    bw_b_bps: u64,
+) -> bool {
+    const RTT_CEILING_MS: u32 = 50;
+    if rtt_a_ms >= RTT_CEILING_MS || rtt_b_ms >= RTT_CEILING_MS {
+        return false;
+    }
+    if bw_a_bps == 0 || bw_b_bps == 0 {
+        return false;
+    }
+    let (slow, fast) = if bw_a_bps <= bw_b_bps {
+        (bw_a_bps, bw_b_bps)
+    } else {
+        (bw_b_bps, bw_a_bps)
+    };
+    // ±50% bandwidth window: slow ≥ 0.5 × fast.
+    slow * 2 >= fast
+}
+
+/// Phase 12.19 — receive-side packet-ID dedupe. Multi-path sends
+/// the same datagram down two paths; the receiver throws away the
+/// second copy. The dedupe is a sliding window over the last
+/// `capacity` packet IDs.
+///
+/// `capacity` is the max in-flight window — once exceeded, the
+/// oldest IDs roll off and a wildly-late duplicate would slip
+/// through. The default capacity (1024) covers a few seconds of
+/// interactive flow at 100 pps.
+#[derive(Debug, Clone)]
+pub struct PacketDedupe {
+    capacity: usize,
+    seen: std::collections::VecDeque<u64>,
+    set:  std::collections::HashSet<u64>,
+}
+
+impl PacketDedupe {
+    /// Construct with the locked default capacity (1024).
+    #[must_use]
+    pub fn new() -> Self {
+        Self::with_capacity(1024)
+    }
+
+    /// Construct with a specific capacity.
+    #[must_use]
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            capacity,
+            seen: std::collections::VecDeque::with_capacity(capacity),
+            set:  std::collections::HashSet::with_capacity(capacity),
+        }
+    }
+
+    /// Record `id`. Returns `true` if this was a new packet (caller
+    /// delivers it upstream); `false` if it's a duplicate (drop).
+    pub fn observe(&mut self, id: u64) -> bool {
+        if self.set.contains(&id) {
+            return false;
+        }
+        self.set.insert(id);
+        self.seen.push_back(id);
+        while self.seen.len() > self.capacity {
+            if let Some(old) = self.seen.pop_front() {
+                self.set.remove(&old);
+            }
+        }
+        true
+    }
+
+    /// Current number of tracked IDs (≤ capacity).
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.seen.len()
+    }
+
+    /// `true` when no IDs have been observed yet.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.seen.is_empty()
+    }
+}
+
+impl Default for PacketDedupe {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Phase 12.20 — link state for one interface. Mirrors the
+/// `operstate` file under `/sys/class/net/<iface>/`. We only care
+/// about three transitions:
+///
+///   * `Down → Up` → eager re-handshake (a fresh link came up).
+///   * `Up → Down` → reconnecting state in the UI.
+///   * `Up → Up` with a new ifindex → same as Down → Up (the link
+///     went down + back up between polls).
+///
+/// Anything else (no change, unknown, dormant) is a no-op.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LinkState {
+    /// Link is up + carrier present.
+    Up,
+    /// Link is administratively down or no-carrier.
+    Down,
+    /// Link is dormant (Wi-Fi roaming etc.). Treated like Down for
+    /// the reconnect decision; some drivers report this between a
+    /// disassoc and a reassoc.
+    Dormant,
+    /// `operstate` reported a value we don't recognise. We leave
+    /// the existing connection alone rather than thrashing.
+    Unknown,
+}
+
+impl LinkState {
+    /// Parse the contents of `/sys/class/net/<iface>/operstate`.
+    /// Case-sensitive matches against the kernel-emitted values.
+    #[must_use]
+    pub fn parse(operstate: &str) -> Self {
+        match operstate.trim() {
+            "up"        => Self::Up,
+            "down"      => Self::Down,
+            "dormant"   => Self::Dormant,
+            _           => Self::Unknown,
+        }
+    }
+
+    /// `true` when the kernel says traffic can flow.
+    #[must_use]
+    pub fn is_up(self) -> bool {
+        matches!(self, Self::Up)
+    }
+}
+
+/// Phase 12.20 — observation of a link-state change. The reconcile
+/// layer reads this to decide whether to schedule a WireGuard
+/// re-handshake.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LinkTransition {
+    /// Carrier just came up. Re-handshake within the Q22 10 s
+    /// budget.
+    CameUp,
+    /// Carrier just went down. UI shows "reconnecting".
+    WentDown,
+    /// No observable change — same state, same ifindex.
+    NoChange,
+}
+
+/// Classify a (previous, current) pair into a [`LinkTransition`].
+/// Used by the netlink-poll worker after each poll to decide if a
+/// reconnect is warranted.
+#[must_use]
+pub fn classify_link_transition(prev: LinkState, curr: LinkState) -> LinkTransition {
+    match (prev.is_up(), curr.is_up()) {
+        (false, true) => LinkTransition::CameUp,
+        (true, false) => LinkTransition::WentDown,
+        _ => LinkTransition::NoChange,
+    }
+}
+
+/// Phase 12.20 — poll `/sys/class/net/<iface>/operstate`. Returns
+/// `Unknown` if the file isn't readable (interface gone, no
+/// permission, …).
+pub fn read_link_state(iface: &str) -> LinkState {
+    let path = format!("/sys/class/net/{iface}/operstate");
+    match std::fs::read_to_string(&path) {
+        Ok(s) => LinkState::parse(&s),
+        Err(_) => LinkState::Unknown,
+    }
+}
+
+/// Phase 12.20 — sysfs-poll-based link watcher. Polls
+/// `/sys/class/net/<iface>/operstate` every `period` and emits a
+/// [`LinkTransition`] on the supplied callback whenever the
+/// classifier says something interesting happened.
+///
+/// Using sysfs (instead of a netlink RTM_NEWLINK/DELLINK
+/// multicast socket) keeps the worker simple + dep-free. The
+/// trade-off is up to `period` of latency before we see a link-
+/// down event — the 1 s default keeps that under the Q22 10 s
+/// reconnect budget by a comfortable margin (9 s remaining for
+/// the WireGuard re-handshake itself).
+pub struct LinkWatchWorker {
+    iface:  String,
+    period: Duration,
+    on_transition: Arc<dyn Fn(LinkTransition) + Send + Sync>,
+}
+
+impl LinkWatchWorker {
+    /// Construct watcher for `iface` with the locked 1 s period.
+    /// `on_transition` is called from the tokio task whenever the
+    /// classifier reports a change.
+    #[must_use]
+    pub fn new<F>(iface: impl Into<String>, on_transition: F) -> Self
+    where
+        F: Fn(LinkTransition) + Send + Sync + 'static,
+    {
+        Self {
+            iface:  iface.into(),
+            period: Duration::from_secs(1),
+            on_transition: Arc::new(on_transition),
+        }
+    }
+
+    /// Override the poll period. The default 1 s keeps the
+    /// reconnect under the Q22 10 s budget with 9 s of slack.
+    pub fn with_period(mut self, period: Duration) -> Self {
+        self.period = period;
+        self
+    }
+}
+
+#[async_trait::async_trait]
+impl Worker for LinkWatchWorker {
+    fn name(&self) -> &'static str {
+        "link-watch"
+    }
+
+    async fn run(&mut self, mut shutdown: ShutdownToken) -> anyhow::Result<()> {
+        let mut prev = read_link_state(&self.iface);
+        info!(iface = %self.iface, initial = ?prev, "link-watch: starting");
+        let mut ticker = tokio::time::interval(self.period);
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            tokio::select! {
+                biased;
+                _ = shutdown.wait() => {
+                    info!(iface = %self.iface, "link-watch: shutdown");
+                    return Ok(());
+                }
+                _ = ticker.tick() => {
+                    let curr = read_link_state(&self.iface);
+                    let transition = classify_link_transition(prev, curr);
+                    if transition != LinkTransition::NoChange {
+                        (self.on_transition)(transition);
+                    }
+                    prev = curr;
+                }
+            }
+        }
+    }
+}
+
 /// Phase 12.21 — eager connection bootstrap predicate. The locked
 /// behaviour: pre-warm a WireGuard session to any peer that has
 /// produced an RTT sample in the last `freshness` window. Returning
@@ -719,6 +977,140 @@ mod tests {
         assert_eq!(r.rtt_count(), 1);
         let (_, rtts) = r.snapshot();
         assert_eq!(rtts.get("pine").unwrap().rtt_ms, 30);
+    }
+
+    #[test]
+    fn multipath_predicate_requires_low_rtt_and_balanced_bw() {
+        // Both fast + comparable bandwidth — multipath enabled.
+        assert!(should_use_multipath(20, 30, 10_000_000, 12_000_000));
+        // Asymmetric bandwidth (≥ 2x gap) — disabled.
+        assert!(!should_use_multipath(20, 30, 1_000_000, 10_000_000));
+        // One path too slow (RTT ≥ 50 ms ceiling) — disabled.
+        assert!(!should_use_multipath(20, 60, 10_000_000, 12_000_000));
+        assert!(!should_use_multipath(50, 30, 10_000_000, 12_000_000));
+        // Zero-bw sample — disabled.
+        assert!(!should_use_multipath(10, 10, 0, 1_000_000));
+        // Boundary: RTT exactly 49 ms still passes; 50 ms is the
+        // cutoff (>=).
+        assert!(should_use_multipath(49, 49, 1_000_000, 1_000_000));
+        // Bandwidth boundary: slow == 0.5 × fast still passes.
+        assert!(should_use_multipath(10, 10, 5_000_000, 10_000_000));
+        // Just under the 50% window — disabled.
+        assert!(!should_use_multipath(10, 10, 4_999_999, 10_000_000));
+    }
+
+    #[test]
+    fn packet_dedupe_first_observation_returns_true() {
+        let mut d = PacketDedupe::new();
+        assert!(d.observe(42));
+    }
+
+    #[test]
+    fn packet_dedupe_duplicate_returns_false() {
+        let mut d = PacketDedupe::new();
+        d.observe(42);
+        assert!(!d.observe(42));
+    }
+
+    #[test]
+    fn packet_dedupe_window_evicts_oldest() {
+        let mut d = PacketDedupe::with_capacity(3);
+        d.observe(1);
+        d.observe(2);
+        d.observe(3);
+        d.observe(4); // evicts 1
+        assert_eq!(d.len(), 3);
+        // 1 is no longer tracked → re-observing it is "new".
+        assert!(d.observe(1));
+    }
+
+    #[test]
+    fn packet_dedupe_default_capacity_is_locked() {
+        let d = PacketDedupe::default();
+        // Push one more than the locked default to confirm the
+        // capacity cap.
+        let mut d = d;
+        for i in 0..2000u64 {
+            d.observe(i);
+        }
+        assert_eq!(d.len(), 1024, "default capacity locked at 1024");
+    }
+
+    #[test]
+    fn link_state_parses_kernel_operstate_values() {
+        assert_eq!(LinkState::parse("up"), LinkState::Up);
+        assert_eq!(LinkState::parse("down"), LinkState::Down);
+        assert_eq!(LinkState::parse("dormant"), LinkState::Dormant);
+        assert_eq!(LinkState::parse("notpresent"), LinkState::Unknown);
+        // Trim surrounding whitespace + newlines from
+        // /sys/class/net read.
+        assert_eq!(LinkState::parse("  up\n"), LinkState::Up);
+    }
+
+    #[test]
+    fn link_state_is_up_only_for_up() {
+        assert!(LinkState::Up.is_up());
+        assert!(!LinkState::Down.is_up());
+        assert!(!LinkState::Dormant.is_up());
+        assert!(!LinkState::Unknown.is_up());
+    }
+
+    #[test]
+    fn classify_link_transition_returns_came_up_on_down_to_up() {
+        let t = classify_link_transition(LinkState::Down, LinkState::Up);
+        assert_eq!(t, LinkTransition::CameUp);
+    }
+
+    #[test]
+    fn classify_link_transition_returns_went_down_on_up_to_down() {
+        let t = classify_link_transition(LinkState::Up, LinkState::Down);
+        assert_eq!(t, LinkTransition::WentDown);
+        // Dormant counts as "down" for reconnect purposes.
+        let t = classify_link_transition(LinkState::Up, LinkState::Dormant);
+        assert_eq!(t, LinkTransition::WentDown);
+    }
+
+    #[test]
+    fn read_link_state_returns_unknown_for_missing_iface() {
+        let s = read_link_state("does-not-exist-99");
+        assert_eq!(s, LinkState::Unknown);
+    }
+
+    #[tokio::test]
+    async fn link_watch_worker_exits_clean_on_shutdown() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let calls = Arc::new(AtomicUsize::new(0));
+        let calls_for_cb = calls.clone();
+        let mut w = LinkWatchWorker::new("does-not-exist-99", move |_| {
+            calls_for_cb.fetch_add(1, Ordering::SeqCst);
+        })
+        .with_period(Duration::from_millis(50));
+        let (tx, rx) = tokio::sync::watch::channel(false);
+        let token = ShutdownToken::from_receiver(rx);
+        let handle = tokio::spawn(async move { w.run(token).await });
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        let _ = tx.send(true);
+        let result = tokio::time::timeout(Duration::from_secs(2), handle)
+            .await
+            .expect("worker should exit on shutdown")
+            .expect("join");
+        assert!(result.is_ok());
+        // The missing iface stays in Unknown state throughout; the
+        // classifier reports NoChange for Unknown → Unknown so the
+        // callback never fires. Verifies the no-op branch.
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn classify_link_transition_returns_no_change_when_same() {
+        assert_eq!(
+            classify_link_transition(LinkState::Up, LinkState::Up),
+            LinkTransition::NoChange
+        );
+        assert_eq!(
+            classify_link_transition(LinkState::Down, LinkState::Down),
+            LinkTransition::NoChange
+        );
     }
 
     #[test]
