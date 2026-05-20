@@ -3391,26 +3391,34 @@ under `LICENSES/`.
   262 tests still pass / 94 skip / 0 fail. Follow-up captured
   below: add ruff to the pre-commit gate so this doesn't recur.
 
-- [ ] **ci pytest job has been red since pre-1.1.0** — every
-  ci.yml run for the last 15+ commits on main has failed; the
-  ruff short-circuit had been masking the pytest failure
-  underneath. Root cause:
+- [ ] **ci pytest job has been red since pre-1.1.0 — deferred
+  to v2.0.0 cut (lock 2026-05-20)** — every ci.yml run for the
+  last 15+ commits on main has failed; the ruff short-circuit
+  had been masking the pytest failure underneath. Root cause:
   `ImportError: Typelib file for namespace 'xlib', version '2.0'
   not found` raised by `from gi.repository import Gtk` at
   module-import time in every workbench panel that includes a
   GTK widget. ci's Fedora 43 / 44 containers install gtk3 but
   not the xlib typelib provider (the package's a weak dep that
-  the `--setopt=install_weak_deps=False` line strips). Two
-  possible fixes:
-    (a) extend ci.yml's dnf install line with
-        `gobject-introspection-devel` (which transitively pulls
-        in the xlib typelib via gtk3-devel's deps) OR an
-        explicit `typelib(xlib-2.0)` requires;
-    (b) make the GTK imports lazy / fixture-deferred so module
-        import doesn't touch xlib until a GUI test asks for it.
-    (a) is cheaper; (b) future-proofs against further GTK trim.
-  Acceptance: a fresh ci run on main lands the python job green
-  with the existing pytest contents (no test rewrites).
+  the `--setopt=install_weak_deps=False` line strips).
+
+  **Lock 2026-05-20:** scope deferred to v2.0.0 cut. v2.0.0
+  retires GTK entirely in favor of Iced+Wayland (Phase E port),
+  so the xlib import disappears naturally at the cut commit.
+  No 1.1.x fix; remaining 1.1.x releases will continue to ship
+  a red ci badge for the python pytest job (release.yml is the
+  real RPM gate and is green for every tag).
+
+  **If the fix ever lands separately:** approach locked is to
+  extend `ci.yml`'s dnf install line with the missing typelib
+  provider (likely `gobject-introspection-devel` to pull
+  `typelib(xlib-2.0)` transitively via gtk3-devel deps, or an
+  explicit `typelib(xlib-2.0)` Requires). Smallest diff, no
+  test-code changes. The lazy-import refactor + skip-marker
+  alternatives are NOT preferred — they'd be throwaway given
+  the v2.0.0 GTK retirement. Acceptance: a fresh ci run on
+  main lands the python job green with the existing pytest
+  contents (no test rewrites).
 
 - [✓] **Pre-commit gate hardening: add `make lint` to the
   pre-commit flow (2026-05-20)** — `.claude/CLAUDE.md` §0.7
