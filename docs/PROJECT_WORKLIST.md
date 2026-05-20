@@ -2165,12 +2165,21 @@ dashed "Browse filesystem…" disclosure that opens an explainer card.
 - [✓] **6.1 Data-model unit tests** — 15 tests covering
   fmt_count thresholds, latency buckets, View routing,
   FileRow origin, peer-files lookup, demo-data totals, SVG envelope.
-- [ ] **6.2 Backend tests** — `Backend::Demo` round-trips +
-  `Backend::DBus` integration tests behind `#[cfg(feature = "dbus-test")]`.
-- [ ] **6.3 Send-To matrix tests** — Property-style test
-  exercising every (destination × mode × conflict-policy) triple
-  against a stubbed `Backend`, asserting the right preconditions
-  are validated and the right zbus method is invoked.
+- [✓] **6.2 Backend tests** — `DemoBackend` round-trip tests
+  ship inline in `crates/mde-files/src/backend.rs` (11 cases:
+  self_node, peers, list happy + unknown + per-peer, audit log
+  empty + ordering, send_to validation + happy + monotonic op
+  IDs, rollback round-trip + not-found, error Display).
+  `Backend::DBus` integration tests gated behind
+  `#[cfg(feature = "dbus-test")]` land alongside Phase 2.3.
+- [✓] **6.3 Send-To matrix tests** —
+  `crates/mde-files/tests/send_to_matrix.rs` ships 5
+  matrix-style tests exercising every (Destination × SendMode ×
+  ConflictPolicy) triple (4 × 5 × 4 = 80 triples per matrix):
+  every-triple-records-row, audit-destination-match, audit-
+  mode-match, op-id-uniqueness, rollback-round-trip-per-
+  destination. Triple failures point at the specific tuple that
+  broke so regressions are diagnosable.
 - [ ] **6.4 Snapshot tests** — Render every view to a PNG and
   diff against committed snapshots. Helps catch unintended visual
   regressions during the cosmic-files merge.
