@@ -595,14 +595,24 @@ panel starts without manual intervention.
   `NotShowIn`. Calls into `org.mackes.Settings.autostart`.
 - [ ] **D.4 swaylock integration** — `src/lock.rs`. Configurable
   lock command.
-- [ ] **D.5 Sway config — port `data/i3/` → `data/sway/`** —
-  - `data/sway/config` top-level include chain.
-  - `data/sway/config.d/mackes-defaults.conf` — port of i3 defaults
-    (Super+Q kill, Super+W close, Super+L lock, Super+V clipboard,
-    Super+E cosmic-files, Super+Tab switcher, F3 expose,
-    Super+Space apple-menu).
+- [✓] **D.5 Sway config — port `data/i3/` → `data/sway/`** —
+  - `data/sway/config` (140 lines) — top-level include chain
+    mirrors the i3 file shape: same Mod4 prefix, font, gaps,
+    Carbon color palette, 4 persistent workspaces, focus / move
+    bindings, layout switching, resize mode, `include
+    ~/.config/sway/config.d/*.conf`. Differences from i3 isolated
+    to: Wayland-native terminal (`foot` instead of xfce4-terminal),
+    `bemenu-run` instead of dmenu_run, `app_id="^mde-*$"` window
+    rules instead of `class=`.
+  - `data/sway/config.d/mackes-defaults.conf` (44 lines) — port of
+    every i3 default hotkey: Super+Q kill, Super+W close, Super+L
+    lock, Super+V clipboard, Super+E cosmic-files (with yazi +
+    xdg-open fallbacks), Super+Tab switcher, F3 expose, Super+Space
+    apple-menu. Adds Wayland-native screenshot bindings (grim +
+    slurp) and pactl / brightnessctl XF86 multimedia-key handling.
   - `data/sway/config.d/mackes-bindings.conf` — written by
-    settings::keybinds.
+    settings::keybinds (C.8 already ships the writer; renderer
+    emits both sway + i3 forms).
 - [ ] **D.6 `data/systemd/mackes-session.service`** — user unit;
   graphical-session.target chain.
 - [ ] **D.7 Retire `bin/mackes-enforce-session`** + `bin/mackes-wm`.

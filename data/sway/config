@@ -1,0 +1,135 @@
+# MDE — default sway config
+# =========================
+#
+# v2.0.0 Phase D.5 — port of `data/i3/config` for the Wayland line.
+# Coexists with mde-panel (Iced + libcosmic via wlr-layer-shell) which
+# anchors itself with `set_exclusive_zone()` so tiled windows never
+# overlap. Keybindings mirror the i3 config so muscle memory carries
+# across the X11 → Wayland switch.
+#
+# Reset to this default any time via Workbench → System → Window
+# Manager → "Reset sway config" or by copying
+# /usr/share/mde/sway/config back to ~/.config/sway/config.
+
+# ---------------------------------------------------------------------------
+# Modifier — Super (the "Windows" key)
+# ---------------------------------------------------------------------------
+set $mod Mod4
+
+# Same font as the panel.
+font pango:Red Hat Text 11
+
+# ---------------------------------------------------------------------------
+# Look & feel — borders, gaps, colors (Mackes Carbon palette, unchanged)
+# ---------------------------------------------------------------------------
+default_border pixel 1
+default_floating_border pixel 1
+gaps inner 4
+gaps outer 0
+smart_gaps on
+smart_borders on
+
+#                       border       bg       text      indicator child_border
+client.focused          #2b9af3      #2b9af3  #f4f4f4   #4589ff   #2b9af3
+client.focused_inactive #393939      #393939  #f4f4f4   #393939   #393939
+client.unfocused        #262626      #262626  #a8a8a8   #262626   #262626
+client.urgent           #fa4d56      #fa4d56  #f4f4f4   #fa4d56   #fa4d56
+client.placeholder      #1a1a1a      #1a1a1a  #a8a8a8   #1a1a1a   #1a1a1a
+
+# ---------------------------------------------------------------------------
+# Workspaces (4, persistent — no dynamic workspaces by name)
+# ---------------------------------------------------------------------------
+set $ws1 "1"
+set $ws2 "2"
+set $ws3 "3"
+set $ws4 "4"
+
+bindsym $mod+1 workspace $ws1
+bindsym $mod+2 workspace $ws2
+bindsym $mod+3 workspace $ws3
+bindsym $mod+4 workspace $ws4
+bindsym $mod+Shift+1 move container to workspace $ws1
+bindsym $mod+Shift+2 move container to workspace $ws2
+bindsym $mod+Shift+3 move container to workspace $ws3
+bindsym $mod+Shift+4 move container to workspace $ws4
+
+# ---------------------------------------------------------------------------
+# Focus / move
+# ---------------------------------------------------------------------------
+focus_follows_mouse no
+
+bindsym $mod+h focus left
+bindsym $mod+j focus down
+bindsym $mod+k focus up
+bindsym $mod+l focus right
+bindsym $mod+Shift+h move left
+bindsym $mod+Shift+j move down
+bindsym $mod+Shift+k move up
+bindsym $mod+Shift+l move right
+
+# ---------------------------------------------------------------------------
+# Layout switching
+# ---------------------------------------------------------------------------
+bindsym $mod+e layout toggle split
+bindsym $mod+s layout stacking
+bindsym $mod+w layout tabbed
+bindsym $mod+f fullscreen toggle
+bindsym $mod+space floating toggle
+bindsym $mod+Shift+space focus mode_toggle
+
+# ---------------------------------------------------------------------------
+# Window operations
+# ---------------------------------------------------------------------------
+bindsym $mod+q kill
+# Wayland-native terminal — sway pairs cleanly with `foot`. The
+# package spec swaps the v1.x xfce4-terminal Requires for foot at
+# the v2.0.0 cut (Phase H.1).
+bindsym $mod+Return exec foot
+bindsym $mod+d exec bemenu-run -fn "Red Hat Text 11" -nb "#262626" -nf "#f4f4f4" -sb "#2b9af3" -sf "#f4f4f4"
+
+# Resize mode — Super+r enters resize mode, escape leaves.
+mode "resize" {
+    bindsym h resize shrink width  10 px
+    bindsym j resize grow   height 10 px
+    bindsym k resize shrink height 10 px
+    bindsym l resize grow   width  10 px
+    bindsym Return mode "default"
+    bindsym Escape mode "default"
+}
+bindsym $mod+r mode "resize"
+
+# sway itself
+bindsym $mod+Shift+c reload
+bindsym $mod+Shift+r restart
+
+# ---------------------------------------------------------------------------
+# Reserved bindings — owned by other layers (do NOT bind here)
+# ---------------------------------------------------------------------------
+#  Super+M               Notification drawer toggle (mde --drawer)
+#  XF86Audio*            Volume + mute (pactl / pipewire)
+#  XF86MonBrightness*    Brightness (brightnessctl, via settings::display)
+# These remain handled by mde-session or by the matching settings
+# applier — they do NOT belong in this file.
+
+# ---------------------------------------------------------------------------
+# Window rules — float MDE panel surfaces + dialogs
+# ---------------------------------------------------------------------------
+for_window [app_id="^mde-panel$"]   floating enable, border none
+for_window [app_id="^mde-shell$"]   floating enable
+for_window [app_id="^mde-session$"] floating enable
+for_window [window_role="pop-up"]      floating enable
+for_window [window_role="task_dialog"] floating enable
+for_window [window_type="dialog"]      floating enable
+
+# ---------------------------------------------------------------------------
+# No swaybar — mde-panel replaces it
+# ---------------------------------------------------------------------------
+# (intentionally no `bar { ... }` block)
+
+# ---------------------------------------------------------------------------
+# Mackes-managed includes
+# ---------------------------------------------------------------------------
+# settings::keybinds writes mackes-bindings.conf into this directory
+# alongside any gaps-profile fragments; user edits are preserved by
+# `mde-wm reset`.
+include ~/.config/sway/config.d/*.conf
