@@ -1590,10 +1590,10 @@ def apply_user_dirs(_preset: Preset) -> List[str]:
     target_lines = [
         "# Mackes Shell 1.1.0 — XDG user-dirs remapped to mesh-sync.",
         "# Edit Workbench → Look & Feel → User Folders to override.",
-        f'XDG_DESKTOP_DIR="$HOME"',
+        'XDG_DESKTOP_DIR="$HOME"',
         f'XDG_DOWNLOAD_DIR="{downloads}"',
-        f'XDG_TEMPLATES_DIR="$HOME"',
-        f'XDG_PUBLICSHARE_DIR="$HOME"',
+        'XDG_TEMPLATES_DIR="$HOME"',
+        'XDG_PUBLICSHARE_DIR="$HOME"',
         f'XDG_DOCUMENTS_DIR="{mesh_root / "Documents"}"',
         f'XDG_MUSIC_DIR="{mesh_root / "Music"}"',
         f'XDG_PICTURES_DIR="{mesh_root / "Pictures"}"',

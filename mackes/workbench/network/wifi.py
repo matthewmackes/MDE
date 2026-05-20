@@ -10,7 +10,7 @@ from gi.repository import Gtk, GLib  # noqa: E402
 
 from mackes.logging import log_action
 from mackes.workbench._common import (
-    a11y, empty_state, error_state, format_probe_error,
+    a11y, error_state, format_probe_error,
     info_label, panel_box, section_description, section_header, title_label,
 )
 

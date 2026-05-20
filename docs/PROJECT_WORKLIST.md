@@ -3391,14 +3391,20 @@ under `LICENSES/`.
   262 tests still pass / 94 skip / 0 fail. Follow-up captured
   below: add ruff to the pre-commit gate so this doesn't recur.
 
-- [ ] **Pre-commit gate hardening: add `ruff check tests/` to the
-  local pre-commit flow** — `.claude/CLAUDE.md` §0.7 lists
-  `make test-nodeps` as the test gate but doesn't include lint.
-  Add `make lint` (or fold ruff into `make test-nodeps`) so the
-  pre-commit gate catches ruff failures before they reach ci.
-  Acceptance: editing a test file with a stray `f""` causes
-  `make test-nodeps` (or whichever gate the rulebook names) to
-  fail locally with the same error ci would have caught.
+- [✓] **Pre-commit gate hardening: add `make lint` to the
+  pre-commit flow (2026-05-20)** — `.claude/CLAUDE.md` §0.7
+  listed `make test-nodeps` as the test gate but didn't run
+  ruff, so the 27-error backlog snuck through every pre-commit
+  check from 1.1.2 through 1.1.4. New `make lint` target mirrors
+  the exact ci ruff invocation
+  (`ruff check --select F401,F541,F811,F841 mackes/ tests/`).
+  Caught + auto-fixed 7 additional F401 / F541 errors in
+  `mackes/birthright.py`, `mackes/mackesd_bridge.py`,
+  `mackes/mde_settings_bridge.py`,
+  `mackes/workbench/network/kde_connect.py`,
+  `mackes/workbench/network/wifi.py`. §0.7 of the rulebook
+  updated: gate 2 renamed Lint → Tests (it always ran tests, not
+  lint); new gate 3 is the ruff check. 262 tests pass / 94 skip.
 
 - [✓] **1.1.4 install fix — drop all XFCE Obsoletes (dnf5 take 2, 2026-05-20)** —
   1.1.3 RPM still crashed dnf5 (libdnf5 ≤ 5.2.x) with an

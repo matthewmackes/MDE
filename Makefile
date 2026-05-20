@@ -12,7 +12,7 @@ NAME    := mackes-shell
 VERSION := $(shell python3 -c "import mackes; print(mackes.__version__)")
 SDIST   := dist/$(NAME)-$(VERSION).tar.gz
 
-.PHONY: sdist rpm test smoke rust rust-check clean install-deps
+.PHONY: sdist rpm test smoke lint rust rust-check clean install-deps
 
 sdist:
 	@# Prefer PEP 517 build (works on Fedora 40+ without distutils).
@@ -40,6 +40,12 @@ test:
 
 test-nodeps:
 	python3 tests/_run_without_pytest.py
+
+# Mirrors .github/workflows/ci.yml's ruff gate exactly so a local
+# pass means ci will pass too. Pre-commit gate — see
+# .claude/CLAUDE.md §0.7.
+lint:
+	ruff check --select F401,F541,F811,F841 mackes/ tests/
 
 smoke:
 	python3 -c "import importlib, pkgutil, sys, mackes; \
