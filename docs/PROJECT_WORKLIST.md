@@ -492,9 +492,15 @@ panel starts without manual intervention.
   `fc-cache -r` invocation lands when Phase C.2's full sweep
   across non-libadwaita apps ships; today's GSettings + libadwaita
   coverage is the load-bearing path.
-- [ ] **C.3 `settings/display.rs`** — Resolution, scale, brightness,
-  primary via `wlr-output-management-v1` + brightnessctl + `swaymsg
-  output`.
+- [✓] **C.3 `settings/display.rs`** — DisplayBrightness shells out
+  to `brightnessctl set N%` / `brightnessctl get|max` (DRM kernel
+  API, X11+Wayland portable). DisplayPrimary / DisplayScale /
+  DisplayNightLight / DisplayNightLightTemp persist to a
+  `$XDG_CACHE_HOME/mde/display.json` sidecar (read by mde-session
+  on each login to re-apply via swaymsg / wlr-output-management /
+  gammastep). Range validation for scale (0.5–3.0) and night-light
+  temp (1000–10000 K). Pure helper `brightness_percent` covered by
+  13 tests across happy + out-of-range + preserve-other-keys.
 - [✓] **C.4 `settings/power.rs`** — full implementation across 5
   keys: PowerProfile shells out to `powerprofilesctl set/get`
   (routes through power-profiles-daemon DBus); PowerLidAction +
@@ -518,13 +524,29 @@ panel starts without manual intervention.
   expire, malformed JSON falls back to default. The
   notifications_server worker (B.10) reads the same files on
   its tick to honor DND.
-- [ ] **C.6 `settings/automount.rs`** — Removable media policies via
-  udisks2 DBus. Replaces thunar-volman xfconf.
-- [ ] **C.7 `settings/wallpaper.rs`** — Per-output wallpaper paths.
-  Writes config for `crates/mackes-applets/bg/`; signals reload.
-- [ ] **C.8 `settings/keybinds.rs`** — Hotkey map writer. Generates
-  `~/.config/sway/config.d/mackes-bindings.conf`; calls
-  `swaymsg reload`.
+- [✓] **C.6 `settings/automount.rs`** — Three booleans
+  (AutomountOnInsert / AutomountOpenOnMount / AutomountAutorun)
+  persist to `$XDG_CACHE_HOME/mde/automount.json` via the same
+  sidecar pattern. Honored by the udisks2-aware Workbench
+  Removable panel + the file-manager xdg-open hook. Default
+  `autorun=false` for safety per the original `thunar-volman`
+  posture. 5 tests cover defaults / round-trip / preserve-other.
+- [✓] **C.7 `settings/wallpaper.rs`** — WallpaperPath +
+  WallpaperMode persist to `$XDG_CACHE_HOME/mde/wallpaper.json`;
+  the bg applet (Phase E.2 / E1.2) watches this file via
+  cosmic-config and reapplies on change. Pure helper
+  `is_valid_mode` validates against the locked set
+  `{stretch, fit, fill, center, tile}`; empty string treated as
+  "unset, applet picks default." 6 tests including
+  reject-invalid-mode.
+- [✓] **C.8 `settings/keybinds.rs`** — KeybindsMap renders into
+  both `$XDG_CONFIG_HOME/sway/config.d/mackes-bindings.conf` and
+  the i3 sibling so the operator can switch compositors without
+  losing customizations. Pure `render_bindings_conf(map)` emits
+  `bindsym <key> <cmd>` lines sorted by key (BTreeMap) with a
+  `# DO NOT EDIT` header. `current()` re-parses the sway file
+  back into the map. 6 tests cover render shape + order +
+  round-trip + empty + reject-wrong-key.
 - [✓] **C.9 `settings/autostart.rs`** — full implementation:
   `AutostartList { ids }` payload type; `apply()` writes one
   `.desktop` file per id under `$XDG_CONFIG_HOME/autostart/`
