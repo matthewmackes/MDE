@@ -64,6 +64,14 @@ pub struct DesiredSnapshot {
     /// means "fully connected" (every healthy node peers with every
     /// other healthy node).
     pub allow_east_west: Vec<(String, String)>,
+    /// v2.0.0 Phase G.1 — fleet-managed settings. Each (key,
+    /// value_json) pair is applied on every targeted peer by the
+    /// reconcile loop via `settings::apply()`. JSON-serialized
+    /// values so the snapshot stays self-contained without coupling
+    /// to the SettingValue enum. Empty when the snapshot doesn't
+    /// touch settings.
+    #[serde(default)]
+    pub settings_keys: Vec<(String, String)>,
 }
 
 /// Output of `calculate()` — what the reconciler tries to make
@@ -236,6 +244,7 @@ mod tests {
                 node("peer:c", "us-east", true, false),
             ],
             allow_east_west: vec![],
+        settings_keys: vec![],
         };
         let topo = calculate(&snap);
         assert_eq!(topo.edges.len(), 3);
@@ -254,6 +263,7 @@ mod tests {
                 node("peer:c", "r", true, false),
             ],
             allow_east_west: vec![],
+        settings_keys: vec![],
         };
         let topo = calculate(&snap);
         assert_eq!(topo.edges.len(), 1);
@@ -268,6 +278,7 @@ mod tests {
                 node("peer:c", "us-east", true, false),
             ],
             allow_east_west: vec![("us-east".into(), "us-east".into())],
+            settings_keys: vec![],
         };
         let topo = calculate(&snap);
         assert_eq!(topo.edges.len(), 1);
@@ -357,6 +368,7 @@ mod tests {
                 node("peer:b", "us-west", true, false),
             ],
             allow_east_west: vec![("us-east".into(), "us-west".into())],
+            settings_keys: vec![],
         };
         let topo = calculate(&snap);
         assert_eq!(topo.edges.len(), 1);
@@ -375,6 +387,7 @@ mod tests {
             ],
             // Allow only us-east <-> us-east — peer:b can't peer directly.
             allow_east_west: vec![("us-east".into(), "us-east".into())],
+            settings_keys: vec![],
         };
         let topo = calculate(&snap);
         // Route from peer:a to peer:b goes via the Host.
@@ -395,6 +408,7 @@ mod tests {
                 node("peer:b", "us-west", true, false),
             ],
             allow_east_west: vec![("us-east".into(), "us-east".into())],
+            settings_keys: vec![],
         };
         let topo = calculate(&snap);
         let table = &topo.routes["peer:a"];
@@ -475,6 +489,7 @@ mod tests {
             ],
             // Allow list set but empty for this pair → block.
             allow_east_west: vec![("us-east".into(), "us-east".into())],
+            settings_keys: vec![],
         };
         let topo = calculate(&snap);
         assert!(topo.edges.is_empty());

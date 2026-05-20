@@ -98,6 +98,7 @@ fn node_failure_emits_auto_repair_drift_then_clears_on_recovery() {
             node("peer:cedar", "us-east", true, false),
         ],
         allow_east_west: vec![],
+        settings_keys: vec![],
     };
 
     // Observed: only peer:birch ↔ peer:cedar survived; peer:anvil
@@ -165,6 +166,7 @@ fn region_outage_excludes_dead_nodes_from_topology_and_flags_drift() {
             node("peer:redwood", "us-west", false, false),
         ],
         allow_east_west: vec![],
+        settings_keys: vec![],
     };
 
     let topo = calculate(&desired);
@@ -234,6 +236,7 @@ fn invalid_config_returns_specific_errors_then_accepts_fixed_payload() {
         allow_east_west: vec![
             ("us-east".into(), "typo-region".into()), // unknown region
         ],
+        settings_keys: vec![],
     };
     let errors = validate(&bad);
 
@@ -264,6 +267,7 @@ fn invalid_config_returns_specific_errors_then_accepts_fixed_payload() {
             node("peer:birch", "us-east", true, false),
         ],
         allow_east_west: vec![("us-east".into(), "us-east".into())],
+        settings_keys: vec![],
     };
     assert!(
         validate(&good).is_empty(),

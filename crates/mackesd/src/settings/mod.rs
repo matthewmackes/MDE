@@ -370,6 +370,92 @@ pub fn current(key: SettingKey) -> anyhow::Result<SettingValue> {
 /// this constant becomes unused (and the lint will catch any drift).
 pub(crate) const UNIMPLEMENTED: &str = "applier not implemented until v2.0.0 Phase C";
 
+/// v2.0.0 Phase G.2 — apply every (key, value_json) pair from a
+/// fleet revision. Returns one `ApplyOutcome` per pair so callers
+/// (the reconcile loop, the Workbench Fleet panel) can render
+/// per-key results.
+///
+/// Errors do NOT short-circuit — every pair is attempted so the
+/// operator sees the full failure picture in one tick.
+#[must_use]
+pub fn apply_all(pairs: &[(String, String)]) -> Vec<ApplyOutcome> {
+    let mut outcomes = Vec::with_capacity(pairs.len());
+    for (key_str, value_json) in pairs {
+        let Ok(key): Result<SettingKey, _> = key_str.parse() else {
+            outcomes.push(ApplyOutcome {
+                key: SettingKey::ThemeName, // placeholder — error overrides
+                ok: false,
+                error: Some(format!("unknown setting key: {key_str}")),
+            });
+            continue;
+        };
+        let value: SettingValue = match serde_json::from_str(value_json) {
+            Ok(v) => v,
+            Err(e) => {
+                outcomes.push(ApplyOutcome {
+                    key,
+                    ok: false,
+                    error: Some(format!("value_json: {e}")),
+                });
+                continue;
+            }
+        };
+        match apply(key, &value) {
+            Ok(()) => outcomes.push(ApplyOutcome {
+                key,
+                ok: true,
+                error: None,
+            }),
+            Err(e) => outcomes.push(ApplyOutcome {
+                key,
+                ok: false,
+                error: Some(format!("{e:#}")),
+            }),
+        }
+    }
+    outcomes
+}
+
+#[cfg(test)]
+mod g2_tests {
+    use super::*;
+
+    #[test]
+    fn apply_all_handles_empty_input() {
+        assert!(apply_all(&[]).is_empty());
+    }
+
+    #[test]
+    fn apply_all_reports_unknown_key_per_entry() {
+        let outcomes = apply_all(&[
+            ("not.a.real.key".into(), r#""x""#.into()),
+        ]);
+        assert_eq!(outcomes.len(), 1);
+        assert!(!outcomes[0].ok);
+        assert!(outcomes[0].error.as_ref().unwrap().contains("unknown setting key"));
+    }
+
+    #[test]
+    fn apply_all_reports_malformed_json_per_entry() {
+        let outcomes = apply_all(&[
+            ("theme.name".into(), "{not json".into()),
+        ]);
+        assert_eq!(outcomes.len(), 1);
+        assert!(!outcomes[0].ok);
+        assert!(outcomes[0].error.as_ref().unwrap().contains("value_json"));
+    }
+
+    #[test]
+    fn apply_all_does_not_short_circuit_on_first_error() {
+        let outcomes = apply_all(&[
+            ("not.a.key".into(), r#""x""#.into()),
+            ("also.bogus".into(), r#""y""#.into()),
+        ]);
+        assert_eq!(outcomes.len(), 2, "every pair attempted");
+        assert!(outcomes.iter().all(|o| !o.ok));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

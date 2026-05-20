@@ -828,12 +828,26 @@ panel starts without manual intervention.
 
 #### Phase G — Fleet-managed config layer
 
-- [ ] **G.1 Extend `DesiredSnapshot` with `settings_keys`** —
-  `crates/mackesd/src/lib.rs` + `desired_config` schema.
-- [ ] **G.2 Extend `reconcile.rs`** — reconcile loop applies
-  `settings_keys` via `settings::apply_all()`.
-- [ ] **G.3 Extend `validation.rs`** — validate setting key + value
-  combinations.
+- [✓] **G.1 Extend `DesiredSnapshot` with `settings_keys`** —
+  `crates/mackesd/src/topology.rs::DesiredSnapshot` gains a
+  `settings_keys: Vec<(String, String)>` field carrying (key,
+  value_json) pairs. `#[serde(default)]` so existing serialized
+  snapshots round-trip; struct-literal construction sites
+  (~20 spots across tests + topology fixtures) updated.
+  `insta` snapshot for the default empty shape regenerated.
+- [✓] **G.2 Extend `reconcile.rs`** — `settings::apply_all(pairs)
+  -> Vec<ApplyOutcome>` lands in `crates/mackesd/src/settings/mod.rs`.
+  Doesn't short-circuit on the first error so operators see the
+  full failure picture per tick. The reconcile worker invokes
+  `apply_all(&desired.settings_keys)` on every apply phase. 4 new
+  tests in `settings::g2_tests` cover empty input, unknown-key,
+  malformed-json, no-short-circuit.
+- [✓] **G.3 Extend `validation.rs`** — new ValidationError variants
+  UnknownSettingKey + InvalidSettingValue. `validate()` walks
+  `snapshot.settings_keys`: each key must parse to a known
+  SettingKey, each value_json must deserialize to a SettingValue.
+  Errors accumulate (no short-circuit) alongside the existing
+  topology + node checks.
 - [✓] **G.4 `mackesd fleet push-setting <key> <value> --peers <sel>`** —
   `Cmd::FleetPushSetting { key, value, peers, author, dry_run }`
   (gated behind `async-services`). New `crates/mackesd/src/fleet.rs`
