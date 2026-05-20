@@ -8,6 +8,7 @@ pub mod displays;
 pub mod fleet_revisions;
 pub mod fleet_settings;
 pub mod fonts;
+pub mod inventory;
 pub mod json_helpers;
 pub mod notifications;
 pub mod power;

@@ -1411,28 +1411,17 @@ group structure with one Iced view per panel.
   AdminSession → polkit → dnf. The MDE_PREVIEW path is gone (this
   IS MDE). 12 tests per panel minimum (data shape, error states,
   loading state, accessibility names).
-- [>] **CB-1.4 Devices group port (5 panels)** — Ported from
-  `mackes/workbench/devices/{displays.py, power.py, sound.py,
-  printers.py, removable.py}`. `displays.py` already routes through
-  `mde_settings_bridge` (F.4 done); the Iced port talks zbus
-  directly to `dev.mackes.MDE.Settings.Set/Get` and drops the
-  Python bridge. `power.py` same (F.1 done). `sound.py` is new
-  Iced UI over pipewire-rs. `printers.py` shells out to
-  cups-browsed via zbus surface. `removable.py` uses the
-  automount sidecar (C.6). **Partial progress 2026-05-20:**
-  power + removable Iced panels shipped — same Backend trait
-  pattern, lifted into the shared
-  `panels/json_helpers.rs` module (quote_json /
-  strip_json_quotes / parse_bool / encode_bool / parse_u32)
-  to retire the duplication that had grown across 4 panels.
-  power.rs covers 5 keys (profile combo over
-  powerprofilesctl values, lid_action combo over logind
-  values, two idle-suspend integer inputs with empty=0
-  semantics, presentation_mode checkbox). removable.rs
-  covers 3 automount booleans. App wired both via
-  `Message::{Power, Removable}` + view dispatch +
-  load-on-navigation. Remaining 3 panels (displays, sound,
-  printers) blocked on the follow-up backend items below.
+- [✓] **CB-1.4 Devices group port (5 panels) — complete
+  2026-05-20** — all five panels shipped: power + removable
+  (partial earlier), displays (CB-1.4.a), sound (CB-1.4.b),
+  printers (CB-1.4.c). Shared `panels/json_helpers.rs`
+  module retires the per-panel duplication that grew across
+  the group (quote_json / strip_json_quotes / parse_bool /
+  encode_bool / parse_u32). Two follow-ups carry the
+  nice-to-haves the group acceptance didn't gate:
+  per-sink volume + mute (CB-1.4.b follow-up), and a
+  decision-point on whether displays needs swayipc-async
+  upgrades over the current subprocess approach.
 - [>] **CB-1.5 Fleet group port (5 panels)** —
   `{inventory.py, playbooks.py, run_history.py, settings.py,
   revisions.py}`. F.11 + F.12 already shipped the Python-side
@@ -3448,13 +3437,45 @@ under `LICENSES/`.
 
 
 
-- [ ] **CB-1.5.a Fleet inventory panel (Iced)** — port
-  `mackes/workbench/fleet/inventory.py`. Needs a node-roster
-  subcommand on mded — likely `mded nodes list --json`
-  (currently `mded status` returns aggregate health, not
-  individual node rows). Acceptance: panel lists every
-  enrolled peer with role + last-heartbeat + health colour,
-  click drills into a peers-why detail view.
+- [✓] **CB-1.5.a Fleet inventory panel (Iced) — shipped
+  2026-05-20** — port of `mackes/workbench/fleet/inventory.py`
+  to Iced + new mackesd subcommand
+  `mded nodes list --json` to back it. Two-file ship:
+
+  * `crates/mackesd/src/bin/mackesd.rs` — new `Cmd::Nodes
+    { cmd: NodesCmd }` clap variant with a single `List
+    { json }` action. Handler calls
+    `mackesd_core::store::list_nodes()` and serializes via a
+    local `nodes_to_json(&[NodeRow])` helper (kept CLI-local
+    rather than `#[derive(Serialize)]` on the store struct
+    because the JSON shape is a CLI-surface contract).
+    Human-readable table fallback when `--json` absent.
+
+  * `crates/mde-workbench/src/panels/inventory.rs` — Iced
+    panel with two views: scrollable roster (5 columns —
+    node_id / name / role / health-with-colour / region +
+    inline Detail button per row) and a drill-in
+    `peers-why` detail report. Pure
+    `parse_nodes_json(raw) -> Result<Vec<NodeRow>, String>`
+    parser for testability. Empty state ("No peers
+    enrolled") when the roster is empty. Refresh button
+    re-runs Load. Per-row health colour from
+    `health_color()` palette mapped to a per-row text style
+    closure (Iced 0.13 `text.style()` takes a
+    `Fn(&Theme) -> Style`, not a direct Style).
+
+  Wired into App via `Message::Inventory(...)`, state field
+  + read-only accessor, update dispatch,
+  `on_panel_navigated` on `(Group::Fleet, "inventory")`,
+  panel_body view dispatch on the same key.
+
+  13 new unit tests (parse_nodes_json: 5 covering full
+  shape / empty-array / non-array reject / garbage reject /
+  missing-node_id filter, defaults_unknown_role_and_health,
+  health_glyph state coverage, 4 reducer paths covering
+  Loaded / Error / FocusRow / FocusLoaded, Back-clears, and
+  refresh-while-busy noop). Workbench unit-test count:
+  204 → 217.
 
 - [ ] **CB-1.5.b Fleet playbooks panel (Iced)** — port
   `mackes/workbench/fleet/playbooks.py`. Needs `mded

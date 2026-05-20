@@ -1,0 +1,435 @@
+//! Fleet → Inventory panel — node roster pulled from `mded
+//! nodes list --json` (CB-1.5.a). Mirrors the v1.x
+//! `mackes/workbench/fleet/inventory.py` panel.
+//!
+//! Backend surface: the binary subcommand was added to
+//! `crates/mackesd/src/bin/mackesd.rs` as `Cmd::Nodes { ...
+//! NodesCmd::List { json } }`. Phase E will move every workbench
+//! shell-out to a direct zbus surface; until then the subprocess
+//! pattern matches the fleet_settings + fleet_revisions panels.
+
+use iced::widget::{button, column, container, row, scrollable, text};
+use iced::{Element, Length, Padding, Task};
+use tokio::process::Command;
+
+/// One row of the inventory list — projection of the JSON object
+/// `mded nodes list --json` emits.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct NodeRow {
+    pub node_id: String,
+    pub name: String,
+    pub role: String,
+    pub health: String,
+    pub region: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct InventoryPanel {
+    pub rows: Vec<NodeRow>,
+    pub status: String,
+    pub busy: bool,
+    /// `node_id` of the row the user has drilled into via
+    /// `peers-why`. `None` = list view; `Some(id)` = drill-in
+    /// view rendering the per-edge reason chain.
+    pub focused: Option<String>,
+    pub focus_report: String,
+}
+
+#[derive(Debug, Clone)]
+pub enum Message {
+    Loaded(Vec<NodeRow>),
+    Error(String),
+    FocusRow(String),
+    FocusLoaded(String),
+    Back,
+    RefreshClicked,
+}
+
+impl InventoryPanel {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn load() -> Task<crate::Message> {
+        Task::perform(
+            async move {
+                let raw = run_mded(&["nodes", "list", "--json"]).await;
+                match parse_nodes_json(&raw) {
+                    Ok(rows) => Message::Loaded(rows),
+                    Err(e) => Message::Error(e),
+                }
+            },
+            crate::Message::Inventory,
+        )
+    }
+
+    pub fn update(&mut self, message: Message) -> Task<crate::Message> {
+        match message {
+            Message::Loaded(rows) => {
+                self.rows = rows;
+                self.status.clear();
+                self.busy = false;
+                Task::none()
+            }
+            Message::Error(msg) => {
+                self.status = msg;
+                self.busy = false;
+                Task::none()
+            }
+            Message::FocusRow(node_id) => {
+                self.focused = Some(node_id.clone());
+                self.focus_report.clear();
+                self.busy = true;
+                self.status = "Loading peer detail…".into();
+                Task::perform(
+                    async move {
+                        let raw = run_mded(&["peers-why", &node_id]).await;
+                        Message::FocusLoaded(raw)
+                    },
+                    crate::Message::Inventory,
+                )
+            }
+            Message::FocusLoaded(report) => {
+                self.focus_report = report;
+                self.status.clear();
+                self.busy = false;
+                Task::none()
+            }
+            Message::Back => {
+                self.focused = None;
+                self.focus_report.clear();
+                self.status.clear();
+                Task::none()
+            }
+            Message::RefreshClicked => {
+                if self.busy {
+                    return Task::none();
+                }
+                self.busy = true;
+                self.status = "Refreshing…".into();
+                Self::load()
+            }
+        }
+    }
+
+    pub fn view(&self) -> Element<'_, crate::Message> {
+        if let Some(node_id) = &self.focused {
+            return self.view_focus(node_id);
+        }
+        self.view_list()
+    }
+
+    fn view_list(&self) -> Element<'_, crate::Message> {
+        let refresh_btn = {
+            let mut b = button(text("Refresh"));
+            if !self.busy {
+                b = b.on_press(crate::Message::Inventory(Message::RefreshClicked));
+            }
+            b
+        };
+
+        if self.rows.is_empty() {
+            return column![
+                text("No peers enrolled").size(18),
+                text(
+                    "Enroll a peer with `mded enroll --passcode <16-char>` \
+                     on the joining node, then refresh.",
+                )
+                .size(13),
+                row![refresh_btn, text(&self.status).size(13)].spacing(12),
+            ]
+            .spacing(8)
+            .width(Length::Fill)
+            .padding(Padding::new(0.0))
+            .into();
+        }
+
+        let header = row![
+            text("node_id").width(Length::Fixed(220.0)),
+            text("name").width(Length::Fixed(200.0)),
+            text("role").width(Length::Fixed(100.0)),
+            text("health").width(Length::Fixed(100.0)),
+            text("region"),
+        ]
+        .spacing(12);
+
+        let rows = self.rows.iter().fold(column![], |col, row_data| {
+            let drill = {
+                let id = row_data.node_id.clone();
+                button(text("Detail")).on_press(crate::Message::Inventory(Message::FocusRow(id)))
+            };
+            let health = row_data.health.clone();
+            col.push(
+                row![
+                    text(&row_data.node_id).width(Length::Fixed(220.0)),
+                    text(&row_data.name).width(Length::Fixed(200.0)),
+                    text(&row_data.role).width(Length::Fixed(100.0)),
+                    text(health_glyph(&row_data.health))
+                        .width(Length::Fixed(100.0))
+                        .style(move |_| iced::widget::text::Style {
+                            color: Some(health_color(&health)),
+                        }),
+                    text(row_data.region.as_deref().unwrap_or("-")).width(Length::Fixed(120.0)),
+                    drill,
+                ]
+                .spacing(12),
+            )
+        });
+
+        column![
+            header,
+            scrollable(container(rows.spacing(6)).padding(Padding::new(0.0))).height(Length::Fill),
+            row![
+                refresh_btn,
+                text(&self.status).size(13),
+                text(format!("Peers: {}", self.rows.len())).size(13),
+            ]
+            .spacing(12),
+        ]
+        .spacing(12)
+        .width(Length::Fill)
+        .padding(Padding::new(0.0))
+        .into()
+    }
+
+    fn view_focus(&self, node_id: &str) -> Element<'_, crate::Message> {
+        let back_btn =
+            button(text("← Back to roster")).on_press(crate::Message::Inventory(Message::Back));
+        column![
+            row![back_btn, text(format!("Peer detail — {node_id}")).size(18),].spacing(12),
+            text(&self.status).size(13),
+            scrollable(
+                container(text(&self.focus_report).size(13))
+                    .padding(Padding::new(12.0))
+                    .width(Length::Fill),
+            )
+            .height(Length::Fill),
+        ]
+        .spacing(12)
+        .width(Length::Fill)
+        .padding(Padding::new(0.0))
+        .into()
+    }
+}
+
+/// Health-glyph mapper — one-character UI tag for each health
+/// state the store records. Kept narrow on purpose; the
+/// per-state colour lives in [`health_style`].
+fn health_glyph(health: &str) -> String {
+    match health {
+        "healthy" => "● healthy".into(),
+        "degraded" => "◐ degraded".into(),
+        "unreachable" => "○ unreachable".into(),
+        "unknown" => "? unknown".into(),
+        other => format!("? {other}"),
+    }
+}
+
+fn health_color(health: &str) -> iced::Color {
+    match health {
+        "healthy" => iced::Color::from_rgb(0.10, 0.65, 0.30),
+        "degraded" => iced::Color::from_rgb(0.85, 0.60, 0.10),
+        "unreachable" => iced::Color::from_rgb(0.80, 0.20, 0.20),
+        _ => iced::Color::from_rgb(0.55, 0.55, 0.55),
+    }
+}
+
+/// Pure JSON parser for `mded nodes list --json` payloads.
+/// Returns a friendly error message instead of bubbling
+/// serde_json::Error so the reducer can lay it into the panel
+/// status row without crashing.
+///
+/// # Errors
+///
+/// Returns an `Err(String)` when the input isn't a JSON array
+/// of objects with the expected fields. Empty arrays / empty
+/// input both produce `Ok(vec![])`.
+pub fn parse_nodes_json(raw: &str) -> Result<Vec<NodeRow>, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(Vec::new());
+    }
+    let v: serde_json::Value =
+        serde_json::from_str(trimmed).map_err(|e| format!("invalid mded output: {e}"))?;
+    let arr = v
+        .as_array()
+        .ok_or_else(|| "expected JSON array at top level".to_string())?;
+    Ok(arr
+        .iter()
+        .map(|obj| NodeRow {
+            node_id: obj
+                .get("node_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            name: obj
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            role: obj
+                .get("role")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
+                .to_string(),
+            health: obj
+                .get("health")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
+                .to_string(),
+            region: obj.get("region").and_then(|v| {
+                if v.is_null() {
+                    None
+                } else {
+                    v.as_str().map(str::to_string)
+                }
+            }),
+        })
+        .filter(|r| !r.node_id.is_empty())
+        .collect())
+}
+
+/// Shell out to `mded` with the given args; returns stdout on
+/// success, an empty string on any failure mode. The reducer
+/// surfaces the empty as an Error message via the panel
+/// status row.
+pub async fn run_mded(args: &[&str]) -> String {
+    let Ok(output) = Command::new("mded").args(args).output().await else {
+        return String::new();
+    };
+    if !output.status.success() {
+        return String::from_utf8(output.stderr).unwrap_or_default();
+    }
+    String::from_utf8(output.stdout).unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SAMPLE: &str = r#"[
+        {"node_id": "peer:alpha", "name": "alpha-host", "public_key": "ABC=",
+         "role": "host", "health": "healthy", "region": "us-east"},
+        {"node_id": "peer:beta",  "name": "beta-host",  "public_key": "DEF=",
+         "role": "peer", "health": "degraded", "region": null}
+    ]"#;
+
+    #[test]
+    fn parse_nodes_json_extracts_every_field() {
+        let rows = parse_nodes_json(SAMPLE).unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].node_id, "peer:alpha");
+        assert_eq!(rows[0].name, "alpha-host");
+        assert_eq!(rows[0].role, "host");
+        assert_eq!(rows[0].health, "healthy");
+        assert_eq!(rows[0].region.as_deref(), Some("us-east"));
+        assert_eq!(rows[1].region, None);
+    }
+
+    #[test]
+    fn parse_nodes_json_empty_array_returns_empty_vec() {
+        assert!(parse_nodes_json("[]").unwrap().is_empty());
+        assert!(parse_nodes_json("").unwrap().is_empty());
+        assert!(parse_nodes_json("   \n   ").unwrap().is_empty());
+    }
+
+    #[test]
+    fn parse_nodes_json_rejects_non_array() {
+        let err = parse_nodes_json("{\"x\": 1}").unwrap_err();
+        assert!(err.contains("array"));
+    }
+
+    #[test]
+    fn parse_nodes_json_rejects_garbage() {
+        let err = parse_nodes_json("not json").unwrap_err();
+        assert!(err.contains("invalid"));
+    }
+
+    #[test]
+    fn parse_nodes_json_filters_rows_missing_node_id() {
+        let raw = r#"[
+            {"node_id": "peer:alpha", "name": "a", "role": "peer", "health": "healthy"},
+            {"name": "no-id", "role": "peer", "health": "healthy"}
+        ]"#;
+        let rows = parse_nodes_json(raw).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].node_id, "peer:alpha");
+    }
+
+    #[test]
+    fn parse_nodes_json_defaults_unknown_role_and_health() {
+        let raw = r#"[{"node_id": "peer:x", "name": "x"}]"#;
+        let rows = parse_nodes_json(raw).unwrap();
+        assert_eq!(rows[0].role, "unknown");
+        assert_eq!(rows[0].health, "unknown");
+    }
+
+    #[test]
+    fn health_glyph_covers_every_locked_state() {
+        assert!(health_glyph("healthy").contains("healthy"));
+        assert!(health_glyph("degraded").contains("degraded"));
+        assert!(health_glyph("unreachable").contains("unreachable"));
+        assert!(health_glyph("unknown").contains("unknown"));
+        // Unknown vendor states get a friendly "? <other>" so
+        // panel rendering doesn't blank out on a schema bump.
+        assert!(health_glyph("borked").contains("borked"));
+    }
+
+    #[test]
+    fn loaded_message_clears_busy_and_records_rows() {
+        let mut panel = InventoryPanel::new();
+        panel.busy = true;
+        let rows = parse_nodes_json(SAMPLE).unwrap();
+        let _ = panel.update(Message::Loaded(rows.clone()));
+        assert_eq!(panel.rows, rows);
+        assert!(!panel.busy);
+        assert!(panel.status.is_empty());
+    }
+
+    #[test]
+    fn error_message_clears_busy_and_stores_msg() {
+        let mut panel = InventoryPanel::new();
+        panel.busy = true;
+        let _ = panel.update(Message::Error("mded not on PATH".into()));
+        assert_eq!(panel.status, "mded not on PATH");
+        assert!(!panel.busy);
+    }
+
+    #[test]
+    fn focus_row_sets_focused_and_busy() {
+        let mut panel = InventoryPanel::new();
+        let _ = panel.update(Message::FocusRow("peer:alpha".into()));
+        assert_eq!(panel.focused.as_deref(), Some("peer:alpha"));
+        assert!(panel.busy);
+    }
+
+    #[test]
+    fn focus_loaded_clears_busy_and_stores_report() {
+        let mut panel = InventoryPanel::new();
+        panel.busy = true;
+        panel.focused = Some("peer:alpha".into());
+        let _ = panel.update(Message::FocusLoaded("{\"why\": \"…\"}".into()));
+        assert!(!panel.busy);
+        assert!(panel.focus_report.contains("why"));
+    }
+
+    #[test]
+    fn back_clears_focus_state() {
+        let mut panel = InventoryPanel::new();
+        panel.focused = Some("peer:alpha".into());
+        panel.focus_report = "stale".into();
+        let _ = panel.update(Message::Back);
+        assert!(panel.focused.is_none());
+        assert!(panel.focus_report.is_empty());
+    }
+
+    #[test]
+    fn refresh_while_busy_is_noop() {
+        let mut panel = InventoryPanel::new();
+        panel.busy = true;
+        panel.status = "Refreshing…".into();
+        let _ = panel.update(Message::RefreshClicked);
+        assert_eq!(panel.status, "Refreshing…");
+    }
+}

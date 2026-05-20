@@ -187,6 +187,16 @@ enum Cmd {
         cmd: RevisionsCmd,
     },
 
+    /// CB-1.5.a — fleet node roster. `mded nodes list --json` emits
+    /// every row from the `nodes` table as a JSON array; the Iced
+    /// inventory panel (in `crates/mde-workbench/src/panels/
+    /// inventory.rs`) consumes the same shape. Without `--json` the
+    /// command prints a human-readable table.
+    Nodes {
+        #[command(subcommand)]
+        cmd: NodesCmd,
+    },
+
     /// v2.0.0 Phase G.4 — push a settings revision to a peer
     /// selection. Writes a new `desired_config` row, records one
     /// `fleet_settings_apply_log` row per (peer, key) target, and
@@ -236,6 +246,20 @@ enum Cmd {
         /// Override the stable node id (defaults to `peer:<hostname>`).
         #[arg(long)]
         node_id: Option<String>,
+    },
+}
+
+/// Subcommands for `mackesd nodes`. CB-1.5.a.
+#[derive(Subcommand)]
+enum NodesCmd {
+    /// List every row from the `nodes` table. Without `--json` the
+    /// output is a human-readable table with one peer per line.
+    List {
+        /// Emit a JSON array of `{node_id, name, public_key, role,
+        /// health, region}` rows — consumed by the Workbench
+        /// Fleet → Inventory panel.
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -734,8 +758,69 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         }
+        Cmd::Nodes { cmd } => {
+            // CB-1.5.a — fleet node roster surface. The Iced
+            // inventory panel consumes the JSON shape directly.
+            let conn = mackesd_core::store::open(&db_path)
+                .with_context(|| format!("opening store at {}", db_path.display()))?;
+            match cmd {
+                NodesCmd::List { json } => {
+                    let nodes = mackesd_core::store::list_nodes(&conn)
+                        .context("listing nodes from store")?;
+                    if json {
+                        println!("{}", serde_json::to_string_pretty(&nodes_to_json(&nodes))?);
+                    } else {
+                        print_nodes_table(&nodes);
+                    }
+                }
+            }
+        }
     }
     Ok(())
+}
+
+/// Serialize the `NodeRow` list into the JSON shape the Iced
+/// inventory panel consumes. Kept here rather than as a
+/// `#[derive(Serialize)]` on `NodeRow` because the store struct
+/// already serves topology + lifecycle callers and the JSON
+/// shape is a CLI-surface contract.
+fn nodes_to_json(nodes: &[mackesd_core::store::NodeRow]) -> serde_json::Value {
+    serde_json::Value::Array(
+        nodes
+            .iter()
+            .map(|n| {
+                serde_json::json!({
+                    "node_id":    n.node_id,
+                    "name":       n.name,
+                    "public_key": n.public_key,
+                    "role":       n.role,
+                    "health":     n.health,
+                    "region":     n.region,
+                })
+            })
+            .collect(),
+    )
+}
+
+fn print_nodes_table(nodes: &[mackesd_core::store::NodeRow]) {
+    if nodes.is_empty() {
+        println!("(no peers enrolled)");
+        return;
+    }
+    println!(
+        "{:<24} {:<24} {:<12} {:<12} {:<10}",
+        "node_id", "name", "role", "health", "region"
+    );
+    for n in nodes {
+        println!(
+            "{:<24} {:<24} {:<12} {:<12} {:<10}",
+            n.node_id,
+            n.name,
+            n.role,
+            n.health,
+            n.region.as_deref().unwrap_or("-"),
+        );
+    }
 }
 
 /// Read a revision's `spec_json` payload by id.
