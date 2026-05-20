@@ -1472,13 +1472,40 @@ group structure with one Iced view per panel.
   CB-1.10 land, the Python workbench has no callers. Delete the
   directory + every `tests/test_*` that imports from it. Spec
   drops the `%{py3_sitelib}/mackes/workbench/` from `%files`.
-- [ ] **CB-1.13 Single-instance contract via D-Bus** —
-  `dev.mackes.MDE.Shell.Workbench` interface (new) ships
-  `Focus(slug: str)` so `mde --focus <slug>` (legacy
-  `mackes --focus`) opens the running workbench at the named
-  panel, or launches one if none. Replaces the 1.x WM_CLASS-based
-  single-instance hack. Wired through the apple-menu, status
-  cluster click targets, and the 1.0.8 `mackes --focus` contract.
+- [✓] **CB-1.13 Single-instance contract via D-Bus** — shipped
+  2026-05-20. New `crates/mde-workbench/src/dbus.rs` ships the
+  `dev.mackes.MDE.Shell.Workbench` interface (constant
+  `INTERFACE_NAME` + `METHOD_FOCUS`) with a single async method
+  `Focus(slug)` that pushes the trimmed slug into the
+  process-wide `PendingFocus` slot (latest-wins coalescing —
+  Focus is a user-action hand-off, not a queue). Whitespace-only
+  slug normalises to the empty string (1.x taskbar
+  click-through "raise only, don't change view" contract).
+  `src/main.rs` rewritten around clap: parses `--focus <slug>`,
+  builds a tokio current-thread runtime, opens the session bus,
+  requests `BUS_NAME` (`dev.mackes.MDE.Workbench`) with
+  `RequestNameFlags::DoNotQueue`, then branches on
+  `decide_primary_status`: `Existing` opens a `WorkbenchProxy`
+  + calls `Focus(slug)` + exits 0 (exit 2 on bus errors);
+  `Primary` registers `WorkbenchService` on the live connection
+  at `OBJECT_PATH` (`/dev/mackes/MDE/Workbench`) and leaks the
+  runtime + connection so Iced takes the main thread. Iced
+  `App::subscription` polls `PendingFocus::drain()` on a
+  200 ms `iced::time::every` tick and emits
+  `Message::FocusRequest(slug)`; the reducer routes through
+  `view_from_focus_slug` (unknown slug silently preserves the
+  current view rather than jolting the user back to Dashboard).
+  Session-bus unreachable → loud `tracing::error!` + launch
+  without single-instance protection so early-boot recovery
+  shells aren't dead-in-the-water. 7 new dbus tests
+  (interface-name namespace, method constant, PendingFocus
+  drain/round-trip/coalesce/empty-on-init + 3 tokio handler
+  tests covering happy / whitespace-trim / version) + 4 new
+  reducer tests in `app::tests` covering FocusRequest paths
+  (panel slug / group slug / empty / unknown). Workbench test
+  count: 54 → 67. Panel-side wiring (apple-menu, status
+  cluster, taskbar) lands as follow-up once the Iced panel
+  rewrite (Phase E) ships those call sites — captured below.
 
 #### CB-2 Greeter / Wayland session
 
@@ -3235,6 +3262,24 @@ dashed "Browse filesystem…" disclosure that opens an explainer card.
 to `[✓] Done`, the acceptance scenario passes, snapshot tests are
 green in CI, and the cosmic-files merge attribution is committed
 under `LICENSES/`.
+
+---
+
+## Follow-ups from in-flight work
+
+- [ ] **CB-1.13 follow-up: panel-side `mde --focus` call sites** —
+  CB-1.13 ships the D-Bus interface + workbench-side handler +
+  CLI hand-off. The 1.0.8 contract also wires apple-menu /
+  status-cluster click targets / start-menu / taskbar
+  through `mackes --focus <slug>`. Phase E ports those call
+  sites Iced-side; this follow-up tracks: every `mde-panel`
+  source under `crates/mackes-panel/src/` (and the eventual
+  `crates/mde-panel/`) that spawns `mackes --focus` should
+  swap to the zbus `WorkbenchProxy::focus` call, falling back
+  to `Command::new("mde-workbench").arg("--focus").arg(slug)`
+  only when the bus call errors. Acceptance: grep for
+  `mackes --focus` + `mde --focus` across the panel crate
+  returns zero subprocess call sites.
 
 ---
 

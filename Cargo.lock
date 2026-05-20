@@ -3076,6 +3076,7 @@ dependencies = [
 name = "mde-workbench"
 version = "0.0.0"
 dependencies = [
+ "clap",
  "iced",
  "mde-config",
  "mde-mesh-types",

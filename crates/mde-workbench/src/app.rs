@@ -5,9 +5,12 @@
 //! land as separate substeps and plug into [`App::view`] via
 //! [`crate::View::Panel`] matching.
 
-use iced::widget::{column, container, row, text};
-use iced::{Element, Length, Size, Task, Theme};
+use std::time::Duration;
 
+use iced::widget::{column, container, row, text};
+use iced::{Element, Length, Size, Subscription, Task, Theme};
+
+use crate::dbus::PendingFocus;
 use crate::keyboard::{KeyAction, Pane};
 use crate::model::{Group, View, view_from_focus_slug};
 use crate::patternfly::{breadcrumb, page_subtitle, page_title};
@@ -31,6 +34,12 @@ pub enum Message {
     /// User toggled the user-expansion state of a group
     /// (chevron click). Active group ignores this per CB-1.2.
     ToggleGroupExpansion(Group),
+    /// CB-1.13 — a `dev.mackes.MDE.Shell.Workbench.Focus(slug)`
+    /// call landed in [`PendingFocus`] and the polling
+    /// subscription pulled it out. Empty slug means "raise
+    /// only — don't change the view" (the 1.x taskbar
+    /// click-through contract).
+    FocusRequest(String),
     /// No-op — placeholder for buttons whose behaviour lands in
     /// later CB-1.x substeps.
     Noop,
@@ -87,8 +96,22 @@ impl App {
     pub fn run() -> iced::Result {
         iced::application(Self::title, Self::update, Self::view)
             .theme(Self::theme)
+            .subscription(Self::subscription)
             .window_size(Size::new(WIN_W, WIN_H))
             .run()
+    }
+
+    /// Iced subscription bundle — polls [`PendingFocus`] on a
+    /// 200 ms tick so any `dev.mackes.MDE.Shell.Workbench.Focus`
+    /// D-Bus call from a sibling `mde-workbench --focus <slug>`
+    /// invocation propagates into the reducer as
+    /// [`Message::FocusRequest`].
+    #[allow(clippy::unused_self)]
+    fn subscription(&self) -> Subscription<Message> {
+        iced::time::every(Duration::from_millis(200)).map(|_| {
+            PendingFocus::drain()
+                .map_or(Message::Noop, Message::FocusRequest)
+        })
     }
 
     fn title(&self) -> String {
@@ -122,9 +145,29 @@ impl App {
             Message::KeyPressed(action) => {
                 self.apply_key_action(action);
             }
+            Message::FocusRequest(slug) => {
+                self.apply_focus_request(&slug);
+            }
             Message::Noop => {}
         }
         Task::none()
+    }
+
+    fn apply_focus_request(&mut self, slug: &str) {
+        if slug.is_empty() {
+            // Empty slug = "raise only, no view change" — the
+            // 1.x taskbar click-through behaviour.
+            return;
+        }
+        if let Some(view) = view_from_focus_slug(slug) {
+            self.view = view;
+            self.focused_pane = Pane::Main;
+        }
+        // Unknown slug silently ignored — matches the 1.x
+        // `mackes --focus` Dashboard fallback for unmapped
+        // surfaces (here we keep the current view since
+        // jumping back to Dashboard on a typo would
+        // surprise the user mid-task).
     }
 
     fn apply_key_action(&mut self, action: KeyAction) {
@@ -285,6 +328,56 @@ mod tests {
         let _ = app.update(Message::Noop);
         assert_eq!(app.current_view(), before_view);
         assert_eq!(app.focused_pane(), before_pane);
+    }
+
+    #[test]
+    fn focus_request_with_panel_slug_jumps_to_panel_and_focuses_main() {
+        let mut app = App::new();
+        let _ = app.update(Message::FocusRequest("network.mesh_ssh".into()));
+        assert_eq!(
+            app.current_view(),
+            View::Panel {
+                group: Group::Network,
+                panel: "mesh_ssh"
+            }
+        );
+        assert_eq!(app.focused_pane(), Pane::Main);
+    }
+
+    #[test]
+    fn focus_request_with_group_slug_lands_on_group_view() {
+        let mut app = App::new();
+        let _ = app.update(Message::FocusRequest("help".into()));
+        assert_eq!(app.current_view(), View::Group(Group::Help));
+    }
+
+    #[test]
+    fn focus_request_empty_slug_preserves_view() {
+        let mut app = App::new();
+        let _ = app.update(Message::SelectPanel {
+            group: Group::Apps,
+            panel: "sources",
+        });
+        let before = app.current_view();
+        let _ = app.update(Message::FocusRequest(String::new()));
+        assert_eq!(
+            app.current_view(),
+            before,
+            "empty slug = raise-only contract — view must not change"
+        );
+    }
+
+    #[test]
+    fn focus_request_unknown_slug_preserves_view() {
+        let mut app = App::new();
+        let _ = app.update(Message::SelectGroup(Group::Maintain));
+        let before = app.current_view();
+        let _ = app.update(Message::FocusRequest("not-a-real-slug".into()));
+        assert_eq!(
+            app.current_view(),
+            before,
+            "unknown slug must not jolt the user out of their current view"
+        );
     }
 
     #[test]

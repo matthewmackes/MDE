@@ -15,6 +15,7 @@
 //! are routed through `mded` (CB-1.13) rather than open-coded here.
 
 pub mod app;
+pub mod dbus;
 pub mod keyboard;
 pub mod model;
 pub mod patternfly;
@@ -22,6 +23,7 @@ pub mod sidebar;
 pub mod single_instance;
 
 pub use app::{App, Message};
+pub use dbus::{INTERFACE_NAME, METHOD_FOCUS, PendingFocus, WorkbenchService};
 pub use model::{Group, NavEntry, Panel, View, nav_model};
 pub use single_instance::{
     BUS_NAME, OBJECT_PATH, PrimaryStatus, decide_primary_status,
