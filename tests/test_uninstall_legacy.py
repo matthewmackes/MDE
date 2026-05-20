@@ -362,32 +362,33 @@ def test_dnf_failure_is_reported_not_raised():
 # ---------------------------------------------------------------------------
 
 
-def test_spec_obsoletes_every_legacy_package_in_tuple():
-    """The spec must Obsolete every package the runtime step removes,
-    so `dnf install mackes-xfce-workstation` cleans them up on upgrade.
-    xfce4-panel is intentionally absent from both _LEGACY and the
-    spec Obsoletes — see 1.1.3 changelog."""
+def test_spec_does_not_obsolete_legacy_xfce_packages():
+    """1.1.4 — spec must NOT Obsolete the legacy XFCE packages.
+    libdnf5 ≤ 5.2.x trips an internal assertion when our install
+    transaction carries 4+ implicit erases. Cleanup happens
+    at runtime via apply_uninstall_legacy_xfce instead."""
     repo_root = Path(__file__).resolve().parent.parent
     spec_path = repo_root / "packaging" / "fedora" / "mackes-shell.spec"
     text = spec_path.read_text(encoding="utf-8")
-    missing = []
-    for pkg in _LEGACY:
-        # Match "Obsoletes:<whitespace>pkg" at line start.
-        # Accept a trailing version constraint or end-of-line.
-        needle = f"Obsoletes:"
-        found = False
-        for line in text.splitlines():
-            if line.strip().startswith(needle):
-                rhs = line.split(":", 1)[1].strip()
-                # Strip an optional " < 3.0"-style suffix
-                head = rhs.split(None, 1)[0]
-                if head == pkg:
-                    found = True
-                    break
-        if not found:
-            missing.append(pkg)
-    assert not missing, (
-        f"spec is missing Obsoletes: entries for {missing}. "
-        "apply_uninstall_legacy_xfce removes them at runtime but "
-        "dnf install mackes-xfce-workstation won't sweep them on upgrade."
+    forbidden = [
+        "xfce4-panel",
+        "xfdesktop",
+        "xfce4-whiskermenu-plugin",
+        "xfce4-docklike-plugin",
+        "xfce4-pulseaudio-plugin",
+        "xfce4-power-manager-plugin",
+    ]
+    leaks = []
+    for line in text.splitlines():
+        stripped = line.lstrip()
+        if not stripped.startswith("Obsoletes:"):
+            continue
+        rhs = stripped.split(":", 1)[1].strip()
+        head = rhs.split(None, 1)[0]
+        if head in forbidden:
+            leaks.append(head)
+    assert not leaks, (
+        f"spec ships Obsoletes: lines for {leaks} — these trigger the "
+        "dnf5 implicit_ts_elements assertion on install. Remove them; "
+        "apply_uninstall_legacy_xfce handles the runtime cleanup."
     )

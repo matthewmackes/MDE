@@ -3379,6 +3379,17 @@ under `LICENSES/`.
   the C plugin entirely; at that point the Obsoletes can
   return.
 
+- [✓] **1.1.4 install fix — drop all XFCE Obsoletes (dnf5 take 2, 2026-05-20)** —
+  1.1.3 RPM still crashed dnf5 (libdnf5 ≤ 5.2.x) with an
+  `implicit_ts_elements.empty()` assertion: even the 5 remaining
+  Obsoletes (xfdesktop + 4 plugins) cause the assertion when
+  the transaction carries them as implicit erases. Fix: dropped
+  all 5 from the spec. `apply_uninstall_legacy_xfce` birthright
+  step already handles the runtime cleanup; the Obsoletes were
+  belt-and-suspenders. Test `test_spec_does_not_obsolete_legacy_xfce_packages`
+  inverted to assert zero Obsoletes lines for those packages.
+  RPM clean. Awaiting commit + push + tag.
+
 
 
 - [ ] **CB-1.5.a Fleet inventory panel (Iced)** — port

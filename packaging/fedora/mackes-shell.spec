@@ -5,7 +5,7 @@
 %global debug_package %{nil}
 
 Name:           mackes-xfce-workstation
-Version:        1.1.3
+Version:        1.1.4
 Release:        1%{?dist}
 Summary:        Mackes XFCE Workstation — unified shell, panel, dock, and mesh for Fedora
 
@@ -27,32 +27,21 @@ Obsoletes:      mackes-shell < 3.0
 # mackes-xfce-workstation row cleanly.
 Provides:       mde = %{version}-%{release}
 
-# Phase 10.6.6 — mackes-panel (Rust) fully replaces the legacy XFCE
-# panel + desktop + plugin stack. Listing them as Obsoletes means
-# `dnf install mackes-xfce-workstation` removes them cleanly on
-# upgrade boxes, paralleling the apply_uninstall_legacy_xfce
-# birthright step (which handles the runtime/on-disk cleanup for
-# already-installed nodes). The `< 999` upper-bound silences the
-# rpmlint unversioned-Obsoletes warning while still covering every
-# real-world version (current xfce4-panel is 4.20.x).
+# 1.1.4 — every remaining XFCE Obsoletes line is dropped. dnf5
+# (libdnf5 ≤ 5.2.x) trips an internal `implicit_ts_elements`
+# assertion when our install transaction also carries 4-5 implicit
+# package erases via Obsoletes — even a small upgrade like
+# 1.0.7 → 1.1.4 hits it. The runtime birthright step
+# `apply_uninstall_legacy_xfce` already removes the same 5
+# packages from the live system post-install, so the spec
+# Obsoletes were belt-and-suspenders that's now actively harmful.
+# xfce4-panel was dropped in 1.1.3 because we depend on its
+# library; the other 5 follow here for the dnf5 compatibility
+# reason.
 #
-# xfce4-panel is INTENTIONALLY NOT Obsoleted (1.1.3 fix): the C
-# panel-plugin under data/panel-plugins/mackes-clipboard/ still
-# links libxfce4panel-2.0.so.4, which only the xfce4-panel
-# package provides. Obsoleting the package nukes the library and
-# breaks our own auto-detected Requires line. The runtime
-# behaviour the Obsoletes was reaching for (no xfce4-panel
-# process running) is already covered by the autostart override
-# at /etc/xdg/autostart/mackes-suppress-xfce4-panel.desktop
-# (Hidden=true) plus the apply_panel_swap birthright step. The
-# library + .desktop files on disk are harmless when xfce4-panel
-# never starts. v2.0.0's monolithic cut retires the C plugin
-# entirely; at that point the Obsoletes can return.
-Obsoletes:      xfdesktop < 999
-Obsoletes:      xfce4-whiskermenu-plugin < 999
-Obsoletes:      xfce4-docklike-plugin < 999
-Obsoletes:      xfce4-pulseaudio-plugin < 999
-Obsoletes:      xfce4-power-manager-plugin < 999
+# v2.0.0's monolithic cut uses Conflicts: + Provides:/Obsoletes:
+# at the package-rename moment, with a different test surface;
+# at that point the Obsoletes question can be revisited.
 
 # Arch-specific (was BuildArch:noarch in 0.x): the package now carries a
 # compiled C xfce4-panel external plugin under %{_libdir}/xfce4/panel/

@@ -3,6 +3,36 @@
 All notable user-facing and architectural changes. The current line is
 unreleased; tag versions get a date when they ship.
 
+## 1.1.4 — Drop all XFCE Obsoletes (dnf5 install fix, take 2) (2026-05-20)
+
+`dnf install mackes-xfce-workstation-1.1.3-1.fc44.x86_64.rpm`
+still crashed with:
+
+> terminate called after throwing an instance of 'libdnf5::AssertionError'
+> 'implicit_ts_elements.empty()' failed: The rpm transaction
+> contains more elements than requested
+
+Even on a small upgrade (1.0.7 → 1.1.3) where dnf5 only had
+one explicit upgrade + 5 implicit erases via Obsoletes, libdnf5
+≤ 5.2.x trips an internal accounting assertion when the
+implicit element set is non-empty during fill().
+
+Fix: dropped all 5 remaining XFCE Obsoletes from the spec
+(xfdesktop, xfce4-whiskermenu-plugin, xfce4-docklike-plugin,
+xfce4-pulseaudio-plugin, xfce4-power-manager-plugin). The
+runtime birthright step `apply_uninstall_legacy_xfce` already
+walks the same list with `dnf remove` after install — it was
+the real cleanup all along, the spec Obsoletes were
+belt-and-suspenders. Now they're actively harmful.
+
+Spec audit test (`test_spec_does_not_obsolete_legacy_xfce_packages`)
+flipped to assert the inverse: any of those 6 names in the
+Obsoletes block fails.
+
+v2.0.0's monolithic cut uses `Conflicts:` + `Provides:` /
+`Obsoletes:` at the package-rename moment, with a different
+test surface; the Obsoletes question is revisited there.
+
 ## 1.1.3 — Install fix + Iced MDE Workbench preview (2026-05-20)
 
 Install regression — 1.1.0/1.1.1/1.1.2 RPMs failed to install
