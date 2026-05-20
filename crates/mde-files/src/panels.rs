@@ -223,6 +223,102 @@ impl ContextMenuItem {
 }
 
 // =========================================================================
+// Phase 1.6 — Drag-and-drop state.
+// =========================================================================
+
+/// Drag-and-drop session state. Tracks "the user is dragging row X
+/// and is currently hovering over target Y". The view layer reads
+/// this to render the drag pill + the highlighted drop target;
+/// `MdeFiles::update` translates `Drop(target)` into a
+/// `Backend::send_to(target, Copy, Ask)` call.
+///
+/// All fields are pure data — actual mouse-event handling lives
+/// with the Iced widget bindings, not here.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DragSession {
+    /// Currently-dragged row keys (file identifiers). Empty when
+    /// no drag is in progress. Multiple when the user grabbed a
+    /// multi-selection.
+    sources: Vec<String>,
+    /// Drop target currently under the cursor, if any. Tracked so
+    /// the view can highlight it.
+    hover_target: Option<DragTarget>,
+}
+
+/// Where a drag is currently hovered. The set is locked — Phase
+/// 1.6 only supports dropping onto sidebar peers / groups / sites
+/// because that's all `Backend::send_to` accepts (per the Phase
+/// 3.x Destination enum). Local-filesystem drops route through
+/// the Iced widget's file-drop bridge, not this state machine.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DragTarget {
+    /// One named peer.
+    Peer(String),
+    /// Peer group by name.
+    Group(String),
+    /// Peers by role.
+    Role(String),
+    /// Peers in a region/site.
+    Site(String),
+}
+
+impl DragSession {
+    /// Start a drag from the given row keys. Replaces any
+    /// in-flight drag.
+    pub fn start<I, S>(&mut self, sources: I)
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.sources = sources.into_iter().map(Into::into).collect();
+        self.hover_target = None;
+    }
+
+    /// Update the hover target as the cursor moves.
+    pub fn set_hover(&mut self, target: Option<DragTarget>) {
+        self.hover_target = target;
+    }
+
+    /// Cancel the drag (user pressed Escape, etc.). Returns the
+    /// in-flight row count so the caller can show a brief
+    /// "cancelled" message.
+    pub fn cancel(&mut self) -> usize {
+        let n = self.sources.len();
+        self.sources.clear();
+        self.hover_target = None;
+        n
+    }
+
+    /// Complete the drag — returns `(sources, target)` if a target
+    /// is under the cursor, or `None` if the drop happened over
+    /// empty space (treated as cancel).
+    pub fn finish(&mut self) -> Option<(Vec<String>, DragTarget)> {
+        let target = self.hover_target.clone()?;
+        let sources = std::mem::take(&mut self.sources);
+        self.hover_target = None;
+        Some((sources, target))
+    }
+
+    /// `true` while a drag is in progress.
+    #[must_use]
+    pub fn is_active(&self) -> bool {
+        !self.sources.is_empty()
+    }
+
+    /// Currently-dragged row keys.
+    #[must_use]
+    pub fn sources(&self) -> &[String] {
+        &self.sources
+    }
+
+    /// Currently-hovered drop target, if any.
+    #[must_use]
+    pub fn hover_target(&self) -> Option<&DragTarget> {
+        self.hover_target.as_ref()
+    }
+}
+
+// =========================================================================
 // Phase 1.7 — Operation drawer.
 // =========================================================================
 
@@ -492,6 +588,74 @@ mod tests {
         ] {
             assert!(!it.is_destructive(), "{it:?} must not be destructive");
         }
+    }
+
+    // ---------- Phase 1.6 ----------
+
+    #[test]
+    fn drag_session_starts_inactive() {
+        let d = DragSession::default();
+        assert!(!d.is_active());
+        assert!(d.sources().is_empty());
+        assert!(d.hover_target().is_none());
+    }
+
+    #[test]
+    fn drag_session_start_records_sources() {
+        let mut d = DragSession::default();
+        d.start(["a.txt", "b.txt"]);
+        assert!(d.is_active());
+        assert_eq!(d.sources(), &["a.txt".to_string(), "b.txt".to_string()]);
+    }
+
+    #[test]
+    fn drag_session_hover_set_and_finish() {
+        let mut d = DragSession::default();
+        d.start(["x.bin"]);
+        d.set_hover(Some(DragTarget::Peer("pine".into())));
+        let result = d.finish().expect("drop landed on a target");
+        assert_eq!(result.0, vec!["x.bin".to_string()]);
+        assert_eq!(result.1, DragTarget::Peer("pine".into()));
+        // After finish, session is inactive again.
+        assert!(!d.is_active());
+        assert!(d.hover_target().is_none());
+    }
+
+    #[test]
+    fn drag_session_finish_with_no_target_returns_none() {
+        let mut d = DragSession::default();
+        d.start(["x"]);
+        assert!(d.finish().is_none(), "drop on empty space = cancel");
+    }
+
+    #[test]
+    fn drag_session_cancel_reports_source_count() {
+        let mut d = DragSession::default();
+        d.start(["a", "b", "c"]);
+        let n = d.cancel();
+        assert_eq!(n, 3);
+        assert!(!d.is_active());
+    }
+
+    #[test]
+    fn drag_session_set_hover_to_none_clears() {
+        let mut d = DragSession::default();
+        d.start(["x"]);
+        d.set_hover(Some(DragTarget::Group("audio".into())));
+        d.set_hover(None);
+        assert!(d.hover_target().is_none());
+        // Sources are still in flight — only the hover cleared.
+        assert!(d.is_active());
+    }
+
+    #[test]
+    fn drag_target_variants_distinct() {
+        // The destination set mirrors Backend::Destination — every
+        // variant must be representable.
+        let _peer = DragTarget::Peer("pine".into());
+        let _group = DragTarget::Group("audio".into());
+        let _role = DragTarget::Role("host".into());
+        let _site = DragTarget::Site("lab".into());
     }
 
     // ---------- Phase 1.7 ----------

@@ -9,6 +9,7 @@ pub mod demo_data;
 pub mod icons;
 pub mod model;
 pub mod panels;
+pub mod search;
 pub mod selection;
 pub mod theme;
 pub mod views;

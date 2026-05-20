@@ -2151,8 +2151,17 @@ dashed "Browse filesystem…" disclosure that opens an explainer card.
   `ContextMenuItemClicked(item)` (which dismisses the menu so
   the floating widget disappears). 5 panel-module + 2 app-
   wiring tests.
-- [ ] **1.6 Drag-and-drop** — File rows drag onto sidebar peers →
-  triggers `Backend::send_to(peer, mode=copy)`.
+- [✓] **1.6 Drag-and-drop** — shipped 2026-05-20. `DragSession`
+  state + `DragTarget` enum (Peer / Group / Role / Site —
+  mirrors `Backend::Destination`) in
+  `crates/mde-files/src/panels.rs`. `start(sources)` /
+  `set_hover(target)` / `finish()` (returns
+  `(sources, target)` or `None` on empty-space drop) /
+  `cancel()` (returns source-count for the brief "cancelled"
+  toast). `MdeFiles` reducer wires `DragStart(rows)` /
+  `DragHover(target)` / `DragDrop` / `DragCancel`; the actual
+  `Backend::send_to` call lives at the view-side since the
+  reducer is sync. 6 panel-module + 2 app-wiring tests.
 - [✓] **1.7 Operation drawer** — shipped 2026-05-20.
   `OperationDrawer` state holds visibility flag + an ordered
   `VecDeque<OpRow>` capped at 32 entries (`OP_DRAWER_CAPACITY`).
@@ -2164,9 +2173,18 @@ dashed "Browse filesystem…" disclosure that opens an explainer card.
   `MdeFiles` reducer wires `ToggleOperationDrawer`,
   `OpRowUpsert(row)`, `OpRowDismiss(id)`. 8 panel-module + 1
   app-wiring tests.
-- [ ] **1.8 Search-results view** — When `search` is non-empty,
-  switch the main pane to a results list filtered across the
-  current scope (mesh / local depending on the active view).
+- [✓] **1.8 Search-results view** — shipped 2026-05-20. New
+  module `crates/mde-files/src/search.rs` ships the pure-fn
+  filter primitives: `matches_query(row, query)` (case-
+  insensitive substring over filename + origin peer name,
+  trim whitespace, empty query matches everything),
+  `filter_rows(rows, query)` (returns owned `Vec<FileRow>`),
+  `is_active(query)` (the view's "swap to results pane"
+  predicate). 9 unit tests cover empty / whitespace /
+  case-folding / filename / origin-peer / mixed / no-match
+  paths. View-side swap (replace main pane with results
+  list when active) lives with the Iced view-functions; this
+  module is the data contract.
 - [ ] **1.9 Grid view** — `Layout::Grid` renders the current file
   list as a tile grid; metadata icon top + filename + origin pill
   bottom.

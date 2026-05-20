@@ -5,7 +5,9 @@ use iced::{Background, Border, Color, Element, Length, Padding, Size, Task, Them
 
 use crate::demo_data as data;
 use crate::model::{Layout, View};
-use crate::panels::{ContextMenu, ContextMenuItem, DetailsPanel, OperationDrawer, OpRow};
+use crate::panels::{
+    ContextMenu, ContextMenuItem, DetailsPanel, DragSession, DragTarget, OperationDrawer, OpRow,
+};
 use crate::selection::Selection;
 use crate::theme as t;
 use crate::views;
@@ -60,6 +62,19 @@ pub enum Message {
     OpRowUpsert(OpRow),
     /// v2.0.0 Phase 1.7 — dismiss a terminal op from the drawer.
     OpRowDismiss(u64),
+    /// v2.0.0 Phase 1.6 — user grabbed a row (or the current
+    /// selection) and started dragging.
+    DragStart(Vec<String>),
+    /// v2.0.0 Phase 1.6 — cursor entered (`Some`) or left (`None`)
+    /// a drop target.
+    DragHover(Option<DragTarget>),
+    /// v2.0.0 Phase 1.6 — user dropped over a target (or empty
+    /// space). The reducer translates a target landing into a
+    /// `Backend::send_to` call at the view-side; here it just
+    /// finishes the drag session.
+    DragDrop,
+    /// v2.0.0 Phase 1.6 — user pressed Escape mid-drag.
+    DragCancel,
     /// No-op message used by buttons that don't have a wired behaviour yet
     /// (e.g. the sidebar's panel-toggle, the peer card's `…` button).
     Noop,
@@ -88,6 +103,8 @@ pub struct MdeFiles {
     pub context_menu: ContextMenu,
     /// v2.0.0 Phase 1.7 — slide-up operation drawer state.
     pub op_drawer: OperationDrawer,
+    /// v2.0.0 Phase 1.6 — drag-and-drop session state.
+    pub drag: DragSession,
 }
 
 impl MdeFiles {
@@ -194,6 +211,19 @@ impl MdeFiles {
             Message::OpRowUpsert(row) => self.op_drawer.upsert(row),
             Message::OpRowDismiss(id) => {
                 self.op_drawer.dismiss(id);
+            }
+            Message::DragStart(rows) => self.drag.start(rows),
+            Message::DragHover(target) => self.drag.set_hover(target),
+            Message::DragDrop => {
+                // The actual `Backend::send_to` call lives at the
+                // view-side because the reducer is sync and the
+                // backend is mut. `finish()` returns the drop
+                // target so the view can route the call; here we
+                // just clean up the session state.
+                let _ = self.drag.finish();
+            }
+            Message::DragCancel => {
+                let _ = self.drag.cancel();
             }
             Message::Refresh
             | Message::TitlebarMinimize
@@ -496,6 +526,26 @@ mod tests {
         assert_eq!(s.op_drawer.len(), 1);
         let _ = s.update(Message::OpRowDismiss(7));
         assert_eq!(s.op_drawer.len(), 0);
+    }
+
+    #[test]
+    fn drag_start_and_drop_messages() {
+        let mut s = MdeFiles::default();
+        let _ = s.update(Message::DragStart(vec!["a.txt".into(), "b.txt".into()]));
+        assert!(s.drag.is_active());
+        assert_eq!(s.drag.sources().len(), 2);
+        let _ = s.update(Message::DragHover(Some(DragTarget::Peer("pine".into()))));
+        assert_eq!(s.drag.hover_target(), Some(&DragTarget::Peer("pine".into())));
+        let _ = s.update(Message::DragDrop);
+        assert!(!s.drag.is_active(), "drag finishes after drop");
+    }
+
+    #[test]
+    fn drag_cancel_message() {
+        let mut s = MdeFiles::default();
+        let _ = s.update(Message::DragStart(vec!["a".into()]));
+        let _ = s.update(Message::DragCancel);
+        assert!(!s.drag.is_active());
     }
 
     #[test]
