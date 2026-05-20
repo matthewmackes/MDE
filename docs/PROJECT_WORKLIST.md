@@ -498,8 +498,18 @@ panel starts without manual intervention.
 - [ ] **C.4 `settings/power.rs`** — Lid action, idle timeout, suspend,
   profile via `org.freedesktop.login1` + `power-profiles-daemon` +
   swayidle config.
-- [ ] **C.5 `settings/notification.rs`** — DND, location applier.
-  Wires through `workers/notifications_server.rs`.
+- [✓] **C.5 `settings/notification.rs`** — full implementation
+  spans 3 keys: NotificationDoNotDisturb writes / removes a
+  flag file at `$XDG_CACHE_HOME/mde/notifications-dnd` (presence
+  = DND on); NotificationLocation + NotificationDefaultExpireMs
+  update a `notifications-prefs.json` sidecar via a
+  read-modify-write helper that preserves the other key.
+  `parse_dnd_state`, `parse_prefs_json`, `dnd_flag_path`,
+  `prefs_path` are pure helpers covered by 9 tests including
+  on-off round-trip, idempotent-off, location-doesn't-clobber-
+  expire, malformed JSON falls back to default. The
+  notifications_server worker (B.10) reads the same files on
+  its tick to honor DND.
 - [ ] **C.6 `settings/automount.rs`** — Removable media policies via
   udisks2 DBus. Replaces thunar-volman xfconf.
 - [ ] **C.7 `settings/wallpaper.rs`** — Per-output wallpaper paths.

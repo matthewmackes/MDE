@@ -419,8 +419,9 @@ mod tests {
     fn apply_dispatches_unimplemented_keys_to_phase_a_stub() {
         // Phase C is filling in the per-applier bodies; once an
         // applier ships, its keys exit this test's set. Today's
-        // still-stubbed appliers: display, power, notification,
-        // automount, wallpaper, keybinds (Wayland-only flow).
+        // still-stubbed appliers: display, power, automount,
+        // wallpaper, keybinds (Wayland-only flows that need
+        // sway / wlr-output-management / udisks2).
         let still_stub = [
             SettingKey::DisplayPrimary,
             SettingKey::DisplayBrightness,
@@ -432,9 +433,6 @@ mod tests {
             SettingKey::PowerSuspendIdleAcS,
             SettingKey::PowerProfile,
             SettingKey::PowerPresentationMode,
-            SettingKey::NotificationDoNotDisturb,
-            SettingKey::NotificationLocation,
-            SettingKey::NotificationDefaultExpireMs,
             SettingKey::AutomountOnInsert,
             SettingKey::AutomountOpenOnMount,
             SettingKey::AutomountAutorun,
