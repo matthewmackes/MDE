@@ -16,6 +16,7 @@ pub mod fonts;
 pub mod inventory;
 pub mod json_helpers;
 pub mod logs;
+pub mod mesh_join;
 pub mod notifications;
 pub mod playbooks;
 pub mod power;
