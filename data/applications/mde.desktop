@@ -1,0 +1,27 @@
+[Desktop Entry]
+# v2.0.0 Phase 0.9 — MDE-namespaced .desktop entry. Supersedes
+# mackes-shell.desktop at the v2.0.0 cut; both ship through the
+# one-release backward-compat window so menu entries created by
+# either name resolve.
+Type=Application
+Name=Mackes Desktop Environment
+GenericName=Settings & Mesh
+Comment=Unified Wayland desktop with mesh-first file sharing, notifications, and fleet config
+Exec=mde
+Icon=mde
+Terminal=false
+Categories=Settings;System;DesktopSettings;
+Keywords=settings;preferences;control;panel;mesh;tailscale;headscale;fleet;ansible;workstation;mde;mackes;
+StartupNotify=true
+StartupWMClass=Mackes-shell
+Actions=Wizard;Drawer;
+
+[Desktop Action Wizard]
+Name=First-Run Wizard
+Exec=mde --wizard
+Icon=mde
+
+[Desktop Action Drawer]
+Name=Notification Drawer
+Exec=mde --drawer
+Icon=mde

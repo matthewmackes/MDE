@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  v2.0.0 Phase 0.9 — MDE-namespaced AppStream metainfo.
+  Supersedes data/metainfo/shell.mackes.Panel.metainfo.xml at the
+  v2.0.0 cut; both ship through the one-release backward-compat
+  window so software-center surfaces resolve either id.
+-->
+<component type="desktop-application">
+  <id>dev.mackes.MDE</id>
+  <launchable type="desktop-id">mde.desktop</launchable>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+
+  <name>Mackes Desktop Environment</name>
+  <summary>Unified Wayland desktop with mesh-first file sharing, notifications, clipboard, and fleet config</summary>
+
+  <description>
+    <p>
+      Mackes Desktop Environment (MDE) is a Wayland-only Linux desktop
+      built around a single unified Rust meta-daemon (mded). Every
+      machine in your mesh runs the same daemon; settings, clipboard,
+      notifications, and file shares move between them as a single
+      fabric.
+    </p>
+    <p>Built-in:</p>
+    <ul>
+      <li>Sway compositor + Iced + libcosmic panel with foreign-toplevel-management dock</li>
+      <li>mded — supervises every long-running task (clipboard, mDNS, mesh-fs, media-sync, remmina-sync, ansible-pull, KDE Connect bridge, heartbeat, notifications, notification relay) as in-process workers under one PID</li>
+      <li>org.freedesktop.Notifications served by mded; cross-peer notification relay reads ~/QNM-Shared/&lt;peer&gt;/.qnm-notifications/</li>
+      <li>Settings layer: 29 dot-notated keys covering theme/font/display/power/notification/automount/wallpaper/keybinds/autostart, served over dev.mackes.MDE.Settings</li>
+      <li>Fleet config: push a setting value to every healthy peer with one CLI call; rollback via the Workbench Revisions panel</li>
+      <li>MDE Files (Iced + libcosmic, cosmic-files vendored) with Send-To pipeline for cross-peer transfers</li>
+    </ul>
+    <p>
+      Upgrades from v1.x Mackes Shell are automatic: dnf upgrade
+      lands on mde-2.0.0 via Obsoletes/Provides, the
+      mde-migrate-from-1x helper atomically moves ~/.config/mackes-shell/
+      to ~/.config/mde/, env-var shim reads MDE_* with MACKES_*
+      fallback for one release, and D-Bus aliases keep the v1.x
+      org.mackes.* service names addressable for one release.
+    </p>
+  </description>
+
+  <url type="homepage">https://github.com/matthewmackes/MAP2-RELEASES</url>
+  <url type="bugtracker">https://github.com/matthewmackes/MAP2-RELEASES/issues</url>
+
+  <developer id="io.github.matthewmackes">
+    <name>Matthew Mackes</name>
+  </developer>
+
+  <categories>
+    <category>System</category>
+    <category>Settings</category>
+    <category>DesktopSettings</category>
+  </categories>
+
+  <keywords>
+    <keyword>desktop</keyword>
+    <keyword>wayland</keyword>
+    <keyword>sway</keyword>
+    <keyword>mesh</keyword>
+    <keyword>fleet</keyword>
+    <keyword>mackes</keyword>
+    <keyword>mde</keyword>
+  </keywords>
+
+  <provides>
+    <id>shell.mackes.Panel</id>
+    <id>shell.mackes.Workbench</id>
+  </provides>
+
+  <releases>
+    <release version="2.0.0" type="development">
+      <description>
+        <p>
+          Rebrand to Mackes Desktop Environment (MDE). Wayland-only
+          (sway). Unified Rust meta-daemon (mded) replaces every v1.x
+          Python daemon. Native settings layer + fleet config. See
+          CHANGELOG.md for the full list of moving parts.
+        </p>
+      </description>
+    </release>
+  </releases>
+</component>

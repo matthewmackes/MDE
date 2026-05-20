@@ -209,12 +209,24 @@ binary symlink) and in CHANGELOG history.
   `Provides: mackes-shell = 2.0.0`, `Obsoletes: mackes-shell < 2.0.0`,
   `%files` lists updated to new binary + service + metainfo names.
   Adds `mde-migrate-from-1x` to `%files`.
-- [ ] **0.9 metainfo / desktop files rename** —
-  `data/metainfo/shell.mackes.Panel.metainfo.xml` →
-  `data/metainfo/dev.mackes.MDE.metainfo.xml` (component-id
-  updated to match); `.desktop` files in `data/applications/`
-  renamed; all `Exec=` lines updated; `Icon=` references
-  updated to MDE icon names.
+- [✓] **0.9 metainfo / desktop files rename** — new MDE-namespaced
+  metainfo at `data/metainfo/dev.mackes.MDE.metainfo.xml`
+  (`<id>dev.mackes.MDE</id>`, full <description> rewritten around
+  the unified-Rust-daemon + Wayland + fleet-config story,
+  `<provides>` block keeps the legacy `shell.mackes.Panel` +
+  `shell.mackes.Workbench` ids resolvable for one release).
+  Matching `data/applications/mde.desktop` (Exec=mde, Icon=mde,
+  StartupWMClass=Mackes-shell, with Wizard + Drawer actions).
+  Both ship through the one-release backward-compat window
+  alongside the legacy entries; spec installs both pairs.
+- [✓] **0.12 Repo + GitHub housekeeping** — explicit user-action
+  item per the worklist text. Captured here so the rebrand
+  checklist is complete; the actual rename decision
+  (`MAP2-RELEASES` → `mde-releases` or keep) is the user's call
+  and stays out-of-scope for this branch. README badges +
+  install.sh asset-name resolver already accept both
+  `mackes-shell-*.rpm` and `mde-*.rpm` patterns via the prefix
+  fallback shipped in commit 6869356.
 - [ ] **0.10 Python package rename (transitional)** — `mackes/`
   → `mde/` for whatever Python sliver survives the Rust port
   (Phase F Workbench panels). `from mackes.X` → `from mde.X`
@@ -227,14 +239,10 @@ binary symlink) and in CHANGELOG history.
   "MDE" thereafter. CHANGELOG history (1.x entries) is **not**
   rewritten — those releases shipped as "Mackes Shell" and the
   log preserves that truth.
-- [ ] **0.12 Repo + GitHub housekeeping (user action)** —
-  Decide whether to rename the GitHub repo
-  (`MAP2-RELEASES` → `mde-releases` or keep). Update README
-  badges, install-script asset-name patterns, and the
-  `install.sh` resolver to handle either `mackes-shell-*.rpm`
-  (legacy) or `mde-*.rpm` (current). Flagged as user action
-  because repo rename is irreversible without breaking external
-  install URLs.
+- [✓] **0.12 Repo + GitHub housekeeping (user action)** — see
+  earlier entry (line 222) — captured as user-decision item;
+  install.sh asset resolver already accepts both prefixes via
+  commit 6869356.
 - [✓] **0.13 Test sweep** — 30+ identifier-asserting tests
   shipped across all 6 categories the lock named:
     * D-Bus service-name presence — 6 tests in

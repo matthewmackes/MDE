@@ -490,6 +490,13 @@ install -D -m 0644 data/applications/mackes-shell.metainfo.xml \
 # from the workbench app (1.0.7+).
 install -D -m 0644 data/metainfo/shell.mackes.Panel.metainfo.xml \
     %{buildroot}%{_metainfodir}/shell.mackes.Panel.metainfo.xml
+# v2.0.0 Phase 0.9 — MDE-namespaced metainfo + .desktop ship
+# alongside the legacy entries for the one-release backward-compat
+# window.
+install -D -m 0644 data/metainfo/dev.mackes.MDE.metainfo.xml \
+    %{buildroot}%{_metainfodir}/dev.mackes.MDE.metainfo.xml
+install -D -m 0644 data/applications/mde.desktop \
+    %{buildroot}%{_datadir}/applications/mde.desktop
 install -D -m 0644 data/icons/mackes-shell.svg \
     %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/mackes-shell.svg
 
@@ -652,6 +659,9 @@ fi
 %{_datadir}/applications/mackes-shell.desktop
 %{_datadir}/applications/mackes-clipboard.desktop
 %{_datadir}/applications/mackes-mesh-uri-handler.desktop
+# v2.0.0 Phase 0.9 — MDE-namespaced .desktop + metainfo aliases.
+%{_datadir}/applications/mde.desktop
+%{_metainfodir}/dev.mackes.MDE.metainfo.xml
 # Phase 8.3 — autostart entries that bring up mackes-panel and override
 # xfdesktop on Mackes installs (Q39/Q40). The mackes-enforce-session
 # entry (1.0.8 hotfix) idempotently swaps xfwm4 → i3 and quits any
