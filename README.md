@@ -106,55 +106,75 @@ If you'd rather use `dnf` directly:
 ```sh
 sudo dnf config-manager --add-repo \
     https://matthewmackes.github.io/MAP2-RELEASES/data/dnf/mackes-shell.repo
-sudo dnf install mackes-shell
+sudo dnf install mde
 ```
 
 Or download the RPM file from the [Releases page](https://github.com/matthewmackes/MAP2-RELEASES/releases)
-and install it offline.
+and install it offline. (The package name flipped from
+`mackes-shell` to `mde` at the 2.0.0 cut — older 1.x boxes pick up
+the new name automatically via `dnf upgrade` thanks to the
+`Obsoletes` rule on the new spec.)
 
 ## What's inside
 
-MDE replaces these Fedora parts with its own versions:
+MDE is a **full Wayland desktop environment** built in Rust. It
+replaces every interactive piece of a normal Fedora desktop with
+mesh-aware equivalents:
 
-- The **panel** (the bar at the bottom of the screen).
-- The **window manager** (the thing that draws window borders and
-  decides which window is on top). MDE uses **i3** today.
-- The **settings app**. MDE has its own called **Workbench**.
-- The **clipboard manager**, **notification drawer**, and **media
-  service finder**.
+- **Wayland compositor (sway)** — replaces xfwm4 + i3 from the 1.x
+  line. Tile + float window management, no compositor flicker, low
+  latency.
+- **Iced panel (`mde-panel`)** — single 40 px bottom taskbar via
+  Wayland layer-shell. Start menu, focused-app hero, status
+  cluster, clock.
+- **Iced Workbench (`mde-workbench`)** — settings + control center.
+  Nine groups, every panel ports to native Iced + libcosmic
+  widgets. Theme via the `mackes-theme` Carbon-token adapter.
+- **`mde-files` (Artifact Manager)** — mesh-first file manager.
+  Sidebar leads with peers + inbox + outbox; LOCAL is collapsed
+  behind a disclosure. Drop a file onto a peer card → it lands on
+  that peer.
+- **`mded` (unified meta-daemon)** — every long-running v1.x Python
+  daemon folds into one Rust process with an in-process worker
+  pool: clipboard, mdns, fs_sync, media_sync, remmina_sync,
+  ansible-pull, kdc_bridge, heartbeat, notification relay, and
+  `org.freedesktop.Notifications`. One systemd unit, one process,
+  one supervisor.
+- **Mesh fleet control plane** — Headscale + Tailscale-WireGuard
+  data plane, plus self-hosted DERP relay on the Host-role peer
+  (`mde-derper.service`). 16-peer small-business fleet, ~3 s
+  first-packet, < 10 s roaming reconnect.
 
 Everything else — your apps, your files, your printer drivers, your
 games — works exactly the way Fedora normally works.
 
 ## The Workbench app
 
-Workbench is the settings and control center for MDE. It has eight
-tabs:
+Workbench is the settings and control center for MDE. Nine groups:
 
 - **Dashboard** — at-a-glance status of every system service.
-- **Look & Feel** — theme, icons, fonts, wallpaper.
+- **Look & Feel** — theme, fonts, icons, wallpaper.
 - **Devices** — display, keyboard, mouse, sound, power.
-- **Network** — Wi-Fi, Ethernet, VPN, mesh peers, firewall.
-- **System** — window manager, workspaces, login items, default apps.
+- **Fleet** — push settings + revisions + Ansible-pull playbooks.
+- **Network** — Wi-Fi, Ethernet, VPN, mesh peers, firewall, SSH.
+- **System** — window manager, workspaces, session, notifications.
 - **Apps** — install or remove software, with curated lists per preset.
-- **Maintain** — snapshots, drift checks, system updates, repair tools.
-- **Help** — 19 short topics that cover every feature.
+- **Maintain** — snapshots, drift checks, updates, repair tools.
+- **Help** — short topics covering every feature.
 
-If you'd rather use the command line, there's a `mackes` command that
-does the same things. Run `mackes help` to see the topics.
+CLI: every Workbench action also has a `mde` subcommand. Run
+`mde help` for the topic list.
 
-## What's coming next: version 2.0
+## Upgrading from MDE 1.x (a.k.a. "Mackes Shell")
 
-The version you install today is called **1.x — Mackes Shell**. It's
-a panel and a set of tools layered on top of Fedora's standard XFCE
-desktop.
+**v1.x → v2.0.0 is a hard switch.** XFCE is removed; sway becomes
+the session; the binary rename `mackes` → `mde` takes effect with
+one-release bin-shims for back-compat. `dnf upgrade` lands the new
+package automatically; the next login picks up the new
+**Mackes Desktop Environment** session entry from the greeter.
 
-Version 2.0 is a much bigger step. It will be a **full desktop of
-its own**, written in Rust, running on the modern **Wayland** display
-system. When 2.0 ships, the project takes its final name everywhere:
-**MDE**. The Fedora package will rename itself from `mackes-shell` to
-`mde`, and `dnf upgrade` will move you over automatically. Nothing
-breaks; nothing needs to be reinstalled by hand.
+See [`docs/MIGRATION_FROM_V1.md`](docs/MIGRATION_FROM_V1.md) for
+the full walkthrough.
 
 ## More info
 

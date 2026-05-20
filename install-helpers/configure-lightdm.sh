@@ -56,6 +56,10 @@ EOF
 cat > "$DROPIN" <<EOF
 [Seat:*]
 greeter-session=lightdm-gtk-greeter
+# CB-2.3 — default newly-created user accounts to the MDE Wayland
+# session. Existing users keep whatever they picked last time
+# (~/.dmrc per-user state wins).
+user-session=mde
 EOF
 
 echo "configured LightDM greeter for preset '$PRESET' (accent $ACCENT_HEX)"

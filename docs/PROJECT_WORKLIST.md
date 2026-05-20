@@ -1419,12 +1419,13 @@ group structure with one Iced view per panel.
   is package-owned by i3 — explicit removal in `%post` via
   `dnf remove -y i3 i3status dmenu` once the Iced panel ships
   (gated on Phase E.4 sway IPC landing).
-- [ ] **CB-2.3 Greeter default session** —
-  `install-helpers/configure-lightdm.sh` already drops
-  `/etc/lightdm/lightdm.conf.d/50-mackes.conf`; extend it to set
-  `user-session=mde` so LightDM defaults to MDE for any newly-
-  created user. Existing users get their per-user choice from
-  `~/.dmrc` — no override (their next-time pick wins).
+- [✓] **CB-2.3 Greeter default session** — shipped 2026-05-20.
+  Extended `install-helpers/configure-lightdm.sh` to add
+  `user-session=mde` to the `[Seat:*]` block of the
+  `/etc/lightdm/lightdm.conf.d/50-mackes.conf` drop-in. Newly
+  created accounts default to the MDE Wayland session; existing
+  users keep their per-user choice from `~/.dmrc` (no override
+  — their next-time pick wins).
 - [ ] **CB-2.4 `mde-session` first-launch UX** — on a fresh
   account, `mde-session` calls `mde-migrate-from-1x` (already
   shipped, Phase 0.5) + `mde-shell-migrate-v2` (Phase H.5,
@@ -1558,15 +1559,19 @@ parser change is needed. The cosmetic + UX changes:
 
 #### CB-6 Documentation + cut prep
 
-- [ ] **CB-6.1 README rewrite** — `README.md` top section flipped
-  from "Mackes Shell 1.1.0" framing to "Mackes Desktop
-  Environment (MDE) 2.0.0". "What is MDE" paragraph: Wayland
-  compositor (sway) + Iced panel + Iced Workbench + mesh-first
-  file manager + unified `mded` meta-daemon + mesh-fleet control
-  plane. Install section: curl-pipe + `dnf install mde` + ISO
-  download. Upgrade section: "1.x → 2.0.0 is a hard switch — XFCE
-  is removed, sway becomes the session." Screenshot pass: replace
-  every 1.x panel screenshot with Iced equivalents.
+- [✓] **CB-6.1 README rewrite** — shipped 2026-05-20.
+  `README.md` "What's inside" / "Workbench" / "What's coming
+  next" sections rewritten to describe MDE 2.0.0 as a full
+  Wayland desktop environment (was: "the version you install
+  today is 1.x — Mackes Shell, layered on XFCE"). New sections
+  list sway compositor, Iced panel, Iced Workbench (now 9
+  groups), `mde-files` artifact manager, unified `mded`
+  daemon, mesh fleet control plane. Install section nudges
+  `dnf install mde` (the package name flipped at 2.0.0 cut).
+  New "Upgrading from MDE 1.x" section calls out the hard
+  switch + links `docs/MIGRATION_FROM_V1.md`. Screenshot pass
+  is a separate follow-up (every screenshot in `docs/help/`
+  still shows GTK3 panels) — landed in CB-1.x view-ports.
 - [✓] **CB-6.2 `docs/MIGRATION_FROM_V1.md`** — shipped
   2026-05-20. New doc walks through the v1.x → v2.0.0
   upgrade end-to-end: `dnf upgrade` lands `mde`, the
