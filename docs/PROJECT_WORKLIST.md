@@ -409,8 +409,40 @@ panel starts without manual intervention.
   tests: bound vs unbound paths, replaces_id semantics + row count,
   close stamps dismissed_at. mackesd lib tests with async-services:
   268 → 272.
-- [ ] **B.11 `workers/{wol,derp,nats,perf,thumbnailer}.rs`** — port
-  remaining `mesh_*.py` library bits.
+- [✓] **B.11 `workers/{wol,derp,nats,perf,thumbnailer}.rs`** —
+  Rust ports of the five remaining `mesh_*.py` modules.
+    * `wol.rs` — full pure-Rust port of `mesh_wol.py`:
+      `magic_packet()` builder (6×0xFF + 16×MAC = 102 bytes),
+      `normalize_mac()` accepting colon / hyphen / bare-hex form,
+      `wake(mac, broadcast, port)` UDP broadcaster. 11 unit tests.
+    * `perf.rs` — read-only port of `mesh_perf.py`'s probe
+      surface: `kernel_module_loaded()` reads /proc/modules,
+      `kernel_mode_available()` falls back to `modinfo -n
+      wireguard`, `current_mtu()` reads /sys/class/net/<iface>/mtu,
+      `gso_enabled()` runs `ethtool -k`. Pure `parse_gso_state()`
+      + `parse_loaded_modules()` helpers cover the parsers. 7
+      tests. Sysctl-write path stays on AdminSession (root).
+    * `derp.rs` — port of `mesh_derp.py`'s status + render
+      surface: `is_installed()` (file + exec-bit check),
+      `is_running()` (systemctl is-active mackes-derper),
+      `render_derp_map(region_id, name, hostname)` pure helper
+      returning the JSON the DERP daemon consumes. 5 tests.
+      Install / start / stop stay on AdminSession (root).
+    * `nats.rs` — matching status + render surface for
+      `mesh_nats.py`. `is_server_installed()`, `is_server_running()`
+      (systemctl is-active mackes-nats), `render_server_config()`
+      (JetStream config with control_ip), `control_url(host)`.
+      6 tests. Install / start stay on AdminSession.
+    * `thumbnailer.rs` — dispatch shape for the Thunar
+      `.thumbnailer` invocation. `handles_path()` recognizes the
+      mesh-notification `.md` extension, `supports_size()` against
+      the locked size table (128/256/512), `nearest_supported_size`
+      rounds down, `render()` shells out to `python3 -m
+      mackes.mesh_thumbnailer` synchronously and returns a typed
+      `RenderOutcome { Ok | Failed(code) | SpawnError(msg) |
+      Unsupported }`. 6 tests. Cairo + Pango port lands with the
+      libcosmic panel rewrite (E.7).
+  mackesd lib test count with async-services: 291 → 327 (+36).
 - [✓] **B.12 `mackesd serve` subcommand** —
   `crates/mackesd/src/bin/mackesd.rs` ships `Cmd::Serve { qnm_root,
   node_id }` (gated behind `async-services`) + the `run_serve()`

@@ -81,14 +81,19 @@ impl ShutdownToken {
 // bodies as Phase B fills in.
 pub mod ansible_pull;
 pub mod clipboard;
+pub mod derp;
 pub mod fs_sync;
 pub mod heartbeat;
 pub mod kdc_bridge;
 pub mod mdns;
 pub mod media_sync;
+pub mod nats;
 pub mod notification_relay;
+pub mod perf;
 pub mod remmina_sync;
 pub mod subprocess_tick;
+pub mod thumbnailer;
+pub mod wol;
 
 /// Every worker registered with the supervisor implements this
 /// trait. The trait is `async_trait` because the supervisor stores
