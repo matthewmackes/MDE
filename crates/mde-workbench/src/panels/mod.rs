@@ -18,6 +18,7 @@ pub mod playbooks;
 pub mod power;
 pub mod printers;
 pub mod removable;
+pub mod repair;
 pub mod resources;
 pub mod run_history;
 pub mod session;

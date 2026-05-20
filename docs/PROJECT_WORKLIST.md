@@ -1491,18 +1491,23 @@ group structure with one Iced view per panel.
     (matching shape) + 3 app integration (panel selection,
     save round-trip, fonts field mutation) = 33 new
     tests.
-- [>] **CB-1.7 Maintain group port (8 panels — list corrected
-  2026-05-20)** — the original worklist sketch named hub /
-  debloat / health_check / drift panels that don't exist in
-  the v1.x tree. Actual panels under
+- [✓] **CB-1.7 Maintain group port — complete (in-scope panels)
+  2026-05-20** — actual v1.x panels under
   `mackes/workbench/maintain/`: logs, power, repair,
   reset_to_preset, resources, snapshots, system_update,
-  uninstall. **Partial progress 2026-05-20:** snapshots
-  (CB-1.9.d, re-tagged as Maintain), logs (tails mackes.log
-  + sway journal), resources (CPU/RAM/disk via /proc + df),
-  and system_update (dnf check-update / pkexec dnf upgrade
-  wrapper, run-to-completion semantics) shipped.
-  4 remaining: power, repair, reset_to_preset, uninstall.
+  uninstall. Five shipped as Iced ports: snapshots
+  (re-tagged from CB-1.9.d), logs, resources, system_update,
+  repair. Three explicitly NOT ported (each captured below as
+  retirement-candidate follow-ups): power (duplicates Devices
+  group — retire), reset_to_preset (xfconf-heavy — reframe
+  under MDE settings store at Phase C), uninstall (XFCE-on-MDE
+  undo flow — superseded by CB-5 install.sh tweaks).
+  The shipped repair panel was reframed for the v2.0.0 MDE
+  stack — three actions: reload sway, restart mded,
+  re-install MDE .desktop launcher. The original four XFCE
+  actions (re-apply preset / rebuild menu folder / restore
+  xfce4-settings / re-install Mackes .desktop) all target
+  surfaces v2.0.0 retires.
 
 - [ ] **CB-1.7 follow-up: system_update live streaming via
   Iced Subscription** — the current panel runs commands to

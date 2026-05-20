@@ -20,10 +20,10 @@ use crate::panels::{
     fleet_revisions as fleet_revisions_panel, fleet_settings as fleet_settings_panel,
     fonts as fonts_panel, inventory as inventory_panel, logs as logs_panel,
     notifications as notifications_panel, playbooks as playbooks_panel, power as power_panel,
-    printers as printers_panel, removable as removable_panel, resources as resources_panel,
-    run_history as run_history_panel, session as session_panel, snapshots as snapshots_panel,
-    sound as sound_panel, system_update as system_update_panel, themes as themes_panel,
-    wallpaper as wallpaper_panel, window_manager as window_manager_panel,
+    printers as printers_panel, removable as removable_panel, repair as repair_panel,
+    resources as resources_panel, run_history as run_history_panel, session as session_panel,
+    snapshots as snapshots_panel, sound as sound_panel, system_update as system_update_panel,
+    themes as themes_panel, wallpaper as wallpaper_panel, window_manager as window_manager_panel,
 };
 use crate::patternfly::{breadcrumb, page_subtitle, page_title};
 use crate::sidebar::SidebarState;
@@ -99,6 +99,8 @@ pub enum Message {
     Resources(resources_panel::Message),
     /// CB-1.7 partial — Maintain system-update panel sub-message.
     SystemUpdate(system_update_panel::Message),
+    /// CB-1.7 partial — Maintain repair panel sub-message.
+    Repair(repair_panel::Message),
     /// CB-1.5 partial — Fleet settings panel sub-message.
     FleetSettings(fleet_settings_panel::Message),
     /// CB-1.5 partial — Fleet revisions panel sub-message.
@@ -136,6 +138,7 @@ pub struct App {
     logs: logs_panel::LogsPanel,
     resources: resources_panel::ResourcesPanel,
     system_update: system_update_panel::SystemUpdatePanel,
+    repair: repair_panel::RepairPanel,
     fleet_settings: fleet_settings_panel::FleetSettingsPanel,
     fleet_revisions: fleet_revisions_panel::FleetRevisionsPanel,
     wallpaper: wallpaper_panel::WallpaperPanel,
@@ -196,6 +199,7 @@ impl App {
             logs: logs_panel::LogsPanel::new(),
             resources: resources_panel::ResourcesPanel::new(),
             system_update: system_update_panel::SystemUpdatePanel::new(),
+            repair: repair_panel::RepairPanel::new(),
             fleet_settings: fleet_settings_panel::FleetSettingsPanel::new(),
             fleet_revisions: fleet_revisions_panel::FleetRevisionsPanel::new(),
             wallpaper: wallpaper_panel::WallpaperPanel::new(),
@@ -337,6 +341,12 @@ impl App {
         &self.system_update
     }
 
+    /// Read-only view of the repair panel state.
+    #[must_use]
+    pub fn repair(&self) -> &repair_panel::RepairPanel {
+        &self.repair
+    }
+
     /// Read-only view of the fleet settings panel state.
     #[must_use]
     pub fn fleet_settings(&self) -> &fleet_settings_panel::FleetSettingsPanel {
@@ -445,6 +455,7 @@ impl App {
             Message::Logs(msg) => self.logs.update(msg),
             Message::Resources(msg) => self.resources.update(msg),
             Message::SystemUpdate(msg) => self.system_update.update(msg),
+            Message::Repair(msg) => self.repair.update(msg),
             Message::FleetSettings(msg) => self.fleet_settings.update(msg),
             Message::FleetRevisions(msg) => self.fleet_revisions.update(msg),
             Message::Wallpaper(msg) => self.wallpaper.update(msg, self.backend()),
@@ -648,6 +659,10 @@ impl App {
                 group: Group::Maintain,
                 panel: "system_update",
             } => self.system_update.view(),
+            View::Panel {
+                group: Group::Maintain,
+                panel: "repair",
+            } => self.repair.view(),
             View::Panel {
                 group: Group::Fleet,
                 panel: "settings",
