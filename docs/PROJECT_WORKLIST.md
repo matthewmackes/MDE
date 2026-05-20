@@ -1499,9 +1499,36 @@ group structure with one Iced view per panel.
   reset_to_preset, resources, snapshots, system_update,
   uninstall. **Partial progress 2026-05-20:** snapshots
   (CB-1.9.d, re-tagged as Maintain), logs (tails mackes.log
-  + sway journal), and resources (CPU/RAM/disk via /proc +
-  df) shipped. 5 remaining: power, repair, reset_to_preset,
-  system_update, uninstall.
+  + sway journal), resources (CPU/RAM/disk via /proc + df),
+  and system_update (dnf check-update / pkexec dnf upgrade
+  wrapper, run-to-completion semantics) shipped.
+  4 remaining: power, repair, reset_to_preset, uninstall.
+
+- [ ] **CB-1.7 follow-up: system_update live streaming via
+  Iced Subscription** — the current panel runs commands to
+  completion and shows output when done. v1.x streamed dnf
+  stdout into a live TextView via a GLib io watch. The
+  Iced equivalent is an `iced::Subscription` channel
+  forwarding process stdout lines.
+
+- [ ] **CB-1.7 deferred: power / reset_to_preset / uninstall
+  panels (v2.0.0 retirement candidates)** — each of these
+  v1.x Maintain panels relies on infrastructure v2.0.0 is
+  retiring or supersedes:
+    * `maintain/power.py` — duplicates the Devices/Power
+      panel that already shipped. Retire rather than port.
+    * `maintain/reset_to_preset.py` — depends on
+      `mackes.presets.apply_preset` (xfconf-heavy).
+      Reframe under MDE settings store (Phase C); not a
+      1:1 port.
+    * `maintain/uninstall.py` — undoes the XFCE-on-MDE
+      install path that v2.0.0 retires (CB-2 swaps to a
+      pure-Wayland session). The MDE-era uninstaller is
+      a separate piece of work; CB-5 install.sh tweaks
+      handles the package-removal path.
+  These three are NOT in CB-1.7's v2.0.0 panel set; the
+  remaining Maintain port is `repair.py` (reframable as
+  MDE health-check).
 - [ ] **CB-1.8 Network group port (~14 panels)** — largest group.
   `mesh_control.py` (9-tab notebook) + `mesh_pending.py` +
   `mesh_history.py` + `mesh_join.py` + `mesh_ssh.py` +

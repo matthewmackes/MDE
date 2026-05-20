@@ -23,6 +23,7 @@ pub mod run_history;
 pub mod session;
 pub mod snapshots;
 pub mod sound;
+pub mod system_update;
 pub mod themes;
 pub mod wallpaper;
 pub mod window_manager;
