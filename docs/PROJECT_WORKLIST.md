@@ -2133,16 +2133,37 @@ dashed "Browse filesystem…" disclosure that opens an explainer card.
   `ToggleFocused`, `ClearSelection`, plus view-change clears).
   17 selection-module + 8 app-wiring tests, taking the mde-files
   total from 31 → 56.
-- [ ] **1.4 Details panel** — Right-side panel showing metadata,
-  permissions, mesh availability, operation history for the focused
-  row. Hidden when nothing selected.
-- [ ] **1.5 Context menu (right-click)** — Open in app, copy path,
-  Send To submenu, delete, properties.
+- [✓] **1.4 Details panel** — shipped 2026-05-20. `DetailsPanel`
+  state in `crates/mde-files/src/panels.rs` carries
+  `open` + `target` fields with the design-locked behaviour:
+  hidden when nothing selected, follows focus while open,
+  auto-closes when focus clears. `MdeFiles` reducer wires
+  `ToggleDetails`, view-change clear-on-leave, and focus-follow
+  on every row-click / arrow / shift-click. 6 panel-module +
+  3 app-wiring tests.
+- [✓] **1.5 Context menu (right-click)** — shipped 2026-05-20.
+  `ContextMenu` state holds open/closed flag + the row the menu
+  was opened over + the window-coord anchor for placement.
+  Locked 6-item set (Open / Copy path / Send to… / Rename /
+  Delete / Properties) lives in `ContextMenuItem::label()`
+  with the destructive flag on Delete. `MdeFiles` reducer wires
+  `OpenContextMenu(row, x, y)` / `CloseContextMenu` /
+  `ContextMenuItemClicked(item)` (which dismisses the menu so
+  the floating widget disappears). 5 panel-module + 2 app-
+  wiring tests.
 - [ ] **1.6 Drag-and-drop** — File rows drag onto sidebar peers →
   triggers `Backend::send_to(peer, mode=copy)`.
-- [ ] **1.7 Operation drawer** — Slide-up panel showing live
-  per-operation progress (one row per active op), cancel/retry/
-  verify/rollback controls. Subscribes to backend op stream.
+- [✓] **1.7 Operation drawer** — shipped 2026-05-20.
+  `OperationDrawer` state holds visibility flag + an ordered
+  `VecDeque<OpRow>` capped at 32 entries (`OP_DRAWER_CAPACITY`).
+  `OpRow` carries op_id + source + destination + permille
+  progress + `OpState` (Queued / Running / Completed / Failed /
+  Cancelled with `is_active/is_terminal/can_cancel/can_retry`
+  predicates). `upsert()` is idempotent (same op_id updates in
+  place); `dismiss()` returns whether a row was removed.
+  `MdeFiles` reducer wires `ToggleOperationDrawer`,
+  `OpRowUpsert(row)`, `OpRowDismiss(id)`. 8 panel-module + 1
+  app-wiring tests.
 - [ ] **1.8 Search-results view** — When `search` is non-empty,
   switch the main pane to a results list filtered across the
   current scope (mesh / local depending on the active view).

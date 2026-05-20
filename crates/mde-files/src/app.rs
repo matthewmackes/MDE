@@ -5,6 +5,7 @@ use iced::{Background, Border, Color, Element, Length, Padding, Size, Task, Them
 
 use crate::demo_data as data;
 use crate::model::{Layout, View};
+use crate::panels::{ContextMenu, ContextMenuItem, DetailsPanel, OperationDrawer, OpRow};
 use crate::selection::Selection;
 use crate::theme as t;
 use crate::views;
@@ -40,6 +41,25 @@ pub enum Message {
     ToggleFocused,
     /// v2.0.0 Phase 1.3 — keyboard Escape: clear selection.
     ClearSelection,
+    /// v2.0.0 Phase 1.4 — toggle the right-side details panel.
+    ToggleDetails,
+    /// v2.0.0 Phase 1.5 — open the right-click context menu over
+    /// the given row at the given window-coord anchor.
+    OpenContextMenu(String, f32, f32),
+    /// v2.0.0 Phase 1.5 — close the context menu.
+    CloseContextMenu,
+    /// v2.0.0 Phase 1.5 — a context-menu item was clicked. View
+    /// code routes this to the appropriate side-effect (Send-To
+    /// dialog, clipboard, etc.); the reducer just closes the
+    /// menu so the floating widget disappears.
+    ContextMenuItemClicked(ContextMenuItem),
+    /// v2.0.0 Phase 1.7 — show / hide the operation drawer.
+    ToggleOperationDrawer,
+    /// v2.0.0 Phase 1.7 — backend pushed a fresh op row (new or
+    /// progress update).
+    OpRowUpsert(OpRow),
+    /// v2.0.0 Phase 1.7 — dismiss a terminal op from the drawer.
+    OpRowDismiss(u64),
     /// No-op message used by buttons that don't have a wired behaviour yet
     /// (e.g. the sidebar's panel-toggle, the peer card's `…` button).
     Noop,
@@ -62,6 +82,12 @@ pub struct MdeFiles {
     /// v2.0.0 Phase 1.3 — row selection state (focus + anchor +
     /// selected set). Cleared on view change.
     pub selection: Selection,
+    /// v2.0.0 Phase 1.4 — right-side details panel state.
+    pub details: DetailsPanel,
+    /// v2.0.0 Phase 1.5 — right-click context-menu state.
+    pub context_menu: ContextMenu,
+    /// v2.0.0 Phase 1.7 — slide-up operation drawer state.
+    pub op_drawer: OperationDrawer,
 }
 
 impl MdeFiles {
@@ -120,15 +146,55 @@ impl MdeFiles {
                 self.view = View::Peer(id);
                 self.selection.clear();
             }
-            Message::RowClick(key) => self.selection.click(key),
-            Message::RowCtrlClick(key) => self.selection.ctrl_click(key),
+            Message::RowClick(key) => {
+                self.selection.click(key);
+                // Phase 1.4 — details panel tracks focus.
+                self.details.set_target(self.selection.focused());
+            }
+            Message::RowCtrlClick(key) => {
+                self.selection.ctrl_click(key);
+                self.details.set_target(self.selection.focused());
+            }
             Message::RowShiftClick(key, rows) => {
                 self.selection.shift_click(key, &rows);
+                self.details.set_target(self.selection.focused());
             }
-            Message::FocusNext(rows) => self.selection.focus_next(&rows),
-            Message::FocusPrev(rows) => self.selection.focus_prev(&rows),
+            Message::FocusNext(rows) => {
+                self.selection.focus_next(&rows);
+                self.details.set_target(self.selection.focused());
+            }
+            Message::FocusPrev(rows) => {
+                self.selection.focus_prev(&rows);
+                self.details.set_target(self.selection.focused());
+            }
             Message::ToggleFocused => self.selection.toggle_focused(),
-            Message::ClearSelection => self.selection.clear(),
+            Message::ClearSelection => {
+                self.selection.clear();
+                self.details.set_target(None);
+            }
+            Message::ToggleDetails => {
+                self.details.toggle(self.selection.focused());
+            }
+            Message::OpenContextMenu(row, x, y) => {
+                self.context_menu.open(row, (x, y));
+            }
+            Message::CloseContextMenu => self.context_menu.close(),
+            Message::ContextMenuItemClicked(_item) => {
+                // The actual side-effect routing (Send-To dialog,
+                // clipboard, properties window) happens at the
+                // view-side. The reducer just dismisses the
+                // floating menu so it doesn't linger after the
+                // click.
+                self.context_menu.close();
+            }
+            Message::ToggleOperationDrawer => {
+                let open = !self.op_drawer.is_open();
+                self.op_drawer.set_open(open);
+            }
+            Message::OpRowUpsert(row) => self.op_drawer.upsert(row),
+            Message::OpRowDismiss(id) => {
+                self.op_drawer.dismiss(id);
+            }
             Message::Refresh
             | Message::TitlebarMinimize
             | Message::TitlebarMaximize
@@ -353,6 +419,83 @@ mod tests {
         let _ = s.update(Message::RowClick("x".into()));
         let _ = s.update(Message::PeerCardBrowse("pine"));
         assert!(s.selection.is_empty());
+    }
+
+    #[test]
+    fn toggle_details_panel_message() {
+        let mut s = MdeFiles::default();
+        // No focus → toggle is a no-op (Phase 1.4 lock).
+        let _ = s.update(Message::ToggleDetails);
+        assert!(!s.details.is_open());
+        // After focusing a row, toggle opens it.
+        let _ = s.update(Message::RowClick("a.txt".into()));
+        let _ = s.update(Message::ToggleDetails);
+        assert!(s.details.is_open());
+        assert_eq!(s.details.target(), Some("a.txt"));
+    }
+
+    #[test]
+    fn row_click_updates_details_target_when_open() {
+        let mut s = MdeFiles::default();
+        let _ = s.update(Message::RowClick("a".into()));
+        let _ = s.update(Message::ToggleDetails);
+        let _ = s.update(Message::RowClick("b".into()));
+        assert_eq!(s.details.target(), Some("b"));
+        assert!(s.details.is_open());
+    }
+
+    #[test]
+    fn clear_selection_closes_details() {
+        let mut s = MdeFiles::default();
+        let _ = s.update(Message::RowClick("a".into()));
+        let _ = s.update(Message::ToggleDetails);
+        assert!(s.details.is_open());
+        let _ = s.update(Message::ClearSelection);
+        assert!(!s.details.is_open(), "details hides when nothing selected");
+    }
+
+    #[test]
+    fn open_context_menu_message() {
+        let mut s = MdeFiles::default();
+        let _ = s.update(Message::OpenContextMenu("a.txt".into(), 100.0, 200.0));
+        assert!(s.context_menu.is_open());
+        assert_eq!(s.context_menu.row(), Some("a.txt"));
+        assert_eq!(s.context_menu.anchor(), Some((100.0, 200.0)));
+    }
+
+    #[test]
+    fn context_menu_item_clicked_closes_menu() {
+        let mut s = MdeFiles::default();
+        let _ = s.update(Message::OpenContextMenu("a.txt".into(), 0.0, 0.0));
+        let _ = s.update(Message::ContextMenuItemClicked(ContextMenuItem::Open));
+        assert!(!s.context_menu.is_open());
+    }
+
+    #[test]
+    fn toggle_operation_drawer_message() {
+        let mut s = MdeFiles::default();
+        assert!(!s.op_drawer.is_open());
+        let _ = s.update(Message::ToggleOperationDrawer);
+        assert!(s.op_drawer.is_open());
+        let _ = s.update(Message::ToggleOperationDrawer);
+        assert!(!s.op_drawer.is_open());
+    }
+
+    #[test]
+    fn op_row_upsert_and_dismiss_messages() {
+        use crate::panels::{OpRow, OpState};
+        let mut s = MdeFiles::default();
+        let row = OpRow {
+            op_id: 7,
+            source: "a.txt".into(),
+            destination: "pine".into(),
+            progress_permille: 500,
+            state: OpState::Running,
+        };
+        let _ = s.update(Message::OpRowUpsert(row));
+        assert_eq!(s.op_drawer.len(), 1);
+        let _ = s.update(Message::OpRowDismiss(7));
+        assert_eq!(s.op_drawer.len(), 0);
     }
 
     #[test]
