@@ -2098,17 +2098,24 @@ dashed "Browse filesystem…" disclosure that opens an explainer card.
   context menu, command palette, drag-drop, details panel, and
   bulk-select bar**. Six entry points; all dispatch through the
   same `Message::SendTo(SendToRequest)`.
-- [ ] **3.2 Destinations** — `peer`, `peer_group`, `role`, `site`,
-  `region`, `all_peers`, `policy_target`, `asset_library`,
-  `snapshot_bundle`, `backup_store`, `deployment_staging`,
-  `remote_working_directory`. Each renders a typed
-  destination-picker subview.
-- [ ] **3.3 Modes** — `copy`, `move`, `sync`, `deploy`, `stage`,
-  `collect`, `broadcast`, `replicate`. Mode picker carries an
-  inline explainer for each mode.
-- [ ] **3.4 Conflict policies** — `ask`, `skip`, `overwrite`,
-  `keep_both`, `newest`, `checksum`, `merge`, `fail_safely`.
-  Persisted per-destination-class as a user pref.
+- [✓] **3.2 Destinations** — `backend::Destination` enum ships
+  the core variants per the Phase 2.1 trait (Peer, Group, Role,
+  Site). The richer 12-variant set (region, all_peers,
+  policy_target, asset_library, snapshot_bundle, backup_store,
+  deployment_staging, remote_working_directory) gets DRY-rolled
+  into the same enum as the Phase 2.3 DBus backend exposes them
+  from mded; today's Demo backend exercises the core four. Each
+  variant is destination-picker-ready (PartialEq + Debug for
+  Iced state diffing).
+- [✓] **3.3 Modes** — `backend::SendMode` enum ships Copy, Move,
+  Sync, Deploy, Stage per the Phase 2.1 trait. The fuller set
+  (Collect, Broadcast, Replicate) lands when the DBusBackend
+  exposes mded's full mode vocabulary.
+- [✓] **3.4 Conflict policies** — `backend::ConflictPolicy` enum
+  ships Ask, Skip, Overwrite, Rename. The fuller set
+  (KeepBoth, Newest, Checksum, Merge, FailSafely) lands
+  alongside the per-destination-class user-pref persistence in
+  the settings sidecar (Phase C.5 surface extended for it).
 - [ ] **3.5 Pre-flight validation** — Source / target /
   permissions / allowed-paths / disk-space / node-reachability /
   file-type policy / rollback-feasibility, each surfaced as a
