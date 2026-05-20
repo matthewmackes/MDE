@@ -21,12 +21,12 @@ use crate::panels::{
     datetime as datetime_panel, default_apps as default_apps_panel, displays as displays_panel,
     firewall as firewall_panel, fleet_revisions as fleet_revisions_panel,
     fleet_settings as fleet_settings_panel, fonts as fonts_panel, inventory as inventory_panel,
-    logs as logs_panel, mesh_join as mesh_join_panel, notifications as notifications_panel,
-    playbooks as playbooks_panel, power as power_panel, printers as printers_panel,
-    removable as removable_panel, repair as repair_panel, resources as resources_panel,
-    run_history as run_history_panel, session as session_panel, snapshots as snapshots_panel,
-    sound as sound_panel, system_update as system_update_panel, themes as themes_panel,
-    vpn as vpn_panel, wallpaper as wallpaper_panel, wifi as wifi_panel,
+    logs as logs_panel, mesh_history as mesh_history_panel, mesh_join as mesh_join_panel,
+    notifications as notifications_panel, playbooks as playbooks_panel, power as power_panel,
+    printers as printers_panel, removable as removable_panel, repair as repair_panel,
+    resources as resources_panel, run_history as run_history_panel, session as session_panel,
+    snapshots as snapshots_panel, sound as sound_panel, system_update as system_update_panel,
+    themes as themes_panel, vpn as vpn_panel, wallpaper as wallpaper_panel, wifi as wifi_panel,
     window_manager as window_manager_panel,
 };
 use crate::patternfly::{breadcrumb, page_subtitle, page_title};
@@ -121,6 +121,8 @@ pub enum Message {
     Vpn(vpn_panel::Message),
     /// CB-1.8 partial — Network → Mesh Join panel sub-message.
     MeshJoin(mesh_join_panel::Message),
+    /// CB-1.8 partial — Network → Mesh History panel sub-message.
+    MeshHistory(mesh_history_panel::Message),
     /// CB-1.5 partial — Fleet settings panel sub-message.
     FleetSettings(fleet_settings_panel::Message),
     /// CB-1.5 partial — Fleet revisions panel sub-message.
@@ -167,6 +169,7 @@ pub struct App {
     wifi: wifi_panel::WifiPanel,
     vpn: vpn_panel::VpnPanel,
     mesh_join: mesh_join_panel::MeshJoinPanel,
+    mesh_history: mesh_history_panel::MeshHistoryPanel,
     fleet_settings: fleet_settings_panel::FleetSettingsPanel,
     fleet_revisions: fleet_revisions_panel::FleetRevisionsPanel,
     wallpaper: wallpaper_panel::WallpaperPanel,
@@ -236,6 +239,7 @@ impl App {
             wifi: wifi_panel::WifiPanel::new(),
             vpn: vpn_panel::VpnPanel::new(),
             mesh_join: mesh_join_panel::MeshJoinPanel::new(),
+            mesh_history: mesh_history_panel::MeshHistoryPanel::new(),
             fleet_settings: fleet_settings_panel::FleetSettingsPanel::new(),
             fleet_revisions: fleet_revisions_panel::FleetRevisionsPanel::new(),
             wallpaper: wallpaper_panel::WallpaperPanel::new(),
@@ -431,6 +435,12 @@ impl App {
         &self.mesh_join
     }
 
+    /// Read-only view of the mesh-history panel state.
+    #[must_use]
+    pub fn mesh_history(&self) -> &mesh_history_panel::MeshHistoryPanel {
+        &self.mesh_history
+    }
+
     /// Read-only view of the fleet settings panel state.
     #[must_use]
     pub fn fleet_settings(&self) -> &fleet_settings_panel::FleetSettingsPanel {
@@ -548,6 +558,7 @@ impl App {
             Message::Wifi(msg) => self.wifi.update(msg),
             Message::Vpn(msg) => self.vpn.update(msg),
             Message::MeshJoin(msg) => self.mesh_join.update(msg),
+            Message::MeshHistory(msg) => self.mesh_history.update(msg),
             Message::FleetSettings(msg) => self.fleet_settings.update(msg),
             Message::FleetRevisions(msg) => self.fleet_revisions.update(msg),
             Message::Wallpaper(msg) => self.wallpaper.update(msg, self.backend()),
@@ -588,6 +599,7 @@ impl App {
             (Group::Apps, "sources") => apps_sources_panel::AppsSourcesPanel::load(),
             (Group::Network, "firewall") => firewall_panel::FirewallPanel::load(),
             (Group::Network, "wifi") => wifi_panel::WifiPanel::load(),
+            (Group::Network, "mesh_history") => mesh_history_panel::MeshHistoryPanel::load(),
             (Group::Network, "vpn") => vpn_panel::VpnPanel::load(),
             (Group::Fleet, "revisions") => fleet_revisions_panel::FleetRevisionsPanel::load(),
             // Fleet settings has no Load — it's a push-only
@@ -792,6 +804,10 @@ impl App {
                 group: Group::Network,
                 panel: "mesh_join",
             } => self.mesh_join.view(),
+            View::Panel {
+                group: Group::Network,
+                panel: "mesh_history",
+            } => self.mesh_history.view(),
             View::Panel {
                 group: Group::Fleet,
                 panel: "settings",
