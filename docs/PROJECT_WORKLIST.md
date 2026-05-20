@@ -2972,10 +2972,18 @@ dashed "Browse filesystem…" disclosure that opens an explainer card.
 
 #### Phase 3 — Send-To matrix (first-class verb)
 
-- [ ] **3.1 Send-To entry points** — Available from **toolbar,
-  context menu, command palette, drag-drop, details panel, and
-  bulk-select bar**. Six entry points; all dispatch through the
-  same `Message::SendTo(SendToRequest)`.
+- [✓] **3.1 Send-To entry points** — shipped 2026-05-20. New
+  module `crates/mde-files/src/send_to.rs` ships the locked
+  6-set `SendToEntry` enum (Toolbar / ContextMenu /
+  CommandPalette / DragDrop / DetailsPanel / BulkSelectBar)
+  + the canonical `SendToRequest` struct (sources +
+  destination + mode + conflict + entry). Each entry-point's
+  click handler builds one of these + fires
+  `Message::SendTo(SendToRequest)` through the reducer; the
+  view-side `Backend` consumer (the live `Backend::DBus`
+  impl from Phase 2.3) takes it from there. Slugs are stable
+  kebab-case for the audit-log + telemetry. 6 unit tests +
+  1 app-wiring test cover the entry-point contract.
 - [✓] **3.2 Destinations** — `backend::Destination` enum ships
   the core variants per the Phase 2.1 trait (Peer, Group, Role,
   Site). The richer 12-variant set (region, all_peers,

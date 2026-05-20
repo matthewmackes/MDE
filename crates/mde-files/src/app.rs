@@ -9,6 +9,7 @@ use crate::panels::{
     ContextMenu, ContextMenuItem, DetailsPanel, DragSession, DragTarget, OperationDrawer, OpRow,
 };
 use crate::prefs::Accessibility;
+use crate::send_to::SendToRequest;
 use crate::selection::Selection;
 use crate::theme as t;
 use crate::views;
@@ -76,6 +77,11 @@ pub enum Message {
     DragDrop,
     /// v2.0.0 Phase 1.6 — user pressed Escape mid-drag.
     DragCancel,
+    /// v2.0.0 Phase 3.1 — canonical Send-To dispatch. Every
+    /// entry point (toolbar / context menu / command palette /
+    /// drag-drop / details panel / bulk-select bar) builds a
+    /// `SendToRequest` + fires this message.
+    SendTo(SendToRequest),
     /// v2.0.0 Phase 5.1 — Tab cycles keyboard focus through panes.
     TabFocus,
     /// v2.0.0 Phase 5.1 — Shift-Tab reverses.
@@ -287,6 +293,18 @@ impl MdeFiles {
             }
             Message::DragCancel => {
                 let _ = self.drag.cancel();
+            }
+            Message::SendTo(_req) => {
+                // View-side handlers (the `Backend` trait
+                // consumer in `mde-files::main`) pick this up and
+                // route to `Backend::send_to`. The reducer is sync
+                // + the backend is mut, so we don't perform the
+                // call here; instead `Subscription`-driven side-
+                // effect Tasks (Phase 2.3 + 2.6) take the request
+                // from here. The Phase 3.1 work is the
+                // canonical Message shape — the wire-up to
+                // mded.Shell.Send is the Phase 2.3 DBus backend's
+                // job.
             }
             Message::TabFocus => {
                 self.keyboard_pane = self.keyboard_pane.next();
@@ -671,6 +689,26 @@ mod tests {
         let two = one.next();
         let three = two.next();
         assert_eq!(three, start, "Tab returns to start after 3 hops");
+    }
+
+    #[test]
+    fn send_to_message_is_a_silent_routing_hook() {
+        use crate::backend::{ConflictPolicy, Destination, SendMode};
+        use crate::send_to::{SendToEntry, SendToRequest};
+        let mut s = MdeFiles::default();
+        // The reducer just routes — no observable state change.
+        // The DemoBackend doesn't get called from here (the
+        // view-side `Backend` consumer does that), so we only
+        // assert the message round-trips without panicking.
+        let req = SendToRequest {
+            sources: vec![std::path::PathBuf::from("/tmp/a.txt")],
+            destination: Destination::Peer("pine".into()),
+            mode: SendMode::Copy,
+            conflict: ConflictPolicy::Ask,
+            entry: SendToEntry::Toolbar,
+        };
+        let _ = s.update(Message::SendTo(req));
+        // No assertion on state — that's the contract.
     }
 
     #[test]

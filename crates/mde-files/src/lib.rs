@@ -14,6 +14,7 @@ pub mod panels;
 pub mod prefs;
 pub mod search;
 pub mod selection;
+pub mod send_to;
 pub mod theme;
 pub mod views;
 pub mod widgets;
