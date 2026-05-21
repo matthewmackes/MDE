@@ -5062,8 +5062,8 @@ Last updated: 2026-05-21 — Claude Opus 4.7 (50-question lock survey
   Outputs: workspace-wide `Cargo.toml` updates; migration notes
   in `docs/design/v2.2-iced-014-migration.md`.
 
-- [ ] **UX-10: Brand identity spec doc — v2.2 scope (UX-28
-  rescope, 2026-05-21)** — **Rescoped per UX-28 review:** the
+- [✓] **UX-10: Brand identity spec doc — landed 2026-05-21
+  (UX-28 rescope path)** — **Rescoped per UX-28 review:** the
   50-Q + FU-* + NFU-* lock set already defines ~80% of the brand
   identity. UX-10 is no longer "discover from scratch"; it is
   **"narrate the existing locks into a publishable
