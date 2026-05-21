@@ -105,6 +105,120 @@ Every actionable item lifted from `docs/design/` + the still-open
 items from the prior worklist. Grouped by area for readability;
 all are equally tracked.
 
+### Peer Connection Card (new — mesh-peer hero modal, locked 2026-05-21)
+
+**Plan source:** session `claude/device-connection-modal-JQaDB`,
+4-question lock survey (2026-05-21).
+**Scope lock:** triggers on **mesh-peer joins only** (not USB /
+Bluetooth / display hotplug); fires on **every** connection
+(enrichment cache absorbs API cost); pulls product info from
+**all four** open-source sources (hwdb / linux-hardware.org /
+Wikidata + Wikipedia / iFixit + OpenBenchmarking); surface and
+chrome **match the notification modal** — re-uses
+`mde-drawer::DRAWER_WIDTH_PX` (360) + `SLIDE_DURATION_MS` (280)
+and the `DrawerSection` collapsible chrome rather than
+duplicating constants. Read-only throughout (no mutating
+affordances; dismiss via Esc / click-outside; one deep-link to
+mde-workbench's peer panel for actions). v2.1+ scope.
+
+- [ ] **PC-1 `mde-peer-card` crate skeleton** — new crate at
+  `crates/mde-peer-card/` (Iced layer-shell binary, sibling of
+  `mde-drawer`). Modules: `lib.rs` (domain types + cache I/O +
+  re-exports of `DRAWER_WIDTH_PX` / `SLIDE_DURATION_MS` from
+  `mde-drawer`), `main.rs` (entry `mde-peer-card --peer <id>`,
+  Esc / click-outside dismiss), `hero.rs`, `sections.rs`,
+  `enrich/{hwdb,lhdb,wikidata,ifixit,openbench}.rs`.
+  Acceptance: `cargo build -p mde-peer-card` green; binary
+  installed by `mde` RPM; `--help` lists `--peer` and `--dry-run`.
+- [ ] **PC-2 `PeerProbe` schema in `mde-mesh-types`** —
+  `crates/mde-mesh-types/src/peer_probe.rs`. Serde struct
+  capturing: bus & topology (lspci/lsusb tree + mesh ICE
+  candidate + RTT + NAT class), kernel & driver (`uname -a`,
+  bound transport module, mded version, dmesg tail filtered to
+  the new link), power & thermal (upower battery + AC + CPU
+  package °C + fan RPM via lm_sensors), descriptors /
+  capabilities (advertised mesh services + sysfs class list +
+  USB descriptor tree of attached named peripherals).
+  Acceptance: round-trips JSON; consumed by `mded` peer-join
+  worker and by `mde-peer-card`.
+- [ ] **PC-3 `mded` peer-join worker** — new
+  `crates/mded/src/workers/peer_join.rs`. On `peer_joined { id }`,
+  writes the peer's probe to
+  `~/.cache/mde/peers/<peer-id>/probe.json` and spawns
+  `mde-peer-card --peer <id>`. Debounces re-spawn within a 30 s
+  window per peer-id to suppress flap-storms; still "every
+  connection" from the user's PoV. Acceptance: integration test
+  with a fake peer-joined event spawns the card exactly once
+  inside the debounce window and twice outside it.
+- [ ] **PC-4 Local enrichment (offline) — hwdb + usb.ids** —
+  `enrich/hwdb.rs` resolves vendor / product names + device
+  class from systemd hwdb and bundled
+  `/usr/share/hwdata/usb.ids`. Cache key is `vendor:product`
+  (not connection-id), written to
+  `~/.cache/mde/peers/<peer-id>/enrich.json`. The card renders
+  on hwdb alone; online sources stream in. Acceptance:
+  `enrichment_renders_with_hwdb_only` test passes with network
+  disabled.
+- [ ] **PC-5 Online enrichment — Linux Hardware DB** —
+  `enrich/lhdb.rs` queries linux-hardware.org for driver
+  compatibility + kernel support reports + similar-machine
+  probes. 7-day TTL, keyed by `vendor:product`. Routed through
+  `mded` so `mde-config` can disable. Acceptance: missing-data
+  path renders the section as "Not reported" instead of
+  blanking.
+- [ ] **PC-6 Online enrichment — Wikidata + Wikipedia** —
+  `enrich/wikidata.rs` issues a SPARQL query to
+  `https://query.wikidata.org/sparql` for manufacturer + release
+  year + hero image filename, then fetches the Wikipedia REST
+  summary for the 2-line description. 30-day TTL. Acceptance:
+  hero image lazy-loads; fallback to manufacturer wordmark
+  + colour swatch if no image.
+- [ ] **PC-7 Online enrichment — iFixit + OpenBenchmarking** —
+  `enrich/ifixit.rs` pulls teardown thumbnail + repairability
+  score; `enrich/openbench.rs` pulls CPU / GPU / SSD percentile
+  vs same model. 30-day TTL each. Acceptance: heavy / slow
+  sources never block the card paint; both render as small
+  icon-only link chips in the identity strip on success and
+  vanish on failure (no error rows).
+- [ ] **PC-8 Hero strip** — `hero.rs`. Full-bleed product photo
+  (Wikidata / iFixit fallback), vertical glass scrim, peer
+  hostname lower-left, manufacturer wordmark upper-right,
+  distro + kernel chip pinned bottom-right. ~280 px tall.
+  Acceptance: visual test renders deterministic frame for a
+  fixture peer; identity strip below it stays at ~120 px.
+- [ ] **PC-9 Technical sections** — `sections.rs`. Four
+  collapsible sections reusing `DrawerSection` chrome:
+  **Bus & topology** (mesh path / RTT / NAT class + peer
+  PCI/USB tree summary), **Kernel & driver** (kernel version +
+  mded build + bound transport module + last 6 dmesg lines),
+  **Power & thermal** (battery % + AC + CPU pkg °C + fan RPM),
+  **Descriptors / capabilities** (advertised mesh capabilities +
+  exposed services + peer USB descriptor tree of named
+  peripherals). All scrollable, all read-only. Acceptance:
+  no message variant in the section module mutates peer state
+  (`card_is_read_only` test enforces).
+- [ ] **PC-10 Privacy toggle in `mde-config`** — new setting
+  `peer_card.online_enrichment` (default `on`). When `off`,
+  PC-5/6/7 short-circuit and the card renders hwdb-only.
+  Toggleable from the mde-workbench Network panel. Acceptance:
+  setting persists across reboots via the standard mde-config
+  sidecar.
+- [ ] **PC-11 Test pyramid** — six locked tests in the
+  `mde-drawer` style: `card_width_matches_drawer_360px`,
+  `slide_duration_matches_drawer_280ms`,
+  `peer_probe_round_trips_json`,
+  `enrichment_renders_with_hwdb_only`,
+  `enrichment_cache_key_is_vendor_product_not_connection`,
+  `card_is_read_only`. Plus a `mded` integration test for the
+  30 s debounce gate (PC-3).
+- [ ] **PC-12 Packaging + autostart** — RPM spec adds
+  `/usr/bin/mde-peer-card`; `mded` worker registration ships
+  enabled by default; no separate autostart entry (the card is
+  always spawned on demand by `mded`, never standalone).
+  Acceptance: `rpm -ql mde | grep peer-card` shows the binary;
+  cold-boot lab smoke shows the card appearing within 1 s of a
+  mesh-peer joining.
+
 ### v2.0.0 Mackes DE — Unified Rust Backend, Wayland-Only, Stand-Alone (locked 2026-05-19)
 
 **Plan source:** `~/.claude/plans/zazzy-gliding-platypus.md` (v2.0.0).
