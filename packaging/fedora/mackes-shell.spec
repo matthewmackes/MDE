@@ -5,7 +5,7 @@
 %global debug_package %{nil}
 
 Name:           mde
-Version:        2.0.0
+Version:        2.0.1
 Release:        1%{?dist}
 Summary:        Mackes Desktop Environment (MDE) — Wayland-only Fedora DE
 
@@ -586,8 +586,17 @@ install -D -m 0755 target/release/mde-session \
 install -D -m 0755 target/release/mde-logout-dialog \
     %{buildroot}%{_bindir}/mde-logout-dialog
 
-# v2.0.0 Phase A+B — mded daemon binary (renamed mackesd surface).
-install -D -m 0755 target/release/mded \
+# v2.0.0 Phase A+B — `mded` daemon CLI surface. The Rust binary
+# still builds under the legacy `mackesd` name (the workspace
+# directory rename `crates/mackesd → crates/mded` is part of
+# the v2.1+ Phase 0 rebrand). For now, ship `mded` as a shell
+# shim that execs `mackesd` so every consumer that already
+# spells the command `mded` (Python `mackes/workbench/fleet/*`,
+# Iced `crates/mde-workbench` + `crates/mde-applets/*` +
+# `crates/mde-wizard`, admin scripts via `systemctl restart
+# mded`) keeps working through the rename without a gating
+# binary rebuild.
+install -D -m 0755 bin/mded \
     %{buildroot}%{_bindir}/mded
 
 # v2.0.0 Phase E.8 — mde-applet-drawer (drawer overlay binary).
@@ -672,6 +681,16 @@ gtk-update-icon-cache -f -t %{_datadir}/icons/Mackes-Carbon 2>/dev/null || :
 # mackes-desktop-environment` resolves on this host. Silently no-ops
 # on systems where dnf-plugins-core isn't available.
 dnf groups mark install mackes-desktop-environment 2>/dev/null || :
+# v2.0.1 hotfix — sweep orphan xsession .desktop files installed by
+# pre-2.0 shell scripts (xfce11-unified era). RPM never owned these,
+# so dnf can't sweep them through file ownership; LightDM otherwise
+# shows broken entries or hides the MDE Wayland session entirely.
+# Mirrors mackes.birthright.apply_uninstall_legacy_xsessions for the
+# install/upgrade path. Idempotent: rm -f silently no-ops on absent
+# files.
+rm -f /usr/share/xsessions/xfce11-i3-plank.desktop \
+      /usr/share/xsessions/xfce11.desktop \
+      /usr/share/xsessions/mackes.desktop 2>/dev/null || :
 
 %preun
 # Only on uninstall, not upgrade ($1 == 0 → final removal)

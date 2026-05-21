@@ -3,6 +3,43 @@
 All notable user-facing and architectural changes. The current line is
 unreleased; tag versions get a date when they ship.
 
+## 2.0.1 — Wayland session hotfix (2026-05-21)
+
+The v2.0.0 RPM declared every `mde-*` Rust binary in `%files` but the
+`%install` section never copied them out of `target/release/`. The
+result was a working RPM-metadata Wayland desktop with **none** of
+the binaries that implement it — `/usr/bin/mde-session`,
+`/usr/bin/mde-panel`, `/usr/bin/mded`, `/usr/bin/mde-drawer`,
+`/usr/bin/mde-wizard`, and 16 applets were all missing. LightDM
+silently filtered the MDE session out of its dropdown (TryExec
+pointed at the missing `mde-session`), leaving the user with only
+the upstream `sway.desktop` entry. v2.0.0 boxes booted into vanilla
+sway — visually i3-like but with no MDE panel, no MDE workbench, no
+mesh integration.
+
+**Fixes:**
+- Spec now copies every workspace binary built by
+  `cargo build --release` into `%{buildroot}%{_bindir}/`:
+  `mde-panel`, `mde-session`, `mde-logout-dialog`, `mded`,
+  `mde-applet-drawer`, `mde-wizard`, plus all 16
+  `mde-applet-*` binaries (clipboard / clock / dock / network /
+  status-cluster / sway-cluster / volume-osd / brightness-osd / …).
+  Each applet install wraps in `[ -f target/release/$applet ]` so a
+  partial workspace build doesn't break the spec.
+- `mackes/birthright.py` gains step 20 —
+  `apply_uninstall_legacy_xsessions()` — that sweeps three known
+  orphan xsession `.desktop` files from `/usr/share/xsessions/`
+  (`xfce11-i3-plank`, `xfce11`, `mackes`). These were installed by
+  pre-2.0 shell scripts and not tracked by RPM, so package
+  upgrades couldn't remove them; their broken `TryExec` paths
+  confused the LightDM dropdown.
+- Wired the new step into `mackes/wizard/pages/apply.py` between
+  the existing legacy-XFCE uninstall and the Mesh step.
+
+Verification: 266 unit tests pass / 93 skipped / 0 failed (4 new
+tests cover the legacy-xsession sweep — idempotency, partial-set
+removal, rm-failure reporting, allow-list audit).
+
 ## 2.0.0 — Mackes Desktop Environment (MDE) monolithic cut (2026-05-20)
 
 The v2.0.0 cut commit. Package rename + Wayland-only stack flip

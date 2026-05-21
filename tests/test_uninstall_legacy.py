@@ -389,3 +389,105 @@ def test_spec_does_not_obsolete_legacy_xfce_packages():
         "dnf5 implicit_ts_elements assertion on install. Remove them; "
         "apply_uninstall_legacy_xfce handles the runtime cleanup."
     )
+
+
+# ---------------------------------------------------------------------------
+# (f) v2.0.1 hotfix — apply_uninstall_legacy_xsessions
+# ---------------------------------------------------------------------------
+
+
+def test_uninstall_legacy_xsessions_is_noop_when_nothing_present():
+    """Idempotent: when none of _LEGACY_XSESSIONS exist on disk the
+    step logs a skip and never invokes _run_root."""
+    from mackes import birthright
+
+    captured: List[list] = []
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        # Point all entries at a tmp dir that doesn't carry any of
+        # the canonical orphan filenames.
+        fake_set = tuple(str(tmp_path / Path(p).name)
+                          for p in birthright._LEGACY_XSESSIONS)
+        with patch.object(birthright, "_LEGACY_XSESSIONS", fake_set):
+            with patch.object(birthright, "_run_root",
+                              side_effect=_make_run_root(captured)):
+                actions = birthright.apply_uninstall_legacy_xsessions(None)
+
+    joined = "\n".join(actions)
+    assert "nothing to remove" in joined, joined
+    assert captured == [], f"expected no _run_root calls, got {captured}"
+
+
+def test_uninstall_legacy_xsessions_removes_present_files():
+    """When ANY orphan xsession file is on disk, the step issues a
+    single `rm -f` listing exactly those files (not the whole tuple)."""
+    from mackes import birthright
+
+    captured: List[list] = []
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        # Materialize TWO of the three canonical orphans.
+        present_names = (
+            "xfce11-i3-plank.desktop",
+            "xfce11.desktop",
+        )
+        # All three names are tracked in the allow-list, but only
+        # two exist on disk; the third stays missing to prove the
+        # rm call uses the *present* subset, not the whole tuple.
+        all_names = present_names + ("mackes.desktop",)
+        fake_set = tuple(str(tmp_path / n) for n in all_names)
+        for name in present_names:
+            (tmp_path / name).write_text(
+                "[Desktop Entry]\nName=Legacy\n", encoding="utf-8")
+
+        with patch.object(birthright, "_LEGACY_XSESSIONS", fake_set):
+            with patch.object(birthright, "_run_root",
+                              side_effect=_make_run_root(captured)):
+                actions = birthright.apply_uninstall_legacy_xsessions(None)
+
+    assert len(captured) == 1, f"expected exactly 1 rm call, got {captured}"
+    rm_argv = captured[0]
+    assert rm_argv[:2] == ["rm", "-f"], rm_argv
+    rm_targets = set(rm_argv[2:])
+    expected = {str(tmp_path / n) for n in present_names}
+    assert rm_targets == expected, (rm_targets, expected)
+
+    joined = "\n".join(actions)
+    assert "removed " in joined, joined
+    for n in present_names:
+        assert n in joined, (n, joined)
+
+
+def test_uninstall_legacy_xsessions_reports_rm_failure():
+    """A failing `rm` call is reported in the action log (not raised)."""
+    from mackes import birthright
+
+    captured: List[list] = []
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        target = tmp_path / "xfce11-i3-plank.desktop"
+        target.write_text("[Desktop Entry]\nName=Legacy\n", encoding="utf-8")
+        fake_set = (str(target),)
+
+        with patch.object(birthright, "_LEGACY_XSESSIONS", fake_set):
+            with patch.object(birthright, "_run_root",
+                              side_effect=_make_run_root_failing(
+                                  captured, rc=1,
+                                  output="rm: cannot remove: Permission denied")):
+                actions = birthright.apply_uninstall_legacy_xsessions(None)
+
+    joined = "\n".join(actions)
+    assert "rm failed" in joined, joined
+    assert "Permission denied" in joined, joined
+
+
+def test_uninstall_legacy_xsessions_allowlist_contains_canonical_entry():
+    """Spec audit — the v1.x xfce11-i3-plank xsession (the one
+    LightDM picks up on the bug-report box) must be in the
+    allow-list so birthright actually sweeps it."""
+    from mackes import birthright
+    assert "/usr/share/xsessions/xfce11-i3-plank.desktop" \
+        in birthright._LEGACY_XSESSIONS

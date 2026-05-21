@@ -44,6 +44,11 @@ addition to the v1.0.x xfconf-only apply pipeline:
  19. apply_uninstall_legacy_xfce — Phase 10.6.6: single dnf-remove of the
                                   six legacy XFCE packages mackes-panel
                                   has supplanted (gated on 10.6.1-4)
+ 20. apply_uninstall_legacy_xsessions — v2.0.1 hotfix: sweep orphan
+                                  /usr/share/xsessions/*.desktop entries
+                                  from v1.x xfce11-unified era so
+                                  LightDM only shows the MDE Wayland
+                                  session.
 
 All wired into mackes/wizard/pages/apply.py between Panel and Mesh.
 """
@@ -1843,6 +1848,74 @@ def apply_uninstall_legacy_xfce(_preset: Preset) -> List[str]:
                 if out.strip() else f"rc={rc}")
         actions.append(
             f"uninstall-legacy-xfce: dnf remove failed: {last}"
+        )
+
+    for line in actions:
+        log_action(line)
+    return actions
+
+
+# ---------------------------------------------------------------------------
+# 20. Legacy xsession `.desktop` cleanup — v2.0.1 hotfix.
+#
+# Before v2.0.0 the project installed `xfce11-i3-plank.desktop` (and
+# similar) under /usr/share/xsessions/ via shell-only install scripts
+# that were never tracked by the RPM database.  After v2.0.0 moves the
+# whole DE to Wayland (Phase D), those files survive as orphans:
+#
+#   * They aren't owned by any RPM, so `dnf remove mde` /
+#     `dnf reinstall mde` can't sweep them.
+#   * Their `Exec=` / `TryExec=` typically points at a user-local
+#     script (`/home/<user>/.local/bin/xfce11-i3-plank-session`) that
+#     no longer exists, so LightDM filters them out of the session
+#     dropdown — but on installs where the script DOES still exist
+#     they'd show up alongside `Mackes Desktop Environment`, which
+#     v2.0.0's Wayland-only directive forbids.
+#
+# This step nukes the known orphan set on every birthright run.
+# Idempotent (a missing file is a no-op).  Mirrors the legacy-XFCE
+# package cleanup pattern: explicit allow-list, fire once, log.
+# ---------------------------------------------------------------------------
+_LEGACY_XSESSIONS: tuple[str, ...] = (
+    "/usr/share/xsessions/xfce11-i3-plank.desktop",
+    "/usr/share/xsessions/xfce11.desktop",
+    "/usr/share/xsessions/mackes.desktop",
+)
+
+
+def apply_uninstall_legacy_xsessions(_preset: Preset) -> List[str]:
+    """Remove orphan v1.x xsession `.desktop` files.
+
+    v2.0.0 is Wayland-only (Phase D lock).  Any xsession entry from
+    the v1.x xfce11-unified or pre-v2 mackes-shell installs is dead
+    weight: the Exec scripts they point at were retired with the
+    Wayland switch, and LightDM either shows a broken option or
+    silently hides them.  Either way the user experience is wrong.
+
+    Idempotent: a missing file is logged as a skip; nothing else
+    changes.  Returns the action log for the wizard apply page.
+    """
+    actions: List[str] = []
+    present: List[str] = [p for p in _LEGACY_XSESSIONS if Path(p).exists()]
+    if not present:
+        actions.append(
+            "uninstall-legacy-xsessions: no orphan xsession entries — "
+            "nothing to remove"
+        )
+        for line in actions:
+            log_action(line)
+        return actions
+
+    rc, out = _run_root(["rm", "-f", *present], timeout=30)
+    if rc == 0:
+        actions.append(
+            "uninstall-legacy-xsessions: removed " + ", ".join(present)
+        )
+    else:
+        last = (out.strip().splitlines()[-1]
+                if out.strip() else f"rc={rc}")
+        actions.append(
+            f"uninstall-legacy-xsessions: rm failed: {last}"
         )
 
     for line in actions:

@@ -1,0 +1,16 @@
+#!/bin/sh
+# mded — Mackes Desktop Environment daemon entry point.
+#
+# v2.0.0 Phase 0.2 — workspace-rename facade. The Rust binary built
+# from `crates/mackesd/src/bin/mackesd.rs` ships as `/usr/bin/mackesd`
+# during the back-compat window; this shim forwards the v2.0.0-locked
+# `mded` command name onto it so Python (`mackes/workbench/fleet/*`),
+# Iced (`crates/mde-workbench`, `crates/mde-applets/*`,
+# `crates/mde-wizard`), and admin scripts (`systemctl … restart mded`)
+# can use the new identity without a binary-rename gating commit.
+#
+# The directory rename `crates/mackesd → crates/mded` lands when the
+# v2.1+ Phase 0 rebrand fires; at that point both `bin/mded` (this
+# shim) and `bin/mackesd` retire and the cargo workspace produces
+# `mded` directly.
+exec /usr/bin/mackesd "$@"

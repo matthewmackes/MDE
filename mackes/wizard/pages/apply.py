@@ -51,7 +51,8 @@ from mackes.birthright import (
     apply_lightdm, apply_media_clients, apply_panel_archive,
     apply_panel_layout, apply_panel_swap, apply_plymouth, apply_qnm,
     apply_remote_desktop, apply_themes, apply_third_party_repos,
-    apply_thunar_autostart, apply_uninstall_legacy_xfce, apply_user_dirs,
+    apply_thunar_autostart, apply_uninstall_legacy_xfce,
+    apply_uninstall_legacy_xsessions, apply_user_dirs,
 )
 from mackes.presets import (
     Preset, apply_appearance, apply_devices, apply_mesh, apply_network,
@@ -375,6 +376,11 @@ class ApplyPage(Gtk.Box):
             # mackes-panel has supplanted. Hard-gated on panel-swap.
             _Step("Uninstall legacy XFCE",
                                        lambda: apply_uninstall_legacy_xfce(merged)),
+            # v2.0.1 hotfix: sweep orphan xsession entries from the
+            # v1.x xfce11-unified era so LightDM only shows the
+            # Wayland MDE session.
+            _Step("Uninstall legacy xsessions",
+                                       lambda: apply_uninstall_legacy_xsessions(merged)),
             _Step("Mesh",              lambda: apply_mesh(merged)),
             _Step("VPN import",        self._step_vpn),
             _Step("Menu",              self._step_menu),

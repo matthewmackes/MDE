@@ -12,7 +12,7 @@ from setuptools import find_packages, setup
 
 setup(
     name="mackes-shell",
-    version="2.0.0",
+    version="2.0.1",
     description="Mackes Desktop Environment (MDE) — Wayland-only Fedora DE (v2.0.0 cut; PyPI name kept for one-release back-compat)",
     long_description=(
         "GTK3 / PyGObject control panel that replaces xfce4-settings as the "
