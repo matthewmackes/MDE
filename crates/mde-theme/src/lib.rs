@@ -20,6 +20,11 @@
 //!   never component dimensions.
 //! - [`Tokens`] — resolved token set for a given (theme, density)
 //!   pair. The single struct every consumer reads.
+//! - [`Brand`] — runtime brand-asset loader. Maps logical slots
+//!   (wordmark, monogram, app icon, greeter art) to bytes, with
+//!   a `$MDE_BRAND_DIR` override layer and `include_bytes!`
+//!   fallbacks. See `assets/brand/README.md` for the slot table
+//!   and replacement workflow.
 //!
 //! ## Iced interop
 //!
@@ -32,6 +37,7 @@
 #![warn(missing_docs)]
 
 pub mod accessibility;
+pub mod brand;
 pub mod color;
 pub mod components;
 pub mod density;
@@ -44,6 +50,7 @@ pub mod theme;
 pub mod typography;
 
 pub use accessibility::A11y;
+pub use brand::{Brand, BrandAsset, BrandFormat, BrandSlot, BrandSource};
 pub use color::Rgba;
 pub use components::EmptyState;
 pub use density::Density;

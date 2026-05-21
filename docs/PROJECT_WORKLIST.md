@@ -5735,6 +5735,216 @@ committed and embedded in README; visual-regression CI gate
   Outputs: `.claude/hooks/pre-commit-worklist.sh`,
   `Makefile` `install-hooks` target, `CONTRIBUTING.md` section.
 
+### BR-0..BR-5: Brand asset pack + 5 branding directions (v2.2 scope)
+
+> Locked 2026-05-21 via in-session 2-Q survey (asset dir =
+> `assets/brand/` at workspace root; packaging = runtime-loaded
+> with baked `include_bytes!` fallback). Direction: place an
+> "extensive branding footprint" on the interface across five
+> coordinated surfaces, with every piece of artwork loaded at
+> runtime so it can be swapped without rebuilding. Full slot
+> table + AI generation prompts at `assets/brand/README.md`.
+>
+> **Artwork status (2026-05-21):** ChatGPT-generated PNG art
+> for 6 slots imported by BR-0.b. BR-1 / BR-3 / BR-4 / BR-5
+> can now wire to real artwork instead of placeholders. The
+> imported PNGs are raster (not tintable); a follow-up
+> vectorization pass (BR-0.c) would upgrade them to
+> `currentColor`-friendly SVGs for theme-aware tinting.
+> Vectorization is optional — the PNGs ship as-is.
+
+- [✓] **BR-0: Brand asset pack scaffold — landed 2026-05-21** —
+  `assets/brand/` directory at workspace root with placeholder
+  SVGs (wordmark, wordmark-hero, monogram, app-icon,
+  greeter-wordmark) plus `raw/`, `cursor/`, `sounds/`
+  subdirectories. `mde_theme::brand` module ships `Brand`
+  loader, `BrandSlot` enum (6 slots), and `BrandSource`
+  diagnostic enum. Resolution order: `$MDE_BRAND_DIR` →
+  `/usr/share/mde/brand/` → baked `include_bytes!` fallback.
+  6 unit tests cover baked-fallback, override-wins, missing-
+  fallthrough, canonical filenames, and tintability/fill
+  consistency — all green. Surface re-exported from
+  `mde_theme::{Brand, BrandSlot, BrandSource}`. Replacement
+  workflow + AI prompt template documented in
+  `assets/brand/README.md`. Effort spent: Low.
+
+- [✓] **BR-0.a: Multi-extension probe + LogoLockup slot —
+  landed 2026-05-21** — Brand loader now probes both `.svg`
+  and `.png` at every layer (SVG wins when both exist, except
+  `GreeterHero` which is png-only). New `BrandFormat` enum
+  + `BrandAsset` struct give consumers a typed
+  (bytes, format, source) triple so they can pick
+  `svg::Handle` vs `image::Handle` without re-sniffing. New
+  `BrandSlot::LogoLockup` slot for the 1:1 stacked "Mackes /
+  MDE" brand mark (About-panel hero, splash surfaces). New
+  helpers: `BrandSlot::basename()`, `BrandSlot::search_exts()`,
+  `BrandFormat::ext()`, `Brand::resolve()`. Placeholder SVGs
+  moved to `assets/brand/baked/` so the runtime probe sees
+  only real art and not the placeholders. 9 unit tests (added
+  3: png-wins-over-baked, svg-wins-over-png-in-same-dir,
+  greeter-hero-png-only). Re-exports updated:
+  `mde_theme::{Brand, BrandAsset, BrandFormat, BrandSlot,
+  BrandSource}`.
+
+- [✓] **BR-0.b: Import ChatGPT-generated brand artwork —
+  landed 2026-05-21** — 7 PNGs imported from
+  `assets/brand/upload/` (8 source files, 2 byte-identical
+  duplicates collapsed to 1 LogoLockup). Mapping:
+  `wordmark.png` (2508×627), `wordmark-hero.png` (2508×627),
+  `monogram.png` (1254²), `app-icon.png` (1254²),
+  `greeter-hero.png` (1672×941), `greeter-wordmark.png`
+  (2508×627), `logo-lockup.png` (1254²). Originals archived
+  in `assets/brand/raw/` for audit / future re-vectorization.
+  Placeholder SVGs preserved in `assets/brand/baked/` as the
+  `include_bytes!` ultimate fallback (still picked up if the
+  brand dir is somehow missing at runtime). README rewritten
+  to document the new layout + provide a PNG→SVG upgrade
+  recipe via potrace.
+
+- [ ] **BR-0.c: Vectorize the imported PNGs (PNG → tintable
+  SVG) — v2.2 scope** — Hand-trace each of the 5 tintable
+  slots (`wordmark`, `wordmark-hero`, `monogram`,
+  `greeter-wordmark`, `logo-lockup`) to SVG via potrace,
+  applying the README's PNG→SVG recipe. Each resulting SVG
+  uses `currentColor` for fills so the consumer can tint at
+  render time (sidebar header inverts mark color between dark
+  and light themes; About panel can switch tint with theme
+  swap). `app-icon` and `greeter-hero` stay as PNG (fixed
+  palette / photographic). Acceptance: after this lands,
+  `BrandFormat::Svg` is the resolved format for every
+  tintable slot in a default install. Depends: BR-0.b (done),
+  potrace installed locally (`dnf install potrace`).
+  Effort: Medium (~30 min per slot × 5).
+
+- [ ] **BR-0.d: Decide brand module home (re-wire into
+  mde-theme vs extract to its own crate) — v2.2 scope** —
+  `crates/mde-theme/src/brand.rs` was written and tested in
+  the BR-0 / BR-0.a passes (9 unit tests, all green when the
+  module is declared in `lib.rs`). As of 2026-05-21 the
+  `pub mod brand;` declaration and `pub use brand::{Brand,
+  BrandAsset, BrandFormat, BrandSlot, BrandSource}` re-export
+  have been removed from `crates/mde-theme/src/lib.rs` by an
+  intentional external edit, leaving `brand.rs` orphaned on
+  disk and unreachable to consumers. Pick one:
+    1. **Re-wire into mde-theme** — add `pub mod brand;` +
+       the re-export back to `lib.rs`. Simplest; brand
+       artwork stays alongside palette/typography/spacing
+       which is a clean conceptual home.
+    2. **Extract to `crates/mde-brand/`** — new workspace
+       member, move `brand.rs` → `crates/mde-brand/src/lib.rs`,
+       update the baked `include_bytes!` paths (currently
+       `../../../assets/brand/baked/*.svg`, would become
+       `../../assets/brand/baked/*.svg`), add the new crate
+       to the workspace `members` list. Worth it if the brand
+       pack grows new code surface (asset bake pipeline,
+       image processing, etc.) that doesn't belong in the
+       design-token crate.
+    3. **Delete `brand.rs`** — if the brand pack should live
+       elsewhere entirely (e.g., loaded directly by each
+       consumer crate without a shared loader), drop the
+       file and `assets/brand/baked/`. Less coupling but
+       duplicates the load-resolution logic in every
+       consumer.
+  Either option 1 or 2 unblocks BR-1..BR-5, all of which
+  need `Brand::resolve()` reachable from their consumer
+  crates. Option 3 forces a redesign of BR-1..BR-5.
+  Depends: pick-one decision. Effort: Low (re-wire) /
+  Medium (extract + workspace plumbing) / Low (delete).
+
+- [ ] **BR-1: Branded sidebar chrome — v2.2 scope** — Permanent
+  MDE wordmark at the top of the sidebar (load
+  `BrandSlot::Wordmark` via `mde_theme::Brand`, render with
+  `iced::widget::svg`, tint via `currentColor` to
+  `palette.text_primary`, height 32 px in Comfortable density).
+  IBM Plex Mono build/version footer at the sidebar bottom:
+  `mde <version> · <git short> · <session type>` from
+  `env!("CARGO_PKG_VERSION")`, `vergen` git hash, and
+  `XDG_SESSION_TYPE`. Footer text uses `palette.text_muted` at
+  `FontSize::xs`. Wires into `crates/mde-workbench/src/sidebar.rs`
+  alongside the in-progress UX-5 sidebar refresh.
+  Depends: BR-0 (done). Effort: Low.
+
+- [ ] **BR-2: Indigo thread motif — v2.2 scope** — A 2 px
+  `palette.accent` (#5b6af5) rule used as a connecting visual
+  motif across the shell: top edge of the sidebar, underline
+  beneath the active nav item, left edge of focused cards,
+  divider at the top of every modal/dialog. No artwork needed
+  — pure `iced::widget::container` styling on existing
+  components. Goal: reads as one continuous "wire" running
+  through the UI instead of scattered accent highlights.
+  Touches `sidebar.rs`, `panel_chrome.rs` (in-progress),
+  `mde-peer-card`, `mde-drawer`, every modal in
+  `mde-workbench`.
+  Depends: BR-0 (done, optional — pure styling, no asset
+  load). Effort: Medium (touches many files but each touch
+  is small).
+
+- [ ] **BR-3: Branded empty states — v2.2 scope** — Every
+  empty list, empty panel, and first-run pane renders the
+  monogram (`BrandSlot::Monogram` at 96–192 px, tinted to
+  `palette.text_muted`), a one-line tip in Geologica
+  (`TypeRole::Body`), and a Plex Mono hint key (e.g.,
+  `⌘K` for command palette). Wires into the existing
+  `EmptyState` helper that used to live in `mde-theme::components`
+  (currently absent from the crate — needs re-creation as part
+  of this task; the helper signature is
+  `EmptyState::new(monogram_bytes, title, hint).view()` with
+  tintable monogram). Audit every panel in `mde-workbench` to
+  use the helper instead of bespoke "no items yet" text.
+  Depends: BR-0 (done) + monogram artwork swap (user-supplied).
+  Effort: Medium.
+
+- [ ] **BR-4: About panel brand showcase — v2.2 scope** — Full-
+  bleed `BrandSlot::WordmarkHero` at the top of the About
+  panel, build/peer/session info in Plex Mono (version, git
+  hash, build date, current sway/X session, mesh peer count,
+  active theme + density), palette swatches (color chips for
+  every `Palette` field with hex codes), font specimens
+  (Geologica regular/bold at hero/body/caption sizes + IBM
+  Plex Mono at body/caption), credits crawl (auto-scrolling
+  list from `AUTHORS`). Doubles as the design system's own
+  live demo page — `mde-workbench --about` opens it directly.
+  Diagnostic dump shows each `BrandSource` (Override / System
+  / Baked) so the user can verify which art layer is active.
+  Depends: BR-0 (done) + wordmark-hero artwork swap (user-
+  supplied). Effort: Medium.
+
+- [ ] **BR-5: Session-level brand identity — v2.2 scope** —
+  Three coordinated surfaces, all swappable via
+  `assets/brand/`:
+  * **Branded greeter** (`mde-greeter` binary, sway-spawned
+    pre-session): full-bleed `BrandSlot::GreeterHero` PNG
+    background with `BrandSlot::GreeterWordmark` foreground
+    centered. Falls back to flat charcoal + wordmark when
+    the hero PNG is absent. Dismisses on session start.
+  * **MDE cursor theme** at `assets/brand/cursor/`: indigo-
+    halo cursor variants (left_ptr, hand2, watch, xterm,
+    crosshair, …). Strategy: fork upstream Bibata or
+    Capitaine and re-tint to indigo rather than generate
+    from scratch (~30 cursor roles, hand-drawing each is a
+    week of work, retinting is an afternoon). Installs to
+    `/usr/share/icons/mde/` and is selected via
+    `~/.icons/default/index.theme`.
+  * **Audio identity** at `assets/brand/sounds/`:
+    `login-chord.ogg` (~1.2 s stereo, plays once when
+    greeter dismisses) + `notification.ogg` (~200 ms mono,
+    plays on every notification surface from
+    `mde-notification-center`). 48 kHz Ogg Vorbis. Audio
+    pipeline: `mded` spawns `paplay` via std::process.
+  Depends: BR-0 (done) + greeter-hero PNG + cursor theme
+  + audio files (user-supplied). Effort: High (greeter
+  binary + cursor theme work + audio asset production).
+
+**Definition of Done for BR-0..BR-5 (group):** All five
+surfaces ship in `main`; the user can drop a replacement
+SVG / PNG into `assets/brand/` (or set `$MDE_BRAND_DIR`)
+and see it picked up on next render without recompile; the
+About panel (BR-4) shows the live brand source for every
+slot so swap verification is one-glance; visual regression
+goldens (UX-23) include the placeholder + a hand-supplied
+"reference brand pack" capture so future art swaps don't
+silently break layouts.
+
 ### Iteration-loop follow-ups (added 2026-05-21)
 
 These items emerged from the iteration loop's pragmatic landing of
