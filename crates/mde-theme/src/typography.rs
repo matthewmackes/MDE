@@ -15,6 +15,82 @@ pub const FONT_MONO: &str = "IBM Plex Mono";
 /// matching Apple System Settings' rhythm.
 pub const SCALE_RATIO: f32 = 1.2;
 
+/// Roles a piece of text can take. Maps to the eight tiers in
+/// [`FontSize`]. Use [`TypeRole::size_in`] to look up the
+/// resolved pixel size from a [`FontSize`] token bundle, and
+/// [`TypeRole::letter_spacing_in`] for the matching tracking.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum TypeRole {
+    /// 12 sp caption / label / chip.
+    Caption,
+    /// 14 sp body copy.
+    Body,
+    /// 17 sp subheading.
+    Subheading,
+    /// 20 sp heading.
+    Heading,
+    /// 24 sp section title.
+    Section,
+    /// 28 sp page / display title.
+    Display,
+    /// 13 sp monospace inline.
+    Mono,
+}
+
+impl TypeRole {
+    /// Pixel size for this role from a [`FontSize`] bundle.
+    pub fn size_in(self, sizes: FontSize) -> f32 {
+        match self {
+            TypeRole::Caption    => sizes.caption,
+            TypeRole::Body       => sizes.body,
+            TypeRole::Subheading => sizes.subheading,
+            TypeRole::Heading    => sizes.heading,
+            TypeRole::Section    => sizes.section,
+            TypeRole::Display    => sizes.display,
+            TypeRole::Mono       => sizes.mono,
+        }
+    }
+
+    /// Letter-spacing (em) for this role from a [`LetterSpacing`]
+    /// bundle.
+    pub fn letter_spacing_in(self, ls: LetterSpacing) -> f32 {
+        match self {
+            TypeRole::Display    => ls.display,
+            TypeRole::Section    => ls.section,
+            TypeRole::Heading    => ls.heading,
+            TypeRole::Caption    |
+            TypeRole::Body       |
+            TypeRole::Subheading => ls.body,
+            TypeRole::Mono       => ls.mono,
+        }
+    }
+
+    /// Weight for this role from a [`FontWeight`] bundle. Display
+    /// / headings / sections / captions are medium; body and mono
+    /// are regular.
+    pub fn weight_in(self, w: FontWeight) -> u16 {
+        match self {
+            TypeRole::Display    |
+            TypeRole::Section    |
+            TypeRole::Heading    |
+            TypeRole::Subheading |
+            TypeRole::Caption    => w.medium,
+            TypeRole::Body       |
+            TypeRole::Mono       => w.regular,
+        }
+    }
+
+    /// Font family for this role. Mono returns [`FONT_MONO`];
+    /// every other role returns [`FONT_DISPLAY_BODY`] (Geologica
+    /// single-family per Q11/Q12).
+    pub fn family(self) -> &'static str {
+        match self {
+            TypeRole::Mono => FONT_MONO,
+            _              => FONT_DISPLAY_BODY,
+        }
+    }
+}
+
 /// Sizes in scale points (sp), one tier per type role.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FontSize {
@@ -137,5 +213,40 @@ mod tests {
     #[test]
     fn mono_is_ibm_plex_mono() {
         assert_eq!(FONT_MONO, "IBM Plex Mono");
+    }
+
+    #[test]
+    fn type_role_size_resolves() {
+        let sizes = FontSize::defaults();
+        assert_eq!(TypeRole::Body.size_in(sizes) as i32, 14);
+        assert_eq!(TypeRole::Display.size_in(sizes) as i32, 28);
+        assert_eq!(TypeRole::Mono.size_in(sizes) as i32, 13);
+    }
+
+    #[test]
+    fn type_role_weight_resolves() {
+        let w = FontWeight::defaults();
+        assert_eq!(TypeRole::Body.weight_in(w), 400);
+        assert_eq!(TypeRole::Heading.weight_in(w), 500);
+        assert_eq!(TypeRole::Display.weight_in(w), 500);
+        assert_eq!(TypeRole::Mono.weight_in(w), 400);
+    }
+
+    #[test]
+    fn type_role_letter_spacing_resolves() {
+        let ls = LetterSpacing::defaults();
+        // Display + section + heading are tightened.
+        assert!(TypeRole::Display.letter_spacing_in(ls) < 0.0);
+        assert!(TypeRole::Section.letter_spacing_in(ls) < 0.0);
+        // Body / subheading / caption are neutral.
+        assert_eq!(TypeRole::Body.letter_spacing_in(ls), 0.0);
+        assert_eq!(TypeRole::Mono.letter_spacing_in(ls), 0.0);
+    }
+
+    #[test]
+    fn type_role_family_routes_mono_separately() {
+        assert_eq!(TypeRole::Mono.family(), FONT_MONO);
+        assert_eq!(TypeRole::Body.family(), FONT_DISPLAY_BODY);
+        assert_eq!(TypeRole::Display.family(), FONT_DISPLAY_BODY);
     }
 }

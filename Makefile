@@ -12,7 +12,7 @@ NAME    := mackes-shell
 VERSION := $(shell python3 -c "import mackes; print(mackes.__version__)")
 SDIST   := dist/$(NAME)-$(VERSION).tar.gz
 
-.PHONY: sdist rpm test test-nodeps smoke lint verify rust rust-check docs iso clean install-deps install-hooks
+.PHONY: sdist rpm test test-nodeps smoke lint lint-grid verify rust rust-check docs iso clean install-deps install-hooks
 
 sdist:
 	@# Prefer PEP 517 build (works on Fedora 40+ without distutils).
@@ -48,6 +48,12 @@ test-nodeps:
 # .claude/CLAUDE.md §0.7.
 lint:
 	ruff check --select F401,F541,F811,F841 mackes/ tests/
+
+# UX-12 (2026-05-21) — modular spacing-grid lint for Iced sources.
+# Currently warn-only; will flip to strict once UX-2..UX-9 land
+# their consumer-side migration to mde-theme tokens.
+lint-grid:
+	@tools/mde-grid-lint.sh
 
 smoke:
 	python3 -c "import importlib, pkgutil, sys, mackes; \
@@ -85,6 +91,8 @@ verify:
 	if [ $$NEED_RUST -eq 1 ]; then \
 		echo "→ rust: rust-check (fmt + clippy + check)"; \
 		$(MAKE) rust-check; \
+		echo "→ rust: grid lint (warn-only)"; \
+		$(MAKE) lint-grid; \
 	fi; \
 	if [ $$NEED_CSS -eq 1 ] && [ -x install-helpers/lint-css.sh ]; then \
 		echo "→ css: install-helpers/lint-css.sh"; \

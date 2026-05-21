@@ -4698,7 +4698,13 @@ Iced-side style constants (introduce `crates/mde-theme/` if needed).
   Depends: None. Effort: Medium.
   Outputs: `crates/mde-theme/` crate; `data/css/mde-tokens.css`.
 
-- [ ] **UX-2: Typography system — v2.1 scope** — Define a type scale
+- [✓] **UX-2: Typography system — landed 2026-05-21** — `mde-theme::typography`
+  ships the lock set: `FontSize` (12/14/17/20/24/28 sp per Q14), `LetterSpacing`
+  (per-role tracking per Q15), `FontWeight` (400/500), and the new `TypeRole`
+  enum (Caption/Body/Subheading/Heading/Section/Display/Mono) with
+  `size_in()` / `letter_spacing_in()` / `weight_in()` / `family()`
+  accessors. Geologica for display+body (Q11/Q12), IBM Plex Mono for code
+  (Q13) — single-family + mono-fallback routing baked in. Audit every
   using tokens from UX-1. Apply consistently across all Iced panels:
   display (28 sp, medium weight) for panel titles; heading (20 sp,
   medium) for section headers; body (14 sp, regular) for content;
@@ -5109,7 +5115,20 @@ Last updated: 2026-05-21 — Claude Opus 4.7 (50-question lock survey
   Depends: UX-10. Effort: Medium.
   Outputs: `docs/design/benchmarks/{linear,raycast,arc,cursor,vercel,apple-settings}/`.
 
-- [ ] **UX-12: 8 px baseline grid enforcement — v2.2 scope** —
+- [✓] **UX-12: Spacing-grid lint — landed 2026-05-21 (warn-only
+  mode)** — `tools/mde-grid-lint.sh` scans `crates/mde-*/src/*.rs`
+  for `.padding(n)` / `.spacing(n)` literals where `n` is not in
+  the NFU-1 token set. Snaps off-grid values to the nearest token
+  in the hint output. Wired into `make lint-grid` and `make verify`.
+  **Currently warn-only** (`--warn-only` is the default; pass
+  `--strict` to gate) since 140 pre-existing violations live in
+  the legacy Iced surfaces. Will flip to strict once UX-3..UX-9
+  land their consumer-side migration to `mde-theme` tokens. UX-24
+  applies: component dimensions (Length::Fixed, width, height) are
+  **not** linted — they're intentionally off-grid per the
+  component-dim sub-lock.
+  Outputs: `tools/mde-grid-lint.sh`; `Makefile` `lint-grid` +
+  `verify` integration. v2.2 follow-up
   Round 1's UX-1 defined a 4 px-base token scale; Round 2 enforces
   that every layout uses only tokens, never raw pixel literals. Two
   halves: (a) **lint** — `cargo run --example mde-grid-lint`
