@@ -45,7 +45,11 @@ pub mod typography;
 pub use accessibility::A11y;
 pub use color::Rgba;
 pub use density::Density;
+pub use palette::Palette;
 pub use prefs::Preferences;
+pub use radii::Radii;
+pub use shadows::Shadow;
+pub use spacing::Space;
 pub use theme::{Theme, Tokens};
 pub use typography::{FontSize, FontWeight, LetterSpacing, TypeRole};
 

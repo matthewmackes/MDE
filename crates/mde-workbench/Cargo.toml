@@ -54,6 +54,11 @@ mde-config = { path = "../mde-config" }
 # the panel + mackesd share, so the workbench depends on them
 # directly rather than re-importing through mackesd-core.
 mde-mesh-types = { path = "../mde-mesh-types" }
+# UX-3 (2026-05-21) — design-token consumer. `features = ["iced"]`
+# enables the `Rgba::into_iced_color()` helper so the workbench
+# can derive its `iced::Theme::Custom` palette from
+# `mde_theme::Palette` without hardcoding hex literals.
+mde-theme = { path = "../mde-theme", features = ["iced"] }
 
 [features]
 # `wayland` (default): Iced renders via Wayland/wgpu.

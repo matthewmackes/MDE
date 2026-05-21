@@ -9,7 +9,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use iced::widget::{column, container, row, text};
-use iced::{Element, Length, Size, Subscription, Task, Theme};
+use iced::{Color, Element, Length, Size, Subscription, Task, Theme};
+use mde_theme::Palette;
 
 use crate::backend::{Backend, DemoBackend};
 use crate::dbus::PendingFocus;
@@ -36,6 +37,35 @@ use crate::sidebar::SidebarState;
 /// (`SidebarWindow` defaults).
 pub const WIN_W: f32 = 1180.0;
 pub const WIN_H: f32 = 760.0;
+
+/// Build the workbench's `iced::Theme` from `mde_theme::Palette`.
+///
+/// UX-3 — Q-locked dark palette (Q2 indigo accent + Q3 Apple-
+/// charcoal background). Success / danger colours are the
+/// UX-3 originals (`#3fb950` / `#e5534b`) until a future
+/// Q-lock pins semantic colours; they live here rather than
+/// `mde-theme` because the Q-survey didn't enumerate them
+/// (the lock spec is single-accent).
+#[must_use]
+pub fn mde_workbench_iced_theme() -> Theme {
+    let p = Palette::dark();
+    let palette = iced::theme::Palette {
+        background: p.background.into_iced_color(),
+        text: p.text.into_iced_color(),
+        primary: p.accent.into_iced_color(),
+        success: Color::from_rgb(
+            0x3f as f32 / 255.0,
+            0xb9 as f32 / 255.0,
+            0x50 as f32 / 255.0,
+        ),
+        danger: Color::from_rgb(
+            0xe5 as f32 / 255.0,
+            0x53 as f32 / 255.0,
+            0x4b as f32 / 255.0,
+        ),
+    };
+    Theme::custom("MDE".to_string(), palette)
+}
 
 /// Reducer messages — every interaction lands here.
 #[derive(Debug, Clone)]
@@ -495,10 +525,15 @@ impl App {
 
     #[allow(clippy::unused_self)]
     fn theme(&self) -> Theme {
-        // CB-1.2 surface ships with the Iced default Dark theme;
-        // the cosmic-theme adapter (E3.1) hooks in once Phase
-        // E.1.3 wires libcosmic into the panel + workbench.
-        Theme::Dark
+        // UX-3 — Iced framework palette is derived from the
+        // locked `mde_theme::Palette` so every widget that defers
+        // to the theme (default backgrounds, text, primary
+        // buttons) renders with Q-locked indigo + Q-locked
+        // charcoal instead of Iced's stock dark navy. Widget-
+        // level deep restyling is the scope of UX-4..UX-9; this
+        // step alone moves the workbench's base surface onto the
+        // MDE identity.
+        mde_workbench_iced_theme()
     }
 
     /// Apply a [`Message`] to the state. Returns [`Task::none`]
@@ -1129,5 +1164,50 @@ mod tests {
         let _ = app.update(Message::SelectGroup(Group::Apps));
         assert!(app.title().contains("Apps"));
         assert!(app.title().starts_with("MDE Workbench"));
+    }
+
+    // UX-3 — theme() now returns a custom Iced theme derived
+    // from mde_theme::Palette::dark(). The next three tests
+    // guard against accidental drift from the Q-locked values.
+
+    #[test]
+    fn workbench_iced_theme_background_matches_q3_charcoal() {
+        let theme = mde_workbench_iced_theme();
+        let bg = theme.palette().background;
+        // Q3 lock — Apple charcoal #1d1d1f.
+        let expected = (
+            0x1d as f32 / 255.0,
+            0x1d as f32 / 255.0,
+            0x1f as f32 / 255.0,
+        );
+        assert!((bg.r - expected.0).abs() < 1e-4, "r {} vs {}", bg.r, expected.0);
+        assert!((bg.g - expected.1).abs() < 1e-4, "g {} vs {}", bg.g, expected.1);
+        assert!((bg.b - expected.2).abs() < 1e-4, "b {} vs {}", bg.b, expected.2);
+    }
+
+    #[test]
+    fn workbench_iced_theme_primary_matches_q2_indigo() {
+        let theme = mde_workbench_iced_theme();
+        let primary = theme.palette().primary;
+        // Q2 lock — indigo #5b6af5.
+        let expected = (
+            0x5b as f32 / 255.0,
+            0x6a as f32 / 255.0,
+            0xf5 as f32 / 255.0,
+        );
+        assert!((primary.r - expected.0).abs() < 1e-4);
+        assert!((primary.g - expected.1).abs() < 1e-4);
+        assert!((primary.b - expected.2).abs() < 1e-4);
+    }
+
+    #[test]
+    fn workbench_iced_theme_is_custom_named_mde() {
+        // Theme::Dark / Light have built-in names; the custom
+        // theme advertises "MDE" so the workbench preferences UI
+        // (UX-15.a) can detect the active theme by name.
+        let theme = mde_workbench_iced_theme();
+        // Custom themes implement Display as the name.
+        let rendered = format!("{}", theme);
+        assert!(rendered.contains("MDE"), "theme name = {rendered}");
     }
 }
