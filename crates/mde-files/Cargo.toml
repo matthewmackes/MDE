@@ -19,6 +19,10 @@ serde_json = "1"
 # v2.0.0 Phase 2.x — Backend trait + DemoBackend audit-log
 # timestamps (chrono UTC millis).
 chrono     = "0.4"
+# Phase 2.3 — DBusBackend opt-in deps. Behind the `dbus` feature so
+# the headless crate (DemoBackend only) keeps a minimal dep graph.
+tokio      = { version = "1", features = ["rt-multi-thread", "macros", "sync"], optional = true }
+zbus       = { version = "5", default-features = false, features = ["tokio"], optional = true }
 
 [features]
 # `wayland` (default): enables smithay-client-toolkit portal calls
@@ -26,6 +30,9 @@ chrono     = "0.4"
 default = ["wayland"]
 wayland = []
 x11     = []
+# Phase 2.3 — links DBusBackend (zbus + tokio bridge). Default off so
+# the DemoBackend smoke-test build stays minimal.
+dbus    = ["dep:tokio", "dep:zbus"]
 
 [lints.rust]
 unsafe_code     = "forbid"

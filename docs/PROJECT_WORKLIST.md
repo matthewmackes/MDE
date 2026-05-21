@@ -3417,11 +3417,11 @@ dashed "Browse filesystem…" disclosure that opens an explainer card.
   + tests use it without a live mded connection. 11 unit tests
   cover the full surface (self_node, peers, list, audit-log
   ordering, send-to + rollback round-trips, error display).
-- [!] **2.3 (mde-files crate) `Backend::DBus` impl** — Talks to
+- [✓] **2.3 (mde-files crate) DBusBackend (shipped 2026-05-20) — `crates/mde-files/src/dbus_backend.rs` behind the `dbus` cargo feature: WireSelfNode/WirePeer/WireFileRow/WireAudit deserialisable structs, tokio runtime + zbus 5 Connection wrapper, parsers for every wire shape, destination-selector grammar round-trip (`peer:`/`group:`/`role:`/`site:`), send-mode + conflict-policy enum bridges, and the five interface + object-path constants cross-checked against mded's Phase 2.4 schemas. 10 tests on the dbus-feature; default (DemoBackend-only) build keeps a minimal dep graph. Note: `impl Backend for DBusBackend` defers to Phase G because the current `model::{Peer,SelfNode,FileRow}` use `&'static str` fields that can't be filled from runtime data — Phase G migrates the model first, then the trait impl drops in via the parsers + connect path that already ship.** Original entry: Talks to
   `dev.mackes.MDE.Fleet.{Peers,Files}` and
   `dev.mackes.MDE.Shell.{Inbox,Outbox,Downloads,FileOperations}`.
   zbus 5 with `tokio` feature (matches the v2.0.0 stack lock).
-- [!] **2.4 (mde-files crate) mded surfaces** — Land the matching D-Bus surfaces in
+- [✓] **2.4 (mde-files crate) mded Files surfaces (shipped 2026-05-20) — `crates/mackesd/src/ipc/files.rs` ships five new zbus interfaces: `dev.mackes.MDE.Shell.{Inbox,Outbox,Downloads,FileOperations}` + `dev.mackes.MDE.Fleet.Files`. Phase A handler shape — every method returns `Err(Failed("Phase G"))` matching the existing `fleet.rs` + `shell.rs` pattern. Signals on Inbox.ItemArrived + FileOperations.OpCompleted. 10 tests covering interface-name locks, object-path locks, + each surface's Phase-A unimplemented behaviour. Original entry:** Land the matching D-Bus surfaces in
   `crates/mackesd/src/ipc/shell.rs` and `…/fleet.rs`. Blocks on
   Phase A.3 of v2.0.0 Mackes DE.
 - [✓] **2.5 Path safety + allowed-roots resolver** — shipped

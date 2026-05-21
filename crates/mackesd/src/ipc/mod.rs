@@ -27,6 +27,7 @@
 // rest of the crate's missing_docs hygiene stays loud.
 #![allow(missing_docs)]
 
+pub mod files;
 pub mod fleet;
 pub mod notifications;
 pub mod session;

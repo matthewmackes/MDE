@@ -3163,6 +3163,8 @@ dependencies = [
  "iced",
  "serde",
  "serde_json",
+ "tokio",
+ "zbus",
 ]
 
 [[package]]
