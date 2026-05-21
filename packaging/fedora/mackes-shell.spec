@@ -572,6 +572,47 @@ install -D -m 0755 target/release/mde-workbench \
 install -D -m 0644 data/applications/mde-workbench.desktop \
     %{buildroot}%{_datadir}/applications/mde-workbench.desktop
 
+# v2.0.0 Phase E.1 — mde-panel (Iced side-by-side rewrite of the
+# GTK mackes-panel; ships in parallel, spec primary swaps at
+# end-of-Phase-E parity).
+install -D -m 0755 target/release/mde-panel \
+    %{buildroot}%{_bindir}/mde-panel
+
+# v2.0.0 Phase D.1 — mde-session Wayland session orchestrator.
+install -D -m 0755 target/release/mde-session \
+    %{buildroot}%{_bindir}/mde-session
+
+# v2.0.0 Phase D.2 — mde-logout-dialog Iced confirmation dialog.
+install -D -m 0755 target/release/mde-logout-dialog \
+    %{buildroot}%{_bindir}/mde-logout-dialog
+
+# v2.0.0 Phase A+B — mded daemon binary (renamed mackesd surface).
+install -D -m 0755 target/release/mded \
+    %{buildroot}%{_bindir}/mded
+
+# v2.0.0 Phase E.8 — mde-applet-drawer (drawer overlay binary).
+install -D -m 0755 target/release/mde-applet-drawer \
+    %{buildroot}%{_bindir}/mde-applet-drawer
+
+# v2.0.0 CB-1.10 — mde-wizard first-run provisioning UI.
+install -D -m 0755 target/release/mde-wizard \
+    %{buildroot}%{_bindir}/mde-wizard
+
+# v2.0.0 Phase E1.x — applet binaries (panel-host spawns these per
+# pane / per tray slot via mde-panel host.rs).
+for applet in mde-applet-app-switcher mde-applet-apple-menu \
+              mde-applet-audio mde-applet-bg mde-applet-brightness-osd \
+              mde-applet-clock mde-applet-dock mde-applet-mesh-status \
+              mde-applet-network mde-applet-notification-bell \
+              mde-applet-notifications mde-applet-recents \
+              mde-applet-start-menu mde-applet-status-cluster \
+              mde-applet-sway-cluster mde-applet-volume-osd; do
+    if [ -f target/release/$applet ]; then
+        install -D -m 0755 target/release/$applet \
+            %{buildroot}%{_bindir}/$applet
+    fi
+done
+
 # v12.16 — self-hosted DERP relay unit (only active on the Host-role
 # peer; gated by ConditionPathExists=/var/lib/mde/derper.enabled).
 install -D -m 0644 data/systemd/mde-derper.service \
@@ -652,6 +693,31 @@ fi
 # CB-1 — Iced MDE Workbench preview (1.1.1+).
 %{_bindir}/mde-workbench
 %{_datadir}/applications/mde-workbench.desktop
+# v2.0.0 Phase E.1 — Iced panel + Phase D.1 session orchestrator +
+# Phase D.2 logout dialog + Phase A daemon binary + Phase E.8
+# drawer applet + CB-1.10 wizard + 16 applet binaries.
+%{_bindir}/mde-panel
+%{_bindir}/mde-session
+%{_bindir}/mde-logout-dialog
+%{_bindir}/mded
+%{_bindir}/mde-applet-drawer
+%{_bindir}/mde-wizard
+%{_bindir}/mde-applet-app-switcher
+%{_bindir}/mde-applet-apple-menu
+%{_bindir}/mde-applet-audio
+%{_bindir}/mde-applet-bg
+%{_bindir}/mde-applet-brightness-osd
+%{_bindir}/mde-applet-clock
+%{_bindir}/mde-applet-dock
+%{_bindir}/mde-applet-mesh-status
+%{_bindir}/mde-applet-network
+%{_bindir}/mde-applet-notification-bell
+%{_bindir}/mde-applet-notifications
+%{_bindir}/mde-applet-recents
+%{_bindir}/mde-applet-start-menu
+%{_bindir}/mde-applet-status-cluster
+%{_bindir}/mde-applet-sway-cluster
+%{_bindir}/mde-applet-volume-osd
 # v2.0.0 Phase 0.3 — mde-* binary wrappers + migrators.
 %{_bindir}/mde
 %{_bindir}/mde-wm
