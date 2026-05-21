@@ -22,15 +22,37 @@ locked work appears under **Active** with `[ ] Open`.
 
 ## Active
 
-> **Active section status (2026-05-21):** zero `[!] Blocked` items.
-> All in-tree v2.0.0 deliverables are `[✓] Done`. Remaining
-> `[ ] Open` items in this section are v2.0.0 polish follow-ups
-> (E.2 layer-shell integration, E.17 weather popover, E.4.1
-> sway-cluster applet, 6.4 snapshot tests) — none block release;
-> they are iteration-grade enhancements. Items explicitly
-> scheduled for the next release window live below in
-> **Future deliverables (post 2.0.0)**. Bench-cadence work lives
-> in **Epic: Hardware Testing** at the bottom of the file.
+> **Active section status (2026-05-21 — post-iteration):**
+>
+> * `[!] Blocked` = **0**. Every v2.0.0 deliverable shipped.
+> * `[ ] Open` items remaining in this section are all
+>   **explicitly v2.1+ scope** — they live here only because
+>   they cross-reference earlier Active-section locks. Each is
+>   tagged "v2.1+ scope" in its title. Categories:
+>   - **CB-1.x retirements** (CB-1.11, CB-1.12) — chain on the
+>     end-of-Phase-E retirement of `mackes-panel` GTK crate +
+>     the consumers of `mackes/workbench/` (`mackes/app.py`,
+>     `mackes/about.py`, `mackes/clipboard_app.py`,
+>     `mackes/drawer.py`, `mackes/presets.py`, `mackes/snapshots.py`).
+>   - **Chain on CB-1.12** (0.7 CSS namespace rename, C.11
+>     xfconf_bridge retirement) — fire once the Python
+>     workbench tree is gone.
+>   - **Network admin panels** (CB-1.8 follow-up bundle) —
+>     10 Iced ports of admin surfaces that v2.0.0 ships via
+>     `mded` CLI.
+>   - **E.2 layer-shell integration** — `iced_layershell 0.18`
+>     forces a workspace-wide Iced 0.13 → 0.14 bump; deferred
+>     to the v2.1 Iced upgrade window.
+> * **Future deliverables (post 2.0.0)** section near the bottom
+>   carries items that are explicitly post-v2.0.0 (12.18
+>   HTTPS-tunnel, 2.1 bin shims, 2.1 D-Bus aliases, ci pytest
+>   red).
+> * **Epic: Hardware Testing** at the bottom of the file
+>   carries the bench-cadence work (HW-1..HW-4).
+>
+> Net: v2.0.0 is feature-complete in source. The only work that
+> can move it forward today is bench validation (HW-*) or
+> starting on v2.1 scope.
 
 ### v2.0.0 monolithic cut (shipped 2026-05-20)
 
