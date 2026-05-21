@@ -3194,6 +3194,7 @@ name = "mde-panel"
 version = "0.0.0"
 dependencies = [
  "clap",
+ "dirs",
  "iced",
  "mackes-theme",
  "mde-applet-api",

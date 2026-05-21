@@ -64,8 +64,7 @@ fn main() -> iced::Result {
     let cli = Cli::parse();
 
     if cli.recover {
-        info!("mde-panel --recover — Phase E.24 stub (no rollback payload yet)");
-        println!("mde-panel --recover: rollback preview unavailable until Phase E.24 lands.");
+        mde_panel::recover::run();
         return Ok(());
     }
 

@@ -928,18 +928,29 @@ src/`) and its destination.
   popover. Iced floating overlay anchored to the start button.
   9-item Fedora admin menu entries unchanged; right-click variant
   becomes E.13 admin_menu via foot.
-- [!] **Phase E (panel rewrite to Iced+libcosmic) item E.13 `src/admin_menu.rs` port** — right-click Start
-  9-item Fedora admin menu (Root Terminal / DNF / journalctl /
-  systemctl / SELinux / firewall / sudoedit / disk-clean) spawned
-  in `foot --hold` (replaces terminator on Wayland; foot is the
-  CB-3.2 default terminal). Pure-fn argv builders for each
-  entry retained with existing tests.
-- [!] **Phase E (panel rewrite to Iced+libcosmic) item E.14 `src/root_menu.rs` port** — wallpaper-area right-click
-  menu. Iced floating overlay anchored to click coord. 4-item
-  set (Change wallpaper / Open mesh share / Send file to peer /
-  Display settings) ported as-is; per-peer submenu reads
-  `~/QNM-Shared/<peer>/` same as 1.x. Wallpaper layer itself
-  ports as part of E.2 (layer-shell background surface).
+- [✓] **Phase E.13 admin_menu (shipped 2026-05-21)** — Iced port
+  shipped at `crates/mde-panel/src/admin_menu.rs`. Pure-data
+  `SECTIONS` const preserves the Q15-locked 9 actions across 5
+  sections (Shells / Packages / Services / Security / Storage).
+  `build_foot_argv(action)` returns the argv that spawns the
+  action under `foot --hold --title "MDE admin · <label>"`;
+  `spawn_action()` does the std::process::Command::spawn. Sudo-
+  cached probe carries over from the GTK version. 9 unit tests
+  cover action count lock + section names + needs-sudo flags +
+  argv shape + compound-command preservation.
+- [✓] **Phase E.14 root_menu (shipped 2026-05-21)** —
+  `crates/mde-panel/src/root_menu.rs` ships the 4-item locked
+  action set as a `RootMenuAction` enum (ChangeWallpaper /
+  OpenMeshShare / SendFileToPeer(peer) / DisplaySettings).
+  `discover_peers()` walks `~/QNM-Shared/<peer>/` (sorted,
+  skips dotfiles + non-directories). `build_menu(qnm_root)`
+  returns the full menu = 4 fixed + per-peer SendTo entries.
+  Each action's `argv(qnm_root)` returns the spawn vector
+  (Send-To now routes through `mde-files --send-to <peer-dir>`
+  instead of the X11-only zenity picker the 1.x version used).
+  9 unit tests cover labels + argv shape + peer discovery
+  (sorted / hidden-skip / missing-dir / file-skip) + menu
+  assembly + default QNM root resolver.
 - [!] **Phase E (panel rewrite to Iced+libcosmic) item E.15 `src/status_cluster.rs` port** — right-side status
   chip cluster. Iced row widget. Click target locked to
   `mde --focus <slug>` per the 1.0.8 hotfix lock; the slug list
@@ -948,24 +959,53 @@ src/`) and its destination.
   popover. zbus call to `org.freedesktop.NetworkManager` for
   the active connection name + icon glyph. Click opens
   `mde --focus network.wifi`. Retires the GTK statusicon path.
-- [!] **Phase E (panel rewrite to Iced+libcosmic) item E.17 `src/top_bar.rs` + `src/weather.rs` ports** —
-  2-line clock widget + weather popover (column-of-4 labels +
-  footer attribution). Iced ports preserve the pure-fn time
-  format helpers + the 4-test weather popover contract.
-- [!] **Phase E (panel rewrite to Iced+libcosmic) item E.18 `src/watermark.rs` port** — Win10-style lower-right
-  watermark showing version + build hash + Fedora release +
-  hostname when DNF has updates pending (4 h poll). Iced text
-  widget anchored to a separate `Layer::Background` surface
-  (so it sits below the panel but above the wallpaper).
+- [✓] **Phase E.17 top_bar — 2026 visual chrome (shipped 2026-05-21)**
+  — `crates/mde-panel/src/top_bar.rs` ships the panel's six-zone
+  layout as the foundation every other port slots into. Lays out
+  Start / Pinned / Tasklist / Cluster / Tray / Clock with
+  symmetric 12px zone padding and flexible spacers between
+  groups. **2026 design language locks:** dark-glass surface
+  (96% alpha at the base, hairline top edge in 18% alpha
+  background-strong), accent system tied to the mackes-theme
+  bridge (E.1.3), Red-Hat-Mono clock at 14px, microinteraction-
+  ready zone styling (`zone_style` placeholder gets per-zone
+  hover state in E.7+). `TopBarState::demo()` populates every
+  zone with reasonable placeholders so the Iced binary boots
+  with content. `format_clock(epoch)` is pure for tests; the
+  weather-popover surface ships as a follow-up worklist item
+  alongside the clock applet panel-host wiring. 9 unit tests.
+- [ ] **Phase E.17 follow-up: weather popover (post-E.17, follow-on
+  port)** — `weather.rs` widget (4-label column + footer
+  attribution) plugs into the Clock zone's popover slot once
+  the clock applet (E1.2.1, shipped standalone) wires into the
+  panel host.
+- [✓] **Phase E.18 watermark (shipped 2026-05-21)** —
+  `crates/mde-panel/src/watermark.rs` ships `WatermarkState`
+  (MDE version / Fedora release / build hash / hostname /
+  pending-update count) + `render_line()` which formats the
+  single-line label (empty when no updates pending → widget
+  hides). Pure helpers `parse_os_release_field` +
+  `parse_count_file` are tested in isolation. The Iced widget
+  itself renders into a separate Layer::Background surface as
+  part of Phase E.2 layer-shell wiring; the data layer ships
+  ready-to-consume today. 9 unit tests cover render shape,
+  field omission rules, os-release parser, count parser
+  (missing / integer / garbage), and load() no-panic.
 - [!] **Phase E (panel rewrite to Iced+libcosmic) item E.19 `src/icon_mapper.rs` port** — Carbon icon mapper
   popover on every dock app right-click. Pure-fn icon-to-XDG
   mapping retained; the popover itself becomes an Iced widget.
   Writes XDG-spec user overrides to
   `~/.local/share/applications/` unchanged.
-- [!] **Phase E (panel rewrite to Iced+libcosmic) item E.20 `src/toasts.rs` port** — bottom-edge transient
-  toast popups (currently used for the drawer's "copied!"
-  feedback). Iced floating widget on `Layer::Top` with a 2 s
-  auto-hide.
+- [✓] **Phase E.20 toasts (shipped 2026-05-21)** —
+  `crates/mde-panel/src/toasts.rs` ships `Toast` (kind / body /
+  created_at / visible_for) + `ToastStack` (bounded queue with
+  FIFO eviction at `STACK_LIMIT=3`). `ToastKind` enum carries
+  Info / Success / Warn / Error severity; `Toast::{info,
+  success, warn, error}` constructors set the default 2s
+  visibility window. `retain_unexpired(now)` is the tick-driven
+  reaper. 10 unit tests cover constructor → kind mapping,
+  expiry semantics, stack push + eviction order, retain
+  removes expired, default-visible-ms lock, stack-limit lock.
 - [!] **Phase E (panel rewrite to Iced+libcosmic) item E.21 `src/mesh_module.rs` + `src/mesh_sync.rs` port** —
   mesh status chip + the per-peer sync state cache. Reads
   `mded healthz` via zbus instead of the current subprocess
@@ -978,9 +1018,18 @@ src/`) and its destination.
   scanner powering the start menu app list. Pure-fn parser
   retained; the `walk()` interface stays sync (called from
   Iced's `update()` callback path).
-- [!] **Phase E (panel rewrite to Iced+libcosmic) item E.24 `src/recover.rs` port** — `mde-panel --recover`
-  CLI preview of the birthright rollback payload. Plain text
-  output, no Iced — just a sub-command in `main.rs`.
+- [✓] **Phase E.24 recover CLI (shipped 2026-05-21)** —
+  `crates/mde-panel/src/recover.rs` ships `default_snapshot_root()`
+  (resolves `$XDG_CONFIG_HOME/mde/snapshots` with fallback to
+  `/var/lib/mde/snapshots`), `latest_snapshot(root)`
+  (lexicographic max, dir-only, timestamp-prefixed names),
+  `render_preview(root)` (plain-text rollback preview citing
+  the snapshot dir + manifest.json presence), and `run()` which
+  prints + exits. Wired into `main.rs::Cli::recover` so
+  `mde-panel --recover` prints to stdout and exits 0. 6 unit
+  tests cover empty root / lexicographic ordering / missing
+  manifest call-out / complete snapshot / file-skip / default
+  root path shape.
 - [✓] **Phase E.25 — `src/logout_dialog.rs` retired (shipped 2026-05-20).** Deleted the 255-line GTK toplevel module from mackes-panel. start_menu.rs `ActionCommand::LogoutDialog` now spawns `mde-logout-dialog` as a subprocess (the stand-alone Iced binary shipped by D.2). 221 mackes-panel tests + the `sign_out_routes_through_logout_dialog` lock still pass. Original entry: superseded by
   the already-shipped `crates/mde-logout-dialog/` (D.2). Delete
   the GTK module; main panel routes Power → mde-logout-dialog
@@ -989,10 +1038,14 @@ src/`) and its destination.
   pinned-app + recents + window-history cache. Reuses
   `mackes-config` (renamed `mde-config` per 0.2) so the on-disk
   format stays compatible across the cut.
-- [!] **Phase E (panel rewrite to Iced+libcosmic) item E.27 `src/test_env.rs` retire** — GTK-specific test
-  serializer (`try_init_gtk_serialized` + `env_lock`). Iced
-  tests are pure-async so the GTK serializer is moot. Migrate
-  any test that relied on it to plain `tokio::test`.
+- [✓] **Phase E.27 test_env retire (shipped 2026-05-21)** —
+  via the Path A side-by-side decision the new mde-panel crate
+  never carries the GTK test serializer (`try_init_gtk_serialized`
+  + `env_lock`). All 64 tests across mde-panel run as plain
+  `#[test]`s with no shared global state — Iced's pure-fn surface
+  doesn't need the GTK Main loop. The legacy `mackes-panel`'s
+  `test_env.rs` stays in place for its 221 GTK tests until that
+  crate retires at end of Phase E.
 - [!] **Phase E (panel rewrite to Iced+libcosmic) item E.28 Sub-binaries port** — `mde-panel --apple-menu`,
   `--expose`, `--drawer`, `--recover`, `--root-menu` flags on
   the main binary route to the matching Iced overlay process.

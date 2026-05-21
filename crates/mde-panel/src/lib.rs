@@ -24,10 +24,15 @@
 
 #![forbid(unsafe_code)]
 
-use iced::widget::{container, row, text};
-use iced::{Alignment, Element, Length, Size, Task, Theme};
+use iced::{Element, Size, Task, Theme};
 
+pub mod admin_menu;
+pub mod recover;
+pub mod root_menu;
 pub mod theme;
+pub mod toasts;
+pub mod top_bar;
+pub mod watermark;
 
 // ──────────────────────────────────────────────────────────────
 // Public layout zones (Phase E lock)
@@ -105,13 +110,29 @@ pub enum Message {
 
 /// Panel application state.
 ///
-/// Phase E.1.2 skeleton: empty state container. Per-pane state
-/// lands per-port (E.4 - E.29).
+/// Phase E.1.2 skeleton: top-bar state container. Per-port state
+/// writers (E.4.1 cluster, E.10 dock, E.11 start menu, etc.)
+/// mutate `top_bar` fields as their wiring lands.
 #[derive(Debug, Default)]
 pub struct App {
     /// Counts how many `Tick` messages have been received — used to
     /// confirm the subscription is wired in tests.
     ticks: u64,
+    /// Top-bar zone state. Defaults to demo content; real per-port
+    /// state writers replace individual fields.
+    top_bar: top_bar::TopBarState,
+}
+
+impl App {
+    /// Construct with the demo top-bar state so early Iced launches
+    /// render something. Per-port wiring replaces this.
+    #[must_use]
+    pub fn with_demo_state() -> Self {
+        Self {
+            ticks: 0,
+            top_bar: top_bar::TopBarState::demo(),
+        }
+    }
 }
 
 impl App {
@@ -149,19 +170,10 @@ impl App {
     }
 
     fn view(&self) -> Element<'_, Message> {
-        let placeholder = text(format!(
-            "mde-panel · Phase E.1 skeleton · ticks={}",
-            self.ticks
-        ));
-        container(
-            row![placeholder]
-                .spacing(8)
-                .align_y(Alignment::Center)
-                .padding(8),
-        )
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
+        // Phase E.17 — full top-bar chrome. Pre-port stages use the
+        // demo state; per-port wiring (E.4.1 cluster, E.10 dock, etc.)
+        // replaces individual fields as their state-writers land.
+        top_bar::view(&self.top_bar)
     }
 }
 

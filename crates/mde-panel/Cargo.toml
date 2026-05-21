@@ -49,6 +49,10 @@ mackes-theme = { path = "../mackes-theme" }
 serde      = { version = "1", features = ["derive"] }
 serde_json = "1"
 
+# XDG home + cache + state paths (same crate mackesd + mde-session
+# already use).
+dirs = "5"
+
 # Structured logging — journald reads JSON spans from stderr when the
 # user unit's StandardError=journal.
 tracing            = "0.1"
