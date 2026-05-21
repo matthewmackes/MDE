@@ -33,6 +33,7 @@
 
 pub mod accessibility;
 pub mod color;
+pub mod components;
 pub mod density;
 pub mod palette;
 pub mod prefs;
@@ -44,6 +45,7 @@ pub mod typography;
 
 pub use accessibility::A11y;
 pub use color::Rgba;
+pub use components::EmptyState;
 pub use density::Density;
 pub use palette::Palette;
 pub use prefs::Preferences;

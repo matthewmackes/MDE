@@ -4882,7 +4882,7 @@ Iced-side style constants (introduce `crates/mde-theme/` if needed).
   Outputs: `mackes/workbench/shell/sidebar_window.py` (GTK);
   Iced workbench nav component.
 
-- [ ] **UX-6: Panel surface + spacing — v2.1 scope** — Audit every
+- [>] **UX-6: Panel surface + spacing — v2.1 scope (Phase 1+2 landed 2026-05-21 on `ux/UX-6-panel-surface`; Phase 3 chained as UX-6.a)** — Audit every
   Iced panel (Fleet, Devices, System, Files, Mesh) for consistent
   padding, alignment, and visual rhythm. Rules: outer panel padding
   `SPACE_24`; section header bottom gap `SPACE_16`; row height 44 px
@@ -4897,6 +4897,29 @@ Iced-side style constants (introduce `crates/mde-theme/` if needed).
   Depends: UX-1, UX-2. Effort: High.
   Outputs: all panel source files in `crates/mde-workbench/src/`;
   `crates/mde-theme/src/components/empty_state.rs`.
+
+- [ ] **UX-6.a: Remaining-panel chrome migration sweep — v2.1 scope
+  (chain on UX-6 Phase 1+2)** — Migrate the ~29 panels not touched by
+  UX-6's representative pass (`snapshots`, `inventory`,
+  `mesh_history`) onto the `crate::panel_chrome` primitives:
+  `panel_container`, `section_block`, `data_row`, `status_badge`,
+  `card`, and `empty_state`. Each migration replaces ad-hoc
+  `column!`/`Padding::new(0.0)` shapes with the shared chrome so the
+  panel inherits the SPACE_24 outer padding, SPACE_16 section gap,
+  44 px row minimum, pill-shaped status badges, and consistent
+  empty-state automatically. Panels still on the legacy chrome (one
+  per file in `crates/mde-workbench/src/panels/`):
+  `apps_install`, `apps_installed`, `apps_remove`, `apps_sources`,
+  `datetime`, `default_apps`, `displays`, `firewall`,
+  `fleet_revisions`, `fleet_settings`, `fonts`, `logs`, `mesh_join`,
+  `notifications`, `playbooks`, `power`, `printers`, `removable`,
+  `repair`, `resources`, `run_history`, `session`, `sound`,
+  `system_update`, `themes`, `vpn`, `wallpaper`, `wifi`,
+  `window_manager`. Acceptance: every panel's `view()` opens with
+  `panel_container(...)` or `panel_chrome::card(...)`; no panel
+  carries a `Padding::new(0.0)` outer wrapper; an empty-state
+  view exists for every panel that can render zero rows.
+  Effort: Medium-to-High (one panel ≈ 5 min; sweep ≈ 2–3 hrs).
 
 - [ ] **UX-7: Control states + interaction feedback — v2.1 scope** —
   Define and apply consistent states for every interactive element:

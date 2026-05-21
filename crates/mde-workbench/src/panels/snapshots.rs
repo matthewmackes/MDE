@@ -22,6 +22,9 @@ use std::path::{Path, PathBuf};
 
 use iced::widget::{button, column, row, scrollable, text, text_input};
 use iced::{Element, Length, Padding, Task};
+use mde_theme::{Density, EmptyState, Palette};
+
+use crate::panel_chrome::{card, empty_state, panel_container};
 
 /// Subdirectory name under each snapshot dir that holds the
 /// copied config tree.
@@ -182,36 +185,52 @@ impl SnapshotsPanel {
         let new_name = text_input("Snapshot name", &self.new_name_input)
             .on_input(|v| crate::Message::Snapshots(Message::NewNameChanged(v)));
 
-        let rows_view = if self.rows.is_empty() {
-            column![text(
-                "No snapshots yet. Create one above to back up the current \
-                 MDE config tree."
-            )
-            .size(13)]
-        } else {
-            self.rows.iter().fold(column![], |col, row_data| {
-                let restore_path = row_data.path.clone();
-                let delete_path = row_data.path.clone();
-                col.push(
-                    row![
-                        text(&row_data.name).width(Length::Fixed(220.0)),
-                        text(&row_data.timestamp).width(Length::Fixed(220.0)),
-                        text(&row_data.hostname).width(Length::Fixed(160.0)),
-                        button(text("Restore")).on_press(crate::Message::Snapshots(
-                            Message::RestoreClicked(restore_path),
-                        )),
-                        button(text("Delete")).on_press(crate::Message::Snapshots(
-                            Message::DeleteClicked(delete_path),
-                        )),
-                    ]
-                    .spacing(12),
-                )
-            })
-        };
+        if self.rows.is_empty() {
+            // UX-6 — empty-state with the same create flow
+            // available above as the CTA. `new_name` and
+            // `create_btn` stay unused on this branch; the
+            // empty-state CTA is a stand-in until UX-8 lets us
+            // show the textinput inline.
+            let _ = (new_name, create_btn);
+            let state = EmptyState::with_cta(
+                "No snapshots yet",
+                "Capture the current ~/.config/mde/ tree so you can roll back \
+                 after experiments. Give the snapshot a name and click Create.",
+                "Create snapshot",
+            );
+            return panel_container(
+                empty_state(state, Palette::dark(), || {
+                    crate::Message::Snapshots(Message::CreateClicked)
+                }),
+                Density::Comfortable,
+            );
+        }
+
+        // UX-6 — each snapshot row renders as a card surface so
+        // the list reads as discrete items above the panel
+        // background instead of a flat table.
+        let rows_view = self.rows.iter().fold(column![], |col, row_data| {
+            let restore_path = row_data.path.clone();
+            let delete_path = row_data.path.clone();
+            let card_body = row![
+                text(&row_data.name).width(Length::Fixed(220.0)),
+                text(&row_data.timestamp).width(Length::Fixed(220.0)),
+                text(&row_data.hostname).width(Length::Fixed(160.0)),
+                button(text("Restore")).on_press(crate::Message::Snapshots(
+                    Message::RestoreClicked(restore_path),
+                )),
+                button(text("Delete")).on_press(crate::Message::Snapshots(Message::DeleteClicked(
+                    delete_path
+                ),)),
+            ]
+            .spacing(12)
+            .into();
+            col.push(card(card_body, Palette::dark(), Density::Comfortable))
+        });
 
         column![
             row![new_name, create_btn].spacing(12),
-            scrollable(rows_view.spacing(6)).height(Length::Fill),
+            scrollable(rows_view.spacing(8)).height(Length::Fill),
             row![text(&self.status).size(13)].spacing(12),
         ]
         .spacing(12)

@@ -10,7 +10,10 @@
 
 use iced::widget::{button, column, container, row, scrollable, text};
 use iced::{Element, Length, Padding, Task};
+use mde_theme::{Density, EmptyState, Palette};
 use tokio::process::Command;
+
+use crate::panel_chrome::{empty_state, panel_container, status_badge, BadgeSeverity};
 
 /// One row of the inventory list — projection of the JSON object
 /// `mded nodes list --json` emits.
@@ -130,19 +133,20 @@ impl InventoryPanel {
         };
 
         if self.rows.is_empty() {
-            return column![
-                text("No peers enrolled").size(18),
-                text(
-                    "Enroll a peer with `mded enroll --passcode <16-char>` \
-                     on the joining node, then refresh.",
-                )
-                .size(13),
-                row![refresh_btn, text(&self.status).size(13)].spacing(12),
-            ]
-            .spacing(8)
-            .width(Length::Fill)
-            .padding(Padding::new(0.0))
-            .into();
+            // UX-6 — canonical empty-state for fleet panels.
+            let _ = refresh_btn;
+            let state = EmptyState::with_cta(
+                "No peers enrolled",
+                "Enroll a peer with `mded enroll --passcode <16-char>` on the \
+                 joining node, then refresh to see it appear here.",
+                "Refresh",
+            );
+            return panel_container(
+                empty_state(state, Palette::dark(), || {
+                    crate::Message::Inventory(Message::RefreshClicked)
+                }),
+                Density::Comfortable,
+            );
         }
 
         let header = row![
@@ -159,17 +163,22 @@ impl InventoryPanel {
                 let id = row_data.node_id.clone();
                 button(text("Detail")).on_press(crate::Message::Inventory(Message::FocusRow(id)))
             };
-            let health = row_data.health.clone();
+            // UX-6 — health renders as a pill-shaped status
+            // badge sized to the value. Severity maps from the
+            // existing health-glyph routing so the colour stays
+            // honest with the underlying status.
+            let severity = health_severity(&row_data.health);
             col.push(
                 row![
                     text(&row_data.node_id).width(Length::Fixed(220.0)),
                     text(&row_data.name).width(Length::Fixed(200.0)),
                     text(&row_data.role).width(Length::Fixed(100.0)),
-                    text(health_glyph(&row_data.health))
-                        .width(Length::Fixed(100.0))
-                        .style(move |_| iced::widget::text::Style {
-                            color: Some(health_color(&health)),
-                        }),
+                    container(status_badge(
+                        health_glyph(&row_data.health),
+                        severity,
+                        Palette::dark(),
+                    ))
+                    .width(Length::Fixed(100.0)),
                     text(row_data.region.as_deref().unwrap_or("-")).width(Length::Fixed(120.0)),
                     drill,
                 ]
@@ -226,12 +235,16 @@ fn health_glyph(health: &str) -> String {
     }
 }
 
-fn health_color(health: &str) -> iced::Color {
+/// UX-6 — route a health string to a status-badge severity so
+/// the inventory pill renders with the same colour vocabulary
+/// the rest of the workbench uses (success / warning / danger /
+/// neutral) instead of the panel-local `health_color()` palette.
+fn health_severity(health: &str) -> BadgeSeverity {
     match health {
-        "healthy" => iced::Color::from_rgb(0.10, 0.65, 0.30),
-        "degraded" => iced::Color::from_rgb(0.85, 0.60, 0.10),
-        "unreachable" => iced::Color::from_rgb(0.80, 0.20, 0.20),
-        _ => iced::Color::from_rgb(0.55, 0.55, 0.55),
+        "healthy" => BadgeSeverity::Success,
+        "degraded" => BadgeSeverity::Warning,
+        "unreachable" => BadgeSeverity::Danger,
+        _ => BadgeSeverity::Neutral,
     }
 }
 

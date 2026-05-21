@@ -10,7 +10,10 @@
 
 use iced::widget::{button, column, container, row, scrollable, text};
 use iced::{Element, Length, Padding, Task};
+use mde_theme::{Density, EmptyState, Palette};
 use tokio::process::Command;
+
+use crate::panel_chrome::{empty_state, panel_container};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct EventRow {
@@ -110,20 +113,23 @@ impl MeshHistoryPanel {
         };
 
         if self.rows.is_empty() {
-            return column![
-                text("Audit chain empty").size(18),
-                text(
-                    "mded hasn't recorded any events yet. Enroll a peer or \
-                     apply a desired-config revision to populate the log, \
-                     then refresh.",
-                )
-                .size(13),
-                row![refresh_btn, text(&self.status).size(13)].spacing(12),
-            ]
-            .spacing(8)
-            .width(Length::Fill)
-            .padding(Padding::new(0.0))
-            .into();
+            // UX-6 — canonical empty-state pattern (icon slot +
+            // heading + body + CTA). `refresh_btn` stays unused
+            // in this branch; the CTA inside `empty_state` is
+            // the user's primary affordance to retry.
+            let _ = refresh_btn;
+            let state = EmptyState::with_cta(
+                "Audit chain empty",
+                "mded hasn't recorded any events yet. Enroll a peer or apply a \
+                 desired-config revision to populate the log, then refresh.",
+                "Refresh",
+            );
+            return panel_container(
+                empty_state(state, Palette::dark(), || {
+                    crate::Message::MeshHistory(Message::RefreshClicked)
+                }),
+                Density::Comfortable,
+            );
         }
 
         let rows = self.rows.iter().fold(column![], |col, r| {
