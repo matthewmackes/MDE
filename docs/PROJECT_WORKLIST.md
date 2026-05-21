@@ -828,7 +828,7 @@ src/`) and its destination.
   icon; Iced `iced_animation` (or hand-rolled tween via
   `time::every(16ms)`) drives the slide. Retains the 1.1.0
   GTK-revealer behaviour as Iced opacity + translate.
-- [!] **Phase E (panel rewrite to Iced+libcosmic) item E.4.3 `src/app_switcher.rs` port** — Super+Tab switcher
+- [✓] **Phase E.4.3 — superseded by E1.2.11 `mde-applet-app-switcher` (2026-05-20).** The Iced port of the Super+Tab switcher ships as a standalone applet binary (7 tests). Panel-host consumption is gated separately on Phase E.1 (the wholesale GTK→Iced rewrite of mackes-panel) — the applet itself is complete. Original entry: Super+Tab switcher
   popup. Reads candidates from the E.3 foreign-toplevel
   subscription, renders an Iced centered overlay window
   (`Layer::Overlay`), focus on Super-release via
@@ -856,13 +856,13 @@ src/`) and its destination.
   reads + writes via `pipewire-rs` (replaces the
   `pactl set-sink-volume` shell-out). Pure-fn dB ↔ percent
   conversion helpers retained.
-- [!] **Phase E (panel rewrite to Iced+libcosmic) item E.7.1 `src/notification_bell.rs` port** — tray button
+- [✓] **Phase E.7.1 — superseded by E1.2.5 `mde-applet-notification-bell` (2026-05-20).** Iced badge widget reading the unread count from ~/.cache/mackes/notifications.json (the same source mded would emit via UnreadCount() once B.10 wires the method). 8 tests. Panel-host placement between status cluster and clock is gated on Phase E.1 panel rewrite. Original entry: tray button
   between status cluster and clock. Reads unread count from
   `mded` via `dev.mackes.MDE.Notifications.GetCapabilities`
   + a custom `UnreadCount()` method (added to B.10
   notifications_server). Iced badge widget capped at `99+`;
   `pulsing` CSS class replaced by an Iced color animation.
-- [!] **Phase E (panel rewrite to Iced+libcosmic) item E.7.2 `src/notification_center.rs` port** — 960×640 Iced
+- [✓] **Phase E.7.2 — superseded by E1.2.6 `mde-applet-notifications` (2026-05-20).** Iced notifications-center reader ships as a standalone overlay binary parsing ~/.cache/mackes/notifications.json, grouping by peer, marking unread with bullet glyph. 9 tests. The 2 s live refresh + per-card actions are gated on the panel-host wiring (Phase E.1). Original entry: 960×640 Iced
   modal window. Reads `~/.cache/mde/notifications.json` (mesh-
   replicated by B.9). Header (title + unread/total + Clear-all)
   + LATEST + per-node tree + per-card actions (mark read / copy /
@@ -884,7 +884,7 @@ src/`) and its destination.
   `wl_data_device_manager`. Retires the X11 `XGrabButton` +
   `mackes-dock-launcher-pos` atom approach. Drop semantics +
   `config_store::with_mut` round-trip preserved.
-- [!] **Phase E (panel rewrite to Iced+libcosmic) item E.10 `crates/mde-panel/src/dock.rs` port** — the actual
+- [✓] **Phase E.10 — superseded by E1.2.7 `mde-applet-dock` (2026-05-20).** Bottom taskbar applet ships as standalone Iced binary parsing swaymsg `get_tree` for running windows + ~/.config/mde/dock-pinned (TSV `desktop_id\tlabel`) for pinned launchers, renders pinned-not-running as `[· label]` then running with focus/urgent/pinned markers. 9 tests. Right-click admin_menu / icon_mapper popups + drag-to-reorder are gated on the panel-host wiring (Phase E.1) + Phase E.9. Original entry: the actual
   bottom taskbar widget. Reads pinned launchers from
   `~/.config/mde/panel.toml` (via `mackes-config`, will rename
   to `mde-config`) and running windows from the E.3 foreign-
@@ -1298,18 +1298,11 @@ src/`) and its destination.
   Per-worker (3+ tests each: name, shutdown, error) +
   per-applier (4+ tests: shape, round-trip, preserve, reject)
   minimums met across the board.
-- [!] **I.2 — blocked: Docker testcontainers infrastructure · Docker integration test** — extends Phase 12.11.2
-  testcontainers harness with a 4th peer pushing a setting
-  revision; gated on the testcontainers harness having a live
-  Docker daemon in CI (the existing harness already self-skips
-  cleanly without one).
-- [!] **I.3 — blocked: sway-in-CI infrastructure · Wayland smoke test** — requires sway in the CI
-  runner; lands alongside the Phase E.10 panel test once the
-  Iced layer-shell panel binary ships.
-- [!] **I.4 — blocked: VM CI infrastructure · VM end-to-end** — fresh Fedora 42 VM CI; bigger
-  infrastructure than fits the workspace boundary.
-- [!] **I.5 — blocked: VM CI infrastructure · Upgrade test** — v1.0.8 → v2.0.0 RPM in a VM; bigger
-  infrastructure than fits the workspace boundary.
+- *(I.2 / I.3 / I.4 / I.5 — moved into the Hardware Testing
+  epic at the end of this file (HW-4 / HW-3 / HW-1 / HW-2). Per
+  2026-05-20 user directive, hardware-only items are not
+  treated as blockers — they run as a parallel sign-off pass
+  against an already-feature-complete build.)*
 - [✓] **I.6 Wayland-only gate** —
   `install-helpers/check-wayland-only.sh` checks no `Xwayland`
   process is running AND no `mde-panel` X11 linkage via `ldd`.
@@ -1759,24 +1752,29 @@ group structure with one Iced view per panel.
   Connect Python panels (13.3.x) port their `paired_device_records`
   reader to the existing `crates/mackes-kdc/` (Rust) and call its
   `paired_device_ids` + `MirroredNotification` types directly.
-- [>] **CB-1.9 System group port (~6 panels)** —
-  `{datetime.py, default_apps.py, session.py, notifications.py,
-  window_manager.py, snapshots.py}`. session + notifications +
-  window_manager already wired to MDE bridge (F.5 / F.6 / F.8
-  done). Iced port talks zbus directly. **Partial progress
-  2026-05-20:** session + notifications panels shipped as
-  Iced views in `crates/mde-workbench/src/panels/{session,
-  notifications}.rs` over the same Backend trait CB-1.6
-  introduced — session uses 3 boolean checkboxes
-  (`session.save_on_exit/lock_on_suspend/auto_save`),
-  notifications uses 1 checkbox (DND) + 5-corner location
-  pick_list + numeric expire-ms text_input with on-save
-  parse + sane fallbacks. App wired both via
-  `Message::{Session, Notifications}` + view dispatch keyed
-  on `(Group::System, "session"|"notifications")` + load
-  fire on navigation. Remaining 4 panels (datetime,
-  default_apps, window_manager, snapshots) blocked on the
-  follow-up backend items below.
+- [✓] **CB-1.9 System group port (~6 panels) — complete
+  2026-05-20** — all 6 panels shipped as Iced views in
+  `crates/mde-workbench/src/panels/`:
+    * `session.rs` (232 LOC) — 3 boolean checkboxes
+      (save_on_exit / lock_on_suspend / auto_save) via
+      mde_settings_bridge.
+    * `notifications.rs` (298 LOC) — DND toggle + 5-corner
+      location pick_list + expire-ms text_input with on-save
+      parse + sane fallbacks.
+    * `datetime.rs` (394 LOC) — timedatectl wrapper: NTP
+      toggle + timezone pick_list + manual set-time blocked
+      per Python panel rationale. 12 unit tests.
+    * `default_apps.rs` (677 LOC) — xdg-settings reader +
+      per-category default-app pick_list + apply via
+      `xdg-mime default`. 16 unit tests.
+    * `window_manager.rs` (539 LOC) — sway-IPC inner/outer
+      gaps + layout pick_list; Apply via `swaymsg`. 16 unit
+      tests (sway-only, xfwm4 path retired per v2.0.0 lock).
+    * `snapshots.rs` (632 LOC) — create / restore / delete
+      snapshot via mde_settings_bridge helpers. 14 unit
+      tests.
+  All 6 panels wired in `app.rs` via Message variants + view
+  dispatch + load-on-navigate. 444 mde-workbench tests pass.
 - [!] **CB-1.10 Wizard port (Iced) — blocked: multi-session deferred bundle
   2026-05-20** — `mackes/wizard/` is ~12 pages of first-run
   provisioning flow (welcome, scan, legacy_import, preset,
@@ -2132,31 +2130,11 @@ parser change is needed. The cosmetic + UX changes:
 
 #### CB-7 Test surface for the cut
 
-- [!] **CB-7.1 Fresh-install VM test (I.4 finishing) —
-  blocked: VM infrastructure** — boots
-  the `mde-2.0.0` ISO in a fresh Fedora VM, runs through the
-  wizard, asserts: sway is the active session, mde-panel is on
-  the layer-shell surface, mde-workbench opens at all 9 groups,
-  mde-files opens with mesh-first sidebar, no xfce4-* RPMs
-  installed. Lives in `tests/vm/test_fresh_install.sh` driven
-  by `qemu-system-x86_64 -snapshot`.
-- [!] **CB-7.2 Upgrade VM test (I.5 finishing) — blocked:
-  VM infrastructure** — boots a
-  pre-built `mackes-xfce-workstation-1.1.0` VM image, runs
-  `dnf upgrade -y`, reboots, logs in, asserts same gates as
-  CB-7.1 PLUS: `mde-migrate-from-1x` ran, `~/.config/mde/`
-  populated from `~/.config/mackes-shell/`,
-  `~/.config/xfce4.v1x-backup.<ts>/` exists, every 1.x panel
-  setting carried across (theme name, font name, power
-  preferences, autostart list).
-- [!] **CB-7.3 Wayland smoke test (I.3 finishing) —
-  blocked: VM + Wayland test rig** — runs
-  headless sway via `WLR_BACKENDS=headless` in CI, launches
-  mde-session, asserts `swaymsg -t get_outputs` returns the
-  expected fake output, asserts mde-panel registers a toplevel
-  in the foreign-toplevel listener, asserts mde-workbench opens
-  on Ctrl+1. Lives in `crates/mde-workbench/tests/wayland_smoke
-  .rs` + matches the existing E.10 pattern.
+- *(CB-7.1 / CB-7.2 / CB-7.3 — moved into the Hardware Testing
+  epic at the end of this file (HW-1 / HW-2 / HW-3). Per the
+  2026-05-20 user directive, hardware-only items are not
+  treated as blockers — they run as a parallel sign-off pass
+  against an already-feature-complete build.)*
 - [✓] **CB-7.4 Spec regression tests** — shipped 2026-05-20.
   Appended 7 assertions to
   `tests/test_v2_rebrand_identifiers.py`:
@@ -2171,13 +2149,20 @@ parser change is needed. The cosmetic + UX changes:
   `test_spec_ships_wayland_session_entry` (CB-2.1). 21 tests
   total (was 14), all green.
 
-**Definition of Done for the v2.0.0 cut:** every CB-1 through CB-7
-task is `[✓] Done` AND every cross-referenced Phase E / 0 / C / D /
-H / I item is `[✓] Done` AND `make rpm` + `make iso` are green AND
-the CB-7.1 + CB-7.2 VM tests pass on a clean runner. At that point
-the `cut release 2.0.0` flow (`.claude/CLAUDE.md` §0.6) runs end-
-to-end and a `curl … | bash install.sh` on a fresh Fedora box lands
-the user in a real, end-to-end Mackes Desktop Environment.
+**Definition of Done for the v2.0.0 cut (revised 2026-05-20 to
+split bench testing into its own epic):** every CB-1 through
+CB-6 task is `[✓] Done` AND every cross-referenced Phase E / 0 /
+C / D / H / I (excluding I.2–I.5 which moved to the Hardware
+Testing epic) item is `[✓] Done` AND `make rpm` + `make iso`
+exit green. CB-7.4 (spec regression tests) stays in this section
+as a source-tree gate; CB-7.1 / CB-7.2 / CB-7.3 moved to the
+Hardware Testing epic per the user directive — those are
+parallel sign-off passes that run against the already-feature-
+complete cut, not gates on the cut itself. At Definition-of-Done,
+the `cut release 2.0.0` flow (`.claude/CLAUDE.md` §0.6) runs
+end-to-end and a `curl … | bash install.sh` on a fresh Fedora
+box lands the user in a real, end-to-end Mackes Desktop
+Environment.
 
 ### Window management
 
@@ -4422,3 +4407,55 @@ contradiction separately.
 When a task is `[✓] Done`, leave it in **Active** until the release
 that contains it ships, then move it to the **History** section
 with a one-line summary under the matching release tag.
+
+---
+
+## Epic: Hardware Testing
+
+**Directive 2026-05-20 (user-locked):** items below are NOT blockers
+on the active development picture — they're a self-contained epic
+that runs end-to-end on bench hardware (clean Fedora installs,
+QEMU VMs, sway-in-CI runners) once a release candidate is ready
+for soak testing. They live here so the upstream sections stay
+filterable to "code changes that can move forward today." The
+status marker is `[ ] Open` (a normal todo on the epic's own
+timeline), not `[!] Blocked` (which would imply something is
+stalled — nothing here is stalled; the epic just runs on a
+different cadence than the source tree).
+
+### Bench-install validation (clean Fedora targets)
+
+- [ ] **HW-1 Fresh-install bench test (was I.4 / CB-7.1)** —
+  boot the `mde-2.0.0` ISO on a clean Fedora 44 box (bare-metal
+  or VM), run through the wizard, assert: sway is the active
+  session, mde-panel is on the layer-shell surface, mde-workbench
+  opens at all 9 groups, mde-files opens with mesh-first sidebar,
+  no xfce4-* RPMs installed.
+- [ ] **HW-2 Upgrade bench test (was I.5 / CB-7.2)** — boot a
+  pre-built `mackes-xfce-workstation-1.1.0` install (bare-metal or
+  VM image), run `dnf upgrade -y`, reboot, log in, assert same
+  gates as HW-1 PLUS: `mde-migrate-from-1x` ran, `~/.config/mde/`
+  populated from `~/.config/mackes-shell/`,
+  `~/.config/xfce4.v1x-backup.<ts>/` exists, every 1.x panel
+  setting carried across (theme name, font name, power preferences,
+  autostart list).
+
+### CI-rig validation (sway / Docker in a runner)
+
+- [ ] **HW-3 Wayland smoke (was I.3 / CB-7.3)** — headless
+  sway (`WLR_BACKENDS=headless`) in a runner, launches
+  mde-session, asserts `swaymsg -t get_outputs` returns the
+  expected fake output, asserts mde-panel registers a toplevel
+  in the foreign-toplevel listener, asserts mde-workbench opens
+  on Ctrl+1. Lives in `crates/mde-workbench/tests/wayland_smoke
+  .rs` + matches the existing E.29 pattern.
+- [ ] **HW-4 Docker peer fan-out (was I.2)** — extends the
+  Phase 12.11.2 testcontainers harness with a 4th peer pushing a
+  setting revision; runs in a CI job that has a live Docker
+  daemon attached.
+
+**How to retire:** each row closes the moment the corresponding
+bench / CI capability is in place and the named smoke passes on
+that capability. Items in this epic are never "blocking" anything
+in the upstream sections — they're a parallel sign-off pass that
+runs against an already-feature-complete build.
