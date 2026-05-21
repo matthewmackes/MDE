@@ -1,19 +1,21 @@
 //! Maintain → System Update panel — `dnf upgrade` wrapper.
 //!
-//! CB-1.7 partial: replaces the v1.x
-//! `mackes/workbench/maintain/system_update.py`. The Python
-//! panel streamed dnf's stdout into a live TextView via a
-//! GLib io watch; the Iced port drops live streaming for now
-//! and ships a run-to-completion semantic (Check / Install
-//! buttons → command runs → output appears when done).
-//!
-//! Live streaming via an `iced::Subscription` + tokio channel
-//! is captured as a follow-up. Users who need real-time
-//! progress can still run `dnf upgrade` in a terminal — this
-//! panel is a convenience surface, not the only entry point.
+//! CB-1.7 (shipped 2026-05-21): live-streams dnf stdout into
+//! the panel via `iced::Task::stream` + an `async_stream!`
+//! macro. The Check / Install actions now emit per-line
+//! `Message::OutputLine(line)` events as dnf prints them, and
+//! a terminal `Message::Finished` event when the subprocess
+//! exits. The v1.x GLib io-watch pattern ports to Iced's
+//! native Stream-of-Messages abstraction without needing a
+//! separate channel + Subscription poll.
 
+use std::process::Stdio;
+
+use async_stream::stream;
+use futures::stream::{Stream, StreamExt};
 use iced::widget::{button, column, container, row, scrollable, text};
 use iced::{Element, Length, Padding, Task};
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
 #[derive(Debug, Clone, Default)]
@@ -29,6 +31,11 @@ pub enum Message {
     SummaryLoaded(String),
     CheckClicked,
     InstallClicked,
+    /// One line of streamed subprocess output — appended to the
+    /// panel's `output` buffer.
+    OutputLine(String),
+    /// Terminal event for a streamed run — fires once the
+    /// subprocess exits.
     Finished {
         argv: String,
         success: bool,
@@ -71,19 +78,11 @@ impl SystemUpdatePanel {
                 self.busy = true;
                 self.status = "Checking for updates…".into();
                 self.output.clear();
-                let argv = "dnf check-update".to_string();
-                Task::perform(
-                    async move {
-                        let (success, output) =
-                            run_capture(&["dnf", "check-update", "--quiet"]).await;
-                        Message::Finished {
-                            argv,
-                            success,
-                            output,
-                        }
-                    },
-                    crate::Message::SystemUpdate,
-                )
+                Task::stream(stream_subprocess(
+                    "dnf check-update".to_string(),
+                    vec!["dnf".into(), "check-update".into()],
+                ))
+                .map(crate::Message::SystemUpdate)
             }
             Message::InstallClicked => {
                 if self.busy {
@@ -92,19 +91,22 @@ impl SystemUpdatePanel {
                 self.busy = true;
                 self.status = "Installing updates (polkit will prompt for your password)…".into();
                 self.output.clear();
-                let argv = "pkexec dnf upgrade -y --refresh".to_string();
-                Task::perform(
-                    async move {
-                        let (success, output) =
-                            run_capture(&["pkexec", "dnf", "upgrade", "-y", "--refresh"]).await;
-                        Message::Finished {
-                            argv,
-                            success,
-                            output,
-                        }
-                    },
-                    crate::Message::SystemUpdate,
-                )
+                Task::stream(stream_subprocess(
+                    "pkexec dnf upgrade -y --refresh".to_string(),
+                    vec![
+                        "pkexec".into(),
+                        "dnf".into(),
+                        "upgrade".into(),
+                        "-y".into(),
+                        "--refresh".into(),
+                    ],
+                ))
+                .map(crate::Message::SystemUpdate)
+            }
+            Message::OutputLine(line) => {
+                self.output.push_str(&line);
+                self.output.push('\n');
+                Task::none()
             }
             Message::Finished {
                 argv,
@@ -225,8 +227,78 @@ pub fn summarise_check_update(output: &str) -> usize {
     count
 }
 
+/// Stream subprocess stdout line-by-line. Yields one
+/// `Message::OutputLine(line)` per stdout line, plus a terminal
+/// `Message::Finished { argv, success, output }` when the process
+/// exits. Spawn failures yield a single `Message::Error(...)`.
+///
+/// `argv_display` is the human-readable command form for the
+/// terminal `Finished.argv` field; `argv` is the actual spawn
+/// vector.
+fn stream_subprocess(
+    argv_display: String,
+    argv: Vec<String>,
+) -> impl Stream<Item = Message> + Send + 'static {
+    stream! {
+        let Some((bin, args)) = argv.split_first() else {
+            yield Message::Error("empty command".into());
+            return;
+        };
+        let mut cmd = Command::new(bin);
+        cmd.args(args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+
+        let mut child = match cmd.spawn() {
+            Ok(c) => c,
+            Err(e) => {
+                yield Message::Error(format!("{bin} failed to spawn: {e}"));
+                return;
+            }
+        };
+        let stdout = child.stdout.take();
+        let stderr = child.stderr.take();
+
+        let mut combined = String::new();
+        if let Some(out) = stdout {
+            let mut lines = BufReader::new(out).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                combined.push_str(&line);
+                combined.push('\n');
+                yield Message::OutputLine(line);
+            }
+        }
+        if let Some(err) = stderr {
+            let mut lines = BufReader::new(err).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                combined.push_str(&line);
+                combined.push('\n');
+                yield Message::OutputLine(format!("[stderr] {line}"));
+            }
+        }
+        let status = child.wait().await;
+        let success = status.as_ref().map(|s| s.success()).unwrap_or(false);
+        yield Message::Finished {
+            argv: argv_display,
+            success,
+            output: combined,
+        };
+    }
+}
+
+/// Convenience — collect a stream's items into a Vec. Useful for
+/// integration tests; not used by the live panel.
+pub async fn collect_stream<S: Stream<Item = Message> + Unpin>(mut s: S) -> Vec<Message> {
+    let mut out = Vec::new();
+    while let Some(msg) = s.next().await {
+        out.push(msg);
+    }
+    out
+}
+
 /// Run a command to completion, capturing stdout+stderr. Returns
 /// `(success, combined_output)`. Empty output on launch failure.
+#[allow(dead_code)]
 async fn run_capture(argv: &[&str]) -> (bool, String) {
     let Some((bin, args)) = argv.split_first() else {
         return (false, "empty command".into());
@@ -343,5 +415,67 @@ Obsoleting Packages
         let _ = panel.update(Message::Error("dnf not found".into()));
         assert_eq!(panel.status, "dnf not found");
         assert!(!panel.busy);
+    }
+
+    #[test]
+    fn output_line_appends_to_buffer() {
+        let mut panel = SystemUpdatePanel::new();
+        panel.output.clear();
+        let _ = panel.update(Message::OutputLine("downloading...".into()));
+        assert!(panel.output.contains("downloading..."));
+        assert!(panel.output.ends_with('\n'));
+    }
+
+    #[test]
+    fn output_line_accumulates_across_calls() {
+        let mut panel = SystemUpdatePanel::new();
+        panel.output.clear();
+        let _ = panel.update(Message::OutputLine("line 1".into()));
+        let _ = panel.update(Message::OutputLine("line 2".into()));
+        assert!(panel.output.contains("line 1"));
+        assert!(panel.output.contains("line 2"));
+    }
+
+    #[tokio::test]
+    async fn stream_subprocess_emits_finished_with_error_on_missing_binary() {
+        let stream = stream_subprocess(
+            "ghost".into(),
+            vec!["/definitely-not-a-binary".into()],
+        );
+        let pinned = Box::pin(stream);
+        let messages: Vec<Message> = collect_stream(pinned).await;
+        assert!(!messages.is_empty());
+        // First (and only) message should be an Error.
+        assert!(matches!(messages[0], Message::Error(_)));
+    }
+
+    #[tokio::test]
+    async fn stream_subprocess_yields_lines_then_finished() {
+        // `printf "a\nb\nc\n"` exits 0; stream should yield 3
+        // OutputLine + 1 Finished.
+        let stream = stream_subprocess(
+            "printf".into(),
+            vec!["printf".into(), "a\nb\nc\n".into()],
+        );
+        let pinned = Box::pin(stream);
+        let messages: Vec<Message> = collect_stream(pinned).await;
+        let lines: Vec<&str> = messages
+            .iter()
+            .filter_map(|m| match m {
+                Message::OutputLine(l) => Some(l.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(lines, vec!["a", "b", "c"]);
+        assert!(matches!(messages.last(), Some(Message::Finished { success: true, .. })));
+    }
+
+    #[tokio::test]
+    async fn stream_subprocess_empty_argv_yields_error() {
+        let stream = stream_subprocess("(empty)".into(), vec![]);
+        let pinned = Box::pin(stream);
+        let messages: Vec<Message> = collect_stream(pinned).await;
+        assert_eq!(messages.len(), 1);
+        assert!(matches!(messages[0], Message::Error(_)));
     }
 }

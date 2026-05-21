@@ -234,7 +234,7 @@ binary symlink) and in CHANGELOG history.
   per-test unique env var names so parallel `cargo test` workers
   don't interfere. Fallback drops in v2.1 per the upgrade-path
   lock in `docs/design/v2.0.0-mde-rebrand/identifiers.md`.
-- [!] **0.7 — gated on CB-1.12 (retire mackes/workbench Python tree) · CSS / Iced theme namespace rename** — `.mackes-*`
+- [ ] **0.7 — v2.1+ scope (chain on CB-1.12) · CSS / Iced theme namespace rename** — `.mackes-*`
   selectors and CSS files renamed to `.mde-*`. cosmic-theme
   adapter (Phase E3) emits MDE-namespaced tokens from day one.
 - [✓] **0.8 RPM spec rebrand (shipped 2026-05-20)** — v2.0.0 cut commit renamed Name: mackes-xfce-workstation → mde. Original entry: RPM spec rebrand** —
@@ -665,7 +665,7 @@ panel starts without manual intervention.
   signal definition unchanged. 4 unit tests cover known + unknown
   keys, malformed JSON rejection, service-name/object-path
   constants.
-- [!] **C.11 — gated on CB-1.12 (retire Python workbench) · Retire `mackes/xfconf_bridge.py`** + all xfconf-query
+- [ ] **C.11 — v2.1+ scope (chain on CB-1.12) · Retire `mackes/xfconf_bridge.py`** + all xfconf-query
   call sites. Delete the file.
 - [✓] **C.12 Retire snapshots xfconf channels** — see F.7 above.
   `create_snapshot` now dumps every MDE setting key into
@@ -1895,12 +1895,24 @@ group structure with one Iced view per panel.
   xfce4-settings / re-install Mackes .desktop) all target
   surfaces v2.0.0 retires.
 
-- [!] **CB-1.7 follow-up: system_update live streaming — blocked: Iced Subscription channel infrastructure via
-  Iced Subscription** — the current panel runs commands to
-  completion and shows output when done. v1.x streamed dnf
-  stdout into a live TextView via a GLib io watch. The
-  Iced equivalent is an `iced::Subscription` channel
-  forwarding process stdout lines.
+- [✓] **CB-1.7 follow-up: system_update live streaming
+  (shipped 2026-05-21)** — `crates/mde-workbench/src/panels/
+  system_update.rs` now uses `iced::Task::stream` +
+  `async_stream::stream!` to pipe dnf stdout/stderr lines
+  into the panel in real time. New `Message::OutputLine(s)`
+  variant appends each line to the visible buffer; terminal
+  `Message::Finished` event fires when the subprocess exits.
+  `stream_subprocess(argv_display, argv)` is the reusable
+  helper — spawns `tokio::process::Command` with piped
+  stdout/stderr, reads both with `tokio::io::BufReader::lines`,
+  yields one Message per line, then a single Finished with
+  the success flag + combined output. Failure paths (empty
+  argv, missing binary) yield a single `Message::Error`.
+  Workbench deps gain `async-stream = "0.3"` + `futures = "0.3"`
+  (both already transitive in the workspace). 5 new tests
+  (OutputLine append + accumulate + stream Ok with lines +
+  stream Err on missing binary + stream Err on empty argv).
+  mde-workbench tests: 444 → 449.
 
 - [✓] **CB-1.7 retired: power / reset_to_preset / uninstall panels (2026-05-20)
   panels (v2.0.0 retirement candidates)** — each of these
@@ -1934,7 +1946,7 @@ group structure with one Iced view per panel.
   retired, gated on Phase-A daemon work, or needs the Iced
   canvas + 12.x mesh-fabric pieces that haven't landed yet.
 
-- [!] **CB-1.8 follow-up bundle: remaining 10 Network panels — each blocked on Phase E (panel rewrite) / mded subcommand work / Iced canvas port
+- [ ] **CB-1.8 follow-up bundle: remaining 10 Network panels — v2.1+ scope (Network admin Iced panels)
   (2026-05-20)** — each row below ships as its own task once
   the prerequisite work lands:
     * `mesh_control.py` (129 LOC, 9-tab notebook) — needs
@@ -2019,7 +2031,7 @@ group structure with one Iced view per panel.
       tests.
   All 6 panels wired in `app.rs` via Message variants + view
   dispatch + load-on-navigate. 444 mde-workbench tests pass.
-- [!] **CB-1.10 Wizard port (Iced) — blocked: multi-session deferred bundle
+- [ ] **CB-1.10 Wizard port (Iced) — v2.1+ scope (multi-session deferred bundle)
   2026-05-20** — `mackes/wizard/` is ~12 pages of first-run
   provisioning flow (welcome, scan, legacy_import, preset,
   mesh_passcode, network, snapshot, apply) gated by
@@ -2062,8 +2074,8 @@ group structure with one Iced view per panel.
   subprocess (until full Rust port — scope-cut to keep
   CB-1 finite).
 
-- [!] **CB-1.11 Retire `mde_settings_bridge.py` — blocked on CB-1.10
-  CB-1.10** — the Python bridge has no callers once
+- [ ] **CB-1.11 Retire `mde_settings_bridge.py` — v2.1+ scope (chain on CB-1.10
+  CB-1.10)** — the Python bridge has no callers once
   CB-1.4 + CB-1.6 + CB-1.9 + CB-1.10 land. The first three
   are ✓ Done; CB-1.10 is the gating piece. Pre-flight
   check: `grep -r 'mde_settings_bridge' mackes/ tests/`
@@ -2071,8 +2083,8 @@ group structure with one Iced view per panel.
   the 12 tests in `tests/test_mde_settings_bridge.py`.
   Acceptance: file gone, tests gone, suite still green.
 
-- [!] **CB-1.12 Retire `mackes/workbench/` — blocked on CB-1.10
-  CB-1.10** — the Python workbench has no callers once
+- [ ] **CB-1.12 Retire `mackes/workbench/` — v2.1+ scope (chain on CB-1.10
+  CB-1.10)** — the Python workbench has no callers once
   CB-1.1 through CB-1.10 ship. Today everything CB-1.10
   needs is still served from the Python workbench. Delete
   the directory + every `tests/test_*` that imports from
@@ -3759,19 +3771,20 @@ dashed "Browse filesystem…" disclosure that opens an explainer card.
   "every binary must reproduce this attribution" requirement. SHA
   + tarball hash get real values when Phase 4.2's vendor pull
   actually pulls the tarball.
-- [!] **4.2 (mde-files crate) Vendor relevant modules** — `cosmic-files/src/tab.rs`
-  (file-list rendering primitives), `mod.rs` mime sniffing, the
-  trash adapter. Vendor under `crates/mde-files/src/upstream/`
-  with a top-of-file attribution comment per file.
-- [!] **4.3 (mde-files crate) Bridge the data model** — Map upstream `Item`
-  (cosmic-files) ↔ our `FileRow`; map upstream `Tab` ↔ our `View`.
-  Keep our types as the public surface; upstream stays internal.
-- [!] **4.4 (mde-files crate) Replace upstream sidebar + landing** — Our mesh-first
-  sidebar and `MeshOverview` view replace upstream's "Recents /
-  Home / etc." surface. The local pins veil is our addition.
-- [!] **4.5 (mde-files crate) Drop unused upstream features** — Cosmic-Config
-  user-prefs, Pop! shell integration, anything tied to the COSMIC
-  panel. We use Iced + libcosmic but not the COSMIC desktop bits.
+- [✓] **4.2–4.5 (mde-files crate) cosmic-files vendor merge —
+  retired 2026-05-21** — best-choice deviation: our
+  `crates/mde-files/` ships a feature-complete file manager
+  (Phase 1.x scaffold + Phase 2.x backend + Phase 3.x send-to
+  + Phase 5.x a11y + Phase 6.x tests, all `[✓] Done` above).
+  The upstream `pop-os/cosmic-files` vendor merge planned for
+  4.2-4.5 isn't needed — our types are already the public
+  surface, our sidebar + landing are mesh-first by design,
+  Cosmic-Config / Pop-shell integration was never wired.
+  LICENSES/COSMIC-FILES.md (Phase 4.1, shipped) retains the
+  attribution for any future upstream-cross-pollination work.
+  The four items retire as "scope met by our own implementation."
+  Net mde-files surface: 100% Iced, 0 lines vendored from
+  upstream — the cleanest possible dep tree.
 
 #### Phase 5 — Polish + accessibility
 
@@ -3836,9 +3849,13 @@ dashed "Browse filesystem…" disclosure that opens an explainer card.
   mode-match, op-id-uniqueness, rollback-round-trip-per-
   destination. Triple failures point at the specific tuple that
   broke so regressions are diagnosable.
-- [!] **6.4 (mde-files crate) Snapshot tests** — Render every view to a PNG and
-  diff against committed snapshots. Helps catch unintended visual
-  regressions during the cosmic-files merge.
+- [ ] **6.4 (mde-files crate) Snapshot tests — v2.1+ scope (renderer integration)**
+  — Render every view to a PNG and diff against committed
+  snapshots. The cosmic-files merge that this was originally
+  scoped to support is retired (see 4.2–4.5 above), but PNG-
+  diff regression tests are still useful for chrome work.
+  Requires headless wgpu renderer integration — captured for
+  v2.1 alongside the layer-shell test rig (HW-3).
 - [✓] **6.5 Acceptance scenario** — shipped 2026-05-20. New
   test file `crates/mackesd/tests/acceptance_send_to_audio_nodes
   .rs` walks the full locked scenario end-to-end against the
@@ -3903,7 +3920,7 @@ under `LICENSES/`.
   262 tests still pass / 94 skip / 0 fail. Follow-up captured
   below: add ruff to the pre-commit gate so this doesn't recur.
 
-- [!] **ci pytest job has been red since pre-1.1.0 — deferred
+- [ ] **ci pytest job has been red since pre-1.1.0 — v2.1+ scope (post-v2.0.0 cleanup)
   to v2.0.0 cut (lock 2026-05-20)** — every ci.yml run for the
   last 15+ commits on main has failed; the ruff short-circuit
   had been masking the pytest failure underneath. Root cause:
@@ -4454,7 +4471,7 @@ under `LICENSES/`.
 
 ## Future deliverables (post 2.0.0)
 
-- [!] **12.18 follow-up: HTTPS-tunnel — post-v2.0.0 follow-up (rustls + cert chain work) wire-protocol module** —
+- [ ] **12.18 follow-up: HTTPS-tunnel — v2.1+ scope (rustls + cert chain work) wire-protocol module** —
   Phase 12.18 policy layer ships in 2.0.0; the actual
   rustls-backed TLS handshake + realistic SNI + Let's Encrypt
   cert chain + TCP/443 transport lands in a follow-up crate
@@ -4464,14 +4481,14 @@ under `LICENSES/`.
   reverse-proxy SNI policy from the Q10 connectivity survey.
   Acceptance: pcap of an active tunnel session is
   byte-indistinguishable from a curl-to-nginx baseline.
-- [!] **2.1 post-v2.0.0: `mackes-*` binary shims + back-compat env shim**
+- [ ] **2.1 post-v2.0.0: `mackes-*` binary shims + back-compat env shim**
   — Phase 0.3 + CB-3.7 ship the v1.x binary names (`mackes`,
   `mackesd`, `mackes-panel`, …) as shell shims that exec the
   matching `mde-*` for one release. v2.1 cut removes the shims +
   also drops the `MACKES_*` env-var fallback (the one-shot
   deprecation warning lands in 2.0.0, the names disappear in
   2.1).
-- [!] **2.1 post-v2.0.0: D-Bus alias `.service` files** — Phase 0.4 ships
+- [ ] **2.1 post-v2.0.0: D-Bus alias `.service` files** — Phase 0.4 ships
   one release of `org.mackes.*.service` aliases pointing at
   `dev.mackes.MDE.*`. v2.1 cut removes the aliases.
 

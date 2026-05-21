@@ -3249,8 +3249,10 @@ dependencies = [
 name = "mde-workbench"
 version = "0.0.0"
 dependencies = [
+ "async-stream",
  "async-trait",
  "clap",
+ "futures",
  "iced",
  "mde-config",
  "mde-mesh-types",
