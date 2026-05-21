@@ -1,0 +1,24 @@
+[package]
+name        = "mde-applet-status-cluster"
+description = "Status-cluster pill — top-bar-right battery+power chip (Phase E1.2.10)."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+
+[[bin]]
+name = "mde-applet-status-cluster"
+path = "src/main.rs"
+
+[lib]
+name = "mde_applet_status_cluster"
+path = "src/lib.rs"
+
+[dependencies]
+mde-applet-api = { path = "../applet-api" }
+serde_json     = "1"
+
+[lints]
+workspace = true

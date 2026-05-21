@@ -1024,14 +1024,14 @@ src/`) and its destination.
   (split from E.11).
 - [!] **Phase E1 (applet workspace split) item E1.2.9 `crates/mde-applets/apple-menu/`** — Super+Space
   popover (split from E.12).
-- [!] **Phase E1 (applet workspace split) item E1.2.10 `crates/mde-applets/status-cluster/`** —
+- [✓] **Phase E1.2.10 `crates/mde-applets/status-cluster/` (shipped 2026-05-20) — battery+power-profile pill via /sys/class/power_supply + powerprofilesctl; 11 tests. Original entry:** —
   status chip cluster (split from E.15).
-- [!] **Phase E1 (applet workspace split) item E1.2.11 `crates/mde-applets/app-switcher/`** — Super+Tab
+- [✓] **Phase E1.2.11 `crates/mde-applets/app-switcher/` (shipped 2026-05-20) — Super+Tab strip from `swaymsg -t get_tree`; pure tree-walker + format_strip; 7 tests. Original entry:** — Super+Tab
   switcher (split from E.4.3).
 - [✓] **Phase E1.2.12 `crates/mde-applets/bg/` (shipped 2026-05-20) — swaybg wrapper applet reading wallpaper.path sidecar; 8 tests. Original entry:** — wallpaper layer-
   shell background applet. Honors `wallpaper.path` + `.mode`
   from the C.7 settings sidecar.
-- [!] **Phase E1 (applet workspace split) item E1.2.13 `crates/mde-applets/recents/`** — recents widget
+- [✓] **Phase E1.2.13 `crates/mde-applets/recents/` (shipped 2026-05-20) — recently-used.xbel reader with top-N by modified DESC; 8 tests. Original entry:** — recents widget
   (split from E.22).
 - [!] **Phase E1 (applet workspace split) item E1.3 Panel host applet discovery** — `crates/mde-panel/
   src/host.rs` (new). At startup walks
@@ -1045,14 +1045,14 @@ src/`) and its destination.
 
 #### Phase E2 — OSD overlays (cosmic-osd pattern)
 
-- [!] **Phase E2 (OSD overlays) item E2.1 `crates/mde-applets/volume-osd/`** — Iced binary.
+- [✓] **Phase E2.1 `crates/mde-applets/volume-osd/` (shipped 2026-05-20) — transient bottom-center OSD bar with glyph + 20-cell progress bar + muted state; 11 tests. Original entry:** — Iced binary.
   Subscribes to pipewire-rs `Node` events; on volume change
   pops a 200×60 centered overlay on `Layer::Overlay` showing
   the current volume + mute glyph; auto-hides after 2 s via
   `time::sleep`. Pure-fn `format_volume_label(percent)` covered
   by 4 tests. Bound to XF86AudioRaiseVolume / Lower / Mute via
   the sway config (D.5).
-- [!] **Phase E2 (OSD overlays) item E2.2 `crates/mde-applets/brightness-osd/`** — same shape
+- [✓] **Phase E2.2 `crates/mde-applets/brightness-osd/` (shipped 2026-05-20) — same shape as volume-osd, sun-glyph tier (low/mid/high); 7 tests. Original entry:** — same shape
   as E2.1 but for udev brightness events. Subscribes via
   `udev::Monitor` filtered to `backlight` subsystem; on event,
   reads `/sys/class/backlight/*/brightness` and renders the

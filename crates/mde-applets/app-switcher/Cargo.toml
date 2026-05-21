@@ -1,0 +1,25 @@
+[package]
+name        = "mde-applet-app-switcher"
+description = "Super+Tab app-switcher overlay applet (Phase E1.2.11)."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+
+[[bin]]
+name = "mde-applet-app-switcher"
+path = "src/main.rs"
+
+[lib]
+name = "mde_applet_app_switcher"
+path = "src/lib.rs"
+
+[dependencies]
+mde-applet-api = { path = "../applet-api" }
+serde          = { version = "1", features = ["derive"] }
+serde_json     = "1"
+
+[lints]
+workspace = true
