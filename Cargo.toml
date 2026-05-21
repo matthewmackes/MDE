@@ -38,6 +38,7 @@ members  = [
     "crates/mde-kdc",
     "crates/mde-logout-dialog",
     "crates/mde-mesh-types",
+    "crates/mde-panel",
     "crates/mde-session",
     "crates/mde-theme-alias",
     "crates/mde-workbench",

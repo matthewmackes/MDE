@@ -1,0 +1,85 @@
+[package]
+name        = "mde-panel"
+description = "Mackes Desktop Environment (MDE) panel — Iced top bar + bottom dock (Phase E.1 side-by-side rewrite of mackes-panel)."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+
+[[bin]]
+name = "mde-panel"
+path = "src/main.rs"
+
+[lib]
+name = "mde_panel"
+path = "src/lib.rs"
+
+[dependencies]
+# v2.0.0 Phase E lock — same Iced feature set as mde-workbench /
+# mde-files / mde-logout-dialog so the workspace dep tree stays one
+# resolution.
+iced       = { version = "0.13", default-features = false, features = ["wgpu", "tiny-skia", "tokio", "advanced"] }
+
+# Phase E.2 — wlr-layer-shell-v1 surface anchoring (added when the
+# layer-shell port lands; deferred here so the skeleton compiles
+# without a heavy Wayland-dev-headers requirement).
+
+# Phase E.4.1 — swayipc for Window/Workspace focus stream. Added when
+# sway_cluster.rs ports in.
+
+# v2.0.0 zbus surface — for dev.mackes.MDE.* method calls.
+zbus       = { version = "5", default-features = false, features = ["tokio"] }
+
+# Async runtime — shared with Iced + zbus.
+tokio      = { version = "1", features = ["rt-multi-thread", "macros", "process"] }
+
+# v2.0.0 Phase 0.2 — MDE config (panel.toml schema).
+mde-config = { path = "../mde-config" }
+mde-mesh-types = { path = "../mde-mesh-types" }
+
+# v2.0.0 Phase E1.1 — applet manifest discovery.
+mde-applet-api = { path = "../mde-applets/applet-api" }
+
+# v2.0.0 Phase E3.1 — Carbon → cosmic-theme adapter (parses
+# data/css/tokens.css into typed Rust values).
+mackes-theme = { path = "../mackes-theme" }
+
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Structured logging — journald reads JSON spans from stderr when the
+# user unit's StandardError=journal.
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# CLI parsing for --apple-menu / --expose / --drawer / --recover /
+# --root-menu / --focus dispatch.
+clap = { version = "4.5", features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[features]
+# `wayland` (default): SCTK layer-shell integration once Phase E.2
+# lands. `x11`: skeleton renders as a regular window (dev fallback).
+default = ["wayland"]
+wayland = []
+x11     = []
+
+[lints.rust]
+unsafe_code     = "forbid"
+unused_must_use = "deny"
+missing_docs    = "allow"
+
+[lints.clippy]
+pedantic                = { level = "allow", priority = -1 }
+nursery                 = { level = "allow", priority = -1 }
+module_name_repetitions = "allow"
+must_use_candidate      = "allow"
+missing_errors_doc      = "allow"
+missing_panics_doc      = "allow"
+unwrap_used             = "warn"
+panic                   = "warn"
+todo                    = "warn"

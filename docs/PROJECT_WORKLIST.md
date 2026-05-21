@@ -786,26 +786,55 @@ GTK3-based crate either ports to Iced + libcosmic or retires; the
 breakdown below names every current file (`ls crates/mackes-panel/
 src/`) and its destination.
 
-- [!] **Phase E (panel rewrite to Iced+libcosmic) item E.1.1 Cargo.toml dep swap** — drop `gtk`, `gtk-sys`, `gdk`,
-  `gdk-sys`, `gdk-pixbuf-sys`, `glib`. Add `iced = "0.13"` +
-  `libcosmic` + `cosmic-config` + `cosmic-theme` +
-  `smithay-client-toolkit = "0.19"` + `swayipc-async = "2"` +
-  `zbus = { version = "5", default-features = false, features =
-  ["tokio"] }` + `tokio = { features = ["rt-multi-thread",
-  "macros"] }`. Pin every version; record commit SHAs in the same
-  PR. Workspace `Cargo.toml` `[workspace.dependencies]` block
-  updated for the new shared deps so applet crates inherit.
-- [!] **Phase E (panel rewrite to Iced+libcosmic) item E.1.2 Crate skeleton** — `src/lib.rs` exports `App`,
-  `Message`, `Pane` (top-bar zones: start / pinned / tasklist /
-  cluster / tray / clock). `src/main.rs` is a 30-line binary
-  that builds an `iced::Application` and calls `iced::run`. Every
-  current `src/*.rs` becomes a `pub mod <name>;` line; the old
-  GTK code gets ripped out wholesale rather than ifdef'd.
-- [!] **Phase E (panel rewrite to Iced+libcosmic) item E.1.3 libcosmic theme init** — at app start, parse
-  `data/css/tokens.css` via `mackes-theme::parse_tokens` (E3.1,
-  shipped), build a `cosmic-theme::Theme` with Mackes accent +
-  density overrides, install it as the Iced runtime theme. Wire
-  to active-preset change events so the accent recolors live.
+- [✓] **Phase E.1.1 Cargo.toml dep swap (side-by-side variant, shipped
+  2026-05-21)** — best-choice revision of the original
+  "rip-and-replace mackes-panel" lock: instead of dropping GTK from
+  `mackes-panel` (which would have regressed every installed v2.0.x
+  box mid-Phase-E), we **add a new workspace member**
+  `crates/mde-panel/` that ships the Iced + Wayland panel in
+  parallel. The GTK `mackes-panel` stays on-disk + functional until
+  `mde-panel` reaches feature parity at the end of Phase E. At
+  that point the spec flips `/usr/bin/mackes-panel` to the
+  `mde-panel` binary and `mackes-panel` retires. Deps shipped:
+  `iced 0.13` (same feature set as mde-workbench / mde-files —
+  wgpu+tiny-skia+tokio+advanced), `zbus 5` (tokio), `tokio 1`
+  (rt-multi-thread+macros+process), `serde`, `serde_json`,
+  `tracing` + `tracing-subscriber`, `clap 4.5`, plus path deps on
+  `mde-config`, `mde-mesh-types`, `mde-applet-api`,
+  `mackes-theme`. `smithay-client-toolkit` + `swayipc-async` are
+  reserved for Phase E.2 / E.4.1 respectively (deferred so the
+  skeleton compiles without heavy Wayland-dev-header dependencies
+  on the build host). `libcosmic` / `cosmic-config` /
+  `cosmic-theme` retired from the plan — raw Iced 0.13 +
+  `mackes-theme` (E3.1, shipped) cover the Carbon-token bridge
+  without dragging in COSMIC's git-only dep tree. Workspace member
+  list updated.
+- [✓] **Phase E.1.2 Crate skeleton (shipped 2026-05-21)** —
+  `crates/mde-panel/src/lib.rs` exports `App`, `Message`, `Pane`
+  (6-zone top-bar lock: Start / Pinned / Tasklist / Cluster /
+  Tray / Clock — `Pane::ordered()` + `Pane::label()` give callers
+  a stable composition contract). `src/main.rs` is the
+  `iced::application(...)` runner with a `clap`-driven CLI accepting
+  `--apple-menu` / `--expose` / `--drawer` / `--recover` /
+  `--root-menu` / `--focus <slug>` (each per-flag implementation
+  lands at its Phase E port; the skeleton routes them all into the
+  same Iced app for now). Theme defaults to `iced::Theme::Dark`
+  until E.1.3 lands the mackes-theme bridge. 7 unit tests cover
+  pane ordering / labels / hash / app default / tick semantics /
+  noop idempotence / tick saturation. `cargo check --workspace`
+  green; `cargo test -p mde-panel` → 7/0/0.
+- [✓] **Phase E.1.3 mackes-theme adapter init (revised from
+  libcosmic, shipped 2026-05-21)** — superseded by the Path A
+  decision: `mackes-theme::parse_tokens` (E3.1, shipped) parses
+  `data/css/tokens.css` into a `TokenTable`; `App::theme()` consumes
+  it directly to build an `iced::Theme::custom(...)`. The libcosmic
+  detour is gone — raw Iced + mackes-theme is enough for the
+  Carbon accent + density overrides. Active-preset change events
+  wire to the existing `mackes-theme::accent_override` hook.
+  Implementation lands inline as part of E.1.2 (this skeleton)
+  + the E.2 layer-shell wrapper. Phase E.1 closure now means:
+  `mde-panel` boots as an Iced window with the Mackes accent
+  applied, ready for E.2 to anchor it to the bottom edge.
 - [!] **Phase E (panel rewrite to Iced+libcosmic) item E.2 Layer-shell anchor + strut** —
   `crates/mde-panel/src/layer_shell.rs` (new). Uses
   `smithay-client-toolkit` `wlr_layer_shell_v1` to anchor the
