@@ -41,6 +41,7 @@ members  = [
     "crates/mde-logout-dialog",
     "crates/mde-mesh-types",
     "crates/mde-panel",
+    "crates/mde-peer-card",
     "crates/mde-session",
     "crates/mde-theme",
     "crates/mde-wizard",

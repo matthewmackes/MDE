@@ -1,0 +1,51 @@
+[package]
+name        = "mde-peer-card"
+description = "Mackes Desktop Environment (MDE) — Peer Connection Card. Hero modal spawned on mesh-peer join with bus / kernel / power / descriptors sections. PC-1..PC-12; see docs/PROJECT_WORKLIST.md."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+
+[[bin]]
+name = "mde-peer-card"
+path = "src/main.rs"
+
+[lib]
+name = "mde_peer_card"
+path = "src/lib.rs"
+
+[dependencies]
+iced       = { version = "0.13", default-features = false, features = ["wgpu", "tiny-skia", "tokio", "advanced"] }
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+clap       = { version = "4.5", features = ["derive"] }
+dirs       = "5"
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Re-uses the drawer's locked chrome constants (DRAWER_WIDTH_PX,
+# SLIDE_DURATION_MS) per the PC-1 spec.
+mde-drawer = { path = "../mde-drawer" }
+
+# Consumes the locked design system for every visual token —
+# palette / spacing / typography / radii / shadows / a11y. The
+# `iced` feature gives us Rgba → iced::Color conversion helpers.
+mde-theme  = { path = "../mde-theme", features = ["iced"] }
+
+[lints.rust]
+unsafe_code     = "forbid"
+unused_must_use = "deny"
+missing_docs    = "allow"
+
+[lints.clippy]
+pedantic                = { level = "allow", priority = -1 }
+nursery                 = { level = "allow", priority = -1 }
+module_name_repetitions = "allow"
+must_use_candidate      = "allow"
+missing_errors_doc      = "allow"
+missing_panics_doc      = "allow"
+unwrap_used             = "warn"
+panic                   = "warn"
+todo                    = "warn"

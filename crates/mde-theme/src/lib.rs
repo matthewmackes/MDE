@@ -47,6 +47,7 @@ pub use color::Rgba;
 pub use density::Density;
 pub use prefs::Preferences;
 pub use theme::{Theme, Tokens};
+pub use typography::{FontSize, FontWeight, LetterSpacing, TypeRole};
 
 /// Convenience: resolved tokens for the most common case
 /// (dark theme + comfortable density). Use in tests, demos, and

@@ -105,6 +105,124 @@ Every actionable item lifted from `docs/design/` + the still-open
 items from the prior worklist. Grouped by area for readability;
 all are equally tracked.
 
+### Peer Connection Card (new — mesh-peer hero modal, locked 2026-05-21)
+
+**Plan source:** session `claude/device-connection-modal-JQaDB`,
+4-question lock survey (2026-05-21). Imported into the canonical
+worklist 2026-05-21 during the iteration loop.
+**Scope lock:** triggers on **mesh-peer joins only** (not USB /
+Bluetooth / display hotplug); fires on **every** connection
+(enrichment cache absorbs API cost); pulls product info from
+**all four** open-source sources (hwdb / linux-hardware.org /
+Wikidata + Wikipedia / iFixit + OpenBenchmarking); surface and
+chrome **match the notification modal** — re-uses
+`mde-drawer::DRAWER_WIDTH_PX` (360) + `SLIDE_DURATION_MS` (280)
+and the `DrawerSection` collapsible chrome rather than
+duplicating constants. Read-only throughout (no mutating
+affordances; dismiss via Esc / click-outside; one deep-link to
+mde-workbench's peer panel for actions). v2.1+ scope.
+
+**Visual identity:** every token consumed from `mde-theme` per the
+50-Q + FU + NFU lock survey. No hardcoded colors / sizes / radii;
+hero photo backdrop is the only non-token visual. Modal-tier
+shadow (`Shadow::modal()`) + 16 px corner radius (Q45). Section
+spacing on the modular 12-step scale (NFU-1).
+
+- [✓] **PC-1: `mde-peer-card` crate skeleton — landed 2026-05-21** —
+  Crate at `crates/mde-peer-card/`: `lib.rs` (domain types + cache
+  I/O + re-exports of `DRAWER_WIDTH_PX` / `SLIDE_DURATION_MS` from
+  `mde-drawer`), `main.rs` (Iced entry `mde-peer-card --peer <id>`,
+  Esc / click-outside dismiss), `hero.rs`, `sections.rs`,
+  `enrich/{hwdb,lhdb,wikidata,ifixit,openbench}.rs`. Workspace
+  member added. mde-theme tokens consumed throughout. Original
+  scope text: `cargo build -p mde-peer-card` green; binary
+  installed by `mde` RPM (tracked as PC-12); `--help` lists
+  `--peer` and `--dry-run`.
+
+- [ ] **PC-2: `PeerProbe` schema in `mde-mesh-types`** —
+  `crates/mde-mesh-types/src/peer_probe.rs`. Serde struct
+  capturing: bus & topology (lspci/lsusb tree + mesh ICE
+  candidate + RTT + NAT class), kernel & driver, power & thermal,
+  descriptors / capabilities. **In-tree placeholder shipped in
+  PC-1's crate** under `mde_peer_card::probe::PeerProbe`; final
+  home is `mde-mesh-types` once the schema stabilizes and is
+  consumed cross-crate.
+
+- [ ] **PC-3: `mded` peer-join worker — v2.1+ scope (chain on PC-2)** —
+  `crates/mded/src/workers/peer_join.rs`. On `peer_joined { id }`,
+  writes the peer's probe to `~/.cache/mde/peers/<peer-id>/probe.json`
+  and spawns `mde-peer-card --peer <id>`. Debounces re-spawn within
+  a 30 s window per peer-id.
+
+- [✓] **PC-4: Local enrichment (hwdb + usb.ids) — placeholder landed
+  2026-05-21** — `enrich/hwdb.rs` stub resolves vendor / product
+  names + device class. Production hwdb integration (parses
+  `/usr/share/hwdata/usb.ids`) is `PC-4.a` follow-up. Cache key is
+  `vendor:product` (not connection-id) per acceptance, enforced by
+  unit test `enrichment_cache_key_is_vendor_product_not_connection`.
+
+- [ ] **PC-4.a: Production hwdb wiring — v2.1+ scope** — Parse
+  `/usr/share/hwdata/usb.ids` and systemd hwdb at startup; resolve
+  `vendor:product` IDs to display names. Tests: a fixture
+  `vendor:product` returns the expected name.
+
+- [ ] **PC-5: Online enrichment — Linux Hardware DB — v2.1+ scope** —
+  `enrich/lhdb.rs` queries linux-hardware.org for driver
+  compatibility + kernel support reports + similar-machine probes.
+  7-day TTL, keyed by `vendor:product`. Routed through `mded` so
+  `mde-config` can disable.
+
+- [ ] **PC-6: Online enrichment — Wikidata + Wikipedia — v2.1+ scope** —
+  SPARQL query for manufacturer + release year + hero image; REST
+  summary for the 2-line description. 30-day TTL. Hero image
+  lazy-loads; fallback to manufacturer wordmark + colour swatch if
+  no image.
+
+- [ ] **PC-7: Online enrichment — iFixit + OpenBenchmarking —
+  v2.1+ scope** — Teardown thumbnail + repairability score + CPU /
+  GPU / SSD percentile vs same model. 30-day TTL. Heavy / slow
+  sources never block the card paint; renders as small icon-only
+  link chips on success and vanishes on failure (no error rows).
+
+- [✓] **PC-8: Hero strip — landed 2026-05-21** — `hero.rs` ships
+  the full-bleed identity surface: 280 px tall, vertical glass scrim
+  using `Palette::surface` + 60% alpha overlay, peer hostname
+  lower-left in `TypeRole::Display` (28 sp medium per Q14), manuf
+  wordmark upper-right in `TypeRole::Subheading`, distro + kernel
+  chip pinned bottom-right at 12 sp caption (Q14). Product photo
+  area placeholder uses `Palette::raised` until enrichment lands
+  (PC-5/PC-6/PC-7). Tokens: every color/size/font from `mde-theme`,
+  zero hardcoded literals.
+
+- [✓] **PC-9: Technical sections — landed 2026-05-21** —
+  `sections.rs` ships four collapsible sections (Bus & topology,
+  Kernel & driver, Power & thermal, Descriptors / capabilities)
+  using the same chrome model as `mde-drawer::DrawerSection`.
+  Section header: 17 sp `TypeRole::Subheading` + chevron;
+  expanded body: scrollable, 14 sp body, 24 px outer padding,
+  rows separated by `Palette::border`. All scrollable, all
+  read-only (`card_is_read_only` test enforces — no message
+  variant in the section module mutates peer state).
+
+- [ ] **PC-10: Privacy toggle in `mde-config` — v2.1+ scope** —
+  New setting `peer_card.online_enrichment` (default `on`). When
+  `off`, PC-5/6/7 short-circuit and the card renders hwdb-only.
+  Toggleable from the mde-workbench Network panel.
+
+- [✓] **PC-11: Test pyramid — six locked tests landed
+  2026-05-21** — `card_width_matches_drawer_360px`,
+  `slide_duration_matches_drawer_280ms`,
+  `peer_probe_round_trips_json`,
+  `enrichment_renders_with_hwdb_only`,
+  `enrichment_cache_key_is_vendor_product_not_connection`,
+  `card_is_read_only`. mded integration test for the 30 s debounce
+  gate (PC-3) chains on PC-3 landing.
+
+- [ ] **PC-12: Packaging + autostart — v2.1+ scope (chain on PC-3)** —
+  RPM spec adds `/usr/bin/mde-peer-card`; `mded` worker registration
+  ships enabled by default; no separate autostart entry (the card
+  is always spawned on demand by `mded`, never standalone).
+
 ### v2.0.0 Mackes DE — Unified Rust Backend, Wayland-Only, Stand-Alone (locked 2026-05-19)
 
 **Plan source:** `~/.claude/plans/zazzy-gliding-platypus.md` (v2.0.0).
