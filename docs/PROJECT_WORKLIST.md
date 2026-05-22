@@ -6628,6 +6628,171 @@ in favor of i3-native chrome.
   smoke test — compile + unit tests are sufficient to gate the fork.
   Depends on XOrg-1.1 through XOrg-3.1.
 
+### HA-1..HA-11: Host-aware MDE Workbench — manage every mesh peer from one interface (v2.3 scope)
+
+> Locked 2026-05-22 via in-session 5-Q survey + 4 adopted
+> best-practice suggestions. Full design at
+> `docs/design/v2.3-host-aware-workbench.md`.
+>
+> **Locked answers:** Q1=(a) SSH-into-peer + run `mded` for both
+> reads and writes. Q2=(a) global "Viewing: <host> ▾" switcher at
+> the top of the sidebar — single mental model, every host-aware
+> panel reads the same `current_host` slot. Q3 = Network + Apps +
+> Maintain become host-aware in v2.3 (best practice). Q4=(c)
+> try-live, fall back to cache from
+> `~/QNM-Shared/<peer>/mackesd/state/` for reads; writes refused
+> when the peer is offline. Q5=(a) trust mesh enrollment — any
+> enrolled peer can manage any other; no per-remote AdminSession
+> prompt. The audit log (HA-4) is the primary accountability
+> mechanism under this flat-trust model.
+>
+> **Adopted suggestions:** S1 (phased rollout), S2 (local =
+> `host:self`), S3 (heartbeat-published state cache), S4
+> (append-only audit log with SHA-256 hash chain). **S5 dropped**
+> — without offline-write queueing or multi-host fan-out, the
+> stage-then-apply changeset loses its load-bearing role; writes
+> apply immediately.
+>
+> **Out-of-scope for v2.3:** Devices / System / Look & Feel
+> host-aware (Phase 2, new design doc); cross-host search/filter;
+> multi-select fleet-wide "act on N hosts" UI; offline-write
+> queueing (Q1=a rules out); per-remote AdminSession (Q5=a rules
+> out); mesh-internal RPC daemon (would break the v12.0
+> "no networked API" lock).
+
+- [ ] **HA-1: HostId + HostRegistry foundation (v2.3 scope)** — new
+  `crates/mde-workbench/src/host.rs` introducing `HostId` (newtype
+  over node_id with `HostId::SELF` sentinel), `HostInfo { id,
+  label, hostname, last_seen, is_self, is_online, role }`, and a
+  `HostRegistry` that loads from `mded nodes list --json` at startup
+  and watches `~/QNM-Shared/*/mackesd/heartbeat.json` for liveness
+  updates. Acceptance: unit tests cover self-detection, offline
+  threshold (`now - last_seen > 90s` ⇒ offline), and registry
+  refresh on heartbeat change. No UI surface yet. Effort: Medium.
+
+- [ ] **HA-2: HostBackend trait + LocalHostBackend (v2.3 scope)** —
+  new trait `HostBackend { get(host,key), set(host,key,val),
+  cached(host,key) }` in `crates/mde-workbench/src/backend.rs`
+  alongside today's `Backend`. `LocalHostBackend` wraps the
+  existing DBus path and activates only for `host == HostId::SELF`.
+  `RoutingHostBackend` shell dispatches by host (remote path
+  stubbed for HA-6). Acceptance: all current local panels continue
+  to work routed through `RoutingHostBackend` with no behavior
+  change. Depends: HA-1. Effort: Medium.
+
+- [ ] **HA-3: Per-key state cache published by mackesd (v2.3 scope)** —
+  extend `crates/mackesd/` so every heartbeat tick also writes
+  per-key state snapshots to its own
+  `~/QNM-Shared/<peer>/mackesd/state/<key>.json`. Schema documented
+  in `docs/design/v2.3-host-aware-workbench.md § State cache`.
+  Initial keys: `network.wifi.*`, `network.firewall.*`,
+  `network.mesh.*`, `apps.installed`, `maintain.snapshots.*`,
+  `maintain.updates.*`, `maintain.health.*`. Acceptance: peer file
+  layout matches design doc; manual file-watch confirms updates on
+  state change; no peer ever has a stale snapshot older than
+  2×heartbeat-interval. Depends: none. Effort: Medium.
+
+- [ ] **HA-4: Fleet audit log + hash chain (v2.3 scope)** — new
+  `crates/mde-workbench/src/audit.rs`. Helper
+  `audit::record(actor_host, actor_user, target_host, action, key,
+  before, after, result)` appends to
+  `~/QNM-Shared/.mde-audit/<YYYY-MM-DD>.jsonl`. SHA-256 hash chain
+  mirroring `crates/mackesd/src/audit.rs::next_hash`. **Local-host
+  actions are also audited** (with `target_host == actor_host`) so
+  the log is uniform regardless of local/remote. Acceptance:
+  tamper-detection unit test (mutate one entry → chain verify
+  fails); daily rotation; concurrent-append safety via fs2 advisory
+  lock; per-host filter helper for the "View audit log for this
+  host" link. **Especially load-bearing under Q5=(a) — this is the
+  primary accountability layer.** Depends: none. Effort: Medium.
+
+- [ ] **HA-5: SSH transport (v2.3 scope)** — new
+  `crates/mde-workbench/src/transport/ssh.rs` wrapping
+  `ssh -o BatchMode=yes -o ConnectTimeout=3 <peer> mded …`.
+  Handles both reads and writes (Q1=a — pure SSH). Surfaced
+  errors: `Unreachable`, `AuthRefused`, `Timeout(5s)`. Reuses
+  Layer A/B SSH keys per `mackes/mesh_ssh.py:1-16` — no new key
+  plumbing. Acceptance: integration test against a local loopback
+  "peer" covers online-read, online-write, offline-peer-returns-
+  Unreachable-in-≤5s, and bad-key-returns-AuthRefused. Depends:
+  HA-1. Effort: Medium.
+
+- [ ] **HA-6: RemoteHostBackend wiring (v2.3 scope)** — fill in the
+  remote arm of `RoutingHostBackend` from HA-2:
+    * `get(host, key)` → `transport::ssh` live read; on
+      `Unreachable`, fall back to `cached(host, key)` and surface
+      "offline / last seen Xm ago" badge to the panel.
+    * `set(host, key, val)` → `transport::ssh` live write; on
+      `Unreachable`, return `HostError::Unreachable` (no queueing —
+      Q1=a). The panel-level write button is disabled while
+      `is_online == false`.
+    * `cached(host, key)` → read
+      `~/QNM-Shared/<peer>/mackesd/state/<key>.json`.
+  Every successful `set` writes an audit entry via HA-4.
+  Acceptance: integration test covers online-read, offline-read-
+  falls-back-to-cache, online-write-audits, offline-write-refused.
+  Depends: HA-2, HA-3, HA-4, HA-5. Effort: High.
+
+- [ ] **HA-7: Global HostSwitcher widget (v2.3 scope)** — add
+  `current_host: HostId` to the Workbench app state (default
+  `HostId::SELF`). Sidebar header renders a dropdown listing
+  `host:self` first, then every peer from `HostRegistry` with
+  online/offline indicator dot. Selecting an entry updates
+  `current_host` and re-renders the active panel. Non-host-aware
+  panels (Dashboard, Look & Feel, Devices, System, Help) render
+  a top banner when `current_host != SELF`: *"This panel only
+  edits the local machine. Switch back to host-self to make
+  changes."* Dropdown includes a "View audit log for this host"
+  link filtering by `target_host`. Acceptance: keyboard nav into
+  the switcher (Tab + arrows + Enter) lists every peer; switching
+  hosts on a host-aware panel re-renders with the new host's
+  data; switching hosts on a non-aware panel shows the banner;
+  audit-log link opens a filtered view. Depends: HA-1. Effort:
+  Medium.
+
+- [ ] **HA-8: Refactor Network panels to be host-aware
+  (v2.3 scope)** — port Wi-Fi, mesh, VPN, firewall panels under
+  `crates/mde-workbench/src/panels/network/` from
+  `Backend::get(key)` to `HostBackend::get(current_host, key)`.
+  Local case is unchanged because `host_id == SELF` resolves
+  through `LocalHostBackend`. Each panel grows an offline empty-
+  state rendering the cached snapshot with the "offline / last
+  seen" badge; write controls disabled when offline. Acceptance:
+  local panels behave identically; switching to a remote host
+  shows that host's live data when up, cached + badge when down;
+  write attempts when offline are refused at the button level.
+  Depends: HA-6, HA-7. Effort: High.
+
+- [ ] **HA-9: Refactor Apps installer to be host-aware (v2.3 scope)** —
+  `panels/apps/installer.rs`: install/remove operations route to
+  the peer's `mded` via `HostBackend::set(current_host, …)`. Read
+  of installed-package list uses
+  `HostBackend::get("apps.installed", current_host)`. Acceptance:
+  installing Firefox on `host-B` from `host-A`'s Workbench
+  produces an audit log entry and an apt/dnf run on `host-B`;
+  offline `host-B` disables the install button with a tooltip.
+  Depends: HA-6, HA-7. Effort: Medium.
+
+- [ ] **HA-10: Refactor Maintain panels to be host-aware
+  (v2.3 scope)** — Snapshots, Health, Updates panels under
+  `panels/maintain/` switch to `current_host`-parameterized state.
+  Snapshots panel's existing `hostname` field
+  (`snapshots.rs:43,142,160-161`) becomes the canonical
+  `host_id`; per-host snapshot lists. Acceptance: triggering an
+  update on `host-B` from `host-A` produces one audit entry and
+  one SSH-driven update run on `host-B`; Health panel shows
+  remote-host metrics live when online, cached when offline.
+  Depends: HA-6, HA-7. Effort: High.
+
+- [ ] **HA-11: Help docs + CHANGELOG + screenshot pair (v2.3 scope)** —
+  author `docs/help/hosts.md` and
+  `docs/help/host-aware-panels.md` (covering the HostSwitcher,
+  the offline/cached UX, the flat-trust mesh model, and the
+  audit log); capture a screenshot pair (same Wi-Fi panel viewed
+  for `host:self` and for `host-B`); add a v2.3 entry to
+  `CHANGELOG.md` describing the host-aware Workbench. Effort: Low.
+  Depends: HA-10.
+
 ---
 
 ## How to add a task
