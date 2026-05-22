@@ -25,7 +25,9 @@ use iced::{alignment, Background, Border, Color, Element, Length, Padding, Shado
 
 use mde_theme::{
     components::empty_state::{BODY_CTA_GAP, EMPTY_ICON_SIZE, HEADING_BODY_GAP, VERTICAL_PADDING},
-    mde_icon, Density, EmptyState, FontSize, IconSize, Palette, Radii, Shadow as MdeShadow,
+    mde_icon,
+    motion::dialog as dialog_tokens,
+    Density, EmptyState, FontSize, IconSize, Palette, Radii, Shadow as MdeShadow,
     Space as MdeSpace, TypeRole,
 };
 
@@ -328,6 +330,102 @@ fn brighten(c: Color, factor: f32) -> Color {
     }
 }
 
+/// UX-9 (c) — dialog chrome. Wraps an arbitrary body in the
+/// locked modal shell: SPACE_24 inner padding, 480 px max-width,
+/// `Radii::modal` (16 px) corners, `Shadow::modal()` drop
+/// shadow, palette.raised background, 50% black backdrop
+/// surrounding it. Esc-key dismiss + focus-trap live at the
+/// reducer level — this builder is the visual chrome only.
+///
+/// Pair with a backdrop overlay in the app's top-level view —
+/// the caller composes `stack![backdrop, dialog]` or uses
+/// `iced::widget::stack`. This function returns just the dialog
+/// surface so consumers can position it freely.
+pub fn dialog<'a, Message: 'a>(
+    body: Element<'a, Message>,
+    palette: Palette,
+    density: Density,
+) -> Element<'a, Message> {
+    let radii = Radii::defaults();
+    let space = MdeSpace::for_density(density);
+    container(body)
+        .max_width(dialog_tokens::MAX_WIDTH)
+        .width(Length::Shrink)
+        .padding(Padding {
+            top: f32::from(space.lg2),
+            right: f32::from(space.lg2),
+            bottom: f32::from(space.lg2),
+            left: f32::from(space.lg2),
+        })
+        .style(move |_theme| container::Style {
+            background: Some(Background::Color(palette.raised.into_iced_color())),
+            border: Border {
+                color: palette.border.into_iced_color(),
+                width: 1.0,
+                radius: f32::from(radii.modal).into(),
+            },
+            shadow: mde_shadow_to_iced(MdeShadow::modal()),
+            text_color: Some(palette.text.into_iced_color()),
+        })
+        .into()
+}
+
+/// UX-9 (c) — dialog backdrop. A full-fill 50%-black surface
+/// that sits below the dialog and intercepts clicks. Returns
+/// just the container — pair with `iced::widget::stack` and
+/// wire an `on_press` Message via `iced::mouse_area` if the
+/// caller wants click-to-dismiss.
+#[must_use]
+pub fn dialog_backdrop<'a, Message: 'a>() -> Element<'a, Message> {
+    container(Space::new(Length::Fill, Length::Fill))
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(|_theme| container::Style {
+            background: Some(Background::Color(Color {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                a: dialog_tokens::BACKDROP_OPACITY,
+            })),
+            ..container::Style::default()
+        })
+        .into()
+}
+
+/// UX-9 (d) — tooltip chrome. 12 sp text, SPACE_8 padding,
+/// `Radii::sm` (4 px) corners, surface-3 (palette.overlay)
+/// background. Fade-in timing (`Motion::tooltip_fade()`) lives
+/// in the consumer's subscription wiring.
+pub fn tooltip<'a, Message: 'a>(
+    body: impl Into<String>,
+    palette: Palette,
+) -> Element<'a, Message> {
+    let radii = Radii::defaults();
+    let sizes = FontSize::defaults();
+    container(
+        text(body.into())
+            .size(TypeRole::Caption.size_in(sizes))
+            .color(palette.text.into_iced_color()),
+    )
+    .padding(Padding {
+        top: 6.0,
+        right: 8.0,
+        bottom: 6.0,
+        left: 8.0,
+    })
+    .style(move |_theme| container::Style {
+        background: Some(Background::Color(palette.overlay.into_iced_color())),
+        border: Border {
+            color: palette.border.into_iced_color(),
+            width: 1.0,
+            radius: f32::from(radii.sm).into(),
+        },
+        shadow: mde_shadow_to_iced(MdeShadow::lift()),
+        text_color: Some(palette.text.into_iced_color()),
+    })
+    .into()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -388,5 +486,20 @@ mod tests {
         let _ = status_badge::<()>("w", BadgeSeverity::Warning, palette);
         let _ = status_badge::<()>("d", BadgeSeverity::Danger, palette);
         let _ = status_badge::<()>("i", BadgeSeverity::Info, palette);
+    }
+
+    #[test]
+    fn dialog_chrome_constructs_with_locked_tokens() {
+        // UX-9 (c) — dialog builder must compile + apply the
+        // locked tokens (480 px max-width, Radii::modal,
+        // Shadow::modal). This test is a compile-time guard;
+        // we can't introspect the resulting Element's style
+        // fields from outside iced. The motion::dialog module's
+        // tests guard the underlying token values directly.
+        let palette = Palette::dark();
+        let body: Element<'_, ()> = iced::widget::text("body").into();
+        let _ = dialog::<()>(body, palette, Density::Comfortable);
+        let _: Element<'_, ()> = dialog_backdrop();
+        let _ = tooltip::<()>("hi", palette);
     }
 }

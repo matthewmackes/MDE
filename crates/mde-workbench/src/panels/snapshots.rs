@@ -24,7 +24,7 @@ use iced::widget::{button, column, row, scrollable, text, text_input};
 use iced::{Element, Length, Padding, Task};
 use mde_theme::{Density, EmptyState, Icon, Palette};
 
-use crate::panel_chrome::{card, empty_state, panel_container};
+use crate::panel_chrome::{card, dialog, empty_state, panel_container};
 
 /// Subdirectory name under each snapshot dir that holds the
 /// copied config tree.
@@ -241,7 +241,10 @@ impl SnapshotsPanel {
     }
 
     fn view_confirm(&self, path: &str) -> Element<'_, crate::Message> {
-        column![
+        // UX-9 (c) — confirm dialog now uses the shared dialog
+        // chrome: 480 px max-width, Radii::modal corners,
+        // Shadow::modal drop shadow, palette.raised background.
+        let body: Element<'_, crate::Message> = column![
             text("Restore snapshot?").size(20),
             text(format!(
                 "This will overwrite ~/.config/mde/ with the contents of:\n{path}",
@@ -262,9 +265,11 @@ impl SnapshotsPanel {
             .spacing(12),
         ]
         .spacing(12)
-        .width(Length::Fill)
-        .padding(Padding::new(0.0))
-        .into()
+        .into();
+        panel_container(
+            dialog(body, Palette::dark(), Density::Comfortable),
+            Density::Comfortable,
+        )
     }
 }
 

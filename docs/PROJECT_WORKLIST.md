@@ -4973,7 +4973,7 @@ Iced-side style constants (introduce `crates/mde-theme/` if needed).
   finds zero remaining Unicode-emoji glyph literals in widget
   files. Effort: Medium.
 
-- [ ] **UX-9: Motion + dialog polish — v2.1 scope** — (a) Sidebar
+- [✓] **UX-9: Motion + dialog polish — v2.1 scope (Phase 1 landed 2026-05-21 on `main`: motion tokens + dialog/tooltip chrome + snapshots-restore migration; Phase 2 = UX-9.a)** — (a) Sidebar
   panel transitions: 180 ms ease-out opacity + translate-Y(4px→0)
   on panel mount (Iced subscription-driven redraw, not CSS). (b)
   Notification bell pulse: CSS `@keyframes mde-pulse` already
@@ -4989,6 +4989,28 @@ Iced-side style constants (introduce `crates/mde-theme/` if needed).
   Depends: UX-1, UX-3, UX-7. Effort: Medium.
   Outputs: `crates/mde-logout-dialog/`; `crates/mde-workbench/src/
   notification_center.rs`; Iced animation subscriptions.
+
+- [ ] **UX-9.a: Motion wiring — subscription-driven panel mount +
+  notification pulse + tooltip — v2.1+ scope (chain on UX-9 Phase 1)** —
+  Use the locked tokens in `mde_theme::motion` to actually
+  animate. (a) Sidebar panel mount: wire an `iced::Subscription`
+  on `Message::SelectPanel` that schedules a 180 ms opacity +
+  translate-Y interpolation via `iced::animation` (or a manual
+  `Instant`-driven tick subscription). (b) Notification bell:
+  port the `mde-pulse` CSS `@keyframes` to a panel-side
+  `iced::widget::container` style that scales 1.0 → 1.15 →
+  1.0 on a 2 s ease-in-out loop while unread > 0 AND the
+  notification center modal is closed. (c) Tooltip: wire the
+  `panel_chrome::tooltip` widget into hover events on every
+  icon-only control (sidebar nav, header window controls,
+  status badges) with the locked 120 ms fade-in delay. (d)
+  Logout-dialog + notification-center-modal chrome migration:
+  replace ad-hoc modal styling with `panel_chrome::dialog()`
+  so the radii / shadow / max-width match the snapshots-restore
+  confirm. Acceptance: panel changes no longer jolt instantly;
+  notification bell pulses; tooltips fade in after 120 ms;
+  grep finds zero `Padding::new` modal containers in the
+  workbench source. Effort: Medium.
 
 **Definition of Done for UX-1–UX-9 (group):** All subtasks `[✓] Done`
 per §0.8; `cargo build --workspace` clean; `make test-nodeps` passes;

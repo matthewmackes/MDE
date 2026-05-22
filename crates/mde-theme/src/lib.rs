@@ -42,6 +42,7 @@ pub mod color;
 pub mod components;
 pub mod density;
 pub mod icons;
+pub mod motion;
 pub mod palette;
 pub mod prefs;
 pub mod radii;
@@ -58,6 +59,7 @@ pub use density::Density;
 pub use icons::{
     icon_for_device_type, mde_icon, Icon, IconSize, ResolvedIcon, CARBON_LINE_WEIGHT_PX,
 };
+pub use motion::{Easing, Motion, PANEL_MOUNT_TRANSLATE_Y_PX, PULSE_MAX_SCALE};
 pub use palette::Palette;
 pub use prefs::Preferences;
 pub use radii::Radii;
