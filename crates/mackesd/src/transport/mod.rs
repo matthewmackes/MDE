@@ -12,4 +12,5 @@
 //! worker supervisor).
 
 pub mod audit;
+pub mod phones_manifest;
 pub mod policy;
