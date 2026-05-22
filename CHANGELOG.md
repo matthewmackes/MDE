@@ -3,7 +3,12 @@
 All notable user-facing and architectural changes. The current line is
 unreleased; tag versions get a date when they ship.
 
-## 3.0.0 — KDC2 native re-implementation + v3 cut (2026-05-22)
+## 3.0.1 — KDC2 native re-implementation + v3 cut (2026-05-22)
+
+(Tagged v3.0.1 rather than v3.0.0 — the v3.0.0 git tag was
+reserved in 2024 against an earlier rename plan and points at
+a pre-MDE commit. Functionally this is the v3.0 release.)
+
 
 The headline change: MDE replaces its v13 wrapper of upstream
 `kdeconnectd` with a built-in native KDE Connect host (the
