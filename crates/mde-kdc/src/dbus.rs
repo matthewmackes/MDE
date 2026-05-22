@@ -26,7 +26,9 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use zbus::zvariant::Type;
 
+use crate::outbound::{OutboundSend, PendingSends};
 use crate::pairing::{PairedDevice, PairingStore};
+use mde_kdc_proto::wire::Packet;
 
 /// Bus name MDE acquires on the user session bus.
 pub const BUS_NAME: &str = "dev.mackes.MDE.Connect";
@@ -103,6 +105,35 @@ impl From<&PairedDevice> for DeviceInfo {
     }
 }
 
+/// KDC2-3.6 — paired-device check shared by every action
+/// method. Returns `Ok(())` if the device is paired,
+/// `Err(NoSuchDevice)` otherwise.
+fn ensure_paired(store: &PairingStore, device_id: &str) -> zbus::fdo::Result<()> {
+    if store.get(device_id).is_some() {
+        Ok(())
+    } else {
+        Err(zbus::fdo::Error::Failed(format!(
+            "NoSuchDevice: {device_id}"
+        )))
+    }
+}
+
+/// Build a `Packet` from a kind token + body. The packet id is
+/// a wall-clock-ms; receivers use it as the dedupe key for
+/// dual-send semantics.
+fn build_packet(kind: &str, body: serde_json::Value) -> Packet {
+    let id = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    Packet {
+        id,
+        kind: kind.to_string(),
+        body,
+        ..Default::default()
+    }
+}
+
 /// Pure helper: collect every paired device into `DeviceInfo`
 /// records. Used by both the `ListDevices` D-Bus method + the
 /// unit tests (which bypass D-Bus to test the conversion
@@ -128,6 +159,12 @@ pub fn get_device_from(
 /// KDC2-3.4..3.6.
 pub struct ConnectInterface {
     pairing_store: Arc<PairingStore>,
+    /// KDC2-3.6 — outbound packet queue. The action methods
+    /// enqueue here; the network worker (KDC2-3.2.a follow-up)
+    /// drains. `PendingSends` is internally Arc-wrapped, so
+    /// `Clone` on this field hands cheaply-shared handles to
+    /// both producer + consumer.
+    outbound: PendingSends,
 }
 
 #[zbus::interface(name = "dev.mackes.MDE.Connect1")]
@@ -198,6 +235,88 @@ impl ConnectInterface {
             .map_err(|e| zbus::fdo::Error::Failed(format!("PersistFailed: {e}")))
     }
 
+    // ─────────────────────────────────────────────────────
+    // KDC2-3.6 — action methods. Each validates the device is
+    // paired, builds a `kdeconnect.*` Packet, and enqueues
+    // onto the outbound queue. The network worker
+    // (KDC2-3.2.a follow-up) drains + picks a transport via
+    // the mesh-router.
+    // ─────────────────────────────────────────────────────
+
+    /// KDC2-3.6 — trigger the phone's ringer (FindMyPhone
+    /// plugin). Errors with `NoSuchDevice` if the id isn't
+    /// paired.
+    async fn ring_device(&self, device_id: String) -> zbus::fdo::Result<()> {
+        ensure_paired(&self.pairing_store, &device_id)?;
+        self.outbound.push(OutboundSend {
+            device_id,
+            packet: build_packet("kdeconnect.findmyphone.request", serde_json::json!({})),
+        });
+        Ok(())
+    }
+
+    /// KDC2-3.6 — send an SMS via the phone (SMS plugin).
+    /// `recipient` is a phone number; `message` is the body.
+    /// Errors with `NoSuchDevice` if the id isn't paired.
+    async fn send_sms(
+        &self,
+        device_id: String,
+        recipient: String,
+        message: String,
+    ) -> zbus::fdo::Result<()> {
+        ensure_paired(&self.pairing_store, &device_id)?;
+        self.outbound.push(OutboundSend {
+            device_id,
+            packet: build_packet(
+                "kdeconnect.sms.request",
+                serde_json::json!({
+                    "sendSms": true,
+                    "phoneNumber": recipient,
+                    "messageBody": message,
+                }),
+            ),
+        });
+        Ok(())
+    }
+
+    /// KDC2-3.6 — push the local clipboard to the paired device.
+    /// Errors with `NoSuchDevice` if the id isn't paired.
+    async fn send_clipboard(
+        &self,
+        device_id: String,
+        content: String,
+    ) -> zbus::fdo::Result<()> {
+        ensure_paired(&self.pairing_store, &device_id)?;
+        self.outbound.push(OutboundSend {
+            device_id,
+            packet: build_packet(
+                "kdeconnect.clipboard",
+                serde_json::json!({ "content": content }),
+            ),
+        });
+        Ok(())
+    }
+
+    /// KDC2-3.6 — initiate a file send to the paired device.
+    /// `path` is a local filesystem path the network worker
+    /// will stream once the share handshake completes. Errors
+    /// with `NoSuchDevice` if the id isn't paired.
+    async fn send_file(
+        &self,
+        device_id: String,
+        path: String,
+    ) -> zbus::fdo::Result<()> {
+        ensure_paired(&self.pairing_store, &device_id)?;
+        self.outbound.push(OutboundSend {
+            device_id,
+            packet: build_packet(
+                "kdeconnect.share.request",
+                serde_json::json!({ "filename": path }),
+            ),
+        });
+        Ok(())
+    }
+
     /// KDC2-3.5 — unpair a device. Removes the record from
     /// `devices.toml`. Errors with
     /// `dev.mackes.MDE.Connect1.NoSuchDevice` when the id isn't
@@ -262,9 +381,13 @@ impl DbusServer {
     ///   * `ObjectRegister` — registering the interface failed.
     ///   * `NameAlreadyAcquired` — another mde-kdc is already
     ///     running (or another process owns the name).
-    pub async fn start(pairing: Arc<PairingStore>) -> Result<Self, DbusError> {
+    pub async fn start(
+        pairing: Arc<PairingStore>,
+        outbound: PendingSends,
+    ) -> Result<Self, DbusError> {
         let interface = ConnectInterface {
             pairing_store: pairing,
+            outbound,
         };
         let connection = zbus::connection::Builder::session()
             .map_err(|e| DbusError::Connect(format!("{e}")))?
@@ -475,6 +598,87 @@ mod tests {
         assert_eq!(store.paired_count(), 1);
         assert!(store.get("a").is_none());
         assert!(store.get("b").is_some());
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // KDC2-3.6 — action helpers + outbound queue
+    // ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn ensure_paired_passes_for_paired_device() {
+        let store = make_store_with_devices(vec![sample_device("known")]);
+        assert!(ensure_paired(&store, "known").is_ok());
+    }
+
+    #[test]
+    fn ensure_paired_returns_no_such_device_for_unknown_id() {
+        let store = make_store_with_devices(vec![]);
+        let r = ensure_paired(&store, "nope");
+        assert!(r.is_err());
+        let msg = format!("{}", r.err().unwrap());
+        assert!(msg.contains("NoSuchDevice"));
+    }
+
+    #[test]
+    fn build_packet_sets_kind_and_body() {
+        let p = build_packet(
+            "kdeconnect.findmyphone.request",
+            serde_json::json!({"x": 1}),
+        );
+        assert_eq!(p.kind, "kdeconnect.findmyphone.request");
+        assert_eq!(p.body, serde_json::json!({"x": 1}));
+        assert!(p.id > 0, "packet id should be wall-clock ms");
+        // Optional fields stay None (no payload-channel handshake
+        // by default — share.request adds it via plugin layer).
+        assert!(p.mde_caps.is_none());
+        assert!(p.payload_size.is_none());
+    }
+
+    #[test]
+    fn outbound_queue_collects_action_packets() {
+        // Drive the queue through the pure helpers + verify the
+        // expected `kdeconnect.*` types end up in FIFO order.
+        // (The async D-Bus methods just wrap these helpers
+        // behind zbus dispatch; testing them directly here
+        // confirms the contract without a session bus.)
+        let outbound = PendingSends::new();
+        outbound.push(OutboundSend {
+            device_id: "a".into(),
+            packet: build_packet("kdeconnect.findmyphone.request", serde_json::json!({})),
+        });
+        outbound.push(OutboundSend {
+            device_id: "a".into(),
+            packet: build_packet(
+                "kdeconnect.sms.request",
+                serde_json::json!({"sendSms": true}),
+            ),
+        });
+        outbound.push(OutboundSend {
+            device_id: "a".into(),
+            packet: build_packet(
+                "kdeconnect.clipboard",
+                serde_json::json!({"content": "hi"}),
+            ),
+        });
+        outbound.push(OutboundSend {
+            device_id: "a".into(),
+            packet: build_packet(
+                "kdeconnect.share.request",
+                serde_json::json!({"filename": "/tmp/foo"}),
+            ),
+        });
+        let drained = outbound.drain();
+        assert_eq!(drained.len(), 4);
+        let kinds: Vec<&str> = drained.iter().map(|o| o.packet.kind.as_str()).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                "kdeconnect.findmyphone.request",
+                "kdeconnect.sms.request",
+                "kdeconnect.clipboard",
+                "kdeconnect.share.request",
+            ],
+        );
     }
 
     #[test]

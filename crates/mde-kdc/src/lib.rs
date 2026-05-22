@@ -33,6 +33,7 @@
 pub mod dbus;
 pub mod dispatch;
 pub mod keygen;
+pub mod outbound;
 pub mod pairing;
 pub mod tls;
 pub mod transport;

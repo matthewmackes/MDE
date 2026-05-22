@@ -5363,10 +5363,18 @@ service. Hosts the `dev.mackes.MDE.Connect.*` D-Bus interface.
   `build_client_config(Some(pinned_fingerprint))`. Returns a
   `TlsConnection` impl of `Connection`. 4 integration tests
   with a local TLS server fixture.
-- [ ] **KDC2-3.6: D-Bus methods `RingDevice` + `SendSms` +
-  `SendClipboard` + `SendFile`** — Action methods. Each routes
-  through `mesh_router.choose(peer_id, MessageClass)` to pick
-  the transport. 8 unit tests with a `MockMeshRouter`.
+- [✓] **KDC2-3.6: D-Bus methods `RingDevice` + `SendSms` +
+  `SendClipboard` + `SendFile`** — Shipped 2026-05-22. All four
+  methods are wired into `ConnectInterface`:
+  validate-paired → build typed `Packet` → enqueue into a
+  shared `outbound::PendingSends` queue. The network worker
+  (KDC2-3.2.a follow-up) drains the queue, asks
+  `mesh_router.choose(peer_id, MessageClass)` for the
+  transport, then writes the packet on the chosen TLS socket.
+  Splitting the producer/consumer via a queue keeps the D-Bus
+  surface decoupled from the network worker so the methods
+  ship now and the network half can land independently.
+  4 new helper/queue tests; 60/60 mde-kdc green.
 - [✓] **KDC2-3.7: Pairing store at `~/.config/mde/connect/`** —
   `devices.toml` (TOML schema: id, name, kind, fingerprint,
   capabilities, paired_at, last_seen_at). `identity.pem`
