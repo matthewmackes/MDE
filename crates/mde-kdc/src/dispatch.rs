@@ -58,6 +58,20 @@ pub trait PluginAuthority {
     /// current policy. The default implementation defers to
     /// the impl-side allow/deny set semantics.
     fn plugin_allowed(&self, name: &str) -> bool;
+
+    /// KDC2-3.11.a — per-device gating. Default implementation
+    /// just delegates to `plugin_allowed(name)`, so existing
+    /// impls keep working without per-device support.
+    ///
+    /// Real impls (mackesd's `LoadedPolicy`) consult the
+    /// `[plugins.<name>] allow_devices = [...]` table from
+    /// `policy.toml`: when present, the plugin is allowed
+    /// only for listed device ids (overrides the base
+    /// allow/deny). When absent, falls through to
+    /// `plugin_allowed(name)`.
+    fn plugin_allowed_for_device(&self, name: &str, _device_id: &str) -> bool {
+        self.plugin_allowed(name)
+    }
 }
 
 /// Check whether the given plugin is allowed to dispatch a
@@ -82,17 +96,13 @@ pub fn check_plugin_allowed(
         };
     }
     let token = plugin.token();
-    if authority.plugin_allowed(token) {
+    if authority.plugin_allowed_for_device(token, peer_id) {
         DispatchDecision::Allowed
     } else {
         DispatchDecision::Denied {
             reason: "plugin_policy_denied",
         }
     }
-    // peer_id is currently advisory — future KDC2-3.11.a per-
-    // device gating reads `[plugins.<plugin>] allow_devices =
-    // [...]` from the policy file and only allows the listed
-    // device ids.
     .also_log(plugin, peer_id)
 }
 
@@ -182,6 +192,47 @@ mod tests {
         };
         let d = check_plugin_allowed(PluginKind::Clipboard, "bob", false, &policy);
         assert!(d.is_allowed());
+    }
+
+    /// KDC2-3.11.a fixture: per-device gating overrides the
+    /// base allow/deny lists.
+    struct PerDevicePolicy {
+        per_device_allow: std::collections::BTreeMap<&'static str, Vec<&'static str>>,
+    }
+    impl PluginAuthority for PerDevicePolicy {
+        fn plugin_allowed(&self, _name: &str) -> bool {
+            // Without per-device gating, deny everything — so we
+            // know any Allowed result came from the per-device
+            // path.
+            false
+        }
+        fn plugin_allowed_for_device(&self, name: &str, device_id: &str) -> bool {
+            self.per_device_allow
+                .get(name)
+                .map(|ids| ids.iter().any(|d| *d == device_id))
+                .unwrap_or(false)
+        }
+    }
+
+    #[test]
+    fn per_device_gating_allows_specific_device() {
+        let mut per_device_allow = std::collections::BTreeMap::new();
+        per_device_allow.insert("clipboard", vec!["alice"]);
+        let policy = PerDevicePolicy { per_device_allow };
+        let alice = check_plugin_allowed(
+            PluginKind::Clipboard,
+            "alice",
+            true,
+            &policy,
+        );
+        assert!(alice.is_allowed(), "alice on allowlist must dispatch");
+        let bob = check_plugin_allowed(
+            PluginKind::Clipboard,
+            "bob",
+            true,
+            &policy,
+        );
+        assert!(!bob.is_allowed(), "bob not on allowlist must be denied");
     }
 
     #[test]

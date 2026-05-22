@@ -8,6 +8,7 @@
 //!
 //! Hot reload via inotify is a follow-up (KDC2-1.11.a).
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use mackes_transport::scorer::{ClassWeights, Policy};
@@ -68,6 +69,23 @@ struct PluginsSection {
     allow: Vec<String>,
     #[serde(default)]
     deny: Vec<String>,
+    /// KDC2-3.11.a — per-plugin sub-tables. The TOML form is
+    /// `[plugins.<name>]` (e.g. `[plugins.run_command]`) with
+    /// an `allow_devices = [...]` array inside. Captured as a
+    /// flat map keyed by plugin name so the loader can extract
+    /// `allow_devices` regardless of which plugins the operator
+    /// listed.
+    #[serde(default, flatten)]
+    per_plugin: BTreeMap<String, PerPluginSection>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct PerPluginSection {
+    /// Device ids that may invoke this plugin. Empty / absent
+    /// means "fall through to the top-level allow/deny" —
+    /// non-empty narrows the allow set to exactly these ids.
+    #[serde(default)]
+    allow_devices: Vec<String>,
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -86,6 +104,13 @@ pub struct LoadedPolicy {
     pub plugin_allow: Vec<String>,
     /// Plugins explicitly denied. Wins over `allow`.
     pub plugin_deny: Vec<String>,
+    /// KDC2-3.11.a — per-plugin device allowlists. Keyed by
+    /// plugin token (e.g. `"run_command"`). When a plugin has
+    /// a non-empty entry, only the listed device ids may invoke
+    /// it (overrides both `plugin_allow` and `plugin_deny`).
+    /// Absent / empty entries fall through to the top-level
+    /// allow/deny lists unchanged.
+    pub plugin_per_device_allow: BTreeMap<String, Vec<String>>,
 }
 
 impl LoadedPolicy {
@@ -99,7 +124,23 @@ impl LoadedPolicy {
             scorer: Policy::baseline(),
             plugin_allow: Vec::new(),
             plugin_deny: vec!["run_command".to_string()],
+            plugin_per_device_allow: BTreeMap::new(),
         }
+    }
+
+    /// KDC2-3.11.a — per-device gating decision. When the
+    /// plugin has an entry in `plugin_per_device_allow` and
+    /// the list is non-empty, only the listed device ids are
+    /// allowed (overriding `plugin_allow`/`plugin_deny`).
+    /// Falls through to [`plugin_allowed`] otherwise.
+    #[must_use]
+    pub fn plugin_allowed_for_device(&self, name: &str, device_id: &str) -> bool {
+        if let Some(allow_devices) = self.plugin_per_device_allow.get(name) {
+            if !allow_devices.is_empty() {
+                return allow_devices.iter().any(|d| d == device_id);
+            }
+        }
+        self.plugin_allowed(name)
     }
 
     /// Plugin policy decision for a given plugin token (e.g.
@@ -129,6 +170,10 @@ impl LoadedPolicy {
 impl mde_kdc::dispatch::PluginAuthority for LoadedPolicy {
     fn plugin_allowed(&self, name: &str) -> bool {
         LoadedPolicy::plugin_allowed(self, name)
+    }
+
+    fn plugin_allowed_for_device(&self, name: &str, device_id: &str) -> bool {
+        LoadedPolicy::plugin_allowed_for_device(self, name, device_id)
     }
 }
 
@@ -230,10 +275,17 @@ impl PolicyFile {
         } else {
             plugins.deny
         };
+        let plugin_per_device_allow: BTreeMap<String, Vec<String>> = plugins
+            .per_plugin
+            .into_iter()
+            .filter(|(_, sub)| !sub.allow_devices.is_empty())
+            .map(|(name, sub)| (name, sub.allow_devices))
+            .collect();
         Ok(LoadedPolicy {
             scorer,
             plugin_allow,
             plugin_deny,
+            plugin_per_device_allow,
         })
     }
 }
@@ -329,6 +381,7 @@ mod tests {
             scorer: Policy::baseline(),
             plugin_allow: vec!["clipboard".into()],
             plugin_deny: vec!["clipboard".into()],
+            plugin_per_device_allow: BTreeMap::new(),
         };
         assert!(!p.plugin_allowed("clipboard"));
     }
@@ -340,9 +393,77 @@ mod tests {
             scorer: Policy::baseline(),
             plugin_allow: vec![],
             plugin_deny: vec!["run_command".into()],
+            plugin_per_device_allow: BTreeMap::new(),
         };
         assert!(p.plugin_allowed("clipboard"));
         assert!(!p.plugin_allowed("run_command"));
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // KDC2-3.11.a — per-device gating
+    // ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn per_device_allow_overrides_deny_for_listed_device() {
+        // run_command is denied globally, but device "abc-123"
+        // is on the per-device allowlist → allowed.
+        let mut per = BTreeMap::new();
+        per.insert("run_command".to_string(), vec!["abc-123".to_string()]);
+        let p = LoadedPolicy {
+            scorer: Policy::baseline(),
+            plugin_allow: vec![],
+            plugin_deny: vec!["run_command".into()],
+            plugin_per_device_allow: per,
+        };
+        assert!(p.plugin_allowed_for_device("run_command", "abc-123"));
+        assert!(!p.plugin_allowed_for_device("run_command", "other-id"));
+    }
+
+    #[test]
+    fn per_device_allow_narrows_otherwise_allowed_plugin() {
+        // clipboard is allowed globally, but the per-device
+        // entry narrows to a specific device only.
+        let mut per = BTreeMap::new();
+        per.insert("clipboard".to_string(), vec!["only-me".to_string()]);
+        let p = LoadedPolicy {
+            scorer: Policy::baseline(),
+            plugin_allow: vec![],
+            plugin_deny: vec![],
+            plugin_per_device_allow: per,
+        };
+        assert!(p.plugin_allowed_for_device("clipboard", "only-me"));
+        assert!(!p.plugin_allowed_for_device("clipboard", "someone-else"));
+    }
+
+    #[test]
+    fn per_device_absent_falls_through_to_top_level_policy() {
+        // No per-device entry → top-level allow/deny decides.
+        let p = LoadedPolicy {
+            scorer: Policy::baseline(),
+            plugin_allow: vec![],
+            plugin_deny: vec!["run_command".into()],
+            plugin_per_device_allow: BTreeMap::new(),
+        };
+        assert!(p.plugin_allowed_for_device("clipboard", "any-id"));
+        assert!(!p.plugin_allowed_for_device("run_command", "any-id"));
+    }
+
+    #[test]
+    fn per_device_parses_from_subtable_toml() {
+        let raw = r#"
+            [plugins]
+            deny = ["run_command"]
+
+            [plugins.run_command]
+            allow_devices = ["abc-123", "trusted-laptop"]
+        "#;
+        let p = parse_policy(raw).unwrap();
+        assert_eq!(p.plugin_deny, vec!["run_command".to_string()]);
+        let entry = p.plugin_per_device_allow.get("run_command").unwrap();
+        assert_eq!(entry, &vec!["abc-123".to_string(), "trusted-laptop".to_string()]);
+        // Behavior lock — the listed device gets through.
+        assert!(p.plugin_allowed_for_device("run_command", "abc-123"));
+        assert!(!p.plugin_allowed_for_device("run_command", "some-other"));
     }
 
     #[test]

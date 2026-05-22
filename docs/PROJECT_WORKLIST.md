@@ -5393,6 +5393,18 @@ service. Hosts the `dev.mackes.MDE.Connect.*` D-Bus interface.
   `[plugins.runcommand] allow_devices` list. Reject with
   `PolicyDenied` if the device isn't allowed. Audit-log every
   denial. 5 unit tests.
+- [✓] **KDC2-3.11.a: per-device plugin gating** — Shipped
+  2026-05-22. `PluginAuthority` grew a default-implemented
+  `plugin_allowed_for_device(name, device_id)` that defers to
+  `plugin_allowed(name)` unless an impl overrides. mackesd's
+  `LoadedPolicy` parses `[plugins.<name>] allow_devices = [...]`
+  sub-tables into `plugin_per_device_allow: BTreeMap<String,
+  Vec<String>>`. When set, the per-device list overrides both
+  `plugin_allow` and `plugin_deny` for that plugin — letting an
+  operator deny `run_command` globally but allow it from a
+  specific trusted phone. `dispatch::check_plugin_allowed` now
+  calls the device-aware variant. 4 new policy tests +
+  1 dispatch test, 16/16 policy / 6/6 dispatch green.
 
 #### KDC2-4.x — Mesh-shunt inside protocol
 
