@@ -9,9 +9,12 @@
 
 use std::process::Stdio;
 
-use iced::widget::{button, column, row, text, text_input};
+use iced::widget::{column, row, text, text_input};
 use iced::{Element, Length, Task};
+use mde_theme::Palette;
 use tokio::process::Command;
+
+use crate::controls::{variant_button, ButtonVariant};
 
 #[derive(Debug, Clone, Default)]
 pub struct FleetSettingsPanel {
@@ -104,13 +107,13 @@ impl FleetSettingsPanel {
         } else {
             "Push to fleet"
         };
-        let push_btn = {
-            let mut b = button(text(push_label));
-            if !self.busy {
-                b = b.on_press(crate::Message::FleetSettings(Message::PushClicked));
-            }
-            b
-        };
+        // UX-7.a — push routed through the shared button variant.
+        let push_btn = variant_button(
+            push_label,
+            ButtonVariant::Primary,
+            (!self.busy).then(|| crate::Message::FleetSettings(Message::PushClicked)),
+            Palette::dark(),
+        );
 
         column![
             row![

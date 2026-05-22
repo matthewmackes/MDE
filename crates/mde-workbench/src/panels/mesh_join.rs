@@ -10,9 +10,12 @@
 //! output area showing the enrollment-request JSON the leader
 //! ingests.
 
-use iced::widget::{button, column, container, row, scrollable, text, text_input};
+use iced::widget::{column, container, row, scrollable, text, text_input};
 use iced::{Element, Length, Padding, Task};
+use mde_theme::Palette;
 use tokio::process::Command;
+
+use crate::controls::{variant_button, ButtonVariant};
 
 /// Per the v12.10.1 lock: passcodes are URL-safe 16-character
 /// strings. Anything shorter fails enrollment at the bus
@@ -97,13 +100,15 @@ impl MeshJoinPanel {
             &self.name_input,
         )
         .on_input(|v| crate::Message::MeshJoin(Message::NameChanged(v)));
-        let enroll_btn = {
-            let mut b = button(text(if self.busy { "Enrolling…" } else { "Enroll" }));
-            if !self.busy {
-                b = b.on_press(crate::Message::MeshJoin(Message::EnrollClicked));
-            }
-            b
-        };
+        // UX-7.a — Enroll button routed through the shared
+        // Primary variant; busy → label flips + disabled.
+        let enroll_label = if self.busy { "Enrolling…" } else { "Enroll" };
+        let enroll_btn = variant_button(
+            enroll_label,
+            ButtonVariant::Primary,
+            (!self.busy).then(|| crate::Message::MeshJoin(Message::EnrollClicked)),
+            Palette::dark(),
+        );
 
         column![
             text("Join a mesh").size(20),

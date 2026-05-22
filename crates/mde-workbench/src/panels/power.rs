@@ -9,8 +9,11 @@
 
 use std::sync::Arc;
 
-use iced::widget::{button, checkbox, column, pick_list, row, text, text_input};
+use iced::widget::{checkbox, column, pick_list, row, text, text_input};
 use iced::{Element, Length, Task};
+use mde_theme::Palette;
+
+use crate::controls::{variant_button, ButtonVariant};
 
 use crate::backend::Backend;
 use crate::panels::json_helpers::{
@@ -198,13 +201,13 @@ impl PowerPanel {
 
     pub fn view(&self) -> Element<'_, crate::Message> {
         let save_label = if self.busy { "Saving…" } else { "Save" };
-        let save_btn = {
-            let mut b = button(text(save_label));
-            if !self.busy {
-                b = b.on_press(crate::Message::Power(Message::SaveClicked));
-            }
-            b
-        };
+        // UX-7.a — save routed through the shared button variant.
+        let save_btn = variant_button(
+            save_label,
+            ButtonVariant::Primary,
+            (!self.busy).then(|| crate::Message::Power(Message::SaveClicked)),
+            Palette::dark(),
+        );
         let profile_pick: pick_list::PickList<'_, &'static str, _, _, crate::Message> =
             pick_list(PROFILES, current(&PROFILES, &self.profile), |v| {
                 crate::Message::Power(Message::ProfileChanged(v.to_string()))

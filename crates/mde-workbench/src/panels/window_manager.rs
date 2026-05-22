@@ -16,9 +16,12 @@
 //! follow-up "CB-1.9.c follow-up: persist sway settings to
 //! config file" captures the missing piece.
 
-use iced::widget::{button, column, pick_list, row, text, text_input};
+use iced::widget::{column, pick_list, row, text, text_input};
 use iced::{Element, Length, Task};
+use mde_theme::Palette;
 use tokio::process::Command;
+
+use crate::controls::{variant_button, ButtonVariant};
 
 /// Layout values the sway IPC `layout` command accepts at the
 /// container level.
@@ -199,13 +202,13 @@ impl WindowManagerPanel {
         }
 
         let apply_label = if self.busy { "Applying…" } else { "Apply" };
-        let apply_btn = {
-            let mut b = button(text(apply_label));
-            if !self.busy {
-                b = b.on_press(crate::Message::WindowManager(Message::ApplyClicked));
-            }
-            b
-        };
+        // UX-7.a — apply routed through the shared button variant.
+        let apply_btn = variant_button(
+            apply_label,
+            ButtonVariant::Primary,
+            (!self.busy).then(|| crate::Message::WindowManager(Message::ApplyClicked)),
+            Palette::dark(),
+        );
 
         let layout_pick: pick_list::PickList<'_, &'static str, _, _, crate::Message> = pick_list(
             LAYOUTS,

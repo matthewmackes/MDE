@@ -22,9 +22,12 @@
 //! All three are safe + idempotent; the panel runs them
 //! one at a time with a per-row button.
 
-use iced::widget::{button, column, container, row, scrollable, text};
+use iced::widget::{column, container, row, scrollable, text};
 use iced::{Element, Length, Padding, Task};
+use mde_theme::Palette;
 use tokio::process::Command;
+
+use crate::controls::{variant_button, ButtonVariant};
 
 #[derive(Debug, Clone, Default)]
 pub struct RepairPanel {
@@ -106,27 +109,28 @@ impl RepairPanel {
     }
 
     pub fn view(&self) -> Element<'_, crate::Message> {
-        let reload_btn = {
-            let mut b = button(text("Reload sway"));
-            if !self.busy {
-                b = b.on_press(crate::Message::Repair(Message::ReloadSwayClicked));
-            }
-            b
-        };
-        let restart_btn = {
-            let mut b = button(text("Restart mded"));
-            if !self.busy {
-                b = b.on_press(crate::Message::Repair(Message::RestartMdedClicked));
-            }
-            b
-        };
-        let reinstall_btn = {
-            let mut b = button(text("Re-install MDE launcher"));
-            if !self.busy {
-                b = b.on_press(crate::Message::Repair(Message::ReinstallDesktopClicked));
-            }
-            b
-        };
+        // UX-7.a — three repair actions routed through Secondary
+        // (none of them is THE primary action; user picks based
+        // on the problem).
+        let palette = Palette::dark();
+        let reload_btn = variant_button(
+            "Reload sway",
+            ButtonVariant::Secondary,
+            (!self.busy).then(|| crate::Message::Repair(Message::ReloadSwayClicked)),
+            palette,
+        );
+        let restart_btn = variant_button(
+            "Restart mded",
+            ButtonVariant::Secondary,
+            (!self.busy).then(|| crate::Message::Repair(Message::RestartMdedClicked)),
+            palette,
+        );
+        let reinstall_btn = variant_button(
+            "Re-install MDE launcher",
+            ButtonVariant::Secondary,
+            (!self.busy).then(|| crate::Message::Repair(Message::ReinstallDesktopClicked)),
+            palette,
+        );
 
         column![
             text("Repair").size(20),
