@@ -1,6 +1,6 @@
 [package]
 name        = "mde-kdc"
-description = "Mackes Desktop Environment (MDE) — re-export facade over mackes-kdc during the v2.0.0 back-compat window."
+description = "KDC2-3 — Native KDE Connect host integration. Implements the Transport trait, hosts dev.mackes.MDE.Connect.* on D-Bus, owns the file-backed pairing store at ~/.config/mde/connect/. Wraps the pure-library mde-kdc-proto in the wiring it needs (filesystem, RSA keygen, eventually networking + zbus). v2.1 native re-implementation supersedes the v13.0 Option A wrapper of upstream kdeconnectd."
 version.workspace      = true
 edition.workspace      = true
 rust-version.workspace = true
@@ -13,7 +13,29 @@ name = "mde_kdc"
 path = "src/lib.rs"
 
 [dependencies]
-mackes-kdc = { path = "../mackes-kdc" }
+# v2.1 KDC2: pure-library protocol crate. mde-kdc imports the wire
+# types + KeyStore trait + RSA sign/verify + AEAD seal/open from
+# here and adds the I/O + filesystem + future networking layers
+# on top.
+mde-kdc-proto = { path = "../mde-kdc-proto" }
+
+# KDC2-1: Transport trait + capability model. mde-kdc implements
+# `Transport` so the mesh router (mackesd::workers::mesh_router)
+# can dispatch through it transparently.
+mackes-transport = { path = "../mackes-transport" }
+
+# Pure-Rust RSA — used ONLY for keypair generation. ring 0.17.x
+# does not expose stable RSA keygen, so we pull the rsa crate
+# here, generate PKCS#8 bytes, and feed them back into ring via
+# mde-kdc-proto's `PairingKeyPair::from_pkcs8`. The hot sign /
+# verify path stays on ring; rsa runs once per first-launch.
+rsa = "0.9"
+rand = "0.8"
+
+# Serde for the pairing store's on-disk format.
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml       = "0.8"
 
 [lints]
 workspace = true
