@@ -18,15 +18,21 @@
 #![cfg(feature = "async-services")]
 
 use std::collections::HashMap;
-use std::sync::Arc;
-use std::time::Duration;
+use std::sync::{Arc, Mutex as StdMutex};
+use std::time::{Duration, Instant};
 
 use mackes_transport::peer_path::{PeerPath, SwitchReason};
 use mackes_transport::{Transport, TransportKind};
 use tokio::sync::RwLock;
 use tracing::{debug, info};
 
+use crate::metrics::Histogram;
 use crate::transport::audit::PathSwitchEvent;
+
+/// Shared handle to the `kdc2_router_decision_us` histogram —
+/// the textfile-flush worker reads from this when assembling
+/// the `.prom` snapshot.
+pub type RouterMetrics = Arc<StdMutex<Histogram>>;
 
 use super::{ShutdownToken, Worker};
 
@@ -60,6 +66,12 @@ pub struct MeshRouterWorker {
     state: RouterState,
     registry: TransportRegistry,
     tick: Duration,
+    /// KDC2-1.12.b — optional handle to the
+    /// `kdc2_router_decision_us` histogram. When `Some`, every
+    /// `tick_once` records its decision microseconds via
+    /// `Histogram::observe`. `None` for tests + bootstrap paths
+    /// that don't care about telemetry.
+    metrics: Option<RouterMetrics>,
 }
 
 impl MeshRouterWorker {
@@ -71,6 +83,7 @@ impl MeshRouterWorker {
             state,
             registry,
             tick: DEFAULT_TICK,
+            metrics: None,
         }
     }
 
@@ -80,6 +93,16 @@ impl MeshRouterWorker {
     #[must_use]
     pub fn with_tick(mut self, tick: Duration) -> Self {
         self.tick = tick;
+        self
+    }
+
+    /// KDC2-1.12.b — attach a shared
+    /// `kdc2_router_decision_us` histogram. Subsequent ticks
+    /// observe their decision microseconds into the supplied
+    /// handle.
+    #[must_use]
+    pub fn with_metrics(mut self, metrics: RouterMetrics) -> Self {
+        self.metrics = Some(metrics);
         self
     }
 
@@ -141,6 +164,7 @@ impl MeshRouterWorker {
     /// exercise the path-switch detection logic without running
     /// the full tick loop.
     async fn tick_once(&self) {
+        let started = Instant::now();
         let peer_count = self.peer_count().await;
         let transport_count = self.transport_count();
         debug!(
@@ -148,6 +172,15 @@ impl MeshRouterWorker {
             transport_count,
             "mesh-router: tick (scaffold; full scorer integration KDC2-1.9 follow-up)",
         );
+        // KDC2-1.12.b — record decision time. Use saturating
+        // cast so a freakishly long tick (clock skew, stall)
+        // bucket-saturates rather than panics.
+        if let Some(m) = &self.metrics {
+            let us = started.elapsed().as_micros() as f64;
+            if let Ok(mut guard) = m.lock() {
+                guard.observe(us);
+            }
+        }
     }
 
     /// Pure path-switch detector. Given a peer's current
@@ -230,6 +263,31 @@ mod tests {
             );
         }
         assert_eq!(w.peer_count().await, 2);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn tick_once_records_decision_us_when_metrics_attached() {
+        // KDC2-1.12.b lock — the wired-in histogram must
+        // see a sample after one tick_once.
+        let metrics = Arc::new(StdMutex::new(crate::metrics::kdc2_router_decision_us()));
+        let w = MeshRouterWorker::new(new_state(), new_registry())
+            .with_metrics(Arc::clone(&metrics));
+        w.tick_once().await;
+        let snapshot = metrics.lock().unwrap();
+        assert_eq!(snapshot.count, 1, "tick_once must record one sample");
+        // Some bucket must be non-zero — concrete value depends
+        // on machine speed; the test_loop is well under 50 ms.
+        assert!(snapshot.buckets.iter().any(|b| b.count > 0));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn tick_once_without_metrics_is_a_noop_observation() {
+        // Default constructor doesn't attach metrics; tick must
+        // still run cleanly (regression guard against panics).
+        let w = MeshRouterWorker::new(new_state(), new_registry());
+        w.tick_once().await;
+        // No metrics handle to assert on; reaching this line is
+        // the lock.
     }
 
     #[tokio::test(flavor = "current_thread")]

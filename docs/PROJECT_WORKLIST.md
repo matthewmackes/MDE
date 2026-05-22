@@ -5141,15 +5141,29 @@ Closes the router gap explicitly deferred at
   histogram into the live `mesh_router::tick_once` (record
   decision microseconds + textfile flush) folds into
   KDC2-1.12.b.
-- [ ] **KDC2-1.12.b: wire `kdc2_router_decision_us` into `mesh_router::tick_once`** —
-  Add `metrics: Arc<Mutex<Histogram>>` to `MeshRouterWorker`;
-  time `tick_once` with `Instant::now()`; `observe(us)` on
-  every tick. Add a textfile-flush worker that writes
-  `mackesd.prom` every 10 s under
-  `/var/lib/node_exporter/textfile_collector/`. Acceptance:
+- [✓] **KDC2-1.12.b: wire `kdc2_router_decision_us` into `mesh_router::tick_once`** —
+  Shipped 2026-05-22. `MeshRouterWorker` grew an optional
+  `metrics: Option<RouterMetrics>` field (alias
+  `Arc<std::sync::Mutex<Histogram>>`) attached via the
+  `with_metrics` builder. `tick_once` times itself with
+  `Instant::elapsed().as_micros()` and observes into the
+  shared handle. Default constructor leaves metrics
+  unattached so existing tests + bootstrap paths stay
+  side-effect-free. 2 new tests:
+  `tick_once_records_decision_us_when_metrics_attached`
+  (positive lock) +
+  `tick_once_without_metrics_is_a_noop_observation`
+  (panic regression guard).
+- [ ] **KDC2-1.12.c: textfile-flush worker for `mackesd.prom`** —
+  10 s cadence worker that snapshots every Counter +
+  Histogram + writes
+  `/var/lib/node_exporter/textfile_collector/mackesd.prom`
+  via `metrics::write_textfile`. Owns `Arc<>` clones of the
+  shared metric handles + a `Vec<&Counter>` slice the
+  binary's `serve` entry assembles at boot. Acceptance:
   `cat /var/lib/node_exporter/textfile_collector/mackesd.prom |
   grep kdc2_router_decision_us_bucket` returns the live
-  histogram bucket counts after the daemon runs for >30s.
+  bucket counts after the daemon runs for > 30 s.
 
 #### KDC2-2.x — Protocol crate `mde-kdc-proto`
 
