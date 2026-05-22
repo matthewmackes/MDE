@@ -6187,6 +6187,289 @@ regression prevention)
 
 ---
 
+### MDM-1..MDM-5: Modern Desktop Modernization — 2026 baseline (v2.3 scope)
+
+**Brief (locked 2026-05-22 from a "compare against 2026 best
+practice" review session):** v2.0/v2.1/v2.2 close the design-
+system + chrome + mesh-control-plane gaps. v2.3 closes the
+**capability** gaps against modern desktops (GNOME 49, KDE 6.4,
+COSMIC, macOS 15, Windows 12). Five workstreams, each chosen
+because the mesh fabric makes it differentiated rather than just
+"catching up". All five are v2.3 scope — they chain on shipped
+v2.0.0/v2.1/v2.2 surfaces and would dilute the v2.2 polish push
+if pulled forward.
+
+**Why these five, in this order:**
+1. **MDM-1** (CRDT clipboard) is the smallest contained change
+   and the most-used mesh feature today — biggest UX win per
+   line of code.
+2. **MDM-2** (Fleet observability) unblocks intelligent peer-
+   selection for everything downstream (MDM-5 routing, future
+   AI broker).
+3. **MDM-3** (Btrfs/ZFS snapshots) retires the README's "USB
+   stick" promise with a real backup story.
+4. **MDM-4** (HDR / fractional scale) is the table-stakes
+   Wayland feature gap blocking adoption on calibrated /
+   mixed-DPI rigs.
+5. **MDM-5** (NL palette extension) chains on UX-14 (v2.2) and
+   needs Fleet telemetry from MDM-2 to pick a host peer, so it
+   sequences last.
+
+---
+
+- [ ] **MDM-1: CRDT mesh clipboard + shared scratchpad — v2.3
+  scope** — Replace `mded`'s last-write-wins clipboard worker
+  with a conflict-free replicated data type backend (y-crdt
+  via the `yrs` crate, or `automerge-rs`). Adds:
+    * **Clipboard history (per-peer ACL).** Ring buffer of the
+      last N entries, replicated as a CRDT log so concurrent
+      copies on two peers merge instead of clobbering. Per-peer
+      ACL bitmap in `mackes_config` lets the user exclude
+      specific peers from clipboard sync (NAS shouldn't see
+      passwords; phone-class peer when KDE Connect lands).
+    * **Mesh Scratchpad surface.** New layer-shell drawer
+      section (re-uses `mde-drawer::DrawerSection` chrome) that
+      hosts a CRDT-merged rich-text doc replicated across all
+      online peers. Edit on the laptop, watch it update live on
+      the desktop. Single doc per mesh; encrypted at rest under
+      the QNM-shared mesh key.
+    * **`mded` worker rewrite.** Existing `clipboard` worker
+      becomes a thin shim; new `mded::workers::crdt_sync` owns
+      the y-doc, exposes D-Bus methods
+      `dev.mackes.MDE.Clipboard.{Get,Set,History,SetAcl}` and
+      `dev.mackes.MDE.Scratchpad.{Get,Apply,Subscribe}`. NATS
+      JetStream carries CRDT update frames.
+  Acceptance: (a) two peers concurrently copy two different
+  values within < 200 ms of each other → both values land in
+  the history list with deterministic ordering on every peer
+  (CRDT merge); (b) scratchpad edit on peer A is visible on
+  peer B within 1 s on a healthy mesh; (c) ACL toggle hides
+  clipboard from a named peer within one D-Bus round-trip;
+  (d) panel suite + new `crdt_sync` unit tests stay green.
+  Depends: shipped `mded` clipboard worker; QNM-Shared
+  transport (Phase B, shipped). Effort: Large
+  (estimate 3–4 weeks).
+  Outputs: `crates/mded/src/workers/crdt_sync.rs`;
+  `crates/mde-drawer/src/scratchpad.rs`;
+  `mackes_config::ClipboardAcl` schema entry;
+  `dev.mackes.MDE.Scratchpad` D-Bus interface XML.
+  Risk: y-crdt has a non-trivial Wasm/native split; pin to the
+  native `yrs` crate to keep the dependency tree manageable.
+
+- [ ] **MDM-2: Fleet observability hero panel — v2.3 scope** —
+  Promote `mesh_metrics.py` (Phase 12.6, shipped data layer)
+  from a background telemetry feeder to a first-class Workbench
+  surface. Adds:
+    * **`mded::workers::telemetry`.** Rolling 60-second window
+      of per-peer CPU%, RAM%, swap%, temp (max sensor), NIC
+      throughput rx/tx, disk I/O r/w, GPU util (NVML + amdgpu
+      where present), top-3 process by CPU. Sampled at 1 Hz
+      locally, broadcast to peers at 5 Hz via NATS
+      `mesh.telemetry.<peer-id>` subject. Bounded retention
+      (last 5 min ring; older data dropped) — privacy + memory.
+    * **Fleet > Live panel.** New
+      `crates/mde-workbench/src/panels/fleet_live.rs` reusing
+      `peer_card`'s card chrome. Strip layout: one card per
+      peer showing the 9 metrics as inline sparklines (rolling
+      60 s), color-coded against per-metric thresholds
+      (CPU > 80 % red, temp > 75 °C amber). Click a card →
+      detail drawer with the full 5-min window and per-process
+      breakdown.
+    * **Alert routing.** Threshold breaches emit a notification
+      through the existing Notification Center (which already
+      replicates over QNM-Shared, so the alert lands on every
+      peer). Severity maps to the `status_badge` 5-tier scale
+      from UX-6.
+    * **Headless-peer mode.** Node-preset peers run the
+      telemetry worker but skip the Iced rendering — they
+      report into the mesh but don't draw the panel.
+  Acceptance: (a) a synthetic CPU spike on peer A surfaces on
+  peer B's Fleet > Live panel within 1 s; (b) sparkline holds
+  60 s of history with < 1 % CPU overhead on peer A;
+  (c) headless `Node` preset boots the worker without pulling
+  any Iced dep; (d) memory cap of 2 MB/peer enforced (older
+  samples dropped, not unbounded).
+  Depends: Phase 12.6 (shipped data layer);
+  `mde-workbench::panels::peer_card` chrome from PC-3.
+  Effort: Large (estimate 4 weeks; the worker is ~1 week,
+  the Iced sparkline view is ~2 weeks, threshold + alert
+  routing ~1 week).
+  Outputs: `crates/mded/src/workers/telemetry.rs`;
+  `crates/mde-workbench/src/panels/fleet_live.rs`;
+  `mackes_config::TelemetryConfig` schema entry;
+  `dev.mackes.MDE.Telemetry` D-Bus interface XML.
+
+- [ ] **MDM-3: Btrfs/ZFS-aware snapshots + mesh as offsite — v2.3
+  scope** — Rewrite the Snapshots panel from file-tree-copy to
+  subvolume-aware. Adds:
+    * **Filesystem detection.** `snapshots::Backend` trait with
+      three impls: `Btrfs` (calls
+      `btrfs subvolume snapshot -r`),
+      `Zfs` (`zfs snapshot`), and `FileTree` (the current rsync
+      path, kept as the fallback for ext4/xfs roots). Backend
+      selected at startup by inspecting `findmnt -no FSTYPE /`.
+    * **Atomic local snapshot.** Replace the existing
+      tar-of-config-dirs flow with a single subvolume snapshot
+      (seconds, regardless of `~` size) on Btrfs/ZFS. The
+      current file-tree backend keeps working unchanged.
+    * **Mesh-as-offsite.** New "Backup Target" peer role in
+      `mackes_config::PeerRole` (one designated peer per mesh,
+      typically the NAS). Snapshots panel exposes a "Replicate
+      to <peer>" toggle that pipes `btrfs send` /
+      `zfs send -R` over an ssh-by-name mesh transport to the
+      backup target. Incremental sends use the previous
+      snapshot as the parent. Encrypted in transit by
+      wireguard; encrypted at rest with `age` keyed off the
+      mesh secrets vault (chains on a future MDM-6, but ZFS
+      native encryption + a passphrase is the v2.3 fallback).
+    * **Restore flow.** Workbench → Snapshots → Restore picks
+      a snapshot (local or remote), runs
+      `btrfs subvolume snapshot` (rollback) or
+      `zfs rollback`. File-tree fallback unchanged.
+  Acceptance: (a) on a Btrfs root, "Create Restore Point"
+  completes in < 2 s for a `~` of any size;
+  (b) `btrfs send` to a backup-target peer over a clean mesh
+  saturates ≥ 80 % of the wireguard link's measured
+  throughput; (c) restore on Btrfs is atomic (one syscall);
+  (d) ext4 root falls back to the existing rsync path with no
+  user-visible regression; (e) backup-target peer requires
+  explicit acceptance the first time a remote peer pushes
+  a snapshot (no silent disk fill).
+  Depends: shipped `mackes.snapshots` Python module;
+  ssh-by-name mesh transport (Phase 12.x, shipped).
+  Effort: Large (estimate 5 weeks; the `Backend` trait and
+  Btrfs/ZFS local paths are ~2 weeks, mesh-send is ~2 weeks,
+  restore + UX wiring is ~1 week).
+  Outputs: `crates/mded/src/workers/snapshots.rs` (Rust
+  port; current Python lives in `mackes/snapshots.py`);
+  `mackes_config::SnapshotsConfig` schema entry;
+  `crates/mde-workbench/src/panels/snapshots.rs` updates;
+  `dev.mackes.MDE.Snapshots` D-Bus interface XML.
+  Risk: `btrfs send` requires root; route through
+  `AdminSession` (the existing session-unlock pattern,
+  v1.4.0). Don't introduce a new pkexec call path.
+
+- [ ] **MDM-4: HDR + fractional scaling + color management
+  (Wayland 2026 baseline) — v2.3 scope** — Close the Wayland
+  protocol gap against GNOME 49 / KDE 6.4. Adds:
+    * **Compositor protocol coverage.** sway 1.10+ implements
+      `wp-fractional-scale-v1`, `wp-presentation-time`, and
+      `xx-color-manager-v4` (HDR). Pin minimum sway version in
+      the spec; advertise the protocols from `mde-session` so
+      Iced surfaces opt in.
+    * **Displays panel rewrite.** Per-monitor controls in
+      `crates/mde-workbench/src/panels/displays.rs`:
+      scale (100/125/150/175/200, with arbitrary fractional
+      input behind an Advanced disclosure); ICC profile picker
+      (reads from `/usr/share/color/icc/` + user dir); HDR
+      toggle gated on
+      `xx-color-manager-v4::supported_features` reporting
+      `parametric` + `set_image_description`; brightness slider
+      backed by `ddcutil` for external displays + the
+      backlight class for laptop panels.
+    * **Iced + libcosmic fractional-scale plumbing.** Iced 0.14
+      (per UX-PRE, chained) supports `wp-fractional-scale-v1`
+      natively. The panel + workbench + files + peer-card
+      surfaces all need to opt in via the layer-shell shim;
+      tracked as four sub-tasks (MDM-4.a..MDM-4.d).
+    * **Multi-monitor wallpaper.** Update `mackes/displays.py`
+      / its Rust successor to honor per-monitor scale + color
+      profile when rendering the desktop wallpaper. Resolves
+      the "wallpaper blurs on a 4K monitor next to a 1080p"
+      bug the docs mention.
+  Acceptance: (a) a 1.5× scale on a 4K monitor next to a 1.0×
+  1080p monitor renders MDE chrome crisp on both;
+  (b) `xx-color-manager-v4` negotiation succeeds against sway
+  1.10+; (c) HDR toggle on a compatible panel produces a
+  visibly higher dynamic range in a `weston-simple-dmabuf`-
+  style HDR test pattern; (d) ICC profile change applies
+  without a session restart; (e) brightness slider drives both
+  laptop backlight and external (ddcutil-discovered) panels.
+  Depends: UX-PRE Iced 0.14 upgrade (open); shipped
+  `mde-workbench::panels::displays` skeleton.
+  Effort: Large (estimate 6 weeks; fractional-scale plumbing
+  across four crates is the bulk; HDR is gated on what sway
+  ships and may need to defer to a follow-up).
+  Outputs: `crates/mde-workbench/src/panels/displays.rs`
+  rewrite; `crates/mde-session/src/protocols.rs` advertising;
+  per-crate layer-shell scale opt-in (MDM-4.a..d); spec bump
+  to `sway >= 1.10`.
+  Risk: HDR support across the Linux stack in 2026 is still
+  patchy on AMD/Intel iGPU — design the UI to gracefully
+  disable the toggle when negotiation fails, don't lie to
+  users.
+
+- [ ] **MDM-5: Natural-language extension on the UX-14
+  command palette (mesh-aware) — v2.3 scope** — Chains on
+  UX-14 (Ctrl-K palette, v2.2). UX-14 ships the deterministic
+  layer: Commands / Peers / Files / Settings category tabs
+  with substring + fuzzy match. MDM-5 adds a fifth tab,
+  **Ask** (NL fallback), powered by a mesh-hosted small
+  language model. Adds:
+    * **`mded::workers::nl_broker`.** New worker that exposes
+      `dev.mackes.MDE.Nl.Query` (text in, structured-intent
+      out). Picks a host peer via the MDM-2 Fleet telemetry
+      worker (peer with lowest current CPU + a discovered
+      `mde-llm.service`); falls back to the local peer if
+      none. No cloud calls — refuses the query rather than
+      leaking off-mesh.
+    * **`mde-llm.service` (optional).** New systemd unit
+      shipping with the `mde-llm` subpackage (not installed
+      by default; one-line opt-in:
+      `sudo dnf install mde-llm` or via the Workbench
+      Devices > AI Host panel toggle). Wraps `ollama serve`
+      bound to the wireguard interface only (`0.0.0.0` is
+      explicitly forbidden by the unit's
+      `IPAddressAllow=`). Default model: a 3-7B local model
+      (Llama 3.2 3B or equivalent), pickable in the panel.
+    * **Palette > Ask tab.** New
+      `crates/mde-workbench/src/palette/ask.rs` (or wherever
+      UX-14 lands the palette code). User types
+      "open the snapshot from last Tuesday on the NAS" →
+      Ask tab streams the NL broker's response → structured
+      intent (`{action: "open_snapshot", peer: "nas",
+      filter: "2026-05-15..2026-05-16"}`) → palette executes
+      the same action a deterministic match would have.
+      NL response always shows the structured intent and a
+      "Run" button — no silent execution.
+    * **Privacy contract.** Every NL query is logged
+      locally (opt-out toggle in Workbench > Privacy) with
+      the host peer, model, latency, and refusal reason if
+      any. No telemetry leaves the mesh.
+  Acceptance: (a) a query against a healthy mesh with an
+  `mde-llm.service` peer returns a structured intent in
+  < 2 s for a 3B model on a peer with a GPU;
+  (b) NL broker refuses gracefully with a clear error
+  ("No AI host peer available — install mde-llm on one of
+  your peers") when no host is up; (c) palette UX-14
+  deterministic tabs continue to work identically when the
+  Ask tab is hidden (no regression on the locked palette
+  scope); (d) `mde-llm.service` cannot be reached from
+  outside the wireguard interface (verified by a nmap from
+  a host outside the mesh); (e) every NL execution path
+  goes through the same intent-confirmation gate (no
+  silent action).
+  Depends: UX-14 (v2.2 scope, open); MDM-2 (Fleet
+  telemetry, this section); `mded` D-Bus surface (shipped).
+  Effort: Large (estimate 5 weeks; the worker + Ollama
+  integration is ~2 weeks, the palette tab + intent
+  grammar is ~2 weeks, packaging the optional subpackage
+  is ~1 week).
+  Outputs: `crates/mded/src/workers/nl_broker.rs`;
+  `packaging/fedora/mde-llm.spec` subpackage;
+  `data/systemd/mde-llm.service`;
+  palette `Ask` tab (path TBD by UX-14 implementation);
+  `dev.mackes.MDE.Nl` D-Bus interface XML;
+  `Workbench > Devices > AI Host` panel.
+  Risk: this is the most speculative of the five — both
+  the local-LLM ecosystem and Iced's streaming-text widget
+  story are moving fast. Don't pull this forward of MDM-2
+  (which it depends on for host-peer selection) and treat
+  v2.3 as the *earliest* possible target rather than a
+  commitment.
+
+---
+
 ## History — shipped 1.0.6 through 1.1.0
 
 (unchanged from the prior consolidation — see git for the full
