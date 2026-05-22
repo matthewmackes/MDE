@@ -219,7 +219,7 @@ impl iced_layershell::Application for App {
 pub fn run() -> iced_layershell::Result {
     <App as iced_layershell::Application>::run(Settings {
         id: Some("mde-popover-start-menu".to_string()),
-        fonts: load_fallback_fonts(),
+        fonts: crate::fonts::load_fallback_fonts(),
         layer_settings: LayerShellSettings {
             size: Some((WIDTH, HEIGHT)),
             // Don't reserve space — popovers float above content.
@@ -242,23 +242,6 @@ pub fn run() -> iced_layershell::Result {
         },
         ..Default::default()
     })
-}
-
-/// Load the same Noto Emoji / Symbola fallback fonts the panel uses
-/// so any glyph in an app description renders here too.
-fn load_fallback_fonts() -> Vec<std::borrow::Cow<'static, [u8]>> {
-    const CANDIDATES: &[&str] = &[
-        "/usr/share/fonts/google-noto-emoji-fonts/NotoEmoji-Regular.ttf",
-        "/usr/share/fonts/gdouros-symbola/Symbola.ttf",
-        "/usr/share/fonts/google-noto/NotoSansSymbols2-Regular.ttf",
-    ];
-    let mut out = Vec::new();
-    for path in CANDIDATES {
-        if let Ok(bytes) = std::fs::read(path) {
-            out.push(std::borrow::Cow::Owned(bytes));
-        }
-    }
-    out
 }
 
 /// Walk every `applications/` directory on `$XDG_DATA_DIRS` (plus

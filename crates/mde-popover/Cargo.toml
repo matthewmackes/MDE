@@ -20,6 +20,14 @@ iced_layershell = "0.13.7"
 
 # Domain logic libs that already ship with the applet binaries.
 mde-applet-start-menu = { path = "../mde-applets/start-menu" }
+mde-applet-audio      = { path = "../mde-applets/audio" }
+mde-applet-clock      = { path = "../mde-applets/clock" }
+mde-applet-notifications = { path = "../mde-applets/notifications" }
+
+# JSON parsing for the notifications popover (read
+# ~/.cache/mackes/notifications.json).
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 # CLI parsing for `mde-popover <kind>` dispatch.
 clap = { version = "4.5", features = ["derive"] }

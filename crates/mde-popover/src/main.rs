@@ -20,6 +20,10 @@
 
 #![forbid(unsafe_code)]
 
+mod audio;
+mod clock;
+mod fonts;
+mod notifications;
 mod start_menu;
 
 use clap::Parser;
@@ -58,11 +62,14 @@ fn main() -> iced_layershell::Result {
 
     match cli.kind {
         Kind::StartMenu => start_menu::run(),
-        Kind::Audio | Kind::Notifications | Kind::Clock | Kind::Network => {
-            // Stub kinds — emit a marker line so test harnesses can
-            // confirm the dispatch path and exit 0. The full Iced UIs
-            // for these land per v3.1 follow-ups.
-            tracing::info!(kind = ?cli.kind, "popover kind not yet implemented; exit 0");
+        Kind::Audio => audio::run(),
+        Kind::Notifications => notifications::run(),
+        Kind::Clock => clock::run(),
+        Kind::Network => {
+            // Network popover is v3.1 follow-up (needs NM D-Bus
+            // surface bindings + a connection-list widget set);
+            // stub branch keeps the panel click from erroring.
+            tracing::info!("network popover not yet implemented; exit 0");
             Ok(())
         }
     }

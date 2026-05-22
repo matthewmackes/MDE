@@ -3603,7 +3603,12 @@ dependencies = [
  "dirs 5.0.1",
  "iced",
  "iced_layershell",
+ "mde-applet-audio",
+ "mde-applet-clock",
+ "mde-applet-notifications",
  "mde-applet-start-menu",
+ "serde",
+ "serde_json",
  "tracing",
  "tracing-subscriber",
 ]
