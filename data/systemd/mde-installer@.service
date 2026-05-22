@@ -1,0 +1,57 @@
+[Unit]
+# INST-2: templated installer service. Instance is the TTY name
+# (e.g. `mde-installer@tty1.service`). Owns the TTY via
+# StandardInput=tty so the wizard's ratatui frontend has a real
+# terminal to draw to.
+#
+# ConditionPathExists guards the no-op case: if the flag file
+# is gone (installer already ran), the unit short-circuits with
+# zero side effects. That makes manually starting the unit on a
+# provisioned host safe.
+Description=MDE console installer on /dev/%I
+Documentation=man:mde-wizard(1)
+ConditionPathExists=/var/lib/mde/installer/firstboot.needed
+
+# Don't fight the regular getty for the same TTY.
+Conflicts=getty@%i.service
+After=systemd-user-sessions.service dbus.service network-online.target
+Wants=dbus.service
+PartOf=mde-installer.target
+
+[Service]
+Type=idle
+# TTY ownership — the wizard reads stdin via crossterm and
+# writes to stdout/stderr; ratatui needs all three on the TTY.
+TTYPath=/dev/%I
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+StandardInput=tty
+StandardOutput=tty
+StandardError=tty
+# UTF-8 locale so the breadcrumb characters render right
+# (otherwise the Unicode box-drawing falls back to ?).
+Environment=LANG=C.UTF-8 LC_ALL=C.UTF-8 TERM=linux
+
+ExecStart=/usr/libexec/mde/mde-installer-launch
+
+# No restart: the wizard exits with a meaningful code (0 done,
+# 3 declined, 130 quit) and the post-exit handling is owned by
+# mde-installer-complete.service.
+Restart=no
+TimeoutStartSec=0
+TimeoutStopSec=15s
+KillMode=process
+
+# When the wizard returns:
+#   exit 0   → success path → mde-installer-complete.service
+#                restores graphical.target + reboots.
+#   exit 3   → purge declined → leave installer.target as default
+#                so the user sees the prompt again on next boot.
+#                /etc/motd already warns.
+#   exit 130 → user quit (q / Ctrl-C) → leave installer.target
+#                as default; next boot re-enters the wizard.
+SuccessExitStatus=0
+
+[Install]
+WantedBy=mde-installer.target

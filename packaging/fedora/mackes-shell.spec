@@ -487,6 +487,27 @@ install -D -m 0644 data/systemd/mde-migrate-from-1x.service \
 install -D -m 0644 data/systemd/mde-shell-migrate-v2.service \
     %{buildroot}%{_userunitdir}/mde-shell-migrate-v2.service
 
+# INST-2 — system-level console-installer target + templated
+# tty service + success-path completion unit. Distinct from
+# mde-firstboot.target (user-level, config migration); this set
+# is system-level + isolatable, fired the first boot after RPM
+# install. See install-helpers/mde-installer-launch.sh.
+install -D -m 0644 data/systemd/mde-installer.target \
+    %{buildroot}%{_unitdir}/mde-installer.target
+install -D -m 0644 data/systemd/mde-installer@.service \
+    %{buildroot}%{_unitdir}/mde-installer@.service
+install -D -m 0644 data/systemd/mde-installer-complete.service \
+    %{buildroot}%{_unitdir}/mde-installer-complete.service
+install -D -m 0755 install-helpers/mde-installer-launch.sh \
+    %{buildroot}%{_libexecdir}/mde/mde-installer-launch
+install -D -m 0755 install-helpers/mde-installer-complete.sh \
+    %{buildroot}%{_libexecdir}/mde/mde-installer-complete
+# INST-2 — state directory the launcher + complete scripts read.
+# The firstboot.needed flag itself is created by %post, not by
+# the RPM (idempotent across upgrades — only fresh installs flip
+# the default target).
+install -d -m 0755 %{buildroot}/var/lib/mde/installer
+
 # 4c. Tumbler thumbnailer
 install -D -m 0644 data/thumbnailers/mackes-mesh.thumbnailer \
     %{buildroot}%{_datadir}/thumbnailers/mackes-mesh.thumbnailer
@@ -700,6 +721,44 @@ rm -f /usr/share/xsessions/xfce11-i3-plank.desktop \
       /usr/share/xsessions/xfce11.desktop \
       /usr/share/xsessions/mackes.desktop 2>/dev/null || :
 
+# INST-2 — post-RPM console installer arming. Only on a FRESH
+# install ($1 == 1), not upgrades — re-arming an upgrade would
+# trap users in the installer flow every dnf upgrade.
+if [ "$1" = "1" ]; then
+    # Create state dir + flag the launcher checks for.
+    install -d -m 0755 /var/lib/mde/installer
+    : > /var/lib/mde/installer/firstboot.needed
+
+    # Enable the templated service on tty1 so it fires when the
+    # installer.target is reached.
+    systemctl enable mde-installer@tty1.service 2>/dev/null || :
+
+    # Flip the default target so the NEXT boot lands in the
+    # console installer instead of graphical.target. The wizard
+    # restores graphical.target on success (see
+    # mde-installer-complete.service).
+    #
+    # We do NOT isolate now — that would kill the user's
+    # current session mid-install. The boot-time switch is
+    # intentional; users get to finish their current work and
+    # reboot at their leisure.
+    systemctl set-default mde-installer.target 2>/dev/null || :
+
+    # Best-effort kernel-cmdline cap so the framebuffer comes
+    # up at HD on next boot (covers the fbset-rejects-runtime-
+    # changes case). Failure is non-fatal — the launcher's
+    # userspace fbset clamp is the fallback.
+    if [ -d /etc/default ] && [ -w /etc/default/grub ]; then
+        if ! grep -q 'video=1920x1080' /etc/default/grub 2>/dev/null; then
+            # Append, don't replace, so existing video= entries
+            # from other packages survive.
+            sed -i 's|^\(GRUB_CMDLINE_LINUX="[^"]*\)"|\1 video=1920x1080@60"|' \
+                /etc/default/grub 2>/dev/null || :
+            grub2-mkconfig -o /boot/grub2/grub.cfg >/dev/null 2>&1 || :
+        fi
+    fi
+fi
+
 %preun
 # Only on uninstall, not upgrade ($1 == 0 → final removal)
 if [ "$1" = "0" ]; then
@@ -807,6 +866,17 @@ fi
 %{_userunitdir}/mde-firstboot.target
 %{_userunitdir}/mde-migrate-from-1x.service
 %{_userunitdir}/mde-shell-migrate-v2.service
+# INST-2 — post-RPM console installer (system-level). Flag at
+# /var/lib/mde/installer/firstboot.needed is created by %post
+# and consumed by mde-installer-launch on the first boot.
+%{_unitdir}/mde-installer.target
+%{_unitdir}/mde-installer@.service
+%{_unitdir}/mde-installer-complete.service
+%{_libexecdir}/mde/mde-installer-launch
+%{_libexecdir}/mde/mde-installer-complete
+%dir %{_libexecdir}/mde
+%dir /var/lib/mde
+%dir /var/lib/mde/installer
 # CB-3.4 — comps group definition is under
 # %{_datadir}/%{name}/comps/ which is now covered by the
 # %{_datadir}/%{name}/ catch-all below.

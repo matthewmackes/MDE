@@ -1,0 +1,23 @@
+[Unit]
+# INST-2: post-RPM TTY installer target. System-level + isolatable,
+# distinct from the user-level mde-firstboot.target (which handles
+# v1→v2 config migration on first login).
+#
+# Set as the default target by %post when the RPM lands; the next
+# boot drops into this target instead of graphical.target. The
+# wizard's success path restores graphical.target as default and
+# reboots into MDE; the abort path leaves the user at a
+# multi-user.target shell with /etc/motd explaining the
+# unsupported-configuration state.
+Description=Mackes Desktop Environment console installer (one-shot)
+Documentation=man:mde-wizard(1)
+Documentation=file:///usr/share/mde/docs/install/console-installer.md
+
+# Mutually exclusive with the graphical stack — isolating into
+# this target kills the compositor + DM cleanly.
+Conflicts=graphical.target display-manager.service
+Requires=multi-user.target
+After=multi-user.target network-online.target dbus.service
+Wants=network-online.target dbus.service
+
+AllowIsolate=yes

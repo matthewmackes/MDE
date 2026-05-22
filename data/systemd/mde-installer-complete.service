@@ -1,0 +1,18 @@
+[Unit]
+# INST-2: post-success cleanup. Triggered manually by the wizard
+# (or via `systemctl start mde-installer-complete.service`) when
+# the wizard exits 0 — restores graphical.target as default,
+# clears the firstboot flag, and reboots so the user lands in
+# MDE.
+#
+# Not WantedBy any target — the wizard explicitly invokes this.
+# That ordering is load-bearing: we only want to clean up on
+# the success path, not the abort or quit paths.
+Description=MDE installer completion — restore graphical default + reboot
+ConditionPathExists=/var/lib/mde/installer/firstboot.needed
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/mde/mde-installer-complete
+StandardOutput=journal
+StandardError=journal
