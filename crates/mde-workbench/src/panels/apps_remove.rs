@@ -216,8 +216,7 @@ impl AppsRemovePanel {
             )
             .size(13),
             row![select_all, deselect_all, remove_btn].spacing(8),
-            scrollable(container(rows.spacing(4)))
-                .height(Length::Fixed(360.0)),
+            scrollable(container(rows.spacing(4))).height(Length::Fixed(360.0)),
             text("Output").size(14),
             scrollable(
                 container(text(&self.output).size(12))
@@ -229,7 +228,6 @@ impl AppsRemovePanel {
         ]
         .spacing(12)
         .width(Length::Fill)
-        
         .into()
     }
 }

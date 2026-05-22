@@ -80,17 +80,17 @@ fn load_theme() -> Theme {
 fn theme_from_tokens(tokens: &mackes_theme::TokenTable) -> Theme {
     let mut palette = iced::theme::Palette {
         background: Color::from_rgb8(0x1a, 0x1a, 0x1a),
-        text:       Color::from_rgb8(0xcc, 0xcc, 0xcc),
-        primary:    Color::from_rgb8(0xff, 0x77, 0x00),
-        success:    Color::from_rgb8(0x3e, 0x86, 0x35),
-        danger:     Color::from_rgb8(0xc9, 0x19, 0x0b),
+        text: Color::from_rgb8(0xcc, 0xcc, 0xcc),
+        primary: Color::from_rgb8(0xff, 0x77, 0x00),
+        success: Color::from_rgb8(0x3e, 0x86, 0x35),
+        danger: Color::from_rgb8(0xc9, 0x19, 0x0b),
     };
     let seeds: &[(&str, fn(&mut iced::theme::Palette, Color))] = &[
-        ("cds_bg_default",      |p, c| p.background = c),
-        ("cds_text_primary",    |p, c| p.text = c),
-        ("mackes_accent",       |p, c| p.primary = c),
+        ("cds_bg_default", |p, c| p.background = c),
+        ("cds_text_primary", |p, c| p.text = c),
+        ("mackes_accent", |p, c| p.primary = c),
         ("cds_support_success", |p, c| p.success = c),
-        ("cds_support_error",   |p, c| p.danger = c),
+        ("cds_support_error", |p, c| p.danger = c),
     ];
     for (name, setter) in seeds {
         if let Some(val) = token_value(tokens, name) {

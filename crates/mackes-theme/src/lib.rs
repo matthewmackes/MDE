@@ -216,18 +216,22 @@ pub fn read_active_preset() -> Option<String> {
 /// `@define-color` → merges into `base` (accent entries win).
 /// No-ops gracefully when any file is missing.
 pub fn apply_preset_accent(base: &mut TokenTable) {
-    let Some(preset) = read_active_preset() else { return };
-    let Some(path) = locate_accent_css(&preset) else { return };
-    let Ok(css) = std::fs::read_to_string(path) else { return };
+    let Some(preset) = read_active_preset() else {
+        return;
+    };
+    let Some(path) = locate_accent_css(&preset) else {
+        return;
+    };
+    let Ok(css) = std::fs::read_to_string(path) else {
+        return;
+    };
     base.extend(parse_tokens(&css));
 }
 
 fn mde_state_json_path() -> Option<PathBuf> {
     let config_root = std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config"))
-        })?;
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))?;
     Some(config_root.join("mde").join("state.json"))
 }
 
@@ -238,7 +242,11 @@ fn json_string_field(json: &str, key: &str) -> Option<String> {
     let inner = after_colon.strip_prefix('"')?;
     let end = inner.find('"')?;
     let value = &inner[..end];
-    if value.is_empty() { None } else { Some(value.to_string()) }
+    if value.is_empty() {
+        None
+    } else {
+        Some(value.to_string())
+    }
 }
 
 #[cfg(test)]

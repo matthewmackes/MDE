@@ -127,7 +127,11 @@ impl AppsInstallPanel {
         let name_input = text_input("Package name (e.g. ripgrep)", &self.name_input)
             .on_input(|v| crate::Message::AppsInstall(Message::NameChanged(v)));
         // UX-7.a — install routed through Primary (dominant CTA).
-        let install_label = if self.busy { "Installing…" } else { "Install" };
+        let install_label = if self.busy {
+            "Installing…"
+        } else {
+            "Install"
+        };
         let install_btn = variant_button(
             install_label,
             ButtonVariant::Primary,
@@ -165,8 +169,7 @@ impl AppsInstallPanel {
             .size(13),
             row![name_input, install_btn].spacing(12),
             text("MDE recommendations").size(16),
-            scrollable(container(quick_rows.spacing(4)))
-                .height(Length::Fixed(280.0)),
+            scrollable(container(quick_rows.spacing(4))).height(Length::Fixed(280.0)),
             text("Output").size(14),
             scrollable(
                 container(text(&self.output).size(12))
@@ -178,7 +181,6 @@ impl AppsInstallPanel {
         ]
         .spacing(12)
         .width(Length::Fill)
-        
         .into()
     }
 }

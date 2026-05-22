@@ -31,7 +31,7 @@ impl Theme {
     /// Stable identifier for `preferences.toml`.
     pub fn id(self) -> &'static str {
         match self {
-            Theme::Dark  => "dark",
+            Theme::Dark => "dark",
             Theme::Light => "light",
         }
     }
@@ -40,9 +40,9 @@ impl Theme {
     /// unknown input.
     pub fn from_id(s: &str) -> Option<Self> {
         match s {
-            "dark"  => Some(Theme::Dark),
+            "dark" => Some(Theme::Dark),
             "light" => Some(Theme::Light),
-            _       => None,
+            _ => None,
         }
     }
 }

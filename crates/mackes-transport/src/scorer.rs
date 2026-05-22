@@ -22,9 +22,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::{
-    HealthState, MessageClass, MessageClassSet, SwitchReason, Transport, TransportKind,
-};
+use crate::{HealthState, MessageClass, MessageClassSet, SwitchReason, Transport, TransportKind};
 
 /// Per-message-class weight bundle. Values 0.0..=1.0; higher
 /// means "prefer this transport family more strongly for this
@@ -346,12 +344,7 @@ mod tests {
         let mut udp = all_carrier(TransportKind::DirectUdp);
         udp.health = HealthState::Degraded;
         let kdc = all_carrier(TransportKind::KdcTls);
-        let r = score(
-            &[udp, kdc],
-            MessageClass::Control,
-            &Policy::default(),
-        )
-        .unwrap();
+        let r = score(&[udp, kdc], MessageClass::Control, &Policy::default()).unwrap();
         // KdcTls wins because Degraded UDP gets a +0.5 penalty
         // that exceeds the preference-order gap.
         assert_eq!(r.primary, TransportKind::KdcTls);
@@ -437,7 +430,7 @@ mod tests {
         // must fall back on TransportKind::all() order.
         let policy = Policy {
             weights: ClassWeights {
-                latency: 0.0,    // all scores 0 → ties everywhere
+                latency: 0.0, // all scores 0 → ties everywhere
                 throughput: 0.0,
                 reliability: 0.0,
             },

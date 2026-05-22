@@ -59,7 +59,10 @@ pub fn available_mime_types() -> Vec<String> {
         return Vec::new();
     }
     let s = String::from_utf8_lossy(&out.stdout);
-    s.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect()
+    s.lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect()
 }
 
 /// One past clipboard entry, as stored in `~/.cache/mde/clipboard.json`
@@ -123,7 +126,8 @@ mod tests {
 
     #[test]
     fn parse_clipboard_history_picks_up_peer_origin() {
-        let json = r#"[{"captured_at_ms":1,"mime":"text/plain","body":"x","origin_peer":"lab-01"}]"#;
+        let json =
+            r#"[{"captured_at_ms":1,"mime":"text/plain","body":"x","origin_peer":"lab-01"}]"#;
         let parsed = parse_clipboard_history(json);
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].origin_peer, Some("lab-01".into()));

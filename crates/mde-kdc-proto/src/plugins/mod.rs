@@ -172,8 +172,11 @@ pub trait Plugin: Send + Sync + std::fmt::Debug {
     /// `ctx` carries the dispatch-time information about the
     /// sender (peer-id, paired-state) so plugins don't have to
     /// duplicate the lookup.
-    fn process(&mut self, packet: &crate::wire::Packet, ctx: &PluginContext)
-        -> Vec<crate::wire::Packet>;
+    fn process(
+        &mut self,
+        packet: &crate::wire::Packet,
+        ctx: &PluginContext,
+    ) -> Vec<crate::wire::Packet>;
 }
 
 /// Per-dispatch context handed to every `Plugin::process` call.
@@ -401,10 +404,7 @@ mod tests {
             &self.handles
         }
         fn process(&mut self, packet: &Packet, _ctx: &PluginContext) -> Vec<Packet> {
-            self.received
-                .lock()
-                .unwrap()
-                .push(packet.kind.clone());
+            self.received.lock().unwrap().push(packet.kind.clone());
             if self.emit_echo {
                 vec![packet.clone()]
             } else {

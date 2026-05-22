@@ -152,7 +152,10 @@ mod tests {
     #[test]
     fn section_names_match_lock() {
         let names: Vec<&str> = SECTIONS.iter().map(|(n, _)| *n).collect();
-        assert_eq!(names, vec!["Shells", "Packages", "Services", "Security", "Storage"]);
+        assert_eq!(
+            names,
+            vec!["Shells", "Packages", "Services", "Security", "Storage"]
+        );
     }
 
     #[test]

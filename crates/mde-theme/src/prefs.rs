@@ -36,7 +36,9 @@ impl Default for Preferences {
 }
 
 #[cfg(feature = "serde")]
-fn default_theme() -> Theme { Theme::Dark }
+fn default_theme() -> Theme {
+    Theme::Dark
+}
 
 impl Preferences {
     /// Parse a TOML string. Missing fields fall back to defaults.
@@ -60,11 +62,13 @@ impl Preferences {
     pub fn xdg_path() -> Option<std::path::PathBuf> {
         let base = std::env::var_os("XDG_CONFIG_HOME")
             .map(std::path::PathBuf::from)
-            .or_else(|| std::env::var_os("HOME").map(|h| {
-                let mut p = std::path::PathBuf::from(h);
-                p.push(".config");
-                p
-            }))?;
+            .or_else(|| {
+                std::env::var_os("HOME").map(|h| {
+                    let mut p = std::path::PathBuf::from(h);
+                    p.push(".config");
+                    p
+                })
+            })?;
         let mut p = base;
         p.push("mde");
         p.push("preferences.toml");
@@ -84,9 +88,11 @@ impl serde::Serialize for Theme {
 impl<'de> serde::Deserialize<'de> for Theme {
     fn deserialize<D: serde::Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
         let s = String::deserialize(de)?;
-        Theme::from_id(&s).ok_or_else(|| serde::de::Error::custom(
-            format!("unknown theme id: {s:?}; expected \"dark\" or \"light\"")
-        ))
+        Theme::from_id(&s).ok_or_else(|| {
+            serde::de::Error::custom(format!(
+                "unknown theme id: {s:?}; expected \"dark\" or \"light\""
+            ))
+        })
     }
 }
 
@@ -101,18 +107,23 @@ impl serde::Serialize for Density {
 impl<'de> serde::Deserialize<'de> for Density {
     fn deserialize<D: serde::Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
         let s = String::deserialize(de)?;
-        Density::from_id(&s).ok_or_else(|| serde::de::Error::custom(
-            format!("unknown density id: {s:?}; expected \"compact\", \"comfortable\", or \"spacious\"")
-        ))
+        Density::from_id(&s).ok_or_else(|| {
+            serde::de::Error::custom(format!(
+                "unknown density id: {s:?}; expected \"compact\", \"comfortable\", or \"spacious\""
+            ))
+        })
     }
 }
 
 #[cfg(feature = "serde")]
 #[derive(serde::Serialize, serde::Deserialize)]
 struct A11ySerde {
-    #[serde(default)] high_contrast: bool,
-    #[serde(default)] colorblind_safe: bool,
-    #[serde(default)] reduce_motion: bool,
+    #[serde(default)]
+    high_contrast: bool,
+    #[serde(default)]
+    colorblind_safe: bool,
+    #[serde(default)]
+    reduce_motion: bool,
 }
 
 #[cfg(feature = "serde")]

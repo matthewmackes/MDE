@@ -180,8 +180,8 @@ mod tests {
             kind: "kdeconnect.identity".to_string(),
             body: serde_json::Value::Null,
             mde_caps: None,
-        payload_size: None,
-        payload_transfer_info: None,
+            payload_size: None,
+            payload_transfer_info: None,
         };
         let s = encode_frame(&p).unwrap();
         assert!(s.ends_with('\n'));
@@ -230,8 +230,8 @@ mod tests {
             kind: "kdeconnect.ping".to_string(),
             body: serde_json::Value::Null,
             mde_caps: None,
-        payload_size: None,
-        payload_transfer_info: None,
+            payload_size: None,
+            payload_transfer_info: None,
         };
         encode_frame(&p).unwrap().into_bytes()
     }
@@ -288,8 +288,8 @@ mod tests {
             kind: "kdeconnect.ping".to_string(),
             body: serde_json::Value::Null,
             mde_caps: None,
-        payload_size: None,
-        payload_transfer_info: None,
+            payload_size: None,
+            payload_transfer_info: None,
         };
         let mut bytes = serde_json::to_string(&p).unwrap().into_bytes();
         bytes.extend_from_slice(b"\r\n");
@@ -343,17 +343,17 @@ mod tests {
         // cleanly or surfaces an error — never a panic, never a
         // deadlock, never an unbounded allocation.
         let corpus: &[&[u8]] = &[
-            b"",                                                     // empty
-            b"\n",                                                   // just newline
-            b"\0",                                                   // null byte
-            b"\n\n\n\n",                                             // all keepalive
-            b"{",                                                    // unterminated object
-            b"{}\n",                                                 // valid JSON but wrong shape
-            b"{\"id\":1}\n",                                         // missing required field
-            b"{\"id\":1,\"type\":\"x\",\"body\":null}\n",            // smallest valid Packet
-            b"\xff\xfe\xfd\n",                                       // invalid UTF-8 + newline
+            b"",                                                       // empty
+            b"\n",                                                     // just newline
+            b"\0",                                                     // null byte
+            b"\n\n\n\n",                                               // all keepalive
+            b"{",                                                      // unterminated object
+            b"{}\n",                                                   // valid JSON but wrong shape
+            b"{\"id\":1}\n",                                           // missing required field
+            b"{\"id\":1,\"type\":\"x\",\"body\":null}\n",              // smallest valid Packet
+            b"\xff\xfe\xfd\n",                                         // invalid UTF-8 + newline
             b"{\"id\":1,\"type\":\"x\",\"body\":null,\"extra\":42}\n", // unknown field tolerated
-            b"\r\n\r\n",                                             // crlf keepalives
+            b"\r\n\r\n",                                               // crlf keepalives
             // partial frames that never close
             &[b'{'; 1024],
         ];

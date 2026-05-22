@@ -48,14 +48,8 @@ pub fn step_index(percent: u8) -> usize {
 /// None on any subprocess error.
 #[must_use]
 pub fn read_brightness_percent() -> Option<u8> {
-    let cur = Command::new("brightnessctl")
-        .args(["get"])
-        .output()
-        .ok()?;
-    let max = Command::new("brightnessctl")
-        .args(["max"])
-        .output()
-        .ok()?;
+    let cur = Command::new("brightnessctl").args(["get"]).output().ok()?;
+    let max = Command::new("brightnessctl").args(["max"]).output().ok()?;
     let cur: u64 = std::str::from_utf8(&cur.stdout).ok()?.trim().parse().ok()?;
     let max: u64 = std::str::from_utf8(&max.stdout).ok()?.trim().parse().ok()?;
     if max == 0 {
@@ -220,7 +214,8 @@ mod tests {
 
     #[test]
     fn parse_pactl_volume_averages_channels() {
-        let sample = "Volume: front-left: 65536 / 65% / -10.51 dB, front-right: 65536 / 65% / -10.51 dB";
+        let sample =
+            "Volume: front-left: 65536 / 65% / -10.51 dB, front-right: 65536 / 65% / -10.51 dB";
         assert_eq!(parse_pactl_volume(sample), Some(65));
     }
 

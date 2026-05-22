@@ -142,11 +142,8 @@ mod tests {
             labels: BTreeMap::new(),
         };
         let hist = Arc::new(Mutex::new(sample_histogram()));
-        let w = MetricsFlushWorker::new(
-            tmp.path().to_path_buf(),
-            vec![counter],
-            vec![hist.clone()],
-        );
+        let w =
+            MetricsFlushWorker::new(tmp.path().to_path_buf(), vec![counter], vec![hist.clone()]);
         let path = w.flush_once().unwrap();
         assert!(path.exists());
         let content = std::fs::read_to_string(&path).unwrap();
@@ -158,11 +155,7 @@ mod tests {
     fn flush_once_snapshots_live_observations() {
         let tmp = tempfile::tempdir().unwrap();
         let hist = Arc::new(Mutex::new(kdc2_router_decision_us()));
-        let w = MetricsFlushWorker::new(
-            tmp.path().to_path_buf(),
-            vec![],
-            vec![hist.clone()],
-        );
+        let w = MetricsFlushWorker::new(tmp.path().to_path_buf(), vec![], vec![hist.clone()]);
         // Observe 5 samples — flush sees them.
         hist.lock().unwrap().observe(500.0);
         hist.lock().unwrap().observe(800.0);

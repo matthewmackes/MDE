@@ -59,7 +59,12 @@ impl WizardApp {
     }
 
     fn title(&self) -> String {
-        format!("MDE wizard — {} ({}/{})", self.page.label(), self.page.index(), WizardPage::total())
+        format!(
+            "MDE wizard — {} ({}/{})",
+            self.page.label(),
+            self.page.index(),
+            WizardPage::total()
+        )
     }
 
     #[allow(clippy::unused_self)]
@@ -122,9 +127,15 @@ impl WizardApp {
         nav = nav.push(button(text(next_label)).on_press(Message::NavNext));
 
         container(
-            column![header, Space::with_height(Length::Fixed(16.0)), body, Space::with_height(Length::Fill), nav]
-                .padding(Padding::new(24.0))
-                .spacing(8),
+            column![
+                header,
+                Space::with_height(Length::Fixed(16.0)),
+                body,
+                Space::with_height(Length::Fill),
+                nav
+            ]
+            .padding(Padding::new(24.0))
+            .spacing(8),
         )
         .width(Length::Fill)
         .height(Length::Fill)
@@ -143,7 +154,10 @@ fn welcome_body<'a>() -> Element<'a, Message> {
 
 fn scan_body<'a>() -> Element<'a, Message> {
     let report = pages::scan::ScanReport::probe();
-    let mut col = column![text("Environment").size(16), Space::with_height(Length::Fixed(8.0))];
+    let mut col = column![
+        text("Environment").size(16),
+        Space::with_height(Length::Fixed(8.0))
+    ];
     for line in report.lines() {
         col = col.push(text(line).size(13));
     }
@@ -166,9 +180,7 @@ fn preset_body<'a>(state: &'a WizardState) -> Element<'a, Message> {
         Space::with_height(Length::Fixed(8.0)),
     ];
     for preset in pages::preset::PRESETS {
-        col = col.push(
-            text(format!("  · {} — {}", preset.display_name, preset.blurb)).size(13),
-        );
+        col = col.push(text(format!("  · {} — {}", preset.display_name, preset.blurb)).size(13));
     }
     col.into()
 }
@@ -194,7 +206,10 @@ fn mesh_body<'a>(state: &'a WizardState) -> Element<'a, Message> {
 fn network_body<'a>() -> Element<'a, Message> {
     column![
         text("Network").size(16),
-        text("First-run NetworkManager bring-up. nmcli will list active connections at Apply time.").size(13),
+        text(
+            "First-run NetworkManager bring-up. nmcli will list active connections at Apply time."
+        )
+        .size(13),
     ]
     .into()
 }

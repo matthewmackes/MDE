@@ -50,8 +50,8 @@ fn open_rejects_tampered_ciphertext() {
     let mut ciphertext = seal_session(&key, nonce, b"meta", b"plaintext").unwrap();
     // Flip a body byte.
     ciphertext[0] ^= 0xff;
-    let err = open_session(&key, nonce, b"meta", &ciphertext)
-        .expect_err("tampered ciphertext must fail");
+    let err =
+        open_session(&key, nonce, b"meta", &ciphertext).expect_err("tampered ciphertext must fail");
     assert!(matches!(err, CryptoError::AeadAuthFailed));
 }
 
@@ -63,8 +63,7 @@ fn open_rejects_tampered_tag() {
     // Flip a tag byte (last 16 bytes are the tag).
     let last = ciphertext.len() - 1;
     ciphertext[last] ^= 0xff;
-    let err = open_session(&key, nonce, b"meta", &ciphertext)
-        .expect_err("tampered tag must fail");
+    let err = open_session(&key, nonce, b"meta", &ciphertext).expect_err("tampered tag must fail");
     assert!(matches!(err, CryptoError::AeadAuthFailed));
 }
 
@@ -85,8 +84,7 @@ fn open_rejects_wrong_session_key() {
     let nonce = fixed_nonce();
     let ciphertext = seal_session(&fixed_key(), nonce, b"", b"x").unwrap();
     let wrong_key = [0xff_u8; SESSION_KEY_LEN];
-    let err = open_session(&wrong_key, nonce, b"", &ciphertext)
-        .expect_err("wrong key must fail");
+    let err = open_session(&wrong_key, nonce, b"", &ciphertext).expect_err("wrong key must fail");
     assert!(matches!(err, CryptoError::AeadAuthFailed));
 }
 
@@ -144,5 +142,8 @@ fn different_nonces_produce_different_ciphertexts() {
     n2[0] = 0x02;
     let c1 = seal_session(&key, n1, b"", b"same plaintext").unwrap();
     let c2 = seal_session(&key, n2, b"", b"same plaintext").unwrap();
-    assert_ne!(c1, c2, "different nonces must produce different ciphertexts");
+    assert_ne!(
+        c1, c2,
+        "different nonces must produce different ciphertexts"
+    );
 }

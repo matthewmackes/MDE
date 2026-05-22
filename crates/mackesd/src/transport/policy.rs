@@ -192,10 +192,7 @@ pub fn parse_policy(raw: &str) -> Result<LoadedPolicy, PolicyError> {
 /// surface as `Err(PolicyError)` so the daemon can decide
 /// whether to refuse to start (recommended for production) or
 /// fall back to baseline (recommended for dev).
-pub fn load_with_paths(
-    system: &Path,
-    user: &Path,
-) -> Result<LoadedPolicy, PolicyError> {
+pub fn load_with_paths(system: &Path, user: &Path) -> Result<LoadedPolicy, PolicyError> {
     let system_file = read_optional(system)?
         .map(|raw| toml::from_str::<PolicyFile>(&raw).map_err(PolicyError::InvalidToml))
         .transpose()?
@@ -248,12 +245,8 @@ impl PolicyFile {
                     .and_then(|w| w.reliability)
                     .unwrap_or(baseline.scorer.weights.reliability),
             },
-            flap_penalty: self
-                .flap_penalty
-                .unwrap_or(baseline.scorer.flap_penalty),
-            pinned_primary: parse_transport_kinds(
-                self.pinned_primary.unwrap_or_default(),
-            )?,
+            flap_penalty: self.flap_penalty.unwrap_or(baseline.scorer.flap_penalty),
+            pinned_primary: parse_transport_kinds(self.pinned_primary.unwrap_or_default())?,
             denylist: parse_transport_kinds(self.denylist.unwrap_or_default())?,
         };
         let plugins = self.plugins.unwrap_or_default();
@@ -267,11 +260,7 @@ impl PolicyFile {
             // We can't tell the two apart from the deserialized
             // struct alone, so we err on the side of "explicit
             // file wins" — user must include the deny they want.
-            plugins
-                .deny
-                .iter()
-                .map(|s| s.to_string())
-                .collect()
+            plugins.deny.iter().map(|s| s.to_string()).collect()
         } else {
             plugins.deny
         };
@@ -460,7 +449,10 @@ mod tests {
         let p = parse_policy(raw).unwrap();
         assert_eq!(p.plugin_deny, vec!["run_command".to_string()]);
         let entry = p.plugin_per_device_allow.get("run_command").unwrap();
-        assert_eq!(entry, &vec!["abc-123".to_string(), "trusted-laptop".to_string()]);
+        assert_eq!(
+            entry,
+            &vec!["abc-123".to_string(), "trusted-laptop".to_string()]
+        );
         // Behavior lock — the listed device gets through.
         assert!(p.plugin_allowed_for_device("run_command", "abc-123"));
         assert!(!p.plugin_allowed_for_device("run_command", "some-other"));
@@ -511,7 +503,7 @@ mod tests {
         // future per-field merge is captured under KDC2-1.11.b.
         assert!((p.scorer.weights.latency - 0.9).abs() < 1e-6);
         assert!((p.scorer.weights.throughput - 0.7).abs() < 1e-6); // baseline default
-        // flap_penalty wasn't in user → inherits SYSTEM (not baseline).
+                                                                   // flap_penalty wasn't in user → inherits SYSTEM (not baseline).
         assert!((p.scorer.flap_penalty - 0.1).abs() < 1e-6);
     }
 

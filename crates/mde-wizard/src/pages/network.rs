@@ -50,7 +50,12 @@ pub fn parse_nmcli_connections(output: &str) -> Vec<NmConnection> {
 /// Build the argv for activating the connection.
 #[must_use]
 pub fn build_activate_argv(connection_name: &str) -> Vec<String> {
-    vec!["nmcli".into(), "connection".into(), "up".into(), connection_name.into()]
+    vec![
+        "nmcli".into(),
+        "connection".into(),
+        "up".into(),
+        connection_name.into(),
+    ]
 }
 
 #[cfg(test)]

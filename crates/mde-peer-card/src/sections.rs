@@ -14,9 +14,9 @@
 //! `mde-theme` tokens; `card_is_read_only` test enforces the
 //! no-mutation contract on messages.
 
-use iced::{Border, Color, Element, Length, Padding};
 use iced::widget::{column, container, row, text, Space};
-use mde_theme::{TypeRole, Tokens};
+use iced::{Border, Color, Element, Length, Padding};
+use mde_theme::{Tokens, TypeRole};
 
 use crate::probe::PeerProbe;
 
@@ -41,10 +41,10 @@ impl Section {
     #[must_use]
     pub fn label(self) -> &'static str {
         match self {
-            Section::BusTopology  => "Bus & topology",
+            Section::BusTopology => "Bus & topology",
             Section::KernelDriver => "Kernel & driver",
             Section::PowerThermal => "Power & thermal",
-            Section::Descriptors  => "Descriptors & capabilities",
+            Section::Descriptors => "Descriptors & capabilities",
         }
     }
 
@@ -108,21 +108,18 @@ pub fn view<'a, Msg: 'a + Clone>(
 
     let _ = on_toggle; // Wired to the header press in the binary.
 
-    container(
-        column![header, body]
-            .width(Length::Fill)
-    )
-    .width(Length::Fill)
-    .style(move |_theme| container::Style {
-        background: None,
-        border: Border {
-            color: rgba_to_color(palette.border),
-            width: 1.0,
-            radius: 0.into(),
-        },
-        ..container::Style::default()
-    })
-    .into()
+    container(column![header, body].width(Length::Fill))
+        .width(Length::Fill)
+        .style(move |_theme| container::Style {
+            background: None,
+            border: Border {
+                color: rgba_to_color(palette.border),
+                width: 1.0,
+                radius: 0.into(),
+            },
+            ..container::Style::default()
+        })
+        .into()
 }
 
 /// Render the body content for a given section. Read-only —
@@ -144,11 +141,7 @@ fn section_body<'a, Msg: 'a + Clone>(
             kv_row("Kernel", &probe.kernel.uname, tokens),
             kv_row("Transport", &probe.kernel.transport_module, tokens),
             kv_row("mded", &probe.kernel.mded_version, tokens),
-            kv_row(
-                "dmesg",
-                &probe.kernel.dmesg_tail.join("\n"),
-                tokens,
-            ),
+            kv_row("dmesg", &probe.kernel.dmesg_tail.join("\n"), tokens),
         ],
         Section::PowerThermal => vec![
             kv_row(
@@ -162,7 +155,11 @@ fn section_body<'a, Msg: 'a + Clone>(
             ),
             kv_row(
                 "AC adapter",
-                if probe.power.on_ac { "Connected" } else { "Disconnected" },
+                if probe.power.on_ac {
+                    "Connected"
+                } else {
+                    "Disconnected"
+                },
                 tokens,
             ),
             kv_row(
@@ -185,28 +182,28 @@ fn section_body<'a, Msg: 'a + Clone>(
             ),
         ],
         Section::Descriptors => vec![
-            kv_row("Services", &probe.descriptors.mesh_services.join(", "), tokens),
-            kv_row("Classes", &probe.descriptors.sysfs_classes.join(", "), tokens),
             kv_row(
-                "USB",
-                &probe.descriptors.usb_descriptors.join("\n"),
+                "Services",
+                &probe.descriptors.mesh_services.join(", "),
                 tokens,
             ),
+            kv_row(
+                "Classes",
+                &probe.descriptors.sysfs_classes.join(", "),
+                tokens,
+            ),
+            kv_row("USB", &probe.descriptors.usb_descriptors.join("\n"), tokens),
         ],
     };
 
-    container(
-        column(rows)
-            .spacing(space.sm)
-            .width(Length::Fill),
-    )
-    .padding(Padding {
-        top: f32::from(space.sm),
-        right: f32::from(space.lg2),
-        bottom: f32::from(space.lg2),
-        left: f32::from(space.lg2),
-    })
-    .into()
+    container(column(rows).spacing(space.sm).width(Length::Fill))
+        .padding(Padding {
+            top: f32::from(space.sm),
+            right: f32::from(space.lg2),
+            bottom: f32::from(space.lg2),
+            left: f32::from(space.lg2),
+        })
+        .into()
 }
 
 /// Single key/value row. Label tier in muted text, value tier in
@@ -251,10 +248,10 @@ mod tests {
     #[test]
     fn section_labels_match_pc9_lock() {
         // PC-9 acceptance: labels are stable + match the spec.
-        assert_eq!(Section::BusTopology.label(),  "Bus & topology");
+        assert_eq!(Section::BusTopology.label(), "Bus & topology");
         assert_eq!(Section::KernelDriver.label(), "Kernel & driver");
         assert_eq!(Section::PowerThermal.label(), "Power & thermal");
-        assert_eq!(Section::Descriptors.label(),  "Descriptors & capabilities");
+        assert_eq!(Section::Descriptors.label(), "Descriptors & capabilities");
     }
 
     #[test]

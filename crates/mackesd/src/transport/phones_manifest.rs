@@ -133,10 +133,7 @@ pub fn manifest_path(qnm_root: &Path, peer_id: &str) -> PathBuf {
 
 /// Atomically write a `PhonesManifest` for `peer_id` under
 /// `qnm_root`. Creates parent directories as needed.
-pub fn write_manifest(
-    qnm_root: &Path,
-    manifest: &PhonesManifest,
-) -> Result<(), ManifestError> {
+pub fn write_manifest(qnm_root: &Path, manifest: &PhonesManifest) -> Result<(), ManifestError> {
     let path = manifest_path(qnm_root, &manifest.peer_id);
     let parent = path.parent().ok_or_else(|| {
         ManifestError::Io(std::io::Error::new(

@@ -18,7 +18,10 @@ pub fn validate(input: &str) -> Result<(), ValidationError> {
             want: PASSCODE_LEN,
         });
     }
-    if !input.chars().all(|c| c.is_ascii_alphanumeric() && c.is_uppercase() || c.is_ascii_digit()) {
+    if !input
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() && c.is_uppercase() || c.is_ascii_digit())
+    {
         return Err(ValidationError::InvalidCharacter);
     }
     Ok(())
@@ -47,7 +50,11 @@ impl std::fmt::Display for ValidationError {
 /// Returns the candidate ready for [`validate`].
 #[must_use]
 pub fn normalize(input: &str) -> String {
-    input.chars().filter(|c| !c.is_whitespace()).flat_map(|c| c.to_uppercase()).collect()
+    input
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .flat_map(|c| c.to_uppercase())
+        .collect()
 }
 
 /// Build the argv that invokes `mded enroll --passcode <pc>

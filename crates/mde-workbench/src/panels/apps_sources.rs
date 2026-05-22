@@ -244,10 +244,12 @@ impl AppsSourcesPanel {
             let toggle_btn = variant_button(
                 btn_label,
                 ButtonVariant::Secondary,
-                (!self.busy).then(|| crate::Message::AppsSources(Message::ToggleClicked {
-                    id,
-                    enable: next_enable,
-                })),
+                (!self.busy).then(|| {
+                    crate::Message::AppsSources(Message::ToggleClicked {
+                        id,
+                        enable: next_enable,
+                    })
+                }),
                 palette,
             );
             let state_label = if r.enabled { "enabled" } else { "disabled" };
@@ -275,8 +277,7 @@ impl AppsSourcesPanel {
 
         column![
             row![filter_input, refresh_btn].spacing(12),
-            scrollable(container(rows_view.spacing(4)))
-                .height(Length::Fill),
+            scrollable(container(rows_view.spacing(4))).height(Length::Fill),
             text(format!(
                 "{} matching / {} total ({} enabled)",
                 filtered.len(),
@@ -305,7 +306,6 @@ impl AppsSourcesPanel {
         ]
         .spacing(12)
         .width(Length::Fill)
-        
         .into()
     }
 }

@@ -41,13 +41,13 @@ impl TypeRole {
     /// Pixel size for this role from a [`FontSize`] bundle.
     pub fn size_in(self, sizes: FontSize) -> f32 {
         match self {
-            TypeRole::Caption    => sizes.caption,
-            TypeRole::Body       => sizes.body,
+            TypeRole::Caption => sizes.caption,
+            TypeRole::Body => sizes.body,
             TypeRole::Subheading => sizes.subheading,
-            TypeRole::Heading    => sizes.heading,
-            TypeRole::Section    => sizes.section,
-            TypeRole::Display    => sizes.display,
-            TypeRole::Mono       => sizes.mono,
+            TypeRole::Heading => sizes.heading,
+            TypeRole::Section => sizes.section,
+            TypeRole::Display => sizes.display,
+            TypeRole::Mono => sizes.mono,
         }
     }
 
@@ -55,13 +55,11 @@ impl TypeRole {
     /// bundle.
     pub fn letter_spacing_in(self, ls: LetterSpacing) -> f32 {
         match self {
-            TypeRole::Display    => ls.display,
-            TypeRole::Section    => ls.section,
-            TypeRole::Heading    => ls.heading,
-            TypeRole::Caption    |
-            TypeRole::Body       |
-            TypeRole::Subheading => ls.body,
-            TypeRole::Mono       => ls.mono,
+            TypeRole::Display => ls.display,
+            TypeRole::Section => ls.section,
+            TypeRole::Heading => ls.heading,
+            TypeRole::Caption | TypeRole::Body | TypeRole::Subheading => ls.body,
+            TypeRole::Mono => ls.mono,
         }
     }
 
@@ -70,13 +68,12 @@ impl TypeRole {
     /// are regular.
     pub fn weight_in(self, w: FontWeight) -> u16 {
         match self {
-            TypeRole::Display    |
-            TypeRole::Section    |
-            TypeRole::Heading    |
-            TypeRole::Subheading |
-            TypeRole::Caption    => w.medium,
-            TypeRole::Body       |
-            TypeRole::Mono       => w.regular,
+            TypeRole::Display
+            | TypeRole::Section
+            | TypeRole::Heading
+            | TypeRole::Subheading
+            | TypeRole::Caption => w.medium,
+            TypeRole::Body | TypeRole::Mono => w.regular,
         }
     }
 
@@ -86,7 +83,7 @@ impl TypeRole {
     pub fn family(self) -> &'static str {
         match self {
             TypeRole::Mono => FONT_MONO,
-            _              => FONT_DISPLAY_BODY,
+            _ => FONT_DISPLAY_BODY,
         }
     }
 }
@@ -114,13 +111,13 @@ impl FontSize {
     /// Token defaults — the 1.2 minor third scale per Q14.
     pub const fn defaults() -> Self {
         Self {
-            caption:    12.0,
-            body:       14.0,
+            caption: 12.0,
+            body: 14.0,
             subheading: 17.0,
-            heading:    20.0,
-            section:    24.0,
-            display:    28.0,
-            mono:       13.0,
+            heading: 20.0,
+            section: 24.0,
+            display: 28.0,
+            mono: 13.0,
         }
     }
 }
@@ -149,8 +146,8 @@ impl LetterSpacing {
             display: -0.015,
             section: -0.010,
             heading: -0.010,
-            body:     0.000,
-            mono:     0.000,
+            body: 0.000,
+            mono: 0.000,
         }
     }
 }
@@ -170,7 +167,7 @@ impl FontWeight {
     pub const fn defaults() -> Self {
         Self {
             regular: 400,
-            medium:  500,
+            medium: 500,
         }
     }
 }

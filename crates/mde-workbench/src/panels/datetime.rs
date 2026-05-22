@@ -164,7 +164,6 @@ impl DateTimePanel {
             ]
             .spacing(8)
             .width(Length::Fill)
-            
             .into();
         }
 
@@ -191,7 +190,6 @@ impl DateTimePanel {
         ]
         .spacing(12)
         .width(Length::Fill)
-        
         .into()
     }
 }

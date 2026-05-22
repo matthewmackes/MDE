@@ -216,8 +216,8 @@ mod tests {
             kind: "kdeconnect.identity".to_string(),
             body: serde_json::Value::Null,
             mde_caps: Some(CapabilitiesHeader::v2_1_lock()),
-        payload_size: None,
-        payload_transfer_info: None,
+            payload_size: None,
+            payload_transfer_info: None,
         };
         let s = serde_json::to_string(&p).unwrap();
         // Field name lands as `mdeCaps` (camelCase) per KDE Connect's
@@ -246,16 +246,16 @@ mod tests {
             kind: "kdeconnect.identity".to_string(),
             body: serde_json::Value::Null,
             mde_caps: None,
-        payload_size: None,
-        payload_transfer_info: None,
+            payload_size: None,
+            payload_transfer_info: None,
         };
         let mde = Packet {
             id: 1,
             kind: "kdeconnect.identity".to_string(),
             body: serde_json::Value::Null,
             mde_caps: Some(CapabilitiesHeader::default()),
-        payload_size: None,
-        payload_transfer_info: None,
+            payload_size: None,
+            payload_transfer_info: None,
         };
         assert!(!stock.from_mde_peer());
         assert!(mde.from_mde_peer());
@@ -297,7 +297,10 @@ mod tests {
             ..Default::default()
         };
         let s = serde_json::to_string(&p).unwrap();
-        assert!(!s.contains("payloadSize"), "plain packet leaks payloadSize: {s}");
+        assert!(
+            !s.contains("payloadSize"),
+            "plain packet leaks payloadSize: {s}"
+        );
         assert!(
             !s.contains("payloadTransferInfo"),
             "plain packet leaks payloadTransferInfo: {s}",

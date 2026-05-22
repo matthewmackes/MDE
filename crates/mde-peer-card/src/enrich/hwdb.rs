@@ -66,11 +66,7 @@ impl HwdbInfo {
     /// for unresolved IDs so the card always paints something
     /// informative.
     #[must_use]
-    pub fn from_lookup(
-        vendor_id: &str,
-        product_id: &str,
-        hwdb: &Hwdb,
-    ) -> Self {
+    pub fn from_lookup(vendor_id: &str, product_id: &str, hwdb: &Hwdb) -> Self {
         let vendor_name = hwdb
             .vendor(vendor_id)
             .map(str::to_owned)
@@ -176,10 +172,7 @@ impl Hwdb {
                 // Device line: `<id>  <name>` (two-space sep).
                 if let Some(vendor_id) = current_vendor.as_deref() {
                     if let Some((product_id, product_name)) = split_id_name(tail) {
-                        products.insert(
-                            (vendor_id.to_owned(), product_id),
-                            product_name,
-                        );
+                        products.insert((vendor_id.to_owned(), product_id), product_name);
                     }
                 }
             } else if let Some((vendor_id, vendor_name)) = split_id_name(line) {
@@ -196,7 +189,9 @@ impl Hwdb {
     /// name. Returns `None` for unknown ids.
     #[must_use]
     pub fn vendor(&self, vendor_id: &str) -> Option<&str> {
-        self.vendors.get(&normalize_id(vendor_id)).map(String::as_str)
+        self.vendors
+            .get(&normalize_id(vendor_id))
+            .map(String::as_str)
     }
 
     /// Resolve `(vendor_id, product_id)` to a product display
@@ -288,7 +283,10 @@ mod tests {
     fn lookups_are_case_insensitive() {
         let h = Hwdb::parse(FIXTURE);
         assert_eq!(h.vendor("8086"), Some("Intel Corp."));
-        assert_eq!(h.vendor("8086".to_ascii_uppercase().as_str()), Some("Intel Corp."));
+        assert_eq!(
+            h.vendor("8086".to_ascii_uppercase().as_str()),
+            Some("Intel Corp.")
+        );
         assert_eq!(h.product("8086", "5916"), h.product("8086", "5916"));
     }
 
@@ -336,7 +334,10 @@ mod tests {
         let h = Hwdb::parse(pci_fixture);
         assert_eq!(h.vendor("8086"), Some("Intel Corporation"));
         assert_eq!(h.vendor("10de"), Some("NVIDIA Corporation"));
-        assert_eq!(h.product("10de", "1c03"), Some("GP106 [GeForce GTX 1060 6GB]"));
+        assert_eq!(
+            h.product("10de", "1c03"),
+            Some("GP106 [GeForce GTX 1060 6GB]")
+        );
     }
 
     #[test]

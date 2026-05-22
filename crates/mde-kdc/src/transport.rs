@@ -104,18 +104,13 @@ impl Transport for KdcHost {
         }
     }
 
-    async fn open(
-        &self,
-        peer_id: &str,
-    ) -> Result<Box<dyn Connection>, TransportError> {
+    async fn open(&self, peer_id: &str) -> Result<Box<dyn Connection>, TransportError> {
         if self.is_paired(peer_id) {
             Ok(Box::new(StubConnection {
                 id: format!("kdc-stub:{peer_id}"),
             }))
         } else {
-            Err(TransportError::Unreachable {
-                code: "not_paired",
-            })
+            Err(TransportError::Unreachable { code: "not_paired" })
         }
     }
 

@@ -56,8 +56,7 @@ pub fn telephony_packet(id_ms: i64, body: TelephonyBody) -> Packet {
     Packet {
         id: id_ms,
         kind: "kdeconnect.telephony".to_string(),
-        body: serde_json::to_value(body)
-            .expect("TelephonyBody is always JSON-serializable"),
+        body: serde_json::to_value(body).expect("TelephonyBody is always JSON-serializable"),
         mde_caps: None,
         payload_size: None,
         payload_transfer_info: None,

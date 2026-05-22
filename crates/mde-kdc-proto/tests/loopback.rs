@@ -87,10 +87,12 @@ impl LoopbackPeer {
             kind: "kdeconnect.identity".to_string(),
             body: serde_json::to_value(announce).expect("Announce serializes"),
             mde_caps: Some(CapabilitiesHeader::v2_1_lock()),
-        payload_size: None,
-        payload_transfer_info: None,
+            payload_size: None,
+            payload_transfer_info: None,
         };
-        encode_frame(&p).expect("identity frame encodes").into_bytes()
+        encode_frame(&p)
+            .expect("identity frame encodes")
+            .into_bytes()
     }
 
     /// Emit a stock-KDC identity (no `mdeCaps`).
@@ -108,10 +110,12 @@ impl LoopbackPeer {
             kind: "kdeconnect.identity".to_string(),
             body: serde_json::to_value(announce).expect("Announce serializes"),
             mde_caps: None,
-        payload_size: None,
-        payload_transfer_info: None,
+            payload_size: None,
+            payload_transfer_info: None,
         };
-        encode_frame(&p).expect("identity frame encodes").into_bytes()
+        encode_frame(&p)
+            .expect("identity frame encodes")
+            .into_bytes()
     }
 }
 
@@ -301,7 +305,11 @@ fn every_plugin_kind_dispatches_unambiguously_on_packet_kind() {
     while let Some(p) = alice.next_packet() {
         received.push(p);
     }
-    assert_eq!(received.len(), 10, "received one packet per plugin (9 canonical + RunCommand)");
+    assert_eq!(
+        received.len(),
+        10,
+        "received one packet per plugin (9 canonical + RunCommand)"
+    );
 
     for pkt in &received {
         let matching: Vec<PluginKind> = PluginKind::all()

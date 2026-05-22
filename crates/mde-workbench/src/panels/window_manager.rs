@@ -197,7 +197,6 @@ impl WindowManagerPanel {
             ]
             .spacing(8)
             .width(Length::Fill)
-            
             .into();
         }
 
@@ -238,7 +237,6 @@ impl WindowManagerPanel {
         ]
         .spacing(12)
         .width(Length::Fill)
-        
         .into()
     }
 }

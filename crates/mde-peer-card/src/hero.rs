@@ -21,12 +21,12 @@
 //! Tokens: every visible value flows through `mde-theme`. Zero
 //! hardcoded pixel literals; zero hardcoded hex colors.
 
-use iced::{Background, Border, Color, Element, Length};
 use iced::widget::{column, container, row, text, Space};
-use mde_theme::{TypeRole, Tokens};
+use iced::{Background, Border, Color, Element, Length};
+use mde_theme::{Tokens, TypeRole};
 
-use crate::probe::PeerProbe;
 use crate::enrich::Enrichment;
+use crate::probe::PeerProbe;
 
 /// Hero strip height in logical pixels. Locked at 280 — the
 /// upper third of an 840 px-tall modal surface.
@@ -69,9 +69,13 @@ pub fn view<'a, Msg: 'a + Clone>(
 
     // Distro + kernel chip (caption-sized pill, lower-right).
     let distro_chip = container(
-        text(format!("{} · {}", probe.distro, short_kernel(&probe.kernel.uname)))
-            .size(TypeRole::Caption.size_in(tokens.font_size))
-            .color(rgba_to_color(palette.text)),
+        text(format!(
+            "{} · {}",
+            probe.distro,
+            short_kernel(&probe.kernel.uname)
+        ))
+        .size(TypeRole::Caption.size_in(tokens.font_size))
+        .color(rgba_to_color(palette.text)),
     )
     .padding([space.xs2, space.sm])
     .style(move |_theme| container::Style {
@@ -84,31 +88,19 @@ pub fn view<'a, Msg: 'a + Clone>(
     });
 
     // Upper row: wordmark right-aligned.
-    let upper = row![
-        Space::with_width(Length::Fill),
-        wordmark,
-    ]
-    .padding(space.md2);
+    let upper = row![Space::with_width(Length::Fill), wordmark,].padding(space.md2);
 
     // Lower row: hostname left, distro chip right.
-    let lower = row![
-        hostname,
-        Space::with_width(Length::Fill),
-        distro_chip,
-    ]
-    .padding(space.md2)
-    .align_y(iced::alignment::Vertical::Bottom);
+    let lower = row![hostname, Space::with_width(Length::Fill), distro_chip,]
+        .padding(space.md2)
+        .align_y(iced::alignment::Vertical::Bottom);
 
     // The hero block: background placeholder (raised tier) until
     // the Wikidata image streams in via enrichment.
     container(
-        column![
-            upper,
-            Space::with_height(Length::Fill),
-            lower,
-        ]
-        .width(Length::Fill)
-        .height(Length::Fill),
+        column![upper, Space::with_height(Length::Fill), lower,]
+            .width(Length::Fill)
+            .height(Length::Fill),
     )
     .width(Length::Fill)
     .height(Length::Fixed(f32::from(HERO_HEIGHT_PX)))
@@ -173,7 +165,10 @@ mod tests {
 
     #[test]
     fn short_kernel_extracts_version() {
-        assert_eq!(short_kernel("Linux laptop-mm 7.0.8-200.fc44.x86_64"), "7.0.8");
+        assert_eq!(
+            short_kernel("Linux laptop-mm 7.0.8-200.fc44.x86_64"),
+            "7.0.8"
+        );
     }
 
     #[test]

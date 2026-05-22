@@ -82,7 +82,10 @@ mod tests {
     #[test]
     fn validate_rejects_illegal_chars() {
         assert_eq!(validate_tag("has space"), Err(TagError::IllegalCharacter));
-        assert_eq!(validate_tag("slash/in/name"), Err(TagError::IllegalCharacter));
+        assert_eq!(
+            validate_tag("slash/in/name"),
+            Err(TagError::IllegalCharacter)
+        );
     }
 
     #[test]

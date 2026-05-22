@@ -106,8 +106,7 @@ impl Histogram {
                     return Some(b.le);
                 }
                 // Linear interpolation inside the bucket.
-                let frac = (target_rank - prev_count as f64)
-                    / ((b.count - prev_count) as f64);
+                let frac = (target_rank - prev_count as f64) / ((b.count - prev_count) as f64);
                 return Some(prev_le + frac * (b.le - prev_le));
             }
             prev_le = b.le;
@@ -127,8 +126,7 @@ impl Histogram {
 #[must_use]
 pub fn kdc2_router_decision_us_buckets() -> Vec<f64> {
     vec![
-        100.0, 250.0, 500.0, 1_000.0, 2_500.0, 5_000.0, 10_000.0,
-        25_000.0, 50_000.0,
+        100.0, 250.0, 500.0, 1_000.0, 2_500.0, 5_000.0, 10_000.0, 25_000.0, 50_000.0,
     ]
 }
 
@@ -308,9 +306,9 @@ mod tests {
         h.observe(0.5);
         h.observe(1.5);
         h.observe(10.0); // past every finite bucket
-        // 0.5 ≤ 1.0 → all 3 buckets +1
-        // 1.5 ≤ 2.0 → buckets[1] + buckets[2] +1
-        // 10.0 past every finite bucket → no finite bucket bump
+                         // 0.5 ≤ 1.0 → all 3 buckets +1
+                         // 1.5 ≤ 2.0 → buckets[1] + buckets[2] +1
+                         // 10.0 past every finite bucket → no finite bucket bump
         assert_eq!(h.buckets[0].count, 1);
         assert_eq!(h.buckets[1].count, 2);
         assert_eq!(h.buckets[2].count, 2);
@@ -329,7 +327,9 @@ mod tests {
         // 10 samples evenly spread → p50 falls in the middle
         // bucket.
         let mut h = Histogram::new("x", "x", &[100.0, 250.0, 500.0, 1_000.0]);
-        for v in [50.0, 75.0, 120.0, 180.0, 240.0, 260.0, 300.0, 400.0, 600.0, 900.0] {
+        for v in [
+            50.0, 75.0, 120.0, 180.0, 240.0, 260.0, 300.0, 400.0, 600.0, 900.0,
+        ] {
             h.observe(v);
         }
         let p50 = h.percentile_estimate(0.5).unwrap();

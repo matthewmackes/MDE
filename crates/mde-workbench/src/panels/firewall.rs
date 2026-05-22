@@ -174,7 +174,6 @@ impl FirewallPanel {
             ]
             .spacing(8)
             .width(Length::Fill)
-            
             .into();
         }
 
@@ -214,8 +213,7 @@ impl FirewallPanel {
             ]
             .spacing(12),
             text("Services").size(16),
-            scrollable(container(service_rows.spacing(4)))
-                .height(Length::Fixed(240.0)),
+            scrollable(container(service_rows.spacing(4))).height(Length::Fixed(240.0)),
             text(format!(
                 "{} service(s) enabled in zone {}",
                 self.enabled_services.len(),
@@ -226,7 +224,6 @@ impl FirewallPanel {
         ]
         .spacing(12)
         .width(Length::Fill)
-        
         .into()
     }
 }

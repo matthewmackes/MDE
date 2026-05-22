@@ -18,9 +18,7 @@
 use std::fmt;
 use std::sync::Mutex;
 
-use ring::aead::{
-    Aad, LessSafeKey, Nonce, UnboundKey, AES_256_GCM, NONCE_LEN,
-};
+use ring::aead::{Aad, LessSafeKey, Nonce, UnboundKey, AES_256_GCM, NONCE_LEN};
 use ring::rand::{SecureRandom, SystemRandom};
 use ring::signature::{
     RsaKeyPair, UnparsedPublicKey, RSA_PKCS1_2048_8192_SHA256, RSA_PKCS1_SHA256,
@@ -238,8 +236,7 @@ impl PairingKeyPair {
     /// Returns `Err(CryptoError::WrongAlgorithm)` if the bytes
     /// don't decode as a valid RSA private key.
     pub fn from_pkcs8(der: &[u8]) -> Result<Self, CryptoError> {
-        let key_pair = RsaKeyPair::from_pkcs8(der)
-            .map_err(|_| CryptoError::WrongAlgorithm)?;
+        let key_pair = RsaKeyPair::from_pkcs8(der).map_err(|_| CryptoError::WrongAlgorithm)?;
         Ok(Self {
             key_pair,
             der_bytes: der.to_vec(),
@@ -266,7 +263,9 @@ impl PairingKeyPair {
         let mut sig = vec![0_u8; self.key_pair.public().modulus_len()];
         self.key_pair
             .sign(&RSA_PKCS1_SHA256, &rng, message, &mut sig)
-            .map_err(|_| CryptoError::Io { code: "rsa_sign_failed" })?;
+            .map_err(|_| CryptoError::Io {
+                code: "rsa_sign_failed",
+            })?;
         Ok(sig)
     }
 }
@@ -356,14 +355,16 @@ pub fn seal_session(
     if session_key.len() != SESSION_KEY_LEN {
         return Err(CryptoError::WrongAlgorithm);
     }
-    let unbound = UnboundKey::new(&AES_256_GCM, session_key)
-        .map_err(|_| CryptoError::WrongAlgorithm)?;
+    let unbound =
+        UnboundKey::new(&AES_256_GCM, session_key).map_err(|_| CryptoError::WrongAlgorithm)?;
     let key = LessSafeKey::new(unbound);
 
     let mut in_out = plaintext.to_vec();
     let ring_nonce = Nonce::assume_unique_for_key(nonce);
     key.seal_in_place_append_tag(ring_nonce, Aad::from(aad), &mut in_out)
-        .map_err(|_| CryptoError::Io { code: "aead_seal_failed" })?;
+        .map_err(|_| CryptoError::Io {
+            code: "aead_seal_failed",
+        })?;
     Ok(in_out)
 }
 
@@ -383,8 +384,8 @@ pub fn open_session(
     if session_key.len() != SESSION_KEY_LEN {
         return Err(CryptoError::WrongAlgorithm);
     }
-    let unbound = UnboundKey::new(&AES_256_GCM, session_key)
-        .map_err(|_| CryptoError::WrongAlgorithm)?;
+    let unbound =
+        UnboundKey::new(&AES_256_GCM, session_key).map_err(|_| CryptoError::WrongAlgorithm)?;
     let key = LessSafeKey::new(unbound);
 
     let mut in_out = ciphertext.to_vec();
@@ -404,8 +405,9 @@ pub fn open_session(
 pub fn generate_session_key() -> Result<[u8; SESSION_KEY_LEN], CryptoError> {
     let rng = SystemRandom::new();
     let mut key = [0_u8; SESSION_KEY_LEN];
-    rng.fill(&mut key)
-        .map_err(|_| CryptoError::Io { code: "session_key_rng_failed" })?;
+    rng.fill(&mut key).map_err(|_| CryptoError::Io {
+        code: "session_key_rng_failed",
+    })?;
     Ok(key)
 }
 
@@ -426,9 +428,18 @@ mod tests {
     fn crypto_error_display_is_machine_token() {
         // Audit-log entries grep on the Display output. Each
         // variant must produce a stable single-token string.
-        assert_eq!(format!("{}", CryptoError::SignatureInvalid), "signature_invalid");
-        assert_eq!(format!("{}", CryptoError::AeadAuthFailed), "aead_auth_failed");
-        assert_eq!(format!("{}", CryptoError::WrongAlgorithm), "wrong_algorithm");
+        assert_eq!(
+            format!("{}", CryptoError::SignatureInvalid),
+            "signature_invalid"
+        );
+        assert_eq!(
+            format!("{}", CryptoError::AeadAuthFailed),
+            "aead_auth_failed"
+        );
+        assert_eq!(
+            format!("{}", CryptoError::WrongAlgorithm),
+            "wrong_algorithm"
+        );
         let s = format!("{}", CryptoError::UnknownKey(KeyHandle(1)));
         assert!(s.starts_with("unknown_key("));
     }

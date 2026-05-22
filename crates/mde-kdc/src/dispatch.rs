@@ -219,19 +219,9 @@ mod tests {
         let mut per_device_allow = std::collections::BTreeMap::new();
         per_device_allow.insert("clipboard", vec!["alice"]);
         let policy = PerDevicePolicy { per_device_allow };
-        let alice = check_plugin_allowed(
-            PluginKind::Clipboard,
-            "alice",
-            true,
-            &policy,
-        );
+        let alice = check_plugin_allowed(PluginKind::Clipboard, "alice", true, &policy);
         assert!(alice.is_allowed(), "alice on allowlist must dispatch");
-        let bob = check_plugin_allowed(
-            PluginKind::Clipboard,
-            "bob",
-            true,
-            &policy,
-        );
+        let bob = check_plugin_allowed(PluginKind::Clipboard, "bob", true, &policy);
         assert!(!bob.is_allowed(), "bob not on allowlist must be denied");
     }
 

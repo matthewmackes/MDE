@@ -236,8 +236,8 @@ mod tests {
 
     #[test]
     fn worker_with_tick_overrides_default_cadence() {
-        let w = MeshRouterWorker::new(new_state(), new_registry())
-            .with_tick(Duration::from_millis(50));
+        let w =
+            MeshRouterWorker::new(new_state(), new_registry()).with_tick(Duration::from_millis(50));
         assert_eq!(w.tick, Duration::from_millis(50));
     }
 
@@ -270,8 +270,8 @@ mod tests {
         // KDC2-1.12.b lock — the wired-in histogram must
         // see a sample after one tick_once.
         let metrics = Arc::new(StdMutex::new(crate::metrics::kdc2_router_decision_us()));
-        let w = MeshRouterWorker::new(new_state(), new_registry())
-            .with_metrics(Arc::clone(&metrics));
+        let w =
+            MeshRouterWorker::new(new_state(), new_registry()).with_metrics(Arc::clone(&metrics));
         w.tick_once().await;
         let snapshot = metrics.lock().unwrap();
         assert_eq!(snapshot.count, 1, "tick_once must record one sample");
@@ -332,8 +332,7 @@ mod tests {
         // waiting for a tick.
         let state = new_state();
         let registry = new_registry();
-        let mut w = MeshRouterWorker::new(state, registry)
-            .with_tick(Duration::from_secs(60));
+        let mut w = MeshRouterWorker::new(state, registry).with_tick(Duration::from_secs(60));
 
         // Build a fresh shutdown-token pair the same way every
         // other worker test does (clipboard.rs, fs_sync.rs).

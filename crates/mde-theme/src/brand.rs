@@ -496,8 +496,7 @@ mod tests {
                 slot.basename()
             );
             assert!(
-                shipped.ends_with(&format!(".{first_ext}"))
-                    || shipped.ends_with(".png"),
+                shipped.ends_with(&format!(".{first_ext}")) || shipped.ends_with(".png"),
                 "{slot:?} filename {shipped} extension not in search_exts"
             );
         }

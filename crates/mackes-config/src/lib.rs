@@ -233,8 +233,8 @@ mod tests {
         // PC-10 — operator can disable online enrichment in the
         // config; mded's peer-join worker should then short-
         // circuit PC-5/6/7 and the card renders hwdb-only.
-        let cfg = parse("[peer_card]\nonline_enrichment = false\n")
-            .expect("peer_card section parses");
+        let cfg =
+            parse("[peer_card]\nonline_enrichment = false\n").expect("peer_card section parses");
         assert!(!cfg.peer_card.online_enrichment);
     }
 

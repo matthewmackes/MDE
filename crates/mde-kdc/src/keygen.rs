@@ -60,8 +60,8 @@ impl std::error::Error for KeygenError {}
 /// signable handle backed by ring.
 pub fn generate_pkcs8() -> Result<Vec<u8>, KeygenError> {
     let mut rng = OsRng;
-    let key = RsaPrivateKey::new(&mut rng, RSA_MODULUS_BITS)
-        .map_err(|_| KeygenError::RsaGenFailed)?;
+    let key =
+        RsaPrivateKey::new(&mut rng, RSA_MODULUS_BITS).map_err(|_| KeygenError::RsaGenFailed)?;
     let pkcs8 = key
         .to_pkcs8_der()
         .map_err(|_| KeygenError::Pkcs8EncodeFailed)?;
@@ -82,13 +82,8 @@ pub fn generate_pkcs8() -> Result<Vec<u8>, KeygenError> {
 /// RSA-2048 PKCS#8 bytes (output of `generate_pkcs8`), so the
 /// cert's public key matches the key the host signs handshakes
 /// with via ring.
-pub fn issue_identity_cert(
-    pkcs8_der: &[u8],
-    device_id: &str,
-) -> Result<Vec<u8>, KeygenError> {
-    use rcgen::{
-        CertificateParams, DistinguishedName, DnType, KeyPair, PKCS_RSA_SHA256,
-    };
+pub fn issue_identity_cert(pkcs8_der: &[u8], device_id: &str) -> Result<Vec<u8>, KeygenError> {
+    use rcgen::{CertificateParams, DistinguishedName, DnType, KeyPair, PKCS_RSA_SHA256};
 
     // Re-create the rcgen keypair from our PKCS#8 bytes so the
     // cert binds to the same RSA-2048 keypair `PairingKeyPair`
@@ -117,10 +112,8 @@ pub fn issue_identity_cert(
     // 100-year validity. KDC's identity model treats the cert
     // as long-lived; rotation is the operator's
     // `mde-kdc rotate-identity` follow-up, not expiry.
-    params.not_before =
-        rcgen::date_time_ymd(2024, 1, 1);
-    params.not_after =
-        rcgen::date_time_ymd(2124, 1, 1);
+    params.not_before = rcgen::date_time_ymd(2024, 1, 1);
+    params.not_after = rcgen::date_time_ymd(2124, 1, 1);
 
     let cert = params
         .self_signed(&key_pair)
@@ -190,10 +183,8 @@ mod tests {
             format!("{}", KeygenError::Pkcs8EncodeFailed),
             "pkcs8_encode_failed",
         );
-        assert!(
-            format!("{}", KeygenError::CertIssueFailed("nope".into()))
-                .starts_with("cert_issue_failed: "),
-        );
+        assert!(format!("{}", KeygenError::CertIssueFailed("nope".into()))
+            .starts_with("cert_issue_failed: "),);
     }
 
     // ──────────────────────────────────────────────────────────
@@ -241,7 +232,10 @@ mod tests {
         let pkcs8 = generate_pkcs8().unwrap();
         let c1 = issue_identity_cert(&pkcs8, "device-A").unwrap();
         let c2 = issue_identity_cert(&pkcs8, "device-B").unwrap();
-        assert_ne!(c1, c2, "different device-ids must produce different cert DERs");
+        assert_ne!(
+            c1, c2,
+            "different device-ids must produce different cert DERs"
+        );
         assert!(c1.windows(8).any(|w| w == b"device-A"));
         assert!(c2.windows(8).any(|w| w == b"device-B"));
     }

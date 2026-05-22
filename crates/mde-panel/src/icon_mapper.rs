@@ -88,7 +88,10 @@ pub fn builtin_map() -> HashMap<&'static str, &'static str> {
 #[must_use]
 pub fn resolve(fdo_name: &str) -> &'static str {
     let key = fdo_name.to_lowercase();
-    builtin_map().get(key.as_str()).copied().unwrap_or("application")
+    builtin_map()
+        .get(key.as_str())
+        .copied()
+        .unwrap_or("application")
 }
 
 /// Resolve with override support. Reads
@@ -111,10 +114,7 @@ pub fn resolve_with_override(fdo_name: &str) -> String {
 /// Path where per-app overrides are written.
 #[must_use]
 pub fn override_path(fdo_name: &str) -> Option<PathBuf> {
-    dirs::data_dir().map(|d| {
-        d.join("applications")
-            .join(format!("{fdo_name}.desktop"))
-    })
+    dirs::data_dir().map(|d| d.join("applications").join(format!("{fdo_name}.desktop")))
 }
 
 /// Pure helper — given an existing `.desktop` file content,

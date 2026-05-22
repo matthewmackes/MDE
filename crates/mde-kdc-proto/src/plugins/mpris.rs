@@ -74,8 +74,11 @@ pub fn mpris_command_packet(id_ms: i64, action: String) -> Packet {
     Packet {
         id: id_ms,
         kind: "kdeconnect.mpris".to_string(),
-        body: serde_json::to_value(MprisBody { action, ..Default::default() })
-            .expect("MprisBody is always JSON-serializable"),
+        body: serde_json::to_value(MprisBody {
+            action,
+            ..Default::default()
+        })
+        .expect("MprisBody is always JSON-serializable"),
         mde_caps: None,
         payload_size: None,
         payload_transfer_info: None,

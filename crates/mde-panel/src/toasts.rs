@@ -42,22 +42,38 @@ impl Toast {
     /// Create with the default duration.
     #[must_use]
     pub fn info<S: Into<String>>(body: S) -> Self {
-        Self::with(ToastKind::Info, body, Duration::from_millis(DEFAULT_VISIBLE_MS))
+        Self::with(
+            ToastKind::Info,
+            body,
+            Duration::from_millis(DEFAULT_VISIBLE_MS),
+        )
     }
 
     #[must_use]
     pub fn success<S: Into<String>>(body: S) -> Self {
-        Self::with(ToastKind::Success, body, Duration::from_millis(DEFAULT_VISIBLE_MS))
+        Self::with(
+            ToastKind::Success,
+            body,
+            Duration::from_millis(DEFAULT_VISIBLE_MS),
+        )
     }
 
     #[must_use]
     pub fn warn<S: Into<String>>(body: S) -> Self {
-        Self::with(ToastKind::Warn, body, Duration::from_millis(DEFAULT_VISIBLE_MS))
+        Self::with(
+            ToastKind::Warn,
+            body,
+            Duration::from_millis(DEFAULT_VISIBLE_MS),
+        )
     }
 
     #[must_use]
     pub fn error<S: Into<String>>(body: S) -> Self {
-        Self::with(ToastKind::Error, body, Duration::from_millis(DEFAULT_VISIBLE_MS))
+        Self::with(
+            ToastKind::Error,
+            body,
+            Duration::from_millis(DEFAULT_VISIBLE_MS),
+        )
     }
 
     fn with<S: Into<String>>(kind: ToastKind, body: S, visible_for: Duration) -> Self {

@@ -117,10 +117,7 @@ impl ToplevelModel {
 /// focused window gets a state-update event with `focused=false`
 /// and the new one gets `focused=true`.
 #[must_use]
-pub fn focus_change_events(
-    model: &ToplevelModel,
-    new_focus: ToplevelId,
-) -> Vec<ToplevelEvent> {
+pub fn focus_change_events(model: &ToplevelModel, new_focus: ToplevelId) -> Vec<ToplevelEvent> {
     let mut events = Vec::new();
     let new_target = model.by_id.get(&new_focus).cloned();
 

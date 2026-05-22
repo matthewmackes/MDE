@@ -73,7 +73,10 @@ impl WizardPage {
     /// One-based index (1..=8) shown in the page header.
     #[must_use]
     pub fn index(&self) -> usize {
-        Self::ordered().iter().position(|p| p == self).map_or(0, |i| i + 1)
+        Self::ordered()
+            .iter()
+            .position(|p| p == self)
+            .map_or(0, |i| i + 1)
     }
 
     /// Total page count (8).

@@ -371,7 +371,6 @@ impl ResolvedIcon {
         let _ = self.carbon_name;
         None
     }
-
 }
 
 impl ResolvedIcon {

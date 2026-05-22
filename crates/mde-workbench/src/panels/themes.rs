@@ -208,7 +208,6 @@ impl ThemesPanel {
             row![save_btn, text(&self.status).size(13)].spacing(12),
         ]
         .spacing(10)
-        
         .into()
     }
 }

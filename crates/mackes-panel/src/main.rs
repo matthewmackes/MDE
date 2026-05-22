@@ -438,7 +438,10 @@ fn install_global_styling() {
     if let Some(preset) = mackes_theme::read_active_preset() {
         if let Some(accent_path) = mackes_theme::locate_accent_css(&preset) {
             let provider = gtk::CssProvider::new();
-            if provider.load_from_path(accent_path.to_str().unwrap_or("")).is_ok() {
+            if provider
+                .load_from_path(accent_path.to_str().unwrap_or(""))
+                .is_ok()
+            {
                 gtk::StyleContext::add_provider_for_screen(
                     &screen,
                     &provider,

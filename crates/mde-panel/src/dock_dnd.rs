@@ -51,7 +51,11 @@ pub fn reorder_dock(
     let mut out: Vec<PinnedEntry> = pinned.to_vec();
     let entry = out.remove(from_index);
     // Account for the shift caused by remove().
-    let adjusted = if to_index > from_index { to_index - 1 } else { to_index };
+    let adjusted = if to_index > from_index {
+        to_index - 1
+    } else {
+        to_index
+    };
     let bound = adjusted.min(out.len());
     out.insert(bound, entry);
     Ok(out)
@@ -81,7 +85,11 @@ pub fn pin_app(
 /// present.
 #[must_use]
 pub fn unpin(pinned: &[PinnedEntry], desktop_id: &str) -> Vec<PinnedEntry> {
-    pinned.iter().filter(|e| e.desktop_id != desktop_id).cloned().collect()
+    pinned
+        .iter()
+        .filter(|e| e.desktop_id != desktop_id)
+        .cloned()
+        .collect()
 }
 
 /// Recognized drag-source atom values. The 1.x GTK version used

@@ -149,8 +149,10 @@ mod tests {
             EncryptionKind::Aes256Gcm,
             EncryptionKind::ChaCha20Poly1305,
         ] {
-            let serde_token =
-                serde_json::to_string(&k).unwrap().trim_matches('"').to_string();
+            let serde_token = serde_json::to_string(&k)
+                .unwrap()
+                .trim_matches('"')
+                .to_string();
             assert_eq!(serde_token, k.as_str());
         }
     }

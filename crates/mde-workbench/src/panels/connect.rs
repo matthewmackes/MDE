@@ -112,8 +112,7 @@ pub fn render_messaging_section(peer: &ConnectPeer) -> String {
     if !section_visible_for(ConnectSection::Messaging, peer) {
         return String::new();
     }
-    "Threads: (none yet — pulls from `kdeconnect.sms.messages`)\n[New message]"
-        .to_string()
+    "Threads: (none yet — pulls from `kdeconnect.sms.messages`)\n[New message]".to_string()
 }
 
 /// KDC2-5.6 — share section text fragment.
@@ -276,10 +275,8 @@ mod tests {
             "phone",
             &["kdeconnect.sms.messages", "kdeconnect.share.request"],
         );
-        let sections: Vec<ConnectSection> = render_card(&peer)
-            .into_iter()
-            .map(|(s, _)| s)
-            .collect();
+        let sections: Vec<ConnectSection> =
+            render_card(&peer).into_iter().map(|(s, _)| s).collect();
         assert_eq!(
             sections,
             vec![
@@ -296,10 +293,8 @@ mod tests {
         // A paired desktop peer has no phone/messaging/share
         // sections; only CommonChrome surfaces.
         let peer = make_peer("desktop", &["kdeconnect.clipboard"]);
-        let sections: Vec<ConnectSection> = render_card(&peer)
-            .into_iter()
-            .map(|(s, _)| s)
-            .collect();
+        let sections: Vec<ConnectSection> =
+            render_card(&peer).into_iter().map(|(s, _)| s).collect();
         assert_eq!(sections, vec![ConnectSection::CommonChrome]);
     }
 }

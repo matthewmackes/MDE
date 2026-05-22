@@ -261,10 +261,7 @@ pub async fn connect_pinned_tls(
     addr: std::net::SocketAddr,
     server_name: &str,
     pinned_fingerprint: Option<String>,
-) -> Result<
-    tokio_rustls::client::TlsStream<tokio::net::TcpStream>,
-    ConnectError,
-> {
+) -> Result<tokio_rustls::client::TlsStream<tokio::net::TcpStream>, ConnectError> {
     let server_name_owned = ServerName::try_from(server_name.to_string())
         .map_err(|e| ConnectError::BadPeerName(format!("{e}")))?;
     let tcp = tokio::net::TcpStream::connect(addr)
@@ -407,12 +404,7 @@ mod tests {
         // An empty string isn't a valid DNS name or IP literal —
         // ServerName::try_from rejects it. We surface BadPeerName
         // instead of letting it leak through as a panic.
-        let r = connect_pinned_tls(
-            "127.0.0.1:0".parse().unwrap(),
-            "",
-            None,
-        )
-        .await;
+        let r = connect_pinned_tls("127.0.0.1:0".parse().unwrap(), "", None).await;
         assert!(matches!(r, Err(ConnectError::BadPeerName(_))));
     }
 
@@ -433,12 +425,14 @@ mod tests {
 
     #[test]
     fn connect_error_display_uses_stable_tokens() {
-        assert!(format!("{}", ConnectError::Tcp(
-            std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "x"),
-        ))
+        assert!(format!(
+            "{}",
+            ConnectError::Tcp(std::io::Error::new(
+                std::io::ErrorKind::ConnectionRefused,
+                "x"
+            ),)
+        )
         .starts_with("tcp: "));
-        assert!(
-            format!("{}", ConnectError::BadPeerName("x".into())).starts_with("bad_peer_name: ")
-        );
+        assert!(format!("{}", ConnectError::BadPeerName("x".into())).starts_with("bad_peer_name: "));
     }
 }

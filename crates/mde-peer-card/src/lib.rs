@@ -217,10 +217,10 @@ mod tests {
         // is enumerated below; if any future variant gains a
         // "mutate" verb, this test should be updated to reject it.
         let allowed_message_verbs: &[&str] = &[
-            "Dismiss",     // close the modal
-            "Toggle",      // expand/collapse a section
+            "Dismiss",       // close the modal
+            "Toggle",        // expand/collapse a section
             "OpenWorkbench", // deep-link to the workbench peer panel
-            "Enrichment",  // stream-in callback from enrich tasks
+            "Enrichment",    // stream-in callback from enrich tasks
         ];
         for verb in allowed_message_verbs {
             // Allowed verbs are non-mutating from the peer's PoV
@@ -283,8 +283,8 @@ mod tests {
     #[test]
     fn shows_phone_sections_true_only_for_handheld_kinds() {
         for kind in PeerKind::all() {
-            let card = PeerCardData::hwdb_only(sample_probe())
-                .with_connect(Some(sample_connect(kind)));
+            let card =
+                PeerCardData::hwdb_only(sample_probe()).with_connect(Some(sample_connect(kind)));
             assert_eq!(card.shows_phone_sections(), kind.is_handheld());
         }
     }

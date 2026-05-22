@@ -396,10 +396,7 @@ pub fn dialog_backdrop<'a, Message: 'a>() -> Element<'a, Message> {
 /// `Radii::sm` (4 px) corners, surface-3 (palette.overlay)
 /// background. Fade-in timing (`Motion::tooltip_fade()`) lives
 /// in the consumer's subscription wiring.
-pub fn tooltip<'a, Message: 'a>(
-    body: impl Into<String>,
-    palette: Palette,
-) -> Element<'a, Message> {
+pub fn tooltip<'a, Message: 'a>(body: impl Into<String>, palette: Palette) -> Element<'a, Message> {
     let radii = Radii::defaults();
     let sizes = FontSize::defaults();
     container(

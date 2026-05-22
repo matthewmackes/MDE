@@ -198,7 +198,10 @@ mod tests {
     fn router_error_audit_tokens_are_stable() {
         // Audit-log readers grep on these. Stability is the lock.
         assert_eq!(RouterError::Unreachable.audit_token(), "unreachable");
-        assert_eq!(RouterError::HandshakeFailed.audit_token(), "handshake_failed");
+        assert_eq!(
+            RouterError::HandshakeFailed.audit_token(),
+            "handshake_failed"
+        );
         assert_eq!(RouterError::PolicyDenied.audit_token(), "policy_denied");
         assert_eq!(RouterError::BackendBusy.audit_token(), "backend_busy");
         assert_eq!(RouterError::Timeout.audit_token(), "timeout");

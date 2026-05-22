@@ -167,7 +167,6 @@ impl SystemUpdatePanel {
         ]
         .spacing(12)
         .width(Length::Fill)
-        
         .into()
     }
 }

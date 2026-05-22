@@ -167,13 +167,7 @@ const SECTIONS: &[(&str, &[AdminAction])] = &[
 /// terminal).
 fn polkit_agent_running() -> bool {
     let result = Command::new("busctl")
-        .args([
-            "--user",
-            "list",
-            "--acquired",
-            "--no-pager",
-            "--no-legend",
-        ])
+        .args(["--user", "list", "--acquired", "--no-pager", "--no-legend"])
         .stderr(std::process::Stdio::null())
         .output();
     match result {

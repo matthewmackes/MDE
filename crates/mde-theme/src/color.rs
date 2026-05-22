@@ -52,7 +52,11 @@ impl Rgba {
 
 impl fmt::Debug for Rgba {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Rgba(#{:02x}{:02x}{:02x} @ {:.2})", self.r, self.g, self.b, self.a)
+        write!(
+            f,
+            "Rgba(#{:02x}{:02x}{:02x} @ {:.2})",
+            self.r, self.g, self.b, self.a
+        )
     }
 }
 

@@ -59,7 +59,10 @@ mod tests {
         // blank notification.
         let p = ping_packet(1, String::new());
         let s = serde_json::to_string(&p).unwrap();
-        assert!(!s.contains(r#""message""#), "bare ping must omit message; got {s}");
+        assert!(
+            !s.contains(r#""message""#),
+            "bare ping must omit message; got {s}"
+        );
     }
 
     #[test]

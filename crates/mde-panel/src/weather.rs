@@ -45,7 +45,10 @@ impl WeatherSnapshot {
         vec![
             self.location.clone(),
             format!("{}° · {}", self.temp_c, self.condition),
-            format!("↑{}°  ↓{}°  · {} km/h", self.high_c, self.low_c, self.wind_kmh),
+            format!(
+                "↑{}°  ↓{}°  · {} km/h",
+                self.high_c, self.low_c, self.wind_kmh
+            ),
             self.freshness_label(),
         ]
     }

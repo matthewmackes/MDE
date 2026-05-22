@@ -103,9 +103,7 @@ pub fn spawn_for_pane(
     bindings: &HashMap<Pane, AppletBinding>,
     pane: Pane,
 ) -> Result<Child, AppletSpawnError> {
-    let binding = bindings
-        .get(&pane)
-        .ok_or(AppletSpawnError::Unbound(pane))?;
+    let binding = bindings.get(&pane).ok_or(AppletSpawnError::Unbound(pane))?;
     spawn_by_binary(&binding.binary)
 }
 
@@ -323,10 +321,22 @@ mod tests {
 
     #[test]
     fn applet_for_subcommand_maps_every_variant() {
-        assert_eq!(applet_for_subcommand(SubCommand::AppleMenu), "mde-applet-apple-menu");
-        assert_eq!(applet_for_subcommand(SubCommand::Expose), "mde-applet-expose");
-        assert_eq!(applet_for_subcommand(SubCommand::Drawer), "mde-applet-drawer");
-        assert_eq!(applet_for_subcommand(SubCommand::RootMenu), "mde-applet-root-menu");
+        assert_eq!(
+            applet_for_subcommand(SubCommand::AppleMenu),
+            "mde-applet-apple-menu"
+        );
+        assert_eq!(
+            applet_for_subcommand(SubCommand::Expose),
+            "mde-applet-expose"
+        );
+        assert_eq!(
+            applet_for_subcommand(SubCommand::Drawer),
+            "mde-applet-drawer"
+        );
+        assert_eq!(
+            applet_for_subcommand(SubCommand::RootMenu),
+            "mde-applet-root-menu"
+        );
     }
 
     #[test]
@@ -335,7 +345,9 @@ mod tests {
         // System path must be present.
         assert!(paths.iter().any(|p| p.ends_with("mde/applets")));
         // User path (XDG) when home_dir resolves.
-        let has_user = paths.iter().any(|p| p.starts_with(dirs::data_dir().unwrap_or_default()));
+        let has_user = paths
+            .iter()
+            .any(|p| p.starts_with(dirs::data_dir().unwrap_or_default()));
         // At minimum: not empty.
         assert!(!paths.is_empty());
         let _ = has_user;

@@ -137,7 +137,6 @@ impl VpnPanel {
             ]
             .spacing(8)
             .width(Length::Fill)
-            
             .into();
         }
 
@@ -162,7 +161,6 @@ impl VpnPanel {
             ]
             .spacing(8)
             .width(Length::Fill)
-            
             .into();
         }
 
@@ -176,10 +174,12 @@ impl VpnPanel {
             let btn = variant_button(
                 btn_label,
                 ButtonVariant::Secondary,
-                (!self.busy).then(|| crate::Message::Vpn(Message::ToggleClicked {
-                    name,
-                    activate: next_activate,
-                })),
+                (!self.busy).then(|| {
+                    crate::Message::Vpn(Message::ToggleClicked {
+                        name,
+                        activate: next_activate,
+                    })
+                }),
                 Palette::dark(),
             );
             let state = if v.active { "active" } else { "inactive" };
@@ -206,7 +206,6 @@ impl VpnPanel {
         ]
         .spacing(12)
         .width(Length::Fill)
-        
         .into()
     }
 }

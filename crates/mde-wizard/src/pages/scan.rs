@@ -39,7 +39,10 @@ impl ScanReport {
             format!("Fedora:       {}", self.fedora_release),
             format!("CPU cores:    {}", self.cpu_cores),
             format!("RAM:          {} MB", self.ram_mb),
-            format!("Wayland:      {}", if self.wayland_session { "yes" } else { "no" }),
+            format!(
+                "Wayland:      {}",
+                if self.wayland_session { "yes" } else { "no" }
+            ),
         ]
     }
 }

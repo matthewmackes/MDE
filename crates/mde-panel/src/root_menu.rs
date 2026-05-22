@@ -42,8 +42,14 @@ impl RootMenuAction {
     #[must_use]
     pub fn argv(&self, qnm_root: &Path) -> Vec<String> {
         match self {
-            RootMenuAction::ChangeWallpaper => vec!["mde".into(), "--focus".into(), "look_and_feel.wallpaper".into()],
-            RootMenuAction::OpenMeshShare => vec!["xdg-open".into(), qnm_root.display().to_string()],
+            RootMenuAction::ChangeWallpaper => vec![
+                "mde".into(),
+                "--focus".into(),
+                "look_and_feel.wallpaper".into(),
+            ],
+            RootMenuAction::OpenMeshShare => {
+                vec!["xdg-open".into(), qnm_root.display().to_string()]
+            }
             RootMenuAction::SendFileToPeer(peer) => {
                 let dest = qnm_root.join(peer);
                 vec![
@@ -52,7 +58,9 @@ impl RootMenuAction {
                     dest.display().to_string(),
                 ]
             }
-            RootMenuAction::DisplaySettings => vec!["mde".into(), "--focus".into(), "devices.displays".into()],
+            RootMenuAction::DisplaySettings => {
+                vec!["mde".into(), "--focus".into(), "devices.displays".into()]
+            }
         }
     }
 }

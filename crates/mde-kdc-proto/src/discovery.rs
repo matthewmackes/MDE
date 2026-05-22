@@ -177,8 +177,8 @@ pub fn encode_announce_datagram(
         body,
         ..Default::default()
     };
-    let mut bytes = serde_json::to_vec(&packet)
-        .map_err(|e| BroadcastError::Encode(format!("packet: {e}")))?;
+    let mut bytes =
+        serde_json::to_vec(&packet).map_err(|e| BroadcastError::Encode(format!("packet: {e}")))?;
     bytes.push(b'\n');
     Ok(bytes)
 }
@@ -193,8 +193,8 @@ pub fn decode_announce_datagram(bytes: &[u8]) -> Result<Announce, BroadcastError
     // Strip the upstream newline terminator (and any incidental
     // trailing whitespace) so serde doesn't choke.
     let trimmed = trim_trailing_whitespace(bytes);
-    let packet: crate::wire::Packet = serde_json::from_slice(trimmed)
-        .map_err(|e| BroadcastError::Decode(format!("{e}")))?;
+    let packet: crate::wire::Packet =
+        serde_json::from_slice(trimmed).map_err(|e| BroadcastError::Decode(format!("{e}")))?;
     if packet.kind != "kdeconnect.identity" {
         return Err(BroadcastError::WrongPacketKind(packet.kind));
     }
@@ -247,7 +247,10 @@ pub fn encode_mdns_txt_records(announce: &Announce) -> Vec<(String, String)> {
         ("id".to_string(), announce.device_id.clone()),
         ("name".to_string(), announce.device_name.clone()),
         ("type".to_string(), device_type_token.to_string()),
-        ("protocol".to_string(), announce.protocol_version.to_string()),
+        (
+            "protocol".to_string(),
+            announce.protocol_version.to_string(),
+        ),
         (
             "incomingCapabilities".to_string(),
             announce.incoming_capabilities.join(","),
@@ -286,9 +289,9 @@ where
                 }
             }
             "protocol" => {
-                protocol_version = v.parse().map_err(|e| {
-                    BroadcastError::Decode(format!("protocol field: {e}"))
-                })?;
+                protocol_version = v
+                    .parse()
+                    .map_err(|e| BroadcastError::Decode(format!("protocol field: {e}")))?;
             }
             "incomingCapabilities" => {
                 incoming = split_capabilities(v);
@@ -299,12 +302,10 @@ where
             _ => {} // forward-compat: ignore unknown keys
         }
     }
-    let device_id = id.ok_or_else(|| {
-        BroadcastError::Decode("missing required TXT key: id".into())
-    })?;
-    let device_name = name.ok_or_else(|| {
-        BroadcastError::Decode("missing required TXT key: name".into())
-    })?;
+    let device_id =
+        id.ok_or_else(|| BroadcastError::Decode("missing required TXT key: id".into()))?;
+    let device_name =
+        name.ok_or_else(|| BroadcastError::Decode("missing required TXT key: name".into()))?;
     Ok(Announce {
         device_id,
         device_name,
@@ -427,7 +428,8 @@ impl DiscoveryRegistry {
     ) {
         // Replace any existing entry with the same device_id —
         // keeps the registry at one entry per device.
-        self.entries.retain(|e| e.announce.device_id != announce.device_id);
+        self.entries
+            .retain(|e| e.announce.device_id != announce.device_id);
         self.entries.push(RegistryEntry {
             announce,
             relayer_id: relayer_id.to_string(),
@@ -516,8 +518,14 @@ mod tests {
     fn device_type_serializes_snake_case() {
         // Matches legacy `mackes-kdc::DeviceKind` for token
         // stability across the v2.0 → v2.1 upgrade.
-        assert_eq!(serde_json::to_string(&DeviceType::Phone).unwrap(), r#""phone""#);
-        assert_eq!(serde_json::to_string(&DeviceType::Tablet).unwrap(), r#""tablet""#);
+        assert_eq!(
+            serde_json::to_string(&DeviceType::Phone).unwrap(),
+            r#""phone""#
+        );
+        assert_eq!(
+            serde_json::to_string(&DeviceType::Tablet).unwrap(),
+            r#""tablet""#
+        );
         assert_eq!(
             serde_json::to_string(&DeviceType::Desktop).unwrap(),
             r#""desktop""#,
@@ -825,8 +833,7 @@ mod tests {
         // against stock KDE Connect phones.
         let a = sample_broadcast_announce();
         let records = encode_mdns_txt_records(&a);
-        let keys: std::collections::BTreeSet<_> =
-            records.iter().map(|(k, _)| k.as_str()).collect();
+        let keys: std::collections::BTreeSet<_> = records.iter().map(|(k, _)| k.as_str()).collect();
         for required in [
             "id",
             "name",
@@ -885,11 +892,8 @@ mod tests {
 
     #[test]
     fn mdns_decode_unknown_type_token_maps_to_unknown_devicetype() {
-        let records: Vec<(&str, &str)> = vec![
-            ("id", "abc"),
-            ("name", "test"),
-            ("type", "smartwatch-2030"),
-        ];
+        let records: Vec<(&str, &str)> =
+            vec![("id", "abc"), ("name", "test"), ("type", "smartwatch-2030")];
         let a = decode_mdns_txt_records(records).unwrap();
         assert_eq!(a.device_type, DeviceType::Unknown);
     }
@@ -900,7 +904,11 @@ mod tests {
         let bytes = encode_announce_datagram(&a, 42).unwrap();
         // Strip the newline + add spaces — should still decode.
         let mut weird = bytes.clone();
-        while weird.last().copied().map_or(false, |b| b.is_ascii_whitespace()) {
+        while weird
+            .last()
+            .copied()
+            .map_or(false, |b| b.is_ascii_whitespace())
+        {
             weird.pop();
         }
         weird.extend_from_slice(b"   \t");

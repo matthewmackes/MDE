@@ -197,7 +197,10 @@ impl PairingStore {
     /// Total number of paired devices. Cheap.
     #[must_use]
     pub fn paired_count(&self) -> usize {
-        self.devices.lock().expect("pairing-store mutex poisoned").len()
+        self.devices
+            .lock()
+            .expect("pairing-store mutex poisoned")
+            .len()
     }
 
     /// Look up a paired device by id. Returns a clone — the
@@ -296,8 +299,8 @@ impl PairingStore {
     fn load_devices(path: &Path) -> Result<BTreeMap<String, PairedDevice>, PairingError> {
         match std::fs::read_to_string(path) {
             Ok(raw) => {
-                let file: DevicesFile = toml::from_str(&raw)
-                    .map_err(|e| PairingError::Toml(format!("{e}")))?;
+                let file: DevicesFile =
+                    toml::from_str(&raw).map_err(|e| PairingError::Toml(format!("{e}")))?;
                 Ok(file
                     .devices
                     .into_iter()
@@ -327,9 +330,9 @@ impl PairingStore {
 /// Atomic write via temp-file + rename. Crashes mid-write don't
 /// leave a half-written devices.toml or identity.pem.
 fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    let dir = path.parent().ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::InvalidInput, "no parent dir")
-    })?;
+    let dir = path
+        .parent()
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "no parent dir"))?;
     let mut tmp = tempfile_path(dir, path);
     std::fs::write(&tmp, bytes)?;
     // Rename is atomic on POSIX (when src + dst on same FS).
@@ -383,11 +386,9 @@ mod tests {
         let _ = PairingStore::open_or_init(tmp.path()).unwrap();
         // Capture the identity PEM bytes; second open must NOT
         // regenerate (we'd lose the keypair on every restart).
-        let identity_before =
-            std::fs::read_to_string(tmp.path().join(IDENTITY_FILE)).unwrap();
+        let identity_before = std::fs::read_to_string(tmp.path().join(IDENTITY_FILE)).unwrap();
         let _ = PairingStore::open_or_init(tmp.path()).unwrap();
-        let identity_after =
-            std::fs::read_to_string(tmp.path().join(IDENTITY_FILE)).unwrap();
+        let identity_after = std::fs::read_to_string(tmp.path().join(IDENTITY_FILE)).unwrap();
         assert_eq!(
             identity_before, identity_after,
             "second open must NOT regenerate identity",

@@ -45,14 +45,14 @@ impl Palette {
     pub const fn dark() -> Self {
         Self {
             background: Rgba::rgb(0x1d, 0x1d, 0x1f),
-            surface:    Rgba::rgb(0x2a, 0x2a, 0x2c),
-            raised:     Rgba::rgb(0x38, 0x38, 0x3a),
-            overlay:    Rgba::rgb(0x48, 0x48, 0x4a),
-            accent:     Rgba::rgb(0x5b, 0x6a, 0xf5),
+            surface: Rgba::rgb(0x2a, 0x2a, 0x2c),
+            raised: Rgba::rgb(0x38, 0x38, 0x3a),
+            overlay: Rgba::rgb(0x48, 0x48, 0x4a),
+            accent: Rgba::rgb(0x5b, 0x6a, 0xf5),
             // Hairline @ ~8% white per § 2.
-            border:     Rgba::rgba(0xff, 0xff, 0xff, 0.08),
+            border: Rgba::rgba(0xff, 0xff, 0xff, 0.08),
             // ~92% white — clears WCAG AAA against background.
-            text:       Rgba::rgba(0xff, 0xff, 0xff, 0.92),
+            text: Rgba::rgba(0xff, 0xff, 0xff, 0.92),
             text_muted: Rgba::rgba(0xff, 0xff, 0xff, 0.55),
         }
     }
@@ -62,13 +62,13 @@ impl Palette {
     pub const fn light() -> Self {
         Self {
             background: Rgba::rgb(0xf5, 0xf5, 0xf7),
-            surface:    Rgba::rgb(0xff, 0xff, 0xff),
-            raised:     Rgba::rgb(0xf0, 0xf0, 0xf2),
-            overlay:    Rgba::rgb(0xe5, 0xe5, 0xe7),
-            accent:     Rgba::rgb(0x5b, 0x6a, 0xf5),
+            surface: Rgba::rgb(0xff, 0xff, 0xff),
+            raised: Rgba::rgb(0xf0, 0xf0, 0xf2),
+            overlay: Rgba::rgb(0xe5, 0xe5, 0xe7),
+            accent: Rgba::rgb(0x5b, 0x6a, 0xf5),
             // 1 px solid border @ ~12% black per § 2.
-            border:     Rgba::rgba(0x00, 0x00, 0x00, 0.12),
-            text:       Rgba::rgba(0x00, 0x00, 0x00, 0.88),
+            border: Rgba::rgba(0x00, 0x00, 0x00, 0.12),
+            text: Rgba::rgba(0x00, 0x00, 0x00, 0.88),
             text_muted: Rgba::rgba(0x00, 0x00, 0x00, 0.55),
         }
     }

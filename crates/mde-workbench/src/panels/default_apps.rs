@@ -201,7 +201,6 @@ impl DefaultAppsPanel {
         }
         col.push(row![text(&self.status).size(13)].spacing(12))
             .width(Length::Fill)
-            
             .into()
     }
 }

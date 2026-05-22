@@ -224,8 +224,7 @@ impl crate::plugins::Plugin for SmsPlugin {
         packet: &crate::wire::Packet,
         _ctx: &crate::plugins::PluginContext,
     ) -> Vec<crate::wire::Packet> {
-        if let Ok(body) = crate::plugins::from_packet_body::<SmsMessagesBody>(packet)
-        {
+        if let Ok(body) = crate::plugins::from_packet_body::<SmsMessagesBody>(packet) {
             self.received.push(body);
         }
         Vec::new()

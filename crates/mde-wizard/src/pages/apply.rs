@@ -76,13 +76,22 @@ pub const STEPS: &[BirthrightStep] = &[
 /// Default selection — every `default_on=true` step.
 #[must_use]
 pub fn default_selection() -> Vec<&'static str> {
-    STEPS.iter().filter(|s| s.default_on).map(|s| s.id).collect()
+    STEPS
+        .iter()
+        .filter(|s| s.default_on)
+        .map(|s| s.id)
+        .collect()
 }
 
 /// Build the argv for `mackes/birthright.py apply <selected steps>`.
 #[must_use]
 pub fn build_apply_argv(steps: &[&str]) -> Vec<String> {
-    let mut argv = vec!["python3".into(), "-m".into(), "mackes.birthright".into(), "apply".into()];
+    let mut argv = vec![
+        "python3".into(),
+        "-m".into(),
+        "mackes.birthright".into(),
+        "apply".into(),
+    ];
     for step in steps {
         argv.push((*step).to_string());
     }
@@ -132,7 +141,17 @@ mod tests {
     #[test]
     fn build_apply_argv_invokes_python_birthright_module() {
         let argv = build_apply_argv(&["themes", "fonts"]);
-        assert_eq!(argv, vec!["python3", "-m", "mackes.birthright", "apply", "themes", "fonts"]);
+        assert_eq!(
+            argv,
+            vec![
+                "python3",
+                "-m",
+                "mackes.birthright",
+                "apply",
+                "themes",
+                "fonts"
+            ]
+        );
     }
 
     #[test]

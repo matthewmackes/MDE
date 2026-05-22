@@ -231,7 +231,10 @@ mod tests {
         let date_idx = line.find("2026-05-22").expect("date present");
         let fedora_idx = line.find("Fedora").expect("fedora present");
         assert!(hash_idx < date_idx, "hash must come before date in {line}");
-        assert!(date_idx < fedora_idx, "date must come before Fedora in {line}");
+        assert!(
+            date_idx < fedora_idx,
+            "date must come before Fedora in {line}"
+        );
     }
 
     #[test]
@@ -282,7 +285,10 @@ VERSION="44 (Workstation)"
 VERSION_ID=44
 PRETTY_NAME="Fedora Linux 44"
 "#;
-        assert_eq!(parse_os_release_field(content, "VERSION_ID"), Some("44".into()));
+        assert_eq!(
+            parse_os_release_field(content, "VERSION_ID"),
+            Some("44".into())
+        );
         assert_eq!(
             parse_os_release_field(content, "NAME"),
             Some("Fedora Linux".into())

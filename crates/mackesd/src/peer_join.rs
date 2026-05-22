@@ -54,7 +54,12 @@ pub fn probe_cache_path(peer_id: &str) -> Option<PathBuf> {
                 .ok()
                 .map(|h| PathBuf::from(h).join(".cache"))
         })?;
-    Some(base.join("mde").join("peers").join(peer_id).join("probe.json"))
+    Some(
+        base.join("mde")
+            .join("peers")
+            .join(peer_id)
+            .join("probe.json"),
+    )
 }
 
 /// Should the peer-card spawn for `peer_id` now? Updates the
@@ -223,10 +228,7 @@ mod tests {
     /// pollution from concurrent fs writes.
     fn tempfile_dir(tag: &str) -> PathBuf {
         let mut p = std::env::temp_dir();
-        p.push(format!(
-            "mde-peer-join-test-{tag}-{}",
-            std::process::id()
-        ));
+        p.push(format!("mde-peer-join-test-{tag}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&p);
         fs::create_dir_all(&p).expect("create tempdir");
         p

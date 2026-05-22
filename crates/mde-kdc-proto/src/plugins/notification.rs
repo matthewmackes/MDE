@@ -55,8 +55,7 @@ pub fn notification_packet(id_ms: i64, body: NotificationBody) -> Packet {
     Packet {
         id: id_ms,
         kind: "kdeconnect.notification".to_string(),
-        body: serde_json::to_value(body)
-            .expect("NotificationBody is always JSON-serializable"),
+        body: serde_json::to_value(body).expect("NotificationBody is always JSON-serializable"),
         mde_caps: None,
         payload_size: None,
         payload_transfer_info: None,
@@ -123,15 +122,10 @@ impl crate::plugins::Plugin for NotificationPlugin {
         &self.handles
     }
 
-    fn process(
-        &mut self,
-        packet: &Packet,
-        _ctx: &crate::plugins::PluginContext,
-    ) -> Vec<Packet> {
+    fn process(&mut self, packet: &Packet, _ctx: &crate::plugins::PluginContext) -> Vec<Packet> {
         // Best-effort decode — a malformed body from a peer
         // drops the packet rather than poisoning the queue.
-        if let Ok(body) = crate::plugins::from_packet_body::<NotificationBody>(packet)
-        {
+        if let Ok(body) = crate::plugins::from_packet_body::<NotificationBody>(packet) {
             self.received.push(body);
         }
         // Notifications are one-way at the wire layer — no
@@ -194,7 +188,10 @@ mod tests {
         // host's dispatch table never routes notifications to
         // their handler.
         let p = notification_packet(1, sample());
-        assert_eq!(p.kind, crate::plugins::PluginKind::Notification.packet_kind());
+        assert_eq!(
+            p.kind,
+            crate::plugins::PluginKind::Notification.packet_kind()
+        );
     }
 
     // ─────────────────────────────────────────────────────────

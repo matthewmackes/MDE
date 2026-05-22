@@ -29,13 +29,13 @@ impl Radii {
     /// Defaults per Q41 + Q45.
     pub const fn defaults() -> Self {
         Self {
-            none:  0,
-            sm:    4,
+            none: 0,
+            sm: 4,
             input: 6,
-            md:    8,
-            lg:    12,
+            md: 8,
+            lg: 12,
             modal: 16,
-            full:  9999,
+            full: 9999,
         }
     }
 }

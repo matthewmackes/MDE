@@ -27,9 +27,9 @@ impl Density {
     /// never component dimensions.
     pub fn spacing_multiplier(self) -> f32 {
         match self {
-            Density::Compact     => 0.75,
+            Density::Compact => 0.75,
             Density::Comfortable => 1.00,
-            Density::Spacious    => 1.25,
+            Density::Spacious => 1.25,
         }
     }
 
@@ -37,9 +37,9 @@ impl Density {
     /// `~/.config/mde/preferences.toml`.
     pub fn id(self) -> &'static str {
         match self {
-            Density::Compact     => "compact",
+            Density::Compact => "compact",
             Density::Comfortable => "comfortable",
-            Density::Spacious    => "spacious",
+            Density::Spacious => "spacious",
         }
     }
 
@@ -47,10 +47,10 @@ impl Density {
     /// unknown input.
     pub fn from_id(s: &str) -> Option<Self> {
         match s {
-            "compact"     => Some(Density::Compact),
+            "compact" => Some(Density::Compact),
             "comfortable" => Some(Density::Comfortable),
-            "spacious"    => Some(Density::Spacious),
-            _             => None,
+            "spacious" => Some(Density::Spacious),
+            _ => None,
         }
     }
 }
@@ -66,9 +66,9 @@ mod tests {
 
     #[test]
     fn multipliers_match_locks() {
-        assert!((Density::Compact.spacing_multiplier()     - 0.75).abs() < 0.001);
+        assert!((Density::Compact.spacing_multiplier() - 0.75).abs() < 0.001);
         assert!((Density::Comfortable.spacing_multiplier() - 1.00).abs() < 0.001);
-        assert!((Density::Spacious.spacing_multiplier()    - 1.25).abs() < 0.001);
+        assert!((Density::Spacious.spacing_multiplier() - 1.25).abs() < 0.001);
     }
 
     #[test]

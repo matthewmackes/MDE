@@ -12,13 +12,9 @@
 
 use std::path::Path;
 
-use mde_kdc_proto::discovery::{
-    Announce, DeviceType, DiscoveryRegistry, SyntheticAnnounce,
-};
+use mde_kdc_proto::discovery::{Announce, DeviceType, DiscoveryRegistry, SyntheticAnnounce};
 
-use crate::transport::phones_manifest::{
-    self, ManifestError, PhoneRecord, PhonesManifest,
-};
+use crate::transport::phones_manifest::{self, ManifestError, PhoneRecord, PhonesManifest};
 
 /// One injection-pass outcome. The worker logs this on each
 /// tick + the audit chain records a summary so operators can
@@ -173,7 +169,11 @@ mod tests {
     fn inject_neighbor_phones_walks_every_neighbor() {
         let tmp = tempdir().unwrap();
         write_manifest(tmp.path(), "peer-A", vec![sample_phone("phone-A1")]);
-        write_manifest(tmp.path(), "peer-B", vec![sample_phone("phone-B1"), sample_phone("phone-B2")]);
+        write_manifest(
+            tmp.path(),
+            "peer-B",
+            vec![sample_phone("phone-B1"), sample_phone("phone-B2")],
+        );
         let mut reg = DiscoveryRegistry::new();
         let stats = inject_neighbor_phones(
             tmp.path(),
@@ -195,12 +195,7 @@ mod tests {
         let tmp = tempdir().unwrap();
         // No phones.json written for peer-Z.
         let mut reg = DiscoveryRegistry::new();
-        let stats = inject_neighbor_phones(
-            tmp.path(),
-            &["peer-Z".to_string()],
-            &mut reg,
-            1000,
-        );
+        let stats = inject_neighbor_phones(tmp.path(), &["peer-Z".to_string()], &mut reg, 1000);
         assert_eq!(stats.neighbors_read, 0);
         assert_eq!(stats.neighbors_absent, 1);
         assert_eq!(stats.phones_injected, 0);
@@ -215,12 +210,7 @@ mod tests {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, "not [ valid toml or json").unwrap();
         let mut reg = DiscoveryRegistry::new();
-        let stats = inject_neighbor_phones(
-            tmp.path(),
-            &["peer-X".to_string()],
-            &mut reg,
-            1000,
-        );
+        let stats = inject_neighbor_phones(tmp.path(), &["peer-X".to_string()], &mut reg, 1000);
         assert_eq!(stats.neighbors_errored, 1);
         assert!(reg.is_empty());
     }
@@ -248,21 +238,11 @@ mod tests {
         write_manifest(tmp.path(), "peer-B", vec![sample_phone("phone-X")]);
         let mut reg = DiscoveryRegistry::new();
         // First pass: peer-A as relayer.
-        inject_neighbor_phones(
-            tmp.path(),
-            &["peer-A".to_string()],
-            &mut reg,
-            1000,
-        );
+        inject_neighbor_phones(tmp.path(), &["peer-A".to_string()], &mut reg, 1000);
         assert_eq!(reg.relayer_for("phone-X"), Some("peer-A"));
         // Second pass: peer-B picks it up. Same device_id →
         // upsert replaces.
-        inject_neighbor_phones(
-            tmp.path(),
-            &["peer-B".to_string()],
-            &mut reg,
-            2000,
-        );
+        inject_neighbor_phones(tmp.path(), &["peer-B".to_string()], &mut reg, 2000);
         assert_eq!(reg.relayer_for("phone-X"), Some("peer-B"));
         assert_eq!(reg.len(), 1);
     }

@@ -19,8 +19,7 @@
 use mde_kdc_proto::crypto::{verify_signature, CryptoError, PairingKeyPair};
 
 fn private_key_der() -> Vec<u8> {
-    std::fs::read("tests/fixtures/rsa_2048_pkcs8.der")
-        .expect("rsa_2048_pkcs8.der fixture missing")
+    std::fs::read("tests/fixtures/rsa_2048_pkcs8.der").expect("rsa_2048_pkcs8.der fixture missing")
 }
 
 fn public_key_der() -> Vec<u8> {
@@ -36,8 +35,8 @@ fn pairing_keypair_loads_from_pkcs8() {
 
 #[test]
 fn pairing_keypair_rejects_garbage_pkcs8() {
-    let err = PairingKeyPair::from_pkcs8(b"not a real PKCS#8 blob")
-        .expect_err("garbage must not load");
+    let err =
+        PairingKeyPair::from_pkcs8(b"not a real PKCS#8 blob").expect_err("garbage must not load");
     assert!(matches!(err, CryptoError::WrongAlgorithm));
 }
 
@@ -55,8 +54,7 @@ fn sign_then_verify_succeeds_for_matched_pair() {
     let kp = PairingKeyPair::from_pkcs8(&private_key_der()).unwrap();
     let message = b"kdc pairing challenge";
     let sig = kp.sign(message).expect("sign succeeds with valid keypair");
-    verify_signature(&public_key_der(), message, &sig)
-        .expect("verify succeeds for matched pair");
+    verify_signature(&public_key_der(), message, &sig).expect("verify succeeds for matched pair");
 }
 
 #[test]

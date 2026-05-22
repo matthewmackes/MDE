@@ -171,7 +171,6 @@ impl FleetRevisionsPanel {
         ]
         .spacing(12)
         .width(Length::Fill)
-        
         .into()
     }
 }
@@ -205,9 +204,9 @@ fn revision_row<'a>(rev: &'a Revision, busy: bool) -> Element<'a, crate::Message
     let rollback_btn = variant_button(
         "Rollback",
         ButtonVariant::Secondary,
-        (!busy).then(|| crate::Message::FleetRevisions(
-            Message::RollbackClicked(rev.revision_id.clone()),
-        )),
+        (!busy).then(|| {
+            crate::Message::FleetRevisions(Message::RollbackClicked(rev.revision_id.clone()))
+        }),
         Palette::dark(),
     );
     row![text(label).size(13).width(Length::Fill), rollback_btn]

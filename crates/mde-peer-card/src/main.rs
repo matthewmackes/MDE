@@ -137,19 +137,12 @@ impl PeerCard {
         let space = self.tokens.space;
 
         // Hero strip — full identity, ~280 px.
-        let hero_block = hero::view::<Message>(
-            &self.data.probe,
-            &self.data.enrichment,
-            &self.tokens,
-        );
+        let hero_block =
+            hero::view::<Message>(&self.data.probe, &self.data.enrichment, &self.tokens);
 
         // Sections — four collapsible, scrollable rows.
         let section_views = Section::ordered().into_iter().map(|s| {
-            let state = self
-                .section_state
-                .get(&s)
-                .copied()
-                .unwrap_or_default();
+            let state = self.section_state.get(&s).copied().unwrap_or_default();
             sections::view::<Message>(
                 s,
                 state,
@@ -163,12 +156,9 @@ impl PeerCard {
             .width(Length::Fill);
 
         // Combine. Hero is fixed; sections scroll.
-        let inner = column![
-            hero_block,
-            scrollable(sections_col).height(Length::Fill),
-        ]
-        .width(Length::Fill)
-        .height(Length::Fill);
+        let inner = column![hero_block, scrollable(sections_col).height(Length::Fill),]
+            .width(Length::Fill)
+            .height(Length::Fill);
 
         // Outer modal chrome: surface ground, 16 px corners (Q45),
         // modal shadow (Q20).

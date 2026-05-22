@@ -169,9 +169,9 @@ fn theme_from_tokens(tokens: &mackes_theme::TokenTable) -> iced::Theme {
         danger: PF_DANGER,
     };
     let seeds: &[(&str, fn(&mut iced::theme::Palette, Color))] = &[
-        ("cds_bg_default",    |p, c| p.background = c),
-        ("cds_text_primary",  |p, c| p.text = c),
-        ("mackes_accent",     |p, c| p.primary = c),
+        ("cds_bg_default", |p, c| p.background = c),
+        ("cds_text_primary", |p, c| p.text = c),
+        ("mackes_accent", |p, c| p.primary = c),
         ("cds_support_success", |p, c| p.success = c),
         ("cds_support_error", |p, c| p.danger = c),
     ];

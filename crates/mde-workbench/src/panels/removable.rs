@@ -157,7 +157,6 @@ impl RemovablePanel {
         ]
         .spacing(12)
         .width(Length::Fill)
-        
         .into()
     }
 }

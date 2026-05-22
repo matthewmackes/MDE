@@ -46,12 +46,7 @@ pub struct RunCommandBody {
 /// future operator-facing `mde-kdc run-on-peer <peer> <key>`
 /// CLI.
 #[must_use]
-pub fn run_command_packet(
-    id_ms: i64,
-    key: String,
-    name: String,
-    command: String,
-) -> Packet {
+pub fn run_command_packet(id_ms: i64, key: String, name: String, command: String) -> Packet {
     Packet {
         id: id_ms,
         kind: "kdeconnect.runcommand".to_string(),
@@ -78,12 +73,7 @@ mod tests {
 
     #[test]
     fn run_command_serializes_with_camel_case_keys() {
-        let p = run_command_packet(
-            1,
-            sample().key,
-            sample().name,
-            sample().command,
-        );
+        let p = run_command_packet(1, sample().key, sample().name, sample().command);
         let s = serde_json::to_string(&p).unwrap();
         assert!(s.contains(r#""key":"open-browser""#));
         assert!(s.contains(r#""name":"Open browser""#));
@@ -100,7 +90,12 @@ mod tests {
     #[test]
     fn run_command_body_round_trips_via_wire() {
         let body = sample();
-        let p = run_command_packet(42, body.key.clone(), body.name.clone(), body.command.clone());
+        let p = run_command_packet(
+            42,
+            body.key.clone(),
+            body.name.clone(),
+            body.command.clone(),
+        );
         let wire = serde_json::to_string(&p).unwrap();
         let decoded: Packet = serde_json::from_str(&wire).unwrap();
         let back: RunCommandBody = from_packet_body(&decoded).unwrap();

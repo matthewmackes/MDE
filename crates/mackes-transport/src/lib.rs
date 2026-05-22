@@ -400,8 +400,10 @@ mod tests {
         // Audit log and metric label must use the same token.
         for k in TransportKind::all() {
             let display = format!("{k}");
-            let serde_token =
-                serde_json::to_string(&k).unwrap().trim_matches('"').to_string();
+            let serde_token = serde_json::to_string(&k)
+                .unwrap()
+                .trim_matches('"')
+                .to_string();
             assert_eq!(display, serde_token, "Display drifted from serde for {k:?}");
         }
     }
@@ -436,15 +438,21 @@ mod tests {
         // The router log line "transport=kdc_tls family=unreachable
         // code=nat_blocked" depends on these tokens never changing
         // out from under audit consumers.
-        let e = TransportError::Unreachable { code: "nat_blocked" };
+        let e = TransportError::Unreachable {
+            code: "nat_blocked",
+        };
         assert_eq!(e.code(), "nat_blocked");
         assert_eq!(e.family(), "unreachable");
 
-        let e = TransportError::HandshakeFailed { code: "cert_mismatch" };
+        let e = TransportError::HandshakeFailed {
+            code: "cert_mismatch",
+        };
         assert_eq!(e.code(), "cert_mismatch");
         assert_eq!(e.family(), "handshake_failed");
 
-        let e = TransportError::Misconfigured { code: "missing_key" };
+        let e = TransportError::Misconfigured {
+            code: "missing_key",
+        };
         assert_eq!(e.code(), "missing_key");
         assert_eq!(e.family(), "misconfigured");
 
@@ -455,7 +463,9 @@ mod tests {
 
     #[test]
     fn transport_error_display_includes_family_and_code() {
-        let e = TransportError::Unreachable { code: "nat_blocked" };
+        let e = TransportError::Unreachable {
+            code: "nat_blocked",
+        };
         let s = format!("{e}");
         assert!(s.contains("unreachable"));
         assert!(s.contains("nat_blocked"));

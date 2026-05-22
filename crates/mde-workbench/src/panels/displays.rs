@@ -207,7 +207,6 @@ impl DisplaysPanel {
             ]
             .spacing(8)
             .width(Length::Fill)
-            
             .into();
         }
 
@@ -256,7 +255,6 @@ impl DisplaysPanel {
         ]
         .spacing(12)
         .width(Length::Fill)
-        
         .into()
     }
 }

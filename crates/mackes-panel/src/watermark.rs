@@ -298,8 +298,12 @@ fn mackes_version() -> String {
 /// follow-up).
 #[must_use]
 pub fn build_hash() -> String {
-    read_build_file(&["/usr/share/mde/build-hash", "/usr/share/mackes-shell/build-hash", "build-hash"])
-        .unwrap_or_else(|| "dev".to_owned())
+    read_build_file(&[
+        "/usr/share/mde/build-hash",
+        "/usr/share/mackes-shell/build-hash",
+        "build-hash",
+    ])
+    .unwrap_or_else(|| "dev".to_owned())
 }
 
 /// Read the build date (YYYY-MM-DD UTC) from
@@ -313,8 +317,12 @@ pub fn build_hash() -> String {
 /// them to drift since they share the source-of-truth file.
 #[must_use]
 pub fn build_date() -> String {
-    read_build_file(&["/usr/share/mde/build-date", "/usr/share/mackes-shell/build-date", "build-date"])
-        .unwrap_or_default()
+    read_build_file(&[
+        "/usr/share/mde/build-date",
+        "/usr/share/mackes-shell/build-date",
+        "build-date",
+    ])
+    .unwrap_or_default()
 }
 
 /// Common file-read for the build metadata. Walks the candidate

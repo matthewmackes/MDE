@@ -162,7 +162,6 @@ impl MeshHistoryPanel {
         ]
         .spacing(12)
         .width(Length::Fill)
-        
         .into()
     }
 
@@ -195,7 +194,6 @@ impl MeshHistoryPanel {
         ]
         .spacing(12)
         .width(Length::Fill)
-        
         .into()
     }
 }

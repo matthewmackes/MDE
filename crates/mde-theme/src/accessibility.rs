@@ -67,9 +67,9 @@ impl A11y {
     /// individual keys, not as one composite value.
     pub fn ids(self) -> (&'static str, &'static str, &'static str) {
         (
-            if self.high_contrast    { "on" } else { "off" },
-            if self.colorblind_safe  { "on" } else { "off" },
-            if self.reduce_motion    { "on" } else { "off" },
+            if self.high_contrast { "on" } else { "off" },
+            if self.colorblind_safe { "on" } else { "off" },
+            if self.reduce_motion { "on" } else { "off" },
         )
     }
 
@@ -101,7 +101,11 @@ mod tests {
     #[test]
     fn colorblind_safe_swaps_accent() {
         let base = Palette::for_theme(Theme::Dark);
-        let after = A11y { colorblind_safe: true, ..A11y::default() }.apply(base);
+        let after = A11y {
+            colorblind_safe: true,
+            ..A11y::default()
+        }
+        .apply(base);
         assert_ne!(after.accent, base.accent);
         // Green hue check: g should dominate r and b.
         assert!(after.accent.g > after.accent.r);
@@ -111,7 +115,11 @@ mod tests {
     #[test]
     fn colorblind_safe_does_not_change_other_tokens() {
         let base = Palette::for_theme(Theme::Dark);
-        let after = A11y { colorblind_safe: true, ..A11y::default() }.apply(base);
+        let after = A11y {
+            colorblind_safe: true,
+            ..A11y::default()
+        }
+        .apply(base);
         assert_eq!(after.background, base.background);
         assert_eq!(after.text, base.text);
     }
@@ -119,27 +127,42 @@ mod tests {
     #[test]
     fn high_contrast_boosts_text_to_fully_opaque() {
         let base = Palette::for_theme(Theme::Dark);
-        let after = A11y { high_contrast: true, ..A11y::default() }.apply(base);
+        let after = A11y {
+            high_contrast: true,
+            ..A11y::default()
+        }
+        .apply(base);
         assert!((after.text.a - 1.00).abs() < 0.001);
     }
 
     #[test]
     fn high_contrast_dark_keeps_dark_background() {
         let base = Palette::for_theme(Theme::Dark);
-        let after = A11y { high_contrast: true, ..A11y::default() }.apply(base);
+        let after = A11y {
+            high_contrast: true,
+            ..A11y::default()
+        }
+        .apply(base);
         assert_eq!(after.background, base.background);
     }
 
     #[test]
     fn high_contrast_widens_border_alpha() {
         let dark_base = Palette::for_theme(Theme::Dark);
-        let dark_after = A11y { high_contrast: true, ..A11y::default() }.apply(dark_base);
+        let dark_after = A11y {
+            high_contrast: true,
+            ..A11y::default()
+        }
+        .apply(dark_base);
         assert!(dark_after.border.a > dark_base.border.a);
     }
 
     #[test]
     fn reduced_motion_caps_transitions_to_80ms() {
-        let a = A11y { reduce_motion: true, ..A11y::default() };
+        let a = A11y {
+            reduce_motion: true,
+            ..A11y::default()
+        };
         assert_eq!(a.transition_duration_ms(180), 80);
         assert_eq!(a.transition_duration_ms(280), 80);
     }
@@ -158,9 +181,10 @@ mod tests {
             high_contrast: true,
             colorblind_safe: true,
             reduce_motion: false,
-        }.apply(base);
+        }
+        .apply(base);
         // Both effects visible.
-        assert_ne!(both.accent, base.accent);  // colorblind-safe
-        assert!((both.text.a - 1.00).abs() < 0.001);  // high-contrast
+        assert_ne!(both.accent, base.accent); // colorblind-safe
+        assert!((both.text.a - 1.00).abs() < 0.001); // high-contrast
     }
 }

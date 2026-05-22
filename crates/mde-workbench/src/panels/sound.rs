@@ -228,7 +228,6 @@ impl SoundPanel {
             ]
             .spacing(8)
             .width(Length::Fill)
-            
             .into();
         }
 
@@ -280,7 +279,6 @@ impl SoundPanel {
         ]
         .spacing(12)
         .width(Length::Fill)
-        
         .into()
     }
 }

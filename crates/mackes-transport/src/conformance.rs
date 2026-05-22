@@ -160,59 +160,38 @@ async fn c2_capabilities_stable(t: &dyn Transport) -> bool {
     c1 == c2
 }
 
-async fn c3_probe_unpaired_is_down(
-    t: &dyn Transport,
-    f: &dyn ConformanceFixture,
-) -> bool {
+async fn c3_probe_unpaired_is_down(t: &dyn Transport, f: &dyn ConformanceFixture) -> bool {
     matches!(t.probe(f.unpaired_peer_id()).await, HealthState::Down)
 }
 
-async fn c4_probe_paired_is_sendable(
-    t: &dyn Transport,
-    f: &dyn ConformanceFixture,
-) -> bool {
+async fn c4_probe_paired_is_sendable(t: &dyn Transport, f: &dyn ConformanceFixture) -> bool {
     t.probe(f.paired_peer_id()).await.is_sendable()
 }
 
-async fn c5_health_paired_after_probe(
-    t: &dyn Transport,
-    f: &dyn ConformanceFixture,
-) -> bool {
+async fn c5_health_paired_after_probe(t: &dyn Transport, f: &dyn ConformanceFixture) -> bool {
     let _ = t.probe(f.paired_peer_id()).await;
     t.health(f.paired_peer_id()).await.is_sendable()
 }
 
-async fn c6_health_unpaired_is_down(
-    t: &dyn Transport,
-    f: &dyn ConformanceFixture,
-) -> bool {
+async fn c6_health_unpaired_is_down(t: &dyn Transport, f: &dyn ConformanceFixture) -> bool {
     matches!(t.health(f.unpaired_peer_id()).await, HealthState::Down)
 }
 
-async fn c7_open_unpaired_is_unreachable(
-    t: &dyn Transport,
-    f: &dyn ConformanceFixture,
-) -> bool {
+async fn c7_open_unpaired_is_unreachable(t: &dyn Transport, f: &dyn ConformanceFixture) -> bool {
     match t.open(f.unpaired_peer_id()).await {
         Err(crate::TransportError::Unreachable { .. }) => true,
         _ => false,
     }
 }
 
-async fn c8_open_paired_returns_connection(
-    t: &dyn Transport,
-    f: &dyn ConformanceFixture,
-) -> bool {
+async fn c8_open_paired_returns_connection(t: &dyn Transport, f: &dyn ConformanceFixture) -> bool {
     match t.open(f.paired_peer_id()).await {
         Ok(conn) => !conn.id().is_empty(),
         Err(_) => false,
     }
 }
 
-async fn c9_open_idempotent_or_distinct(
-    t: &dyn Transport,
-    f: &dyn ConformanceFixture,
-) -> bool {
+async fn c9_open_idempotent_or_distinct(t: &dyn Transport, f: &dyn ConformanceFixture) -> bool {
     let c1 = match t.open(f.paired_peer_id()).await {
         Ok(c) => c.id().to_string(),
         Err(_) => return false,
@@ -231,10 +210,7 @@ async fn c10_carries_control(t: &dyn Transport) -> bool {
     t.capabilities().carries.carries(MessageClass::Control)
 }
 
-async fn c11_degraded_probe(
-    t: &dyn Transport,
-    f: &dyn ConformanceFixture,
-) -> bool {
+async fn c11_degraded_probe(t: &dyn Transport, f: &dyn ConformanceFixture) -> bool {
     matches!(t.probe(f.degraded_peer_id()).await, HealthState::Degraded)
 }
 
@@ -242,10 +218,7 @@ async fn c12_capabilities_label_non_empty(t: &dyn Transport) -> bool {
     !t.capabilities().label.is_empty()
 }
 
-async fn c13_probe_idempotent(
-    t: &dyn Transport,
-    f: &dyn ConformanceFixture,
-) -> bool {
+async fn c13_probe_idempotent(t: &dyn Transport, f: &dyn ConformanceFixture) -> bool {
     let h1 = t.probe(f.paired_peer_id()).await;
     let h2 = t.probe(f.paired_peer_id()).await;
     h1 == h2

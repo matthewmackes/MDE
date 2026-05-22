@@ -30,8 +30,8 @@ use tokio::time::Instant;
 
 use mde_kdc_proto::discovery::{
     decode_announce_datagram, decode_mdns_txt_records, encode_announce_datagram,
-    encode_mdns_txt_records, Announce, BroadcastError, DiscoveryRegistry,
-    KDC_MDNS_SERVICE_TYPE, KDC_UDP_PORT, MAX_BROADCAST_BYTES,
+    encode_mdns_txt_records, Announce, BroadcastError, DiscoveryRegistry, KDC_MDNS_SERVICE_TYPE,
+    KDC_UDP_PORT, MAX_BROADCAST_BYTES,
 };
 
 /// Broadcast cadence — matches upstream KDE Connect's 30 s
@@ -320,8 +320,8 @@ impl MdnsRunner {
                 .iter()
                 .map(|p| (p.key(), p.val_str()))
                 .collect();
-            let announce = decode_mdns_txt_records(pairs)
-                .map_err(|e| MdnsError::Decode(format!("{e}")))?;
+            let announce =
+                decode_mdns_txt_records(pairs).map_err(|e| MdnsError::Decode(format!("{e}")))?;
             let device_id = announce.device_id.clone();
             self.registry.lock().await.inject_real(announce, now_ms);
             return Ok(Some(device_id));
@@ -397,9 +397,10 @@ mod tests {
         let sender = UdpBroadcastRunner::bind(0, sample_announce("sender"), sender_registry)
             .await
             .unwrap();
-        let receiver = UdpBroadcastRunner::bind(0, sample_announce("recv"), Arc::clone(&receiver_registry))
-            .await
-            .unwrap();
+        let receiver =
+            UdpBroadcastRunner::bind(0, sample_announce("recv"), Arc::clone(&receiver_registry))
+                .await
+                .unwrap();
         let recv_port = receiver.local_port().unwrap();
 
         // Encode + send directly to the receiver's loopback
@@ -410,14 +411,11 @@ mod tests {
         sender.socket.send_to(&bytes, target).await.unwrap();
 
         // Receiver pulls + ingests.
-        let (got, _src) = tokio::time::timeout(
-            Duration::from_secs(2),
-            receiver.recv_one(),
-        )
-        .await
-        .expect("recv timed out")
-        .unwrap()
-        .expect("received None");
+        let (got, _src) = tokio::time::timeout(Duration::from_secs(2), receiver.recv_one())
+            .await
+            .expect("recv timed out")
+            .unwrap()
+            .expect("received None");
         assert_eq!(got.device_id, "sender");
         receiver.ingest_one(got, 200).await;
         let guard = receiver_registry.lock().await;
@@ -447,12 +445,9 @@ mod tests {
         };
         let mut bytes = serde_json::to_vec(&bad_packet).unwrap();
         bytes.push(b'\n');
-        let sender_socket = UdpSocket::bind(SocketAddr::new(
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            0,
-        ))
-        .await
-        .unwrap();
+        let sender_socket = UdpSocket::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0))
+            .await
+            .unwrap();
         let target = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), recv_port);
         sender_socket.send_to(&bytes, target).await.unwrap();
 

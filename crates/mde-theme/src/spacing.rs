@@ -8,9 +8,7 @@ use crate::density::Density;
 
 /// The 12 base spacing values, in px, before density scaling.
 /// Source of truth for the lint table and the runtime resolver.
-pub const BASE: [u16; 12] = [
-    4, 6, 8, 10, 14, 17, 20, 24, 28, 34, 40, 48,
-];
+pub const BASE: [u16; 12] = [4, 6, 8, 10, 14, 17, 20, 24, 28, 34, 40, 48];
 
 /// Named accessors over [`BASE`]. Match these to consumers'
 /// vocabulary so call sites read as `space.lg` rather than
@@ -51,17 +49,17 @@ impl Space {
         let mult = d.spacing_multiplier();
         let scale = |i: usize| ((BASE[i] as f32) * mult).round() as u16;
         Self {
-            xs2:  scale(0),
-            xs:   scale(1),
-            sm:   scale(2),
-            sm2:  scale(3),
-            md:   scale(4),
-            md2:  scale(5),
-            lg:   scale(6),
-            lg2:  scale(7),
-            xl:   scale(8),
-            xl2:  scale(9),
-            xxl:  scale(10),
+            xs2: scale(0),
+            xs: scale(1),
+            sm: scale(2),
+            sm2: scale(3),
+            md: scale(4),
+            md2: scale(5),
+            lg: scale(6),
+            lg2: scale(7),
+            xl: scale(8),
+            xl2: scale(9),
+            xxl: scale(10),
             xxl2: scale(11),
         }
     }
@@ -101,7 +99,11 @@ mod tests {
     #[test]
     fn base_is_monotonically_increasing() {
         for w in BASE.windows(2) {
-            assert!(w[0] < w[1], "spacing scale must be monotonically increasing: {:?}", w);
+            assert!(
+                w[0] < w[1],
+                "spacing scale must be monotonically increasing: {:?}",
+                w
+            );
         }
     }
 

@@ -124,7 +124,12 @@ impl BatterySnapshot {
     /// upstream KDE Connect sometimes emits -1 for "unknown").
     /// Negative or > 100 maps to `None`.
     #[must_use]
-    pub fn from_raw(charge: i32, is_charging: bool, threshold_event: String, reported_at: i64) -> Self {
+    pub fn from_raw(
+        charge: i32,
+        is_charging: bool,
+        threshold_event: String,
+        reported_at: i64,
+    ) -> Self {
         let charge_pct = if (0..=100).contains(&charge) {
             Some(charge as u8)
         } else {
@@ -191,18 +196,32 @@ mod tests {
 
     #[test]
     fn peer_kind_serializes_snake_case() {
-        assert_eq!(serde_json::to_string(&PeerKind::Desktop).unwrap(), r#""desktop""#);
-        assert_eq!(serde_json::to_string(&PeerKind::Phone).unwrap(), r#""phone""#);
-        assert_eq!(serde_json::to_string(&PeerKind::Tablet).unwrap(), r#""tablet""#);
-        assert_eq!(serde_json::to_string(&PeerKind::Unknown).unwrap(), r#""unknown""#);
+        assert_eq!(
+            serde_json::to_string(&PeerKind::Desktop).unwrap(),
+            r#""desktop""#
+        );
+        assert_eq!(
+            serde_json::to_string(&PeerKind::Phone).unwrap(),
+            r#""phone""#
+        );
+        assert_eq!(
+            serde_json::to_string(&PeerKind::Tablet).unwrap(),
+            r#""tablet""#
+        );
+        assert_eq!(
+            serde_json::to_string(&PeerKind::Unknown).unwrap(),
+            r#""unknown""#
+        );
     }
 
     #[test]
     fn peer_kind_display_matches_serde_token() {
         for k in PeerKind::all() {
             let display = format!("{k}");
-            let serde_token =
-                serde_json::to_string(&k).unwrap().trim_matches('"').to_string();
+            let serde_token = serde_json::to_string(&k)
+                .unwrap()
+                .trim_matches('"')
+                .to_string();
             assert_eq!(display, serde_token, "Display drift for {k:?}");
         }
     }

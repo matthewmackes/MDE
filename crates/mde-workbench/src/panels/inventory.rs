@@ -206,7 +206,6 @@ impl InventoryPanel {
         ]
         .spacing(12)
         .width(Length::Fill)
-        
         .into()
     }
 
@@ -230,7 +229,6 @@ impl InventoryPanel {
         ]
         .spacing(12)
         .width(Length::Fill)
-        
         .into()
     }
 }

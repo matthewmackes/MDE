@@ -185,7 +185,6 @@ impl RunHistoryPanel {
         ]
         .spacing(12)
         .width(Length::Fill)
-        
         .into()
     }
 
@@ -223,7 +222,6 @@ impl RunHistoryPanel {
         ]
         .spacing(12)
         .width(Length::Fill)
-        
         .into()
     }
 }

@@ -147,10 +147,7 @@ pub fn list_devices_from(store: &PairingStore) -> Vec<DeviceInfo> {
 /// the id isn't in the store; the D-Bus method translates this
 /// to a `zbus::fdo::Error::Failed` with a known error string.
 #[must_use]
-pub fn get_device_from(
-    store: &PairingStore,
-    device_id: &str,
-) -> Option<DeviceInfo> {
+pub fn get_device_from(store: &PairingStore, device_id: &str) -> Option<DeviceInfo> {
     store.get(device_id).as_ref().map(DeviceInfo::from)
 }
 
@@ -191,9 +188,8 @@ impl ConnectInterface {
     /// `dev.mackes.MDE.Connect1.NoSuchDevice` when the id
     /// isn't paired.
     async fn get_device(&self, device_id: String) -> zbus::fdo::Result<DeviceInfo> {
-        get_device_from(&self.pairing_store, &device_id).ok_or_else(|| {
-            zbus::fdo::Error::Failed(format!("NoSuchDevice: {device_id}"))
-        })
+        get_device_from(&self.pairing_store, &device_id)
+            .ok_or_else(|| zbus::fdo::Error::Failed(format!("NoSuchDevice: {device_id}")))
     }
 
     /// KDC2-3.5 — pair a device. Upserts the record into
@@ -281,11 +277,7 @@ impl ConnectInterface {
 
     /// KDC2-3.6 — push the local clipboard to the paired device.
     /// Errors with `NoSuchDevice` if the id isn't paired.
-    async fn send_clipboard(
-        &self,
-        device_id: String,
-        content: String,
-    ) -> zbus::fdo::Result<()> {
+    async fn send_clipboard(&self, device_id: String, content: String) -> zbus::fdo::Result<()> {
         ensure_paired(&self.pairing_store, &device_id)?;
         self.outbound.push(OutboundSend {
             device_id,
@@ -301,11 +293,7 @@ impl ConnectInterface {
     /// `path` is a local filesystem path the network worker
     /// will stream once the share handshake completes. Errors
     /// with `NoSuchDevice` if the id isn't paired.
-    async fn send_file(
-        &self,
-        device_id: String,
-        path: String,
-    ) -> zbus::fdo::Result<()> {
+    async fn send_file(&self, device_id: String, path: String) -> zbus::fdo::Result<()> {
         ensure_paired(&self.pairing_store, &device_id)?;
         self.outbound.push(OutboundSend {
             device_id,
@@ -462,8 +450,9 @@ mod tests {
             "name_already_acquired",
         );
         assert!(format!("{}", DbusError::Connect("x".into())).starts_with("connect: "));
-        assert!(format!("{}", DbusError::ObjectRegister("y".into()))
-            .starts_with("object_register: "));
+        assert!(
+            format!("{}", DbusError::ObjectRegister("y".into())).starts_with("object_register: ")
+        );
     }
 
     // ─────────────────────────────────────────────────────────
@@ -590,10 +579,7 @@ mod tests {
 
     #[test]
     fn unpair_device_via_store_removes_record() {
-        let store = make_store_with_devices(vec![
-            sample_device("a"),
-            sample_device("b"),
-        ]);
+        let store = make_store_with_devices(vec![sample_device("a"), sample_device("b")]);
         assert!(store.forget("a").unwrap());
         assert_eq!(store.paired_count(), 1);
         assert!(store.get("a").is_none());
@@ -655,10 +641,7 @@ mod tests {
         });
         outbound.push(OutboundSend {
             device_id: "a".into(),
-            packet: build_packet(
-                "kdeconnect.clipboard",
-                serde_json::json!({"content": "hi"}),
-            ),
+            packet: build_packet("kdeconnect.clipboard", serde_json::json!({"content": "hi"})),
         });
         outbound.push(OutboundSend {
             device_id: "a".into(),

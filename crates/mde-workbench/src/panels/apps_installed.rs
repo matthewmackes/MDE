@@ -133,8 +133,7 @@ impl AppsInstalledPanel {
             let remove_btn = variant_button(
                 "Remove",
                 ButtonVariant::Ghost,
-                (!self.busy)
-                    .then(|| crate::Message::AppsInstalled(Message::RemoveClicked(name))),
+                (!self.busy).then(|| crate::Message::AppsInstalled(Message::RemoveClicked(name))),
                 Palette::dark(),
             );
             col.push(
@@ -149,8 +148,7 @@ impl AppsInstalledPanel {
 
         column![
             row![filter_input, refresh_btn].spacing(12),
-            scrollable(container(rows_view.spacing(4)))
-                .height(Length::Fill),
+            scrollable(container(rows_view.spacing(4))).height(Length::Fill),
             text(format!(
                 "{} matching / {} installed",
                 filtered.len(),
@@ -161,7 +159,6 @@ impl AppsInstalledPanel {
         ]
         .spacing(12)
         .width(Length::Fill)
-        
         .into()
     }
 }

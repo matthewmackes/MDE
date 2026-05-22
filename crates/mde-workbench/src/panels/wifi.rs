@@ -157,7 +157,6 @@ impl WifiPanel {
             ]
             .spacing(8)
             .width(Length::Fill)
-            
             .into();
         }
 
@@ -207,15 +206,12 @@ impl WifiPanel {
         column![
             row![refresh_btn, text(&self.status).size(13),].spacing(12),
             text("Connections").size(16),
-            scrollable(container(conn_view.spacing(4)))
-                .height(Length::Fixed(180.0)),
+            scrollable(container(conn_view.spacing(4))).height(Length::Fixed(180.0)),
             text("Wi-Fi networks").size(16),
-            scrollable(container(scan_view.spacing(4)))
-                .height(Length::Fill),
+            scrollable(container(scan_view.spacing(4))).height(Length::Fill),
         ]
         .spacing(12)
         .width(Length::Fill)
-        
         .into()
     }
 }

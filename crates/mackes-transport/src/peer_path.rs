@@ -196,7 +196,10 @@ mod tests {
         // requires a coordinated reader update.
         assert_eq!(SwitchReason::Initial.audit_token(), "initial");
         assert_eq!(SwitchReason::Policy.audit_token(), "policy");
-        assert_eq!(SwitchReason::ManualOverride.audit_token(), "manual_override");
+        assert_eq!(
+            SwitchReason::ManualOverride.audit_token(),
+            "manual_override"
+        );
         assert_eq!(SwitchReason::FlapPenalty.audit_token(), "flap_penalty");
         // KDC2-4.5 — mesh-shunt + direct-LAN-recovery tokens.
         assert_eq!(
