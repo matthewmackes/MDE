@@ -6864,6 +6864,487 @@ if pulled forward.
 
 ---
 
+### MOD-1: Modal pattern canonization (v2.3 scope, gates TR-3 and all future modal surfaces)
+
+**Brief (locked 2026-05-22):** Until 2026-05-22 MDE shipped
+two unrelated modal chromes (`panel_chrome::dialog` at 480 px
+for confirms, and the GTK Notification Center at 960 × 640 for
+content-rich inspectors), with future surfaces drifting toward
+inventing a third chrome each time. `docs/design/modal-
+pattern.md` locks the two-tier system: **S-tier** (480 px
+confirm, existing `dialog` builder) and **L-tier** (960 × 640
+content-rich, modeled exactly on the Notification Center). The
+worklist tasks below operationalize the lock.
+
+Reference implementation: `crates/mackes-panel/src/
+notification_center.rs` (shipped 2026-05-19).
+
+**Citation requirement.** Every new modal surface added to the
+worklist or to the codebase after 2026-05-22 must cite
+`docs/design/modal-pattern.md` by section number and explicitly
+declare any deviation. PRs that introduce a modal without the
+citation are bounced until the citation lands.
+
+- [✓] **MOD-1.a: Design lock — `docs/design/modal-pattern.md`
+  landed 2026-05-22** — Document covers: §1 two-size lock
+  (S = 480 px, L = 960 × 640); §2 L-tier window properties +
+  outer chrome + header + body + card chrome + live refresh +
+  dismissal side effects + empty state; §3 S-tier (UX-9 confirm
+  recap); §4 decision table for which tier to use; §5
+  accessibility lock (AT-SPI + keyboard + reduce-motion +
+  high-contrast); §6 Iced `panel_chrome::modal` builder shape
+  (MOD-1.b); §7 surface-adoption track; §8 anti-patterns; §9
+  changelog. Lock cites the shipped Notification Center
+  reference at `crates/mackes-panel/src/notification_center.rs`
+  by line number throughout.
+
+- [ ] **MOD-1.b: Iced `panel_chrome::modal` builder — v2.3
+  scope** — Implement the `modal()` builder spec'd in §6 of
+  `docs/design/modal-pattern.md`. Adds `ModalConfig` struct
+  (title, meta, header_actions, hero, body, footer,
+  on_dismiss, refresh_every) and the `modal()` function in
+  `crates/mde-workbench/src/panel_chrome.rs` (alongside the
+  existing `dialog()` confirm builder). Behaviors enforced by
+  the builder, not by callers: 960 × 640 default size,
+  centered via layer-shell anchoring, 50 % backdrop via the
+  existing `dialog_backdrop()`, Esc + click-outside both fire
+  `on_dismiss`, AT-SPI metadata wired automatically, live-
+  refresh subscription wired when `refresh_every: Some(d)`.
+  Acceptance: (a) `cargo build -p mde-workbench` green;
+  (b) unit tests cover the builder's expected widget tree for
+  the four combinations of (hero present / absent) × (footer
+  present / absent); (c) a minimal example consumer in
+  `examples/modal_minimal.rs` renders under Iced 0.14;
+  (d) AT-SPI metadata round-trip verified by the
+  MDM-9-shipping `tests/a11y_orca.sh` once that lands.
+  Depends: UX-PRE Iced 0.14 (open); MOD-1.a (done).
+  Effort: Medium (estimate 2 weeks).
+  Outputs: `crates/mde-workbench/src/panel_chrome.rs` additions;
+  `crates/mde-workbench/examples/modal_minimal.rs`;
+  unit tests in `panel_chrome::tests`.
+
+- [ ] **MOD-1.c: Notification Center Iced port — v2.3 scope** —
+  Re-implement the existing GTK Notification Center
+  (`crates/mackes-panel/src/notification_center.rs`) in Iced
+  via the MOD-1.b builder. New crate or module:
+  `crates/mde-applets/src/notification_center/` (chains on the
+  Phase E.8 drawer-to-Rust port). Same data source
+  (`~/.cache/mackes/notifications.json`), same behaviors
+  (auto-mark-read-on-close, 2 s live refresh, Esc + click-
+  outside dismiss, LATEST + ALL NOTIFICATIONS tree, per-card
+  ✓ ⧉ 🗑 actions). Validates the MOD-1.b builder on the
+  reference surface before TR-3 and downstream consumers
+  depend on it. Acceptance: (a) every test in the GTK
+  Notification Center test suite (`unread_count_*`,
+  `save_then_load_*`, `load_returns_empty_*` — 5 tests in
+  `crates/mackes-panel/src/notification_center.rs:tests`)
+  ports cleanly to the Iced module and stays green;
+  (b) visual diff vs the GTK reference shows ≤ 4 px drift
+  on header / body / card positions at 960 × 640;
+  (c) reduce-motion variant (UX-22) skips the live-refresh
+  animation tween. Depends: MOD-1.b; UX-PRE Iced 0.14.
+  Effort: Medium (estimate 2 weeks; most of the work is
+  porting card chrome to Iced widgets — the data source +
+  logic ports unchanged).
+  Outputs: `crates/mde-applets/src/notification_center/`
+  module; bin shim in `crates/mde-applets/src/bin/
+  mde-applet-notification-center.rs` so the existing tray
+  bell can spawn it.
+
+---
+
+### TR-1..TR-5: Open-standards system tray (SNI host + Tray Icons Live inspector) (v2.3 scope)
+
+**Brief (locked 2026-05-22 via the 9-question survey across
+the two AskUserQuestion turns):** MDE today has no open-
+standards tray host — the `Pane::Tray` zone in `mde-panel` is
+a fixed strip of five first-party Mackes applets (audio, NM,
+mesh-status, notification-bell, status-cluster) hardcoded by
+`crates/mde-panel/src/host.rs::tray_applets()`. There is zero
+`org.kde.StatusNotifierItem` / `StatusNotifierWatcher` /
+AppIndicator / XEmbed code anywhere in the workspace. That
+breaks every SNI-only app on Linux today: Slack, Discord,
+Telegram, Signal, Element, KeePassXC, Steam, syncthing,
+qbittorrent, nextcloud-client, OBS, blueman, KDE Connect
+(already in the worklist!), and ~50 others. The wayland-
+readiness doc explicitly acknowledges this gap at line 30
+("System tray / notification daemon — Not used; we run our
+own drawer"). TR-1..TR-5 closes it.
+
+**Survey locks (all five answered 2026-05-22):**
+
+| Q | Lock |
+|---|---|
+| Protocol scope | **SNI (org.kde.StatusNotifierItem) only.** No XEmbed bridge, no in-flight Wayland-XDG-tray. |
+| Modal item source | **Real items only.** No synthetic test-icon zoo in the user-facing modal (kept as a `tests/` CI fixture). |
+| User control | **Full control** — rebind L/M/R clicks, mute attention pulses, override icon, deactivate-without-quit, force quit. Persisted to `mackes_config`. |
+| Modal chrome | **L-tier modal per `docs/design/modal-pattern.md`** (960 × 640 centered, Notification Center pattern). **Supersedes** the prior 360 px PC-1 drawer lock from the first survey pass. |
+| Hero section categories | **All four** — SNI runtime + host-app + user control + mesh. |
+
+**Why these five tasks, in dependency order:**
+1. **TR-1** (SNI host daemon) is the foundation — everything
+   else needs registered items to render.
+2. **TR-2** (tray strip render) replaces the hardcoded
+   `tray_applets()` list with a real strip that interleaves
+   first-party applets with discovered SNI items.
+3. **TR-3** (Tray Icons Live modal) is the inspector surface,
+   adopts the locked L-tier modal chrome from MOD-1.b.
+4. **TR-4** (click-rebind + mute + override persistence) is
+   the user-control surface from the survey lock; chains on
+   TR-3 for the UI.
+5. **TR-5** (mesh tray relay) is the differentiator —
+   activates SNI items registered on remote peers. Chains on
+   TR-1 (local host) + MDM-2 (Fleet telemetry for peer
+   discovery).
+
+---
+
+- [ ] **TR-1: SNI host daemon (`mde-tray-host`) — v2.3 scope** —
+  New mded worker that owns the `org.kde.StatusNotifierWatcher`
+  D-Bus name on the session bus, accepts
+  `RegisterStatusNotifierItem` / `RegisterStatusNotifierHost`
+  calls, and exposes the registered item list to UI consumers
+  via `dev.mackes.MDE.Tray`. Adds:
+    * **`mded::workers::tray_host`.** Owns
+      `org.kde.StatusNotifierWatcher` (per spec, fails to
+      acquire if another impl is already on the bus — in that
+      case logs a clear "another tray host is registered, MDE
+      tray disabled" and exits cleanly without crashing
+      mded). Tracks `RegisteredStatusNotifierItems` list,
+      emits `StatusNotifierItemRegistered` /
+      `StatusNotifierItemUnregistered` / `IsStatusNotifierHost
+      Registered` signals exactly per spec v0.10.
+    * **Per-item D-Bus proxy.** For every registered item, the
+      worker holds a proxy to its
+      `org.kde.StatusNotifierItem` interface and subscribes
+      to `NewIcon`, `NewAttentionIcon`, `NewOverlayIcon`,
+      `NewToolTip`, `NewStatus`, `NewTitle` signals.
+      Per-item state cached in `tray_host::ItemSnapshot`
+      (id, title, status, icon-name + 4 icon variants, tooltip,
+      menu D-Bus path, pid, exe, sandbox source).
+    * **`dev.mackes.MDE.Tray` D-Bus interface.** Exposes
+      `ListItems()`, `GetItem(id)`, `Activate(id, x, y)`,
+      `SecondaryActivate(id, x, y)`, `Scroll(id, delta,
+      orientation)` so panel + workbench surfaces can drive
+      tray items without holding their own SNI proxies. Plus
+      `ItemAdded(id)` / `ItemRemoved(id)` / `ItemChanged(id,
+      fields)` signals for live UI updates.
+    * **Sandbox / source detection.** For each registered
+      item, the worker resolves: PID → cmdline → cgroup →
+      .desktop file. Determines source: flatpak (cgroup under
+      `app-flatpak-*`), snap (under `snap.*`), appimage
+      (cmdline matches the .AppImage convention), system
+      (everything else). Stashed in the `ItemSnapshot` for the
+      Tray Icons Live host-app section (TR-3).
+  Acceptance: (a) `busctl --user introspect
+  org.kde.StatusNotifierWatcher /StatusNotifierWatcher`
+  returns the expected interface after `mded` start;
+  (b) launching a known SNI app (Discord, KeePassXC, or the
+  TR-1.t test fixture below) makes the item appear in
+  `dev.mackes.MDE.Tray.ListItems()`; (c) killing the host
+  app fires `ItemRemoved`; (d) a second tray host already on
+  the bus is detected and mded exits the worker cleanly;
+  (e) sandbox source detection correctly identifies a
+  flatpak'd Slack vs a system-packaged blueman.
+  Depends: shipped `mded` D-Bus infra; shipped session bus
+  policy.
+  Effort: Large (estimate 4 weeks; D-Bus bookkeeping is
+  ~1 week, per-item proxy + signal subscriptions ~1 week,
+  source detection ~1 week, polishing + edge cases
+  ~1 week).
+  Outputs: `crates/mded/src/workers/tray_host.rs`;
+  `crates/mde-mesh-types/src/tray.rs` (`ItemSnapshot`,
+  `TrayItemSource`, `TrayStatus`);
+  `dev.mackes.MDE.Tray` D-Bus interface XML;
+  `dev.mackes.MDE.Tray.policy` polkit file (read-only
+  by default, mutating verbs require active session).
+
+- [ ] **TR-1.t: `mde-tray-test` CI test fixture (developer-
+  facing, NOT user-facing) — v2.3 scope** — Internal binary
+  used by CI + manual testing of TR-1's correctness. Registers
+  8–10 synthetic SNI items exercising every spec corner:
+  Status = Passive / Active / NeedsAttention; all four icon
+  variants set / unset; animated icons (NewIcon every 500 ms);
+  tooltip with icon; dbusmenu with checkbox / radio /
+  submenu / disabled / icon-decorated items; ItemIsMenu = true
+  vs false; large icon (256 px); zero-icon (no Icon set —
+  must fall back gracefully); unicode in title. Lives under
+  `crates/mded/examples/mde_tray_test.rs` so it doesn't ship
+  in the RPM but is reachable via `cargo run --example
+  mde_tray_test`. Survey lock pinned "real items only" for the
+  user-facing modal, so this fixture is **not** surfaced in
+  Tray Icons Live (TR-3) — it's purely for `tests/` and dev
+  smoke. Acceptance: (a) running the fixture against a
+  running TR-1 host shows all 8–10 items in
+  `dev.mackes.MDE.Tray.ListItems()`; (b) CI test
+  `tests/tray_host_smoke.sh` boots TR-1 + the fixture and
+  asserts the expected ItemSnapshot shapes.
+  Depends: TR-1. Effort: Small (estimate 1 week).
+  Outputs: `crates/mded/examples/mde_tray_test.rs`;
+  `tests/tray_host_smoke.sh`.
+
+- [ ] **TR-2: Tray strip rendering (panel pane) — v2.3 scope** —
+  Replace the hardcoded
+  `crates/mde-panel/src/host.rs::tray_applets()` list with a
+  dynamic strip that interleaves first-party applets with
+  discovered SNI items from TR-1. Adds:
+    * **Dynamic strip.** Left side: the five existing applets
+      (audio, NM, mesh-status, notification-bell,
+      status-cluster), still hardcoded — these are the MDE
+      core. Right side (between status-cluster and the clock):
+      discovered SNI items from TR-1, capped at 8 visible
+      icons with the rest collapsed under a "▸ more" overflow
+      affordance.
+    * **Icon rendering.** 16 × 16 icon, 24 × 24 click target
+      (per UX-6 control-height lock). Resolves the SNI icon
+      to a renderable pixmap: tries `Icon.icon_name` (look up
+      via icon theme) → `Icon.icon_pixmap` (raw bytes from
+      D-Bus) → freedesktop default. Animated icons rotate at
+      `NewIcon` cadence with `prefers-reduced-motion` honored
+      (UX-22).
+    * **Status decoration.** `Status::NeedsAttention` items
+      pulse with the same 1.6 s breathe animation the
+      notification bell uses (UX-9 motion lock).
+      `Status::Passive` items render at 60 % opacity.
+    * **Click routing.** L-click → `Activate(x, y)`. M-click
+      → `SecondaryActivate(x, y)`. R-click → menu (renders
+      the item's `org.canonical.dbusmenu` if present, falls
+      back to a minimal "Activate · Quit" menu if not).
+      Scroll → `Scroll(delta, orientation)`. Click rebinds
+      from TR-4 intercept here before the default routing.
+    * **Overflow popover.** "▸ more" button at the right edge
+      of the strip opens a layer-shell popover with the
+      remaining icons in a 4-column grid. Same click routing.
+  Acceptance: (a) a known SNI app (KeePassXC) appears in the
+  strip within 500 ms of launch; (b) right-click shows the
+  app's actual menu rendered through dbusmenu; (c) the strip
+  reflows correctly when 0, 1, 5, 12 SNI items are
+  registered; (d) animated icons honor reduce-motion;
+  (e) overflow popover surfaces items 9+ correctly.
+  Depends: TR-1 (host); shipped panel chrome.
+  Effort: Large (estimate 4 weeks; strip + icon rendering
+  ~1 week, dbusmenu render ~2 weeks — this is the meatiest
+  unknown — overflow + reflow + polish ~1 week).
+  Outputs: `crates/mde-panel/src/tray_strip.rs`;
+  `crates/mde-dbusmenu/` new crate (dbusmenu → Iced
+  rendering, also used by TR-3 for the live dbusmenu render
+  inside hero cards); `crates/mde-panel/src/host.rs`
+  updates (`tray_applets()` becomes
+  `tray_first_party_applets()`, dynamic strip composes
+  it + TR-1 items).
+
+- [ ] **TR-3: Tray Icons Live inspector modal — v2.3 scope** —
+  L-tier modal per `docs/design/modal-pattern.md` (cites
+  modal-pattern §2 throughout). 960 × 640 centered, 50%
+  backdrop, Esc + click-outside dismiss, 2 s live refresh
+  from the TR-1 cache.
+
+  **Trigger:** middle-click on any empty area of the panel's
+  tray pane opens the modal; `Super+T` keyboard shortcut as
+  the alternative; Workbench → Devices → Tray deep link as
+  the discoverable path.
+
+  **Modal layout (modal-pattern §2):**
+    * **Header.** Title: "Tray Icons". Meta:
+      `"{N_active} active · {N_muted} muted · {N_attention}
+      attention"`. Header actions (right-to-left, × last):
+      "Mute all", "Reset bindings", `×`.
+    * **Hero strip ("LATEST" → "RECENTLY ACTIVE").** Top 3
+      items by most-recent SNI signal activity (NewIcon,
+      NewAttentionIcon, NewStatus). Same card chrome as the
+      ALL section but pinned at the top.
+    * **ALL ITEMS tree.** Grouped by host-app source: system
+      / flatpak / snap / appimage / mesh-remote (from TR-5).
+      Per-group header `▸ source — N items`. Per-item card.
+    * **Empty state** (no SNI items registered, common on
+      fresh install): centered prompt "(no apps have
+      registered a tray icon yet)" + a 3 × 3 discovery grid
+      of common tray-using apps (Slack, Discord, KeePassXC,
+      KDE Connect, syncthing-gtk, OBS, Telegram, Element,
+      blueman) with one-click install via the existing
+      `apps_install` panel. Solves the "Real items only"
+      lock's empty-on-fresh-install UX gap.
+
+  **Card chrome (collapsed → expanded hero).** Collapsed
+  card matches modal-pattern §2.5 (subhead + title + body +
+  action strip). Tap a card to expand the hero in-place
+  (accordion), revealing the **four section categories**
+  from the second survey lock:
+    1. **SNI runtime state** — Status enum chip, four icon
+       variants strip, tooltip text, live `dbusmenu` render
+       (via `crates/mde-dbusmenu/` from TR-2), 60-second
+       traffic-tail with rapid-change diff coloring (idea
+       #3), spec-conformance score (idea #4: 0–100 + red /
+       amber / green chip + "Why?" disclosure).
+    2. **Host-app surface** — PID, cmdline, .desktop file,
+       cgroup, sandbox source from TR-1's detection,
+       autostart toggle (writes
+       `~/.config/autostart/<app>.desktop`), open-in-
+       Workbench-Apps-Installed deep link, Sandbox X-ray
+       column (idea #7: requested vs actually-used D-Bus
+       names during the session).
+    3. **User control** — click rebind L/M/R radio strips
+       (TR-4), mute attention toggle + schedule (TR-4 +
+       idea #6), icon override picker, "Deactivate without
+       quit" button (`Quit()` D-Bus call to the menu's
+       quit verb if present, else `kill -SIGTERM`),
+       "Force quit" (`kill -SIGKILL`) with confirm dialog
+       (S-tier).
+    4. **Mesh surface** — only present for `mesh-remote`
+       items from TR-5. Shows host peer name, peer status
+       from MDM-2 telemetry, link RTT, "Activate on remote"
+       button (routes verb via mded), shadow-aware traffic
+       log (signals from the remote peer routed in).
+  Acceptance: (a) modal opens within 200 ms of the
+  middle-click / Super+T trigger; (b) cites
+  `docs/design/modal-pattern.md` §2 / §5 / §6 in module
+  docstring + adopts every locked behavior; (c) live
+  refresh surfaces a newly-launched SNI app within 2 s
+  (e.g. start KeePassXC → see it in the modal without
+  reopening); (d) empty state's 3 × 3 discovery grid
+  installs Discord on click via `apps_install`; (e) hero
+  expand / collapse honors prefers-reduced-motion (no
+  animation tween when set); (f) AT-SPI metadata per
+  modal-pattern §5 (Orca reads every card title + action +
+  section header).
+  Depends: TR-1 (host); TR-2 (tray strip — needed for the
+  middle-click trigger); MOD-1.b (Iced modal builder);
+  `crates/mde-dbusmenu/` from TR-2.
+  Effort: Large (estimate 6 weeks; modal scaffolding via
+  MOD-1.b ~1 week, hero expand/collapse + four sections
+  ~3 weeks, spec-conformance lint + traffic-tail
+  ~1 week, empty-state discovery grid ~1 week).
+  Outputs: `crates/mde-applets/src/tray_inspector/`
+  module; binary
+  `crates/mde-applets/src/bin/mde-applet-tray-inspector.rs`
+  spawned by the panel's middle-click handler;
+  Workbench → Devices → Tray panel deep link in
+  `crates/mde-workbench/src/panels/`.
+
+- [ ] **TR-4: Click rebind + mute + icon override persistence
+  — v2.3 scope** — The "Full control" survey lock's
+  persistence layer. UI surfaces ship in TR-3; this task is
+  the data + enforcement layer. Adds:
+    * **`mackes_config::TrayOverrides`** schema entry. Per-
+      item (keyed on the SNI item's stable Identifier, NOT
+      the connection name) overrides: `clicks: {left, middle,
+      right}` (each a `SniVerb` enum: Activate /
+      SecondaryActivate / Scroll{Up,Down} / ShowMenu /
+      Custom(D-Bus call) / Disabled); `mute: {attention:
+      bool, schedule: Option<CalendarWindow>}`; `icon_
+      override: Option<PathBuf>`; `autostart_override:
+      Option<bool>`.
+    * **`CalendarWindow`** type: weekday bitmap +
+      start_time + end_time. Bedtime mode from idea #6:
+      "weekdays 18:00–08:00 + all weekend" expresses cleanly.
+    * **Enforcement hook in TR-2.** Click handler consults
+      `TrayOverrides` before falling back to the default
+      verb. Mute hook in the
+      `NewAttentionIcon` signal handler swallows the
+      transition while the mute window is active (item
+      stays in its current Status; the host app sees no
+      change). Icon override hook in the icon-resolution
+      path of TR-2.
+    * **Mesh replication.** `TrayOverrides` syncs via
+      QNM-Shared (same mechanism as
+      `mesh_notifications.py`). User rebinds Slack's
+      middle-click to "Mute" on the laptop → desktop and
+      NAS see the same rebind on next sync. Per-peer
+      opt-out for users who want per-machine bindings
+      (stored in `TrayOverrides.mesh_replicate: bool`,
+      defaults true).
+    * **Preset library (idea #5).** Ship three opinionated
+      presets in `data/tray-presets/`:
+      `mute-on-middle.toml`, `quit-on-shift-click.toml`,
+      `notification-history-on-scroll.toml`. TR-3's hero
+      card "User control" section has a "Apply preset"
+      affordance.
+  Acceptance: (a) rebinding L/M/R for one app persists
+  across reboots; (b) mute schedule fires on the locked
+  calendar window (cron-style test); (c) icon override
+  resolves before the default icon-theme lookup in TR-2;
+  (d) mesh replication round-trips an override between
+  two peers within one QNM-Shared sync cycle; (e) the
+  three shipped presets apply correctly via the TR-3
+  affordance.
+  Depends: TR-1; TR-2; TR-3; QNM-Shared (shipped).
+  Effort: Medium (estimate 3 weeks; schema + enforcement
+  ~1 week, calendar window + cron-style scheduling
+  ~1 week, mesh replication + preset library ~1 week).
+  Outputs: `crates/mackes-config/src/tray.rs`
+  (`TrayOverrides`, `CalendarWindow`, `SniVerb`);
+  `crates/mde-panel/src/tray_strip.rs` enforcement hooks
+  (extends TR-2); `data/tray-presets/*.toml`.
+
+- [ ] **TR-5: Mesh tray relay (the differentiator) — v2.3
+  scope** — Tray items registered on peer-A surface in
+  peer-B's tray strip + Tray Icons Live modal under a
+  `mesh-remote` source. Activating a remote item routes the
+  SNI verb through `mded` to the actual app on peer-A.
+  Adds:
+    * **`mded::workers::tray_relay`.** Subscribes to TR-1's
+      `dev.mackes.MDE.Tray.ItemAdded` /
+      `ItemChanged` / `ItemRemoved` signals locally,
+      replicates the snapshot list over NATS (subject
+      `mesh.tray.<peer-id>`) to all online peers. Bounded
+      retention: only current snapshots, no history (history
+      lives in TR-3's traffic log on the originating peer).
+    * **Local remote-item proxy.** On peer-B,
+      `tray_relay` materializes received remote snapshots
+      as `RemoteTrayItem` rows visible to TR-2 + TR-3.
+      Strip rendering decoration: remote items get a
+      small peer-name chip overlay on the icon (e.g.,
+      "desktop", per the locked typography for
+      `Caption` role).
+    * **Verb routing.** Activate / SecondaryActivate /
+      Scroll on a remote item: TR-2's click handler
+      detects the `mesh-remote` source, calls
+      `mded::tray_relay::activate_remote(peer_id,
+      item_id, verb)` → NATS request/reply to peer-A's
+      `mded` → local `dev.mackes.MDE.Tray.Activate(...)`
+      call there → result returns to peer-B (success /
+      failure). Latency budget: < 500 ms wall clock on a
+      healthy mesh (verified by the MDM-2 telemetry).
+    * **Privacy / ACL.** Per-peer opt-in for tray sharing
+      in `mackes_config::TrayConfig.share_with_peers`
+      (default off — opt-in, not opt-out, because tray
+      icons can leak sensitive app state like
+      "KeePassXC is unlocked" via the Status field).
+      ACL bitmap mirrors MDM-1's clipboard ACL pattern.
+    * **TR-3 mesh section.** The fourth hero-card section
+      from the survey lock — only present for
+      `mesh-remote` items. Surfaces host peer name, peer
+      status from MDM-2, link RTT, last-N verb
+      invocations + their results.
+  Acceptance: (a) a tray icon registered on peer-A
+  appears on peer-B within 1 s of registration on a
+  healthy mesh; (b) Activate verb on peer-B opens the
+  app's window on peer-A (verified end-to-end with
+  Element + KeePassXC); (c) verb round-trip latency
+  < 500 ms on a known mesh fabric; (d) opt-in ACL
+  correctly blocks tray sharing from a peer set to
+  off; (e) UI clearly distinguishes local vs
+  mesh-remote items (peer chip overlay + the dedicated
+  `mesh-remote` group in the tree).
+  Depends: TR-1; TR-2; TR-3; MDM-1 ACL pattern (for the
+  per-peer toggle); MDM-2 (for the peer-status display
+  in the hero's mesh section); shipped NATS mesh transport.
+  Effort: Large (estimate 5 weeks; relay worker
+  ~2 weeks, NATS subject + bounded retention ~1 week,
+  verb routing + ACL ~1 week, hero mesh section + polish
+  ~1 week).
+  Outputs: `crates/mded/src/workers/tray_relay.rs`;
+  `crates/mde-mesh-types/src/tray.rs` updates
+  (`RemoteTrayItem`, NATS subject schema);
+  `mackes_config::TrayConfig.share_with_peers` schema
+  entry; TR-3 hero card mesh section.
+  Risk: tray icons can leak sensitive state. Default
+  must be opt-in. Document the threat model in the help
+  doc (`docs/help/mesh-tray-privacy.md` — a new help
+  doc, ~1 page).
+
+---
+
 ## History — shipped 1.0.6 through 1.1.0
 
 (unchanged from the prior consolidation — see git for the full
