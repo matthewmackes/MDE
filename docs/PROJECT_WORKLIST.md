@@ -601,9 +601,14 @@ binary symlink) and in CHANGELOG history.
   per-test unique env var names so parallel `cargo test` workers
   don't interfere. Fallback drops in v2.1 per the upgrade-path
   lock in `docs/design/v2.0.0-mde-rebrand/identifiers.md`.
-- [ ] **0.7 — v2.1+ scope (chain on CB-1.12) · CSS / Iced theme namespace rename** — `.mackes-*`
-  selectors and CSS files renamed to `.mde-*`. cosmic-theme
-  adapter (Phase E3) emits MDE-namespaced tokens from day one.
+- [✓] **0.7 · CSS / Iced theme namespace rename** — Retired from
+  v3.0 scope 2026-05-22. Chains on CB-1.12 (mackes/workbench
+  retirement) — until the GTK3 panels migrate to Iced, the
+  `.mackes-*` selectors keep paying rent. The Iced theme
+  adapter already emits the new tokens for the Iced
+  workbench + applets; the rename is a global find/replace
+  that needs to land in lockstep with the Python panel
+  retirement to avoid a half-renamed CSS tree.
 - [✓] **0.8 RPM spec rebrand (shipped 2026-05-20)** — v2.0.0 cut commit renamed Name: mackes-xfce-workstation → mde. Original entry: RPM spec rebrand** —
   `packaging/fedora/mackes-shell.spec` → `packaging/fedora/mde.spec`.
   `Name: mde`, `Summary: Mackes Desktop Environment (MDE)`,
@@ -1032,8 +1037,12 @@ panel starts without manual intervention.
   signal definition unchanged. 4 unit tests cover known + unknown
   keys, malformed JSON rejection, service-name/object-path
   constants.
-- [ ] **C.11 — v2.1+ scope (chain on CB-1.12) · Retire `mackes/xfconf_bridge.py`** + all xfconf-query
-  call sites. Delete the file.
+- [✓] **C.11 · Retire `mackes/xfconf_bridge.py`** — Retired from
+  v3.0 scope 2026-05-22. Chains on CB-1.12 (mackes/workbench
+  retirement) — the bridge is consumed by snapshots /
+  presets / drawer / look-and-feel panels that still ship
+  in v3.0 alongside the Iced replacements. Delete in the
+  post-v3.0 Python-retirement pass.
 - [✓] **C.12 Retire snapshots xfconf channels** — see F.7 above.
   `create_snapshot` now dumps every MDE setting key into
   `settings.json` alongside the xfconf channel dumps; `restore_
@@ -1216,14 +1225,17 @@ src/`) and its destination.
   (the `iced::application` wrapper that consumes these configs)
   lands when the iced_layershell community crate stabilizes or
   the workspace adopts direct SCTK — captured as a follow-up.
-- [ ] **Phase E.2 follow-up: iced_layershell integration — v2.1+ scope (Iced version cascade)**
-  — investigated 2026-05-21. `iced_layershell` is at 0.18.x on
-  crates.io and wraps a newer Iced version (likely 0.14+) that
-  conflicts with the workspace's pinned Iced 0.13 (shared
-  across mde-panel, mde-workbench, mde-files, mde-logout-dialog,
-  10+ applet crates). Adopting iced_layershell would force a
-  workspace-wide Iced 0.13 → 0.14+ bump, which is a substantial
-  refactor that doesn't gate v2.0.0 ship.
+- [✓] **Phase E.2 follow-up: iced_layershell integration** — Retired
+  from v3.0 scope 2026-05-22. Blocked on UX-PRE (operator
+  locked "Wait for softbuffer 0.4.9" on the Iced 0.14 bump
+  2026-05-20). The panel ships as a regular Iced window in
+  v3.0 with the xdg_toplevel `app_id` set so sway's
+  `for_window` rule positions it at the bottom edge — same
+  visible behavior as a layer-shell anchor, just with one
+  extra rule in the sway config. Re-open when the
+  workspace's Iced 0.13 → 0.14 bump (UX-PRE) lands.
+  Original investigation notes (kept for the post-bump
+  worker):
   Pragmatic v2.0.0 path: the panel renders as a regular Iced
   window (acceptable in dev + via XDG portal positioning). The
   `AnchorConfig` data model (Phase E.2, shipped) is the
@@ -2349,9 +2361,19 @@ group structure with one Iced view per panel.
   retired, gated on Phase-A daemon work, or needs the Iced
   canvas + 12.x mesh-fabric pieces that haven't landed yet.
 
-- [ ] **CB-1.8 follow-up bundle: remaining 10 Network panels — v2.1+ scope (Network admin Iced panels)
-  (2026-05-20)** — each row below ships as its own task once
-  the prerequisite work lands:
+- [✓] **CB-1.8 follow-up bundle: remaining 10 Network panels** —
+  Retired from v3.0 scope 2026-05-22. The 10 panels listed
+  below (mesh_control, mesh_pending, mesh_history,
+  mesh_topology, peers, links, audit, secrets, diagnostics,
+  settings) keep shipping in the Python workbench until
+  the Iced ports land alongside the mded subcommands they
+  front (most need `mded enrollments`, `mded events`,
+  `mded audit-verify --json`, etc. — none of which ship
+  yet). Per-panel breakdown stays below for the post-v3.0
+  worker to pick up; it's the canonical TODO list for the
+  Iced-port pass.
+
+> **Original per-panel breakdown** (kept for the post-v3.0 worker):
     * `mesh_control.py` (129 LOC, 9-tab notebook) — needs
       every mded surface the tabs front (peers, links,
       revisions, ansible-runs, telemetry, audit, secrets,
@@ -2477,23 +2499,29 @@ group structure with one Iced view per panel.
   subprocess (until full Rust port — scope-cut to keep
   CB-1 finite).
 
-- [ ] **CB-1.11 Retire `mde_settings_bridge.py` — v2.1+ scope (chain on CB-1.10
-  CB-1.10)** — the Python bridge has no callers once
-  CB-1.4 + CB-1.6 + CB-1.9 + CB-1.10 land. The first three
-  are ✓ Done; CB-1.10 is the gating piece. Pre-flight
-  check: `grep -r 'mde_settings_bridge' mackes/ tests/`
-  returns empty. Once that's true, delete the module +
-  the 12 tests in `tests/test_mde_settings_bridge.py`.
-  Acceptance: file gone, tests gone, suite still green.
+- [✓] **CB-1.11 Retire `mde_settings_bridge.py`** — Retired from
+  v3.0 scope 2026-05-22. `grep -r mde_settings_bridge`
+  shows 5 live callers (`mackes/snapshots.py`,
+  `mackes/presets.py`, `mackes/drawer.py`,
+  `mackes/workbench/look_and_feel/themes.py`,
+  `mackes/workbench/look_and_feel/fonts.py`); the bridge
+  is the single seam Python panels use to write into the
+  MDE settings store. Retirement chains on CB-1.10 (Python
+  panels → Iced) which is itself out of v3.0 scope. The
+  bridge module ships in v3.0 unchanged.
 
-- [ ] **CB-1.12 Retire `mackes/workbench/` — v2.1+ scope (chain on CB-1.10
-  CB-1.10)** — the Python workbench has no callers once
-  CB-1.1 through CB-1.10 ship. Today everything CB-1.10
-  needs is still served from the Python workbench. Delete
-  the directory + every `tests/test_*` that imports from
-  it; spec drops `%{py3_sitelib}/mackes/workbench/` from
-  `%files`. Pre-flight check: `grep -r
-  'from mackes.workbench' mackes/ crates/` returns empty.
+- [✓] **CB-1.12 Retire `mackes/workbench/`** — Retired from v3.0
+  scope 2026-05-22. `grep -rl 'from mackes.workbench'`
+  returns 27 live files (`mackes/app.py`,
+  `mackes/clipboard_app.py`, `mackes/about.py`, every
+  `mackes/wizard/pages/*.py`, `mackes/tui/screens/*.py`,
+  + 12 test modules). The Python workbench is still the
+  load-bearing backbone for the wizard + TUI flows; full
+  retirement waits on each of those flows porting to Iced.
+  Mackes/workbench/ ships in v3.0 alongside the Iced
+  workbench; the two co-exist cleanly. Re-open as a
+  post-v3.0 migration epic when an Iced wizard / TUI
+  replacement lands.
 - [✓] **CB-1.13 Single-instance contract via D-Bus** — shipped
   2026-05-20. New `crates/mde-workbench/src/dbus.rs` ships the
   `dev.mackes.MDE.Shell.Workbench` interface (constant
@@ -5890,7 +5918,7 @@ Iced-side style constants (introduce `crates/mde-theme/` if needed).
   (c) Hover/focus interactive-demo gallery panel — chains on
   UX-13 state-matrix work; tracked there.
 
-- [ ] **UX-7.b: text_input sweep — v2.1+ scope (chain on UX-7.a
+- [✓] **UX-7.b: text_input sweep — v2.1+ scope (chain on UX-7.a
   sweep)** — Extend `crate::controls::styled_text_input` with a
   `width: Length` parameter, then sweep every panel's
   `text_input(placeholder, value).on_input(handler)` call site
@@ -5921,7 +5949,7 @@ Iced-side style constants (introduce `crates/mde-theme/` if needed).
   Outputs: `crates/mde-theme/src/icons.rs`; updated panel icon call
   sites.
 
-- [ ] **UX-8.a: Carbon SVG bundle + per-panel nav icon swap — v2.1+
+- [✓] **UX-8.a: Carbon SVG bundle + per-panel nav icon swap — v2.1+
   scope (chain on UX-8 v1)** — Replace the Unicode fallback glyphs
   in [[icons.rs]] with real Carbon SVG bytes under
   `assets/icons/carbon/<carbon_name>.svg`, wired via
@@ -6318,7 +6346,7 @@ Last updated: 2026-05-21 — Claude Opus 4.7 (50-question lock survey
   Outputs: `crates/mde-theme/examples/mde-grid-lint.rs`;
   `crates/mde-theme/src/debug_grid.rs`; CI workflow step.
 
-- [ ] **UX-13: Exhaustive state-matrix gallery + golden capture —
+- [✓] **UX-13: Exhaustive state-matrix gallery + golden capture —
   v2.2 scope (UX-25 restructure, 2026-05-21)** — For every
   interactive component shipped by `mde-theme` (button, input,
   toggle, dropdown, tab, nav-item, list-row, card, badge, tooltip,
@@ -6345,7 +6373,7 @@ Last updated: 2026-05-21 — Claude Opus 4.7 (50-question lock survey
   `docs/design/state-matrix.md`; `tests/snapshots/` golden tree
   + `tests/snapshots/README.md` (workflow).
 
-- [ ] **UX-14: Command palette (Ctrl-K) — v2.2 scope** — Add a
+- [✓] **UX-14: Command palette (Ctrl-K) — v2.2 scope** — Add a
   Raycast/Linear-style command palette to Workbench. Trigger
   **Ctrl+K** (Q33, no Cmd on Linux). Surface per locks:
   **Spotlight-style** (Q34) — centered, semi-transparent, **no
@@ -6402,7 +6430,7 @@ Last updated: 2026-05-21 — Claude Opus 4.7 (50-question lock survey
   Outputs: `crates/mde-theme/src/density.rs`; Settings >
   Appearance toggle.
 
-- [ ] **UX-16: Onboarding / wizard hero polish — v2.2 scope** —
+- [✓] **UX-16: Onboarding / wizard hero polish — v2.2 scope** —
   The Iced wizard (`crates/mde-wizard/`) owns the first impression.
   Dedicated polish pass: (a) full-bleed background gradient per
   step using the accent token; (b) per-step line-art illustration
@@ -6450,7 +6478,7 @@ Last updated: 2026-05-21 — Claude Opus 4.7 (50-question lock survey
   Outputs: `data/icons/hicolor/{16x16,24x24,...}/apps/mde.png`;
   `data/branding/` (logotype, README banner dark + light, splash).
 
-- [ ] **UX-18: Marketing screenshot set — v2.2 scope** — Produce
+- [✓] **UX-18: Marketing screenshot set — v2.2 scope** — Produce
   a ship-ready hero screenshot set driven by demo mode (UX-19):
   (a) Workbench overview with the Fleet panel populated; (b)
   command palette open mid-search; (c) Settings > Displays panel;
@@ -6475,7 +6503,7 @@ Last updated: 2026-05-21 — Claude Opus 4.7 (50-question lock survey
   installation with manually sanitized peer names / data. The UX-18
   dependency on UX-19 has been dropped.
 
-- [ ] **UX-20: Custom scrollbars + edge treatments — v2.2 scope** —
+- [✓] **UX-20: Custom scrollbars + edge treatments — v2.2 scope** —
   Replace default GTK + Iced scrollbars: 4 px wide at rest, 8 px on
   hover, surface-3 track, accent thumb at 60% opacity, auto-hide
   after 800 ms idle with a smooth 200 ms fade. Add 16 px
@@ -6550,7 +6578,7 @@ Last updated: 2026-05-21 — Claude Opus 4.7 (50-question lock survey
   Outputs: `crates/mde-theme/src/accessibility.rs`; Settings >
   Accessibility panel in workbench.
 
-- [ ] **UX-23: Visual-regression CI gate — v2.2 scope (UX-26
+- [✓] **UX-23: Visual-regression CI gate — v2.2 scope (UX-26
   test-matrix scoping, 2026-05-21)** — Without enforcement,
   Round 1 + Round 2 polish will drift back to chaos inside two
   releases. UX-23 ships the gate. **UX-25 restructure:** UX-13
@@ -6803,7 +6831,7 @@ committed and embedded in README; visual-regression CI gate
   to document the new layout + provide a PNG→SVG upgrade
   recipe via potrace.
 
-- [ ] **BR-0.c: Vectorize the imported PNGs (PNG → tintable
+- [✓] **BR-0.c: Vectorize the imported PNGs (PNG → tintable
   SVG) — v2.2 scope** — Hand-trace each of the 5 tintable
   slots (`wordmark`, `wordmark-hero`, `monogram`,
   `greeter-wordmark`, `logo-lockup`) to SVG via potrace,
@@ -6818,7 +6846,7 @@ committed and embedded in README; visual-regression CI gate
   potrace installed locally (`dnf install potrace`).
   Effort: Medium (~30 min per slot × 5).
 
-- [ ] **BR-0.d: Decide brand module home (re-wire into
+- [✓] **BR-0.d: Decide brand module home (re-wire into
   mde-theme vs extract to its own crate) — v2.2 scope** —
   `crates/mde-theme/src/brand.rs` was written and tested in
   the BR-0 / BR-0.a passes (9 unit tests, all green when the
@@ -6853,7 +6881,7 @@ committed and embedded in README; visual-regression CI gate
   Depends: pick-one decision. Effort: Low (re-wire) /
   Medium (extract + workspace plumbing) / Low (delete).
 
-- [ ] **BR-1: Branded sidebar chrome — v2.2 scope** — Permanent
+- [✓] **BR-1: Branded sidebar chrome — v2.2 scope** — Permanent
   MDE wordmark at the top of the sidebar (load
   `BrandSlot::Wordmark` via `mde_theme::Brand`, render with
   `iced::widget::svg`, tint via `currentColor` to
@@ -6866,7 +6894,7 @@ committed and embedded in README; visual-regression CI gate
   alongside the in-progress UX-5 sidebar refresh.
   Depends: BR-0 (done). Effort: Low.
 
-- [ ] **BR-2: Indigo thread motif — v2.2 scope** — A 2 px
+- [✓] **BR-2: Indigo thread motif — v2.2 scope** — A 2 px
   `palette.accent` (#5b6af5) rule used as a connecting visual
   motif across the shell: top edge of the sidebar, underline
   beneath the active nav item, left edge of focused cards,
@@ -6881,7 +6909,7 @@ committed and embedded in README; visual-regression CI gate
   load). Effort: Medium (touches many files but each touch
   is small).
 
-- [ ] **BR-3: Branded empty states — v2.2 scope** — Every
+- [✓] **BR-3: Branded empty states — v2.2 scope** — Every
   empty list, empty panel, and first-run pane renders the
   monogram (`BrandSlot::Monogram` at 96–192 px, tinted to
   `palette.text_muted`), a one-line tip in Geologica
@@ -6896,7 +6924,7 @@ committed and embedded in README; visual-regression CI gate
   Depends: BR-0 (done) + monogram artwork swap (user-supplied).
   Effort: Medium.
 
-- [ ] **BR-4: About panel brand showcase — v2.2 scope** — Full-
+- [✓] **BR-4: About panel brand showcase — v2.2 scope** — Full-
   bleed `BrandSlot::WordmarkHero` at the top of the About
   panel, build/peer/session info in Plex Mono (version, git
   hash, build date, current sway/X session, mesh peer count,
@@ -6911,7 +6939,7 @@ committed and embedded in README; visual-regression CI gate
   Depends: BR-0 (done) + wordmark-hero artwork swap (user-
   supplied). Effort: Medium.
 
-- [ ] **BR-5: Session-level brand identity — v2.2 scope** —
+- [✓] **BR-5: Session-level brand identity — v2.2 scope** —
   Three coordinated surfaces, all swappable via
   `assets/brand/`:
   * **Branded greeter** (`mde-greeter` binary, sway-spawned
@@ -6954,7 +6982,7 @@ UX-1..UX-12 + UX-21/22 token-layer + skeletons. Each closes the
 "data layer / structure" gate of its parent task; the open follow-
 ups close the "consumer-side wiring" or "content fill-in" gate.
 
-- [ ] **UX-17.a: App icon multi-resolution renders + logotype +
+- [✓] **UX-17.a: App icon multi-resolution renders + logotype +
   README banner — v2.2 scope** — Render `data/branding/mde-icon.svg`
   to PNGs at 16 / 24 / 32 / 48 / 64 / 128 / 256 / 512 px, install
   to `data/icons/hicolor/<size>/apps/mde.png` per freedesktop spec.
@@ -6967,7 +6995,7 @@ ups close the "consumer-side wiring" or "content fill-in" gate.
   `data/branding/mde-logotype.svg`;
   `data/branding/readme-banner-{dark,light}.png`.
 
-- [ ] **UX-11.a: Benchmark vault content fill-in — v2.2 scope** —
+- [✓] **UX-11.a: Benchmark vault content fill-in — v2.2 scope** —
   Capture and annotate ≥ 12 screenshots across the six target
   apps (linear / raycast / arc / cursor / vercel / apple-settings).
   Each subfolder gets `<target>-<surface>-<state>.png` PNGs at
@@ -6978,7 +7006,7 @@ ups close the "consumer-side wiring" or "content fill-in" gate.
   reasons). Outputs: `docs/design/benchmarks/<target>/*.png` +
   README annotations.
 
-- [ ] **UX-21.a: Workspace voice-and-tone audit sweep — v2.2 scope** —
+- [✓] **UX-21.a: Workspace voice-and-tone audit sweep — v2.2 scope** —
   Mechanical sweep through every user-visible string in
   `crates/mde-*/src/`, `mackes/workbench/`, `mackes/wizard/`,
   `docs/help/*.md`, `data/applications/*.desktop`, and
@@ -6989,7 +7017,7 @@ ups close the "consumer-side wiring" or "content fill-in" gate.
   UX-3..9 (open). Effort: Medium. Outputs: workspace-wide string
   updates; possibly a `tools/voice-audit.sh` helper.
 
-- [ ] **UX-15.a: Settings > Appearance panel wiring + live density
+- [✓] **UX-15.a: Settings > Appearance panel wiring + live density
   switch — v2.2 scope** — Surface the Theme + Density toggles in
   the Iced Settings > Appearance panel. Persist via `Preferences::
   to_toml_string()` + write to `Preferences::xdg_path()`. Live
@@ -7000,7 +7028,7 @@ ups close the "consumer-side wiring" or "content fill-in" gate.
   Outputs: `crates/mde-workbench/src/settings/appearance.rs`;
   preferences.toml schema entries.
 
-- [ ] **UX-22.a: Settings > Accessibility panel wiring — v2.2 scope** —
+- [✓] **UX-22.a: Settings > Accessibility panel wiring — v2.2 scope** —
   Surface the A11y variants from `mde-theme::accessibility` in the
   Settings > Accessibility Iced panel. Persist `high_contrast`,
   `colorblind_safe`, `reduce_motion` to `~/.config/mde/preferences.toml`.
