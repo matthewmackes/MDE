@@ -355,6 +355,11 @@ struct RegistryEntry {
     announce: Announce,
     relayer_id: String,
     received_at_ms: i64,
+    /// KDC2-3.2.b — source `SocketAddr` of the most-recent
+    /// real broadcast (or `None` for synthetic / mesh-shunted
+    /// records). `KdcHost::open(peer_id)` reads this to learn
+    /// where to TCP-connect.
+    last_source_addr: Option<std::net::SocketAddr>,
 }
 
 impl DiscoveryRegistry {
@@ -382,7 +387,21 @@ impl DiscoveryRegistry {
     /// Inject a real UDP/mDNS announce. `received_at_ms` is the
     /// wall-clock timestamp the listener observed the packet.
     pub fn inject_real(&mut self, announce: Announce, received_at_ms: i64) {
-        self.upsert("self", announce, received_at_ms);
+        self.upsert("self", announce, received_at_ms, None);
+    }
+
+    /// KDC2-3.2.b — inject a real announce with the source
+    /// `SocketAddr` cached. Lets `KdcHost::open(peer_id)`
+    /// resolve where to TCP-connect without going back through
+    /// the UDP socket. Equivalent to `inject_real` plus an
+    /// address stash.
+    pub fn inject_real_with_addr(
+        &mut self,
+        announce: Announce,
+        received_at_ms: i64,
+        source_addr: std::net::SocketAddr,
+    ) {
+        self.upsert("self", announce, received_at_ms, Some(source_addr));
     }
 
     /// Inject a synthetic (mesh-shunted) announce. The mesh-
@@ -395,10 +414,17 @@ impl DiscoveryRegistry {
             &synthetic.relayed_by,
             synthetic.announce,
             synthetic.relayed_at_ms,
+            None,
         );
     }
 
-    fn upsert(&mut self, relayer_id: &str, announce: Announce, received_at_ms: i64) {
+    fn upsert(
+        &mut self,
+        relayer_id: &str,
+        announce: Announce,
+        received_at_ms: i64,
+        last_source_addr: Option<std::net::SocketAddr>,
+    ) {
         // Replace any existing entry with the same device_id —
         // keeps the registry at one entry per device.
         self.entries.retain(|e| e.announce.device_id != announce.device_id);
@@ -406,7 +432,26 @@ impl DiscoveryRegistry {
             announce,
             relayer_id: relayer_id.to_string(),
             received_at_ms,
+            last_source_addr,
         });
+    }
+
+    /// KDC2-3.2.b — last observed source address for a real
+    /// broadcast from `device_id`. `None` when:
+    ///   * The device-id isn't in the registry.
+    ///   * The most-recent record was synthetic (mesh-shunted —
+    ///     no LAN address known).
+    ///   * The real record was injected via `inject_real`
+    ///     (which doesn't carry an address — older callers).
+    ///
+    /// Used by `mde_kdc::transport::KdcHost::open` to discover
+    /// where to TCP-connect for the TLS handshake.
+    #[must_use]
+    pub fn source_addr_for(&self, device_id: &str) -> Option<std::net::SocketAddr> {
+        self.entries
+            .iter()
+            .find(|e| e.announce.device_id == device_id)
+            .and_then(|e| e.last_source_addr)
     }
 
     /// Drop entries older than `STALE_WINDOW_MS`. Returns how
@@ -705,6 +750,55 @@ mod tests {
     // ─────────────────────────────────────────────────────────
     // KDC2-2.9 — mDNS TXT-record encoder/decoder
     // ─────────────────────────────────────────────────────────
+
+    // ─────────────────────────────────────────────────────────
+    // KDC2-3.2.b — source-address cache
+    // ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn inject_real_with_addr_caches_source_addr() {
+        let mut r = DiscoveryRegistry::new();
+        let addr: std::net::SocketAddr = "192.0.2.7:1716".parse().unwrap();
+        r.inject_real_with_addr(sample_announce("peer-A"), 1000, addr);
+        assert_eq!(r.source_addr_for("peer-A"), Some(addr));
+    }
+
+    #[test]
+    fn inject_real_without_addr_returns_none_from_lookup() {
+        let mut r = DiscoveryRegistry::new();
+        r.inject_real(sample_announce("peer-B"), 1000);
+        assert!(r.source_addr_for("peer-B").is_none());
+    }
+
+    #[test]
+    fn synthetic_injection_has_no_source_addr() {
+        let mut r = DiscoveryRegistry::new();
+        r.inject_synthetic(SyntheticAnnounce {
+            announce: sample_announce("phone-X"),
+            relayed_by: "peer-A".into(),
+            relayed_at_ms: 1000,
+        });
+        assert!(r.source_addr_for("phone-X").is_none());
+    }
+
+    #[test]
+    fn re_injection_updates_source_addr() {
+        // Peer roams between two IPs (DHCP renewal, WiFi switch).
+        // The latest address wins.
+        let mut r = DiscoveryRegistry::new();
+        let a1: std::net::SocketAddr = "192.0.2.7:1716".parse().unwrap();
+        let a2: std::net::SocketAddr = "192.0.2.8:1716".parse().unwrap();
+        r.inject_real_with_addr(sample_announce("p"), 1000, a1);
+        assert_eq!(r.source_addr_for("p"), Some(a1));
+        r.inject_real_with_addr(sample_announce("p"), 2000, a2);
+        assert_eq!(r.source_addr_for("p"), Some(a2));
+    }
+
+    #[test]
+    fn source_addr_for_unknown_id_returns_none() {
+        let r = DiscoveryRegistry::new();
+        assert!(r.source_addr_for("never-seen").is_none());
+    }
 
     #[test]
     fn mdns_service_type_is_locked() {

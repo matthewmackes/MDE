@@ -5386,11 +5386,21 @@ service. Hosts the `dev.mackes.MDE.Connect.*` D-Bus interface.
   delta on top once 3.2.b lands. 3 new tests: bad-name reject,
   unreachable-addr error (binds + drops a listener), Display
   token stability.
-- [ ] **KDC2-3.2.b: peer_id → SocketAddr cache from DiscoveryRegistry** —
-  Cache the source IP of every received `Announce` keyed by
-  device_id so `KdcHost::open(peer_id)` can resolve the
-  current address. Plumb through `DiscoveryRegistry` + the
-  UDP/mDNS runners. Roughly 80 LOC + 5 tests.
+- [✓] **KDC2-3.2.b: peer_id → SocketAddr cache from DiscoveryRegistry** —
+  Shipped 2026-05-22. `DiscoveryRegistry` grew an internal
+  `last_source_addr: Option<SocketAddr>` per entry +
+  `inject_real_with_addr(announce, ts, addr)` +
+  `source_addr_for(device_id) -> Option<SocketAddr>`. Synthetic
+  (mesh-shunted) injections leave the cache empty — only real
+  UDP/mDNS observations populate it. The UDP host runner
+  (`UdpBroadcastRunner::run`) now uses the addr-aware ingest
+  so live broadcasts populate the cache automatically; the
+  legacy `ingest_one`/`inject_real` calls without addr still
+  work for tests/back-compat. `KdcHost::open(peer_id)` wires
+  to `source_addr_for(peer_id)` + `connect_pinned_tls` as a
+  small wrapper. 5 new tests (round-trip with addr, real-no-addr
+  is None, synthetic is None, roaming replaces addr, unknown-id
+  is None). 30/30 proto + 5/5 host green.
 - [✓] **KDC2-3.6: D-Bus methods `RingDevice` + `SendSms` +
   `SendClipboard` + `SendFile`** — Shipped 2026-05-22. All four
   methods are wired into `ConnectInterface`:

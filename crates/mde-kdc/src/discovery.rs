@@ -147,6 +147,19 @@ impl UdpBroadcastRunner {
         guard.inject_real(announce, now_ms);
     }
 
+    /// KDC2-3.2.b — drain a received announce *with* its source
+    /// address into the registry so `KdcHost::open(peer_id)` can
+    /// later resolve where to TCP-connect.
+    pub async fn ingest_one_with_addr(
+        &self,
+        announce: Announce,
+        now_ms: i64,
+        source_addr: SocketAddr,
+    ) {
+        let mut guard = self.registry.lock().await;
+        guard.inject_real_with_addr(announce, now_ms, source_addr);
+    }
+
     /// Main loop. Concurrent broadcast tick + recv loop. Runs
     /// until the supplied shutdown future resolves. Returns
     /// `Ok(())` on clean shutdown.
@@ -168,9 +181,13 @@ impl UdpBroadcastRunner {
                     let _ = self.broadcast_once(ts_ms).await;
                 }
                 got = self.recv_one() => {
-                    if let Ok(Some((announce, _src))) = got {
+                    if let Ok(Some((announce, src))) = got {
                         let now_ms = started.elapsed().as_millis() as i64;
-                        self.ingest_one(announce, now_ms).await;
+                        // KDC2-3.2.b — cache the sender's
+                        // address so KdcHost::open can resolve
+                        // it later without re-binding the UDP
+                        // socket.
+                        self.ingest_one_with_addr(announce, now_ms, src).await;
                     }
                 }
             }
