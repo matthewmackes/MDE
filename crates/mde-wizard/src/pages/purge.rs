@@ -333,6 +333,104 @@ pub fn scan_installed<Q: InstalledQuery>(
     }
 }
 
+/// Cached RPM-database lookup. Built once at scan time by
+/// shelling out to `rpm -qa --queryformat=%{NAME}\n`; per-package
+/// queries are then O(1) HashSet contains. Cheaper than spawning
+/// `rpm -q <pkg>` for every catalog entry by ~2 orders of
+/// magnitude on a typical Fedora install.
+pub struct RpmDbCache {
+    installed: std::collections::HashSet<String>,
+}
+
+impl RpmDbCache {
+    /// Populate by running `rpm -qa`. Returns Ok with an empty
+    /// cache on hosts where rpm is absent — that's the right
+    /// behavior on systems where the scan would find nothing
+    /// anyway (no installer can run without rpm).
+    pub fn populate() -> std::io::Result<Self> {
+        let output = std::process::Command::new("rpm")
+            .args(["-qa", "--queryformat=%{NAME}\n"])
+            .output();
+        let installed = match output {
+            Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .map(std::string::ToString::to_string)
+                .collect(),
+            _ => std::collections::HashSet::new(),
+        };
+        Ok(Self { installed })
+    }
+}
+
+impl InstalledQuery for RpmDbCache {
+    fn is_installed(&self, pkg: &str) -> bool {
+        self.installed.contains(pkg)
+    }
+}
+
+/// Discover system-wide Flatpak applications. Returns an empty
+/// list on hosts where flatpak isn't installed (no-op path —
+/// the scan correctly reports no flatpaks).
+#[must_use]
+pub fn scan_flatpaks() -> Vec<String> {
+    std::process::Command::new("flatpak")
+        .args(["list", "--app", "--columns=application"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Discover Snap applications + the snapd runtime itself.
+/// Returns an empty list on hosts without snap (which is most
+/// Fedora installs — Fedora ships flatpak by default, not snap).
+#[must_use]
+pub fn scan_snaps() -> Vec<String> {
+    let snaps: Vec<String> = std::process::Command::new("snap")
+        .args(["list"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .skip(1) // header line
+                .filter_map(|l| l.split_whitespace().next().map(std::string::ToString::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    // If any snaps are installed, snapd itself must come along
+    // for the ride (the launcher needs root to remove it via dnf
+    // separately, but we surface it in the snap list so the user
+    // sees the full removal set).
+    if snaps.is_empty() {
+        Vec::new()
+    } else if snaps.contains(&"snapd".to_string()) {
+        snaps
+    } else {
+        let mut with_snapd = snaps;
+        with_snapd.push("snapd".to_string());
+        with_snapd
+    }
+}
+
+/// One-shot helper: builds the cache, scans flatpak + snap, runs
+/// `scan_installed`. Used by the TUI's scan step.
+pub fn scan_system() -> std::io::Result<ScanResult> {
+    let rpm = RpmDbCache::populate()?;
+    let flatpaks = scan_flatpaks();
+    let snaps = scan_snaps();
+    Ok(scan_installed(&rpm, &flatpaks, &snaps))
+}
+
 /// User's per-package keep/remove decisions.
 ///
 /// Default = remove every scanned package; the user *adds* names

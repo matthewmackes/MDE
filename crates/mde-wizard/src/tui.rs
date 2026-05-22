@@ -47,6 +47,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use ratatui::{Frame, Terminal};
 
+use crate::purge_ui::{PurgeStep, PurgeUi};
 use crate::{pages, WizardPage, WizardState};
 
 /// Run the TUI wizard. Blocks until the user reaches Apply +
@@ -108,13 +109,35 @@ fn drive(
     mut state: WizardState,
 ) -> io::Result<TuiOutcome> {
     let mut page = WizardPage::Welcome;
+    let mut purge_ui: Option<PurgeUi> = None;
     // Tick at 4Hz so the screen redraws on resize / focus
     // events that wouldn't otherwise wake us. Cheap — the
     // page-body renders are O(lines on screen).
     let tick = Duration::from_millis(250);
 
     loop {
-        terminal.draw(|frame| render(frame, page, &state))?;
+        // Lazy-init the purge sub-UI when the user lands on
+        // WizardPage::Purge for the first time.
+        if page == WizardPage::Purge && purge_ui.is_none() {
+            purge_ui = Some(PurgeUi::new());
+        }
+
+        // The Scanning sub-step is one frame: render "scanning…"
+        // first so the user sees it, then run the scan, then the
+        // next iteration renders the list. We do this BEFORE
+        // `terminal.draw` so the scan actually runs between
+        // frames.
+        if page == WizardPage::Purge {
+            if let Some(ui) = purge_ui.as_mut() {
+                if ui.step() == PurgeStep::Scanning {
+                    let scan = pages::purge::scan_system()
+                        .unwrap_or_else(|_| pages::purge::ScanResult::default());
+                    ui.run_scan(scan);
+                }
+            }
+        }
+
+        terminal.draw(|frame| render(frame, page, &state, purge_ui.as_mut()))?;
 
         if !event::poll(tick)? {
             continue;
@@ -124,6 +147,27 @@ fn drive(
         };
         if key.kind != KeyEventKind::Press {
             continue;
+        }
+
+        // Purge page has its own state machine — route input
+        // through it and only fall through to outer navigation
+        // when the sub-flow reaches a terminal step.
+        if page == WizardPage::Purge {
+            if let Some(ui) = purge_ui.as_mut() {
+                ui.handle_key(key);
+                match ui.step() {
+                    PurgeStep::Done => {
+                        // Sub-flow complete; let the user press
+                        // → / Enter to advance off the Purge
+                        // page. We fall through to the outer
+                        // match so navigation keys take effect.
+                    }
+                    PurgeStep::Aborted => {
+                        return Ok(TuiOutcome::PurgeDeclined);
+                    }
+                    _ => continue, // stay on the Purge page
+                }
+            }
         }
 
         match (key.code, key.modifiers) {
@@ -136,6 +180,9 @@ fn drive(
             (KeyCode::Left, _) | (KeyCode::Char('h'), _) => {
                 if let Some(prev) = page.prev() {
                     page = prev;
+                    if page != WizardPage::Purge {
+                        purge_ui = None;
+                    }
                 }
             }
             (KeyCode::Right, _) | (KeyCode::Char('l'), _) | (KeyCode::Enter, _) => {
@@ -152,7 +199,12 @@ fn drive(
     }
 }
 
-fn render(frame: &mut Frame<'_>, page: WizardPage, state: &WizardState) {
+fn render(
+    frame: &mut Frame<'_>,
+    page: WizardPage,
+    state: &WizardState,
+    purge_ui: Option<&mut PurgeUi>,
+) {
     let area = frame.area();
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -164,7 +216,15 @@ fn render(frame: &mut Frame<'_>, page: WizardPage, state: &WizardState) {
         .split(area);
 
     render_header(frame, chunks[0], page);
-    render_body(frame, chunks[1], page, state);
+    if page == WizardPage::Purge {
+        if let Some(ui) = purge_ui {
+            ui.render(frame, chunks[1]);
+        } else {
+            render_body(frame, chunks[1], page, state);
+        }
+    } else {
+        render_body(frame, chunks[1], page, state);
+    }
     render_footer(frame, chunks[2], page);
 }
 
@@ -253,27 +313,18 @@ fn scan_body() -> Vec<Line<'static>> {
 }
 
 fn purge_body() -> Vec<Line<'static>> {
-    // Skeleton page — the live scan + per-app whitelist widget
-    // lands in commit INST-1.c. This commit gets the rationale
-    // text on-screen so the breadcrumb walk is testable.
-    let mut lines = vec![Line::from(Span::styled(
-        "Baseline purge — required before MDE can start",
-        Style::default()
-            .fg(Color::Yellow)
-            .add_modifier(Modifier::BOLD),
-    ))];
-    lines.push(Line::raw(""));
-    for para in pages::purge::RATIONALE.split("\n\n") {
-        for word_line in wrap_paragraph(para, 76) {
-            lines.push(Line::raw(word_line));
-        }
-        lines.push(Line::raw(""));
-    }
-    lines.push(Line::from(Span::styled(
-        "(Live scan + per-app whitelist UI lands in the next commit.)",
-        Style::default().fg(Color::DarkGray),
-    )));
-    lines
+    // Fallback only — the live PurgeUi renderer takes over the
+    // page body when the wizard reaches WizardPage::Purge. This
+    // arm fires only if the outer loop hasn't initialized the
+    // sub-UI yet (one frame at most, during the lazy-init race).
+    vec![
+        Line::from(Span::styled(
+            "Baseline purge",
+            Style::default().add_modifier(Modifier::BOLD),
+        )),
+        Line::raw(""),
+        Line::raw("Initializing scan…"),
+    ]
 }
 
 fn legacy_body() -> Vec<Line<'static>> {
@@ -444,11 +495,9 @@ mod tests {
     }
 
     #[test]
-    fn purge_body_contains_rationale_keywords() {
-        // The wrapper takes ownership of static strings into
-        // owned Strings; sniff a few keywords by serialising
-        // each line back to plain text. Catches a future refactor
-        // that accidentally drops the rationale block.
+    fn purge_body_fallback_mentions_baseline_purge() {
+        // Live rationale lives in PurgeUi now; this fallback
+        // path only renders for one frame during sub-UI init.
         let lines = purge_body();
         let blob: String = lines
             .iter()
@@ -461,8 +510,6 @@ mod tests {
             .collect::<Vec<_>>()
             .join(" ");
         assert!(blob.contains("Baseline purge"));
-        assert!(blob.contains("MDE"));
-        assert!(blob.to_lowercase().contains("home directory") || blob.to_lowercase().contains("data"));
     }
 
     #[test]

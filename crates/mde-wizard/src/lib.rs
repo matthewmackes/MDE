@@ -30,6 +30,7 @@ use std::path::PathBuf;
 
 pub mod frontend;
 pub mod pages;
+pub mod purge_ui;
 pub mod tui;
 
 /// Locked page order matching the v1.x wizard flow, with the
