@@ -6,14 +6,18 @@
 //!
 //! 1. **Welcome** — branded splash + start button.
 //! 2. **Scan** — environment probe (CPU/RAM/disk/distro/Wayland).
-//! 3. **Legacy import** — opt-in detection of XFCE/v1.x configs.
-//! 4. **Preset** — pick one of the 4 shipped presets (hashbang
+//! 3. **Purge** — Stage 2 baseline cleanup: detect competing
+//!    desktop environments + display managers + flatpak/snap
+//!    apps, show the rationale, list every removable package
+//!    with a per-app whitelist, refuse to continue if declined.
+//! 4. **Legacy import** — opt-in detection of XFCE/v1.x configs.
+//! 5. **Preset** — pick one of the 4 shipped presets (hashbang
 //!    is default).
-//! 5. **Mesh passcode** — accept the 16-char shared passcode +
+//! 6. **Mesh passcode** — accept the 16-char shared passcode +
 //!    enrol via `mded enroll`.
-//! 6. **Network** — first-run NM bring-up.
-//! 7. **Snapshot** — pre-apply snapshot via mackesd.
-//! 8. **Apply** — run every selected birthright step.
+//! 7. **Network** — first-run NM bring-up.
+//! 8. **Snapshot** — pre-apply snapshot via mackesd.
+//! 9. **Apply** — run every selected birthright step.
 //!
 //! State is gated by `~/.config/mde/state.json`'s `provisioned`
 //! flag — the binary short-circuits to "already provisioned"
@@ -26,11 +30,14 @@ use std::path::PathBuf;
 
 pub mod pages;
 
-/// Locked page order matching the v1.x wizard flow.
+/// Locked page order matching the v1.x wizard flow, with the
+/// v2.1 Stage-2 Purge page inserted between Scan and
+/// LegacyImport (see crate docs).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum WizardPage {
     Welcome,
     Scan,
+    Purge,
     LegacyImport,
     Preset,
     MeshPasscode,
@@ -42,10 +49,11 @@ pub enum WizardPage {
 impl WizardPage {
     /// All pages in their canonical order.
     #[must_use]
-    pub const fn ordered() -> [WizardPage; 8] {
+    pub const fn ordered() -> [WizardPage; 9] {
         [
             WizardPage::Welcome,
             WizardPage::Scan,
+            WizardPage::Purge,
             WizardPage::LegacyImport,
             WizardPage::Preset,
             WizardPage::MeshPasscode,
@@ -61,6 +69,7 @@ impl WizardPage {
         match self {
             WizardPage::Welcome => "Welcome",
             WizardPage::Scan => "Environment scan",
+            WizardPage::Purge => "Baseline purge",
             WizardPage::LegacyImport => "Legacy import",
             WizardPage::Preset => "Pick a preset",
             WizardPage::MeshPasscode => "Mesh passcode",
@@ -70,13 +79,13 @@ impl WizardPage {
         }
     }
 
-    /// One-based index (1..=8) shown in the page header.
+    /// One-based index shown in the page header.
     #[must_use]
     pub fn index(&self) -> usize {
         Self::ordered().iter().position(|p| p == self).map_or(0, |i| i + 1)
     }
 
-    /// Total page count (8).
+    /// Total page count.
     #[must_use]
     pub const fn total() -> usize {
         Self::ordered().len()
@@ -155,16 +164,16 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn eight_pages_in_locked_order() {
+    fn nine_pages_in_locked_order() {
         let pages = WizardPage::ordered();
-        assert_eq!(pages.len(), 8);
-        assert_eq!(WizardPage::total(), 8);
+        assert_eq!(pages.len(), 9);
+        assert_eq!(WizardPage::total(), 9);
     }
 
     #[test]
     fn index_is_one_based() {
         assert_eq!(WizardPage::Welcome.index(), 1);
-        assert_eq!(WizardPage::Apply.index(), 8);
+        assert_eq!(WizardPage::Apply.index(), 9);
     }
 
     #[test]
@@ -175,8 +184,18 @@ mod tests {
             p = next;
             count += 1;
         }
-        assert_eq!(count, 8);
+        assert_eq!(count, 9);
         assert_eq!(p, WizardPage::Apply);
+    }
+
+    #[test]
+    fn purge_page_sits_after_scan_before_legacy_import() {
+        let order = WizardPage::ordered();
+        let scan_idx = order.iter().position(|p| *p == WizardPage::Scan).unwrap();
+        let purge_idx = order.iter().position(|p| *p == WizardPage::Purge).unwrap();
+        let legacy_idx = order.iter().position(|p| *p == WizardPage::LegacyImport).unwrap();
+        assert_eq!(purge_idx, scan_idx + 1);
+        assert_eq!(legacy_idx, purge_idx + 1);
     }
 
     #[test]
@@ -202,7 +221,7 @@ mod tests {
     fn every_page_has_distinct_label() {
         let labels: std::collections::HashSet<_> =
             WizardPage::ordered().iter().map(|p| p.label()).collect();
-        assert_eq!(labels.len(), 8);
+        assert_eq!(labels.len(), 9);
     }
 
     #[test]

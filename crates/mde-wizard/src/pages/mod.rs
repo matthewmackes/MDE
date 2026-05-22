@@ -15,6 +15,7 @@ pub mod legacy_import;
 pub mod mesh_passcode;
 pub mod network;
 pub mod preset;
+pub mod purge;
 pub mod scan;
 pub mod snapshot;
 pub mod welcome;

@@ -101,6 +101,7 @@ impl WizardApp {
         let body = match self.page {
             WizardPage::Welcome => welcome_body(),
             WizardPage::Scan => scan_body(),
+            WizardPage::Purge => purge_body(),
             WizardPage::LegacyImport => legacy_body(),
             WizardPage::Preset => preset_body(&self.state),
             WizardPage::MeshPasscode => mesh_body(&self.state),
@@ -148,6 +149,22 @@ fn scan_body<'a>() -> Element<'a, Message> {
         col = col.push(text(line).size(13));
     }
     col.into()
+}
+
+fn purge_body<'a>() -> Element<'a, Message> {
+    // Placeholder body — the live scan + per-app whitelist
+    // ratatui+Iced widgets land in the commit that wires
+    // pages::purge into the frontends. For now the page
+    // renders the rationale + a stub note so the breadcrumb
+    // navigation is testable end-to-end.
+    column![
+        text("Baseline purge").size(16),
+        Space::with_height(Length::Fixed(8.0)),
+        text(pages::purge::RATIONALE).size(13),
+        Space::with_height(Length::Fixed(8.0)),
+        text("(Live scan UI lands in the next commit.)").size(12),
+    ]
+    .into()
 }
 
 fn legacy_body<'a>() -> Element<'a, Message> {
