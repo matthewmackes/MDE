@@ -3681,7 +3681,16 @@ Locked 25-Q survey 2026-05-19 in
   Tailscale when the guard returns false — that wiring lives
   with the routing layer.
 
-### KDE Connect (Phase 13 — 25 substeps)
+### KDE Connect (Phase 13 — 25 substeps) — SUPERSEDED by KDC2 (2026-05-22)
+
+> **STATUS: SUPERSEDED.** The Option A wrapper-of-upstream-`kdeconnectd`
+> approach was retired 2026-05-22 in favor of the greenfield KDC2
+> native re-implementation. See the **KDC2 — Native KDE Connect**
+> section under `## Future deliverables (post 2.0.0)` for the live
+> v2.1 plan. Per `.claude/CLAUDE.md` §1 "newer wins silently": items
+> below stay in place as historical context but are NOT pulled into
+> any release. Don't claim Phase 13 substeps. If a phone-related
+> feature needs to ship, the right home is KDC2-1..7.
 
 Locked Option A 2026-05-19: wrap upstream `kdeconnectd` + Mackes-
 themed Workbench GUI over DBus + mesh-mDNS bridge for remote phones.
@@ -4975,6 +4984,121 @@ under `LICENSES/`.
 - [ ] **2.1 post-v2.0.0: D-Bus alias `.service` files** — Phase 0.4 ships
   one release of `org.mackes.*.service` aliases pointing at
   `dev.mackes.MDE.*`. v2.1 cut removes the aliases.
+
+### KDC2 — Native KDE Connect (v2.1 scope, locked 2026-05-22)
+
+> **Supersedes** [[project_v13_kdeconnect]]'s Option A wrapper of
+> upstream `kdeconnectd`. The v13.0 mDNS-shunt concept survives but
+> moves *inside* `mde-kdc-proto::discovery` as a synthetic-announce
+> injection point. v13.0 worklist items are retired in place — no
+> status changes, just don't pull them into a release.
+>
+> **Why:** the platform's last Qt surface is `Requires: kdeconnectd`
+> at `packaging/fedora/mackes-shell.spec:92-95`, which pulls ~80 Qt /
+> KF6 transitive packages. Removing it eliminates Qt from MDE
+> entirely. The directive also unifies the connectivity model with
+> the mesh router rather than sidecarring KDC — the v13.0 approach
+> couldn't deliver that because it was layered on top of an opaque
+> upstream daemon.
+>
+> **5 locks (2026-05-22 survey):** (1) greenfield Rust crate
+> `crates/mde-kdc-proto/` — not a fork, not a wrapper; (2) hardcut
+> pair migration (fresh `~/.config/mde/connect/`, no key import);
+> (3) D-Bus surface `dev.mackes.MDE.Connect.*` only, no `org.kde.*`
+> alias; (4) KDC runs as a **parallel peer overlay** always-on,
+> `mackesd::workers::mesh_router` picks per-message path;
+> (5) Workbench UI folds into `crates/mde-peer-card/` — no separate
+> "Connect" sidebar group.
+>
+> Plan source: `~/.claude/plans/bubbly-frolicking-papert.md`.
+
+- [ ] **KDC2-1: Transport trait + router** — Add
+  `crates/mackes-transport/` (new workspace member) defining
+  `trait Transport` with `probe / open / health / capabilities`.
+  Extend `crates/mackesd/src/topology/mod.rs:40-54` `EdgeKind`
+  enum with `KdcTls` variant + `From<TransportKind> for EdgeKind`
+  conversion. Wire `mesh_router` worker that picks per-message
+  path per the 4 message classes (`Control` always KDC,
+  `Clipboard` best-path, `FileBulk` throughput-best, `Notification`
+  dual-send idempotent at receiver). Feed every `PathSwitch` into
+  `mackesd::audit` with `last_switch_reason`. SLO instrumentation
+  (p50 < 5ms, p99 < 25ms decision latency) lands as a histogram
+  metric. Closes the router gap deferred at
+  `crates/mackesd/src/topology/mod.rs:3679-3682`. Acceptance:
+  router unit tests cover all four message classes; loopback
+  integration test confirms zero silent failovers. Effort: High.
+- [ ] **KDC2-2: Protocol crate `mde-kdc-proto`** — Pure-library
+  greenfield Rust crate `crates/mde-kdc-proto/`. Zero D-Bus, zero
+  filesystem, zero networking. Modules: `codec`, `crypto`,
+  `discovery`, `plugins`, `wire`. KDC wire-protocol compatible so
+  stock Android/iOS clients pair without modification. Capability-
+  negotiation header on every handshake so two MDE peers light
+  up MDE-only features (mesh-relay, peer-card-probe-share) with
+  graceful fallback when the remote is stock. libFuzzer corpus
+  for the codec. In-process loopback test harness exercises a
+  full handshake → message-send → ack round-trip without any host
+  glue. Acceptance: `cargo fuzz run codec` clean for 10 min;
+  loopback test green; phone pairs over LAN against the loopback
+  binary in CI. Effort: High.
+- [ ] **KDC2-3: Host integration `mde-kdc`** — New
+  `crates/mde-kdc/` workspace member glues `mde-kdc-proto` to
+  the rest of MDE. Implements `Transport` (Phase KDC2-1) for the
+  KDC wire. Hosts the `dev.mackes.MDE.Connect.*` D-Bus interface
+  via zbus 5. Pairing store at `~/.config/mde/connect/devices.toml`
+  + `identity.pem`. Registers as an `mackesd` worker so the
+  daemon lifecycle owns it. Acceptance: `busctl --user
+  introspect dev.mackes.MDE.Connect` shows the documented
+  interface; pairing a fresh phone writes `devices.toml`; `mackesd`
+  systemd unit restart cleanly tears down + restores the worker.
+  Effort: Medium.
+- [ ] **KDC2-4: Mesh-shunt inside protocol** — The v13.0 mesh-mDNS
+  bridge concept lands as a synthetic-announce injection in
+  `mde-kdc-proto::discovery`. When peer A is paired with phone X,
+  peer B sees X in its discovery list via the mesh-relay
+  announcement so X is reachable from B without re-pairing.
+  Phones are first-class mesh participants for clipboard / file /
+  notification operations. Acceptance: in a 3-peer + 1-phone
+  fixture, the phone receives a Clipboard message from any of the
+  three peers regardless of which one paired it. Effort: Medium.
+- [ ] **KDC2-5: UI fold into mde-peer-card** — Extend
+  `crates/mde-peer-card/` with phone/tablet conditional sections
+  (battery, ring, find, MPRIS, SMS, Share) gated on
+  `device.kind == Phone | Tablet`. Two-MDE-peer pairs see the
+  common chrome (Clipboard / Notifications mirror / Pair toggles)
+  but no phone-only sections. Delete the `kde_connect` placeholder
+  panel from `crates/mde-workbench/src/panels/`. Drop any drawer
+  Connect entries. Mesh sidebar group is the single entry point;
+  no separate "Connect" group. Acceptance: workbench renders no
+  KDC-specific UI outside of mde-peer-card; peer-card renders
+  phone sections only for `Phone | Tablet` peers; phone Connect
+  actions all route through the new D-Bus surface. Effort: Medium.
+- [ ] **KDC2-6: Packaging hardcut** — Edit
+  `packaging/fedora/mackes-shell.spec`: drop `Requires:
+  kdeconnectd`. Add `Obsoletes: kdeconnect kdeconnectd` so dnf
+  removes the upstream packages on upgrade. Add `Conflicts:
+  kdeconnect-cli kdeconnect-indicator gsconnect` so the legacy
+  user-side tools can't coexist (they'd try to bind port 1716).
+  `%check` step asserts the built RPM has zero Qt / KF6 in its
+  dep closure (`rpm -qpR | grep -E '^(qt|kf)'` exits non-zero).
+  Birthright wizard gains a "re-pair your phones" card on the
+  v2.0.x → v2.1.0 first-boot path. CHANGELOG v2.1.0 has a
+  Breaking Changes section calling out the pair-migration hardcut.
+  Acceptance: `dnf install mde-2.1.0` pulls 0 Qt packages;
+  `dnf upgrade mde-2.0.3 → mde-2.1.0` removes kdeconnectd cleanly.
+  Effort: Medium.
+- [ ] **KDC2-7: Acceptance gates** — Definition of Done per
+  `.claude/CLAUDE.md` §0.8. Five end-to-end checks: (1) phone
+  pairs via the official Android KDE Connect app over LAN; (2)
+  phone is reachable across the mesh from a non-pairing peer; (3)
+  `dnf install mde` dry-run shows zero Qt packages; (4) router
+  decision latency p50 < 5ms (histogram metric, 1000-sample
+  window); (5) installing `kdeconnect-cli` after MDE is up
+  results in `kdeconnect-cli` refusing to start due to port 1716
+  conflict (proves MDE owns the wire). Bench-hardware acceptance
+  lives in the Hardware Testing epic per
+  [[feedback_hardware_testing_epic]] — these 5 gates are the
+  v2.1.0 release-cut prerequisite, NOT the hardware bench tests.
+  Effort: Medium.
 
 ### UX-1 through UX-9: MDE Application Chrome — Premium UI Polish (v2.1 scope)
 
