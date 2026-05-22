@@ -26,6 +26,11 @@ tracing            = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 mde-config = { path = "../mde-config" }
 
+# INST-1.b: console / TUI frontend. crossterm via ratatui's
+# default backend so we get a single coordinated version pin.
+ratatui    = { version = "0.29", default-features = false, features = ["crossterm"] }
+crossterm  = "0.28"
+
 [dev-dependencies]
 tempfile = "3"
 

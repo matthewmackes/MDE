@@ -9,9 +9,10 @@
 use clap::Parser;
 use iced::widget::{button, column, container, row, text, Space};
 use iced::{Alignment, Element, Length, Padding, Size, Task, Theme};
-use tracing::info;
+use tracing::{info, warn};
 
-use mde_wizard::{pages, WizardPage, WizardState};
+use mde_wizard::frontend::{Frontend, RealEnv};
+use mde_wizard::{pages, tui, WizardPage, WizardState};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -22,6 +23,11 @@ struct Cli {
     /// Force the wizard to re-run even if state.json says provisioned.
     #[arg(long)]
     rerun: bool,
+    /// Render path: gui (Iced), tui (ratatui console), headless
+    /// (answers-driven, non-interactive), or auto (detect from
+    /// $DISPLAY / $WAYLAND_DISPLAY).
+    #[arg(long, value_enum, default_value_t = Frontend::Auto)]
+    frontend: Frontend,
 }
 
 #[derive(Debug, Clone)]
@@ -243,7 +249,7 @@ fn apply_body<'a>() -> Element<'a, Message> {
     col.into()
 }
 
-fn main() -> iced::Result {
+fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_env("MDE_WIZARD_LOG")
@@ -251,5 +257,68 @@ fn main() -> iced::Result {
         )
         .init();
     let cli = Cli::parse();
-    WizardApp::run(cli.rerun)
+    let frontend = cli.frontend.resolve(&RealEnv);
+    info!(frontend = ?frontend, "mde-wizard starting");
+
+    let exit_code = match frontend {
+        Frontend::Gui => match WizardApp::run(cli.rerun) {
+            Ok(()) => 0,
+            Err(e) => {
+                warn!("gui wizard exited with error: {e}");
+                1
+            }
+        },
+        Frontend::Tui => run_tui(cli.rerun),
+        Frontend::Headless => {
+            // INST-1.d will land the answers-file driver; until
+            // then we fail loudly rather than silently consenting
+            // to destructive ops (Stage 2 purge).
+            eprintln!(
+                "mde-wizard: --frontend=headless is not yet implemented \
+                 (INST-1.d). Re-run with --frontend=tui or --frontend=gui."
+            );
+            2
+        }
+        Frontend::Auto => {
+            // resolve() can never produce Auto; this arm exists
+            // only to keep the match exhaustive across future
+            // additions to the enum.
+            unreachable!("Frontend::resolve never returns Auto")
+        }
+    };
+    std::process::exit(exit_code);
+}
+
+fn run_tui(rerun: bool) -> i32 {
+    let path = WizardState::default_path();
+    let mut state = WizardState::load(&path);
+    if state.provisioned && !rerun {
+        info!("wizard already provisioned; pass --rerun to force");
+    } else if state.preset.is_empty() {
+        state.preset = pages::preset::DEFAULT_PRESET.into();
+    }
+
+    match tui::run(state) {
+        Ok(tui::TuiOutcome::Completed(final_state)) => {
+            if let Err(e) = final_state.save(&path) {
+                warn!("failed to persist wizard state: {e}");
+                return 1;
+            }
+            info!("tui wizard complete — state.json saved + provisioned=true");
+            0
+        }
+        Ok(tui::TuiOutcome::Quit(_)) => {
+            warn!("tui wizard quit before completion");
+            130 // 128 + SIGINT
+        }
+        Ok(tui::TuiOutcome::PurgeDeclined) => {
+            warn!("tui wizard aborted — user declined baseline purge");
+            // INST-1.c will write /etc/motd banner here.
+            3
+        }
+        Err(e) => {
+            warn!("tui frontend error: {e}");
+            1
+        }
+    }
 }
