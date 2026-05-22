@@ -3,6 +3,103 @@
 All notable user-facing and architectural changes. The current line is
 unreleased; tag versions get a date when they ship.
 
+## 2.0.3 — Operator-verification hotfix bundle (2026-05-22)
+
+Hotfix release driven by a fresh v2.0.2 bench install on a
+laptop + 4K-TV dual-monitor rig. Every fix landed at source after
+direct operator surfacing of the symptom; the seven discrete
+defects + their root causes are captured below.
+
+* **Sway config parse errors + duplicate bindings** —
+  `data/sway/config` shipped with `bindsym $mod+Shift+r restart`,
+  which is an i3-only command. Sway has no `restart`, only
+  `reload`. Sway fired swaynag on every login. Five additional
+  bindings (`$mod+q/w/e/l/space`) were defined in both the main
+  config and `config.d/mackes-defaults.conf`, generating duplicate-
+  binding warnings. Removed the conflicting main-config bindings
+  (mackes-defaults wins) and added arrow-key navigation aliases
+  (`$mod+arrows`) to replace the focus-right binding that mackes-
+  defaults repurposes for `loginctl lock-session`. Also wired the
+  panel into the session — added an `exec mde-panel` autostart
+  line so the panel comes up on login.
+
+* **mde-panel `app_id` empty under Wayland** — The Iced 0.13
+  application builder does NOT inherit `app_id` from
+  `iced::Settings.id` on Linux — only from
+  `window::Settings.platform_specific.application_id`. mde-panel
+  called `.window_size(...)` instead of `.window(window::Settings
+  { platform_specific: ... })`, so the xdg-shell `app_id` field
+  was never written. Sway's `for_window [app_id="..."]` rule
+  therefore never matched and the panel landed as a tiled grey
+  strip across the middle of the screen. Fixed by introducing
+  `APP_ID = "shell.mackes.Panel"` (freedesktop-style reverse-DNS,
+  matches the planned `.desktop` basename) and wiring it into
+  `window::settings::PlatformSpecific::application_id` via the
+  full `window::Settings` literal. New unit test locks the
+  constant against the sway config rule so future renames touch
+  both files. Title-match fallback rule kept around for v2.0.2
+  binaries on bench machines that haven't upgraded yet.
+
+* **Obsolete v1.x qnm-daemon.service in crash-loop** —
+  `mde-migrate-from-1x` only migrated config/cache/state
+  directories. It left obsolete v1.x systemd user units
+  (`qnm-daemon.service`) in place, which then crash-looped every
+  3 seconds because the binary they reference
+  (`~/.local/bin/qnm-daemon`) was removed from v2.0.0. The bench
+  machine recorded 290+ restarts within minutes of login. Added
+  `OBSOLETE_USER_UNITS` list + `disable_obsolete_unit()` helper
+  that disables --now via systemctl and deletes the unit file.
+  `qnm-daemon.service` is the first entry; more legacy units can
+  be added as they're discovered.
+
+* **dunst → mako (Wayland-native notifications)** —
+  `dunst.service` ships as a D-Bus activated unit owning
+  `org.freedesktop.Notifications` but dunst is X11-only and
+  crashed on every Wayland login. Phase 1:
+  `install-helpers/bench-bootstrap.sh` lands as a reversible
+  operator-run helper that `dnf install`s mako (+ Wayland debug
+  tools), masks `dunst.service`, and enables `mako.service` so it
+  owns the notification name on next login. Phase 2:
+  `packaging/fedora/mackes-shell.spec` gains `Requires: mako` +
+  `Conflicts: dunst` so fresh installs auto-converge.
+
+* **Dual-monitor default scaling** — Bench rig was eDP-1 1366×768
+  + DP-2 3840×2160 both at `scale=1.0`. UI elements on the 4K TV
+  were unreadable across a living-room viewing distance. Added
+  `bin/mde-output-autoscale`: width-based heuristic (4K → 2.0,
+  2K → 1.5, ≤1080p → 1.0) applied via `swaymsg output ... scale
+  ...` at every session start. `exec_always` in `data/sway/config`
+  so display hotplug triggers a re-pick. Operator overrides
+  (current scale ≠ 1.0) are sacred — the helper skips them.
+
+* **Right-click admin menu pkexec migration** — `mackes-panel/
+  src/admin_menu.rs` spawned `terminator -x bash -c 'sudo ...'`
+  for every privileged action. Under Wayland sessions terminator
+  doesn't always inherit a controlling TTY (sway, lightdm,
+  mde-session all spawn it without one), so sudo's password
+  prompt failed with "a terminal is required to read the
+  password" — the user saw most of the right-click items surface
+  a sudo error. Switched every elevation call site to
+  `pkexec sh -c '<cmd>'` so the polkit GUI auth agent owns the
+  prompt. Drive-by cleanups: `systemctl status` + `dnf history
+  list` no longer escalate (they don't need root); `sudo -i`
+  became `pkexec bash -l`; `sudoedit` became `pkexec nano`. Hard
+  regression guard: a test fails CI if any future SECTIONS edit
+  reintroduces raw `sudo`. Same `sudo dnf upgrade` → `pkexec
+  dnf upgrade` change applied to the watermark's left-click
+  handler.
+
+* **Watermark branding refresh + synced build date** — The
+  legacy GTK watermark still said "Mackes XFCE Workstation"
+  (v1.x project name). Updated to "Mackes Desktop Environment".
+  Version line now reads "MDE 2.0.3 (build <hash>) · Built
+  <YYYY-MM-DD>". The build-hash and build-date stamps are
+  written by the RPM `%install` step to `/usr/share/mde/
+  build-{hash,date}` (with SOURCE_DATE_EPOCH support for
+  reproducible builds) and read by BOTH watermarks (legacy GTK
+  in `mackes-panel` + Iced in `mde-panel`) so they cannot drift
+  on which build is reported.
+
 ## 2.0.2 — 2.0 Bug Fixes (2026-05-22)
 
 Bug-fix release on the v2.0.x line. Hardens the v2.0.0 monolithic

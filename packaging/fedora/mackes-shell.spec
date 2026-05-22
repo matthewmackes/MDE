@@ -5,7 +5,7 @@
 %global debug_package %{nil}
 
 Name:           mde
-Version:        2.0.2
+Version:        2.0.3
 Release:        1%{?dist}
 Summary:        Mackes Desktop Environment (MDE) — Wayland-only Fedora DE
 
@@ -882,6 +882,35 @@ fi
 %{_userunitdir}/mde-xorg.target
 
 %changelog
+* Fri May 22 2026 Matt Mackes <matthewmackes@gmail.com> - 2.0.3-1
+- Operator-verification hotfix bundle (2026-05-22 bench install on
+  a laptop + 4K-TV dual-monitor rig surfaced 7 defects, fixed at
+  source). Full per-defect breakdown in CHANGELOG.md.
+- Sway config: bindsym restart → reload (i3-only command was firing
+  swaynag every login); removed 5 duplicate bindings overlapping
+  mackes-defaults.conf; added arrow-key focus aliases; added
+  `exec mde-panel` autostart line.
+- mde-panel: fixed Wayland xdg-shell app_id propagation
+  (shell.mackes.Panel) — Iced 0.13 doesn't inherit it from
+  iced::Settings.id on Linux; needs window::Settings.platform_specific.
+- mde-migrate-from-1x: now disables + removes obsolete v1.x systemd
+  user units (qnm-daemon.service first), stopping a 290+/min
+  restart loop on every fresh v2 boot.
+- packaging: Requires: mako + Conflicts: dunst so Wayland-native
+  notifications converge on install. Operator helper
+  install-helpers/bench-bootstrap.sh ships for in-place upgrades.
+- bin/mde-output-autoscale: width-based per-output scale picker
+  applied at every session start (4K → 2.0, 2K → 1.5, ≤1080p →
+  1.0) so 4K TVs are readable out of the box. Sacrosanct override
+  rule: scale != 1.0 is treated as intentional and skipped.
+- Right-click admin menu: every sudo call site replaced with
+  pkexec sh -c so privileged actions work under Wayland sessions
+  where terminator doesn't always inherit a controlling TTY.
+- Desktop watermark: rebranded "Mackes XFCE Workstation" →
+  "Mackes Desktop Environment". Added build-date stamp synced
+  between legacy GTK + new Iced watermarks via
+  /usr/share/mde/build-{hash,date}.
+
 * Wed May 20 2026 Matt Mackes <matthewmackes@gmail.com> - 2.0.0-1
 - v2.0.0 monolithic cut commit (CB-3.1 lock + CB-2.2 + CB-3.2 +
   CB-3.3 + CB-3.5 + H.1 + H.2 + H.4 + Phase 0.7 + 0.8 landed
