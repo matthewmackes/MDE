@@ -6187,25 +6187,26 @@ regression prevention)
 
 ---
 
-### MDM-1..MDM-5: Modern Desktop Modernization — 2026 baseline (v2.3 scope)
+### MDM-1..MDM-10: Modern Desktop Modernization — 2026 baseline (v2.3 scope)
 
 **Brief (locked 2026-05-22 from a "compare against 2026 best
-practice" review session):** v2.0/v2.1/v2.2 close the design-
-system + chrome + mesh-control-plane gaps. v2.3 closes the
-**capability** gaps against modern desktops (GNOME 49, KDE 6.4,
-COSMIC, macOS 15, Windows 12). Five workstreams, each chosen
-because the mesh fabric makes it differentiated rather than just
-"catching up". All five are v2.3 scope — they chain on shipped
+practice" review session; expanded 2026-05-22 to the full ten-
+workstream slate):** v2.0/v2.1/v2.2 close the design-system +
+chrome + mesh-control-plane gaps. v2.3 closes the **capability**
+gaps against modern desktops (GNOME 49, KDE 6.4, COSMIC,
+macOS 15, Windows 12). Ten workstreams, each chosen because the
+mesh fabric makes it differentiated rather than just "catching
+up". All ten are v2.3 scope — they chain on shipped
 v2.0.0/v2.1/v2.2 surfaces and would dilute the v2.2 polish push
 if pulled forward.
 
-**Why these five, in this order:**
+**Why these ten, in dependency order:**
 1. **MDM-1** (CRDT clipboard) is the smallest contained change
    and the most-used mesh feature today — biggest UX win per
    line of code.
 2. **MDM-2** (Fleet observability) unblocks intelligent peer-
-   selection for everything downstream (MDM-5 routing, future
-   AI broker).
+   selection for everything downstream (MDM-5 routing, MDM-6
+   AI fabric, MDM-7 container offload).
 3. **MDM-3** (Btrfs/ZFS snapshots) retires the README's "USB
    stick" promise with a real backup story.
 4. **MDM-4** (HDR / fractional scale) is the table-stakes
@@ -6213,7 +6214,27 @@ if pulled forward.
    mixed-DPI rigs.
 5. **MDM-5** (NL palette extension) chains on UX-14 (v2.2) and
    needs Fleet telemetry from MDM-2 to pick a host peer, so it
-   sequences last.
+   sequences after MDM-2.
+6. **MDM-6** (mesh AI fabric — broader consumers) generalizes
+   the MDM-5 broker into a reusable surface for workbench help,
+   semantic file search, and auto-tagging. Chains on MDM-5
+   (broker) + MDM-2 (host-peer selection).
+7. **MDM-7** (containers / devcontainers / toolbx panel) is
+   the modern-developer-workflow gap; the mesh angle is
+   "promote container to a beefier peer". Independent of
+   MDM-1..6 except for the apps_install chrome.
+8. **MDM-8** (mesh-native secrets vault) is the credential
+   fabric the README's mesh promise is missing today. Chains
+   on QNM-Shared transport (shipped) and unblocks MDM-3's
+   encrypted-at-rest offsite story.
+9. **MDM-9** (accessibility — AT-SPI, screen reader, live
+   captions) is the cheapest credibility win vs. mainstream
+   DEs and required for EU AAA / Section 508. Live captions
+   chain on MDM-5/6 AI fabric.
+10. **MDM-10** (WASM plugin API for Workbench panels) is the
+    structural debt that gets harder every release — defines
+    the third-party extension surface so future workstreams
+    don't all require Rust PRs against this repo.
 
 ---
 
@@ -6461,12 +6482,385 @@ if pulled forward.
   palette `Ask` tab (path TBD by UX-14 implementation);
   `dev.mackes.MDE.Nl` D-Bus interface XML;
   `Workbench > Devices > AI Host` panel.
-  Risk: this is the most speculative of the five — both
-  the local-LLM ecosystem and Iced's streaming-text widget
+  Risk: this is the most speculative of the original five —
+  both the local-LLM ecosystem and Iced's streaming-text widget
   story are moving fast. Don't pull this forward of MDM-2
   (which it depends on for host-peer selection) and treat
   v2.3 as the *earliest* possible target rather than a
   commitment.
+
+- [ ] **MDM-6: Mesh AI fabric — additional consumer surfaces
+  (workbench help, semantic file search, auto-tagging) — v2.3
+  scope** — Generalizes the MDM-5 NL broker into a reusable
+  fabric for surfaces beyond the palette. Adds:
+    * **`dev.mackes.MDE.Ai.{Embed,Chat,Refuse}` D-Bus surface.**
+      Extends the MDM-5 broker with two additional verbs:
+      `Embed(text) -> Vec<f32>` (returns sentence embeddings
+      from a small local model — e5-small or
+      bge-small-en-v1.5, ~200 MB on disk) and `Chat(messages,
+      stream_id) -> stream<TextChunk>` (streaming completion
+      against the same host peer MDM-5 picks). `Refuse(reason)`
+      is the explicit "no AI host available" path every caller
+      handles.
+    * **Workbench help bubble.** Replaces the placeholder "?"
+      icons in workbench panels (currently no-ops) with a
+      live help bubble: click → `Chat()` against the workbench
+      panel's locked help text + the user's question →
+      streaming answer with cite-by-panel-section. Honors the
+      same Privacy toggle as MDM-5.
+    * **Semantic file index in `mde-files`.** New
+      `mded::workers::file_index` walks `~/Documents`,
+      `~/Desktop`, mesh peer outboxes (opt-in per directory in
+      Workbench > Privacy > AI Indexing), pipes text content
+      through `Embed()`, persists embeddings to
+      `~/.cache/mde/file-index.db` (sqlite + sqlite-vec
+      extension). `mde-files` Search bar gains a "Semantic"
+      tab that vector-searches the index. Hard-capped: max
+      100 MB index size; LRU eviction; opt-out per peer.
+    * **Auto-tag for `mde-files` peer cards.** When a file
+      lands in a peer's inbox, the file_index worker runs a
+      one-shot `Chat()` to classify it (top-3 tags from a
+      fixed taxonomy: invoice, screenshot, photo, document,
+      archive, code, media, other). Tags surface as
+      `status_badge`-styled chips on the peer card hero from
+      PC-1. Off by default; opt-in per peer.
+    * **Cost / latency budget.** Every consumer surface
+      declares a budget (help bubble 5 s, semantic search
+      1 s/query, auto-tag 30 s/file) — broker rejects calls
+      that would breach budget rather than hanging the UI.
+  Acceptance: (a) help bubble streams its first token within
+  500 ms on a healthy mesh with a 3B model; (b) semantic
+  search returns top-10 results in < 1 s on a 10k-document
+  index; (c) auto-tag classifies a fresh inbox file within
+  30 s wall clock or refuses; (d) every surface degrades
+  gracefully (deterministic-only) when MDM-5 broker reports
+  no host peer; (e) Privacy panel can disable each consumer
+  independently of the others.
+  Depends: MDM-5 (broker); MDM-2 (host-peer routing);
+  shipped `mde-files` index spine.
+  Effort: Large (estimate 6 weeks; the `Embed` verb +
+  sqlite-vec is ~2 weeks, the three consumers are ~1 week
+  each, budget enforcement + privacy plumbing is ~1 week).
+  Outputs: `crates/mded/src/workers/ai_fabric.rs` (extends
+  MDM-5's `nl_broker.rs`);
+  `crates/mded/src/workers/file_index.rs`;
+  `crates/mde-workbench/src/help_bubble.rs`;
+  `crates/mde-files/src/semantic_search.rs`;
+  `mackes_config::AiConsumerConfig` schema entry;
+  `dev.mackes.MDE.Ai` D-Bus interface XML.
+  Risk: the embedding index lives in the user's home — large
+  enough to matter for backup (MDM-3) and for the
+  filesystem-encryption story (MDM-8). Cross-reference both
+  workstreams during implementation.
+
+- [ ] **MDM-7: Containers / devcontainers / toolbx Workbench
+  panel — v2.3 scope** — Close the 2026 dev-workflow gap (no
+  one installs node/python/rust system-wide anymore). The
+  current Workbench `apps_install` / `apps_installed` /
+  `apps_sources` panels only model Flatpak + dnf. Adds:
+    * **`crates/mde-workbench/src/panels/containers.rs`.** New
+      panel under the Devices group. List view of every
+      toolbox + distrobox + podman container on the host
+      (parses `toolbox list`, `distrobox list`,
+      `podman ps -a` JSON output). Per-row controls: enter
+      (spawns `toolbox enter <name>` in a new Terminator
+      window), start, stop, remove (with the standard
+      `dialog` confirm chrome from UX-9), inspect (drawer
+      with image / created / size / mounts).
+    * **Devcontainer up.** "Open in Dev Container" entry in
+      the container panel toolbar; user picks a directory →
+      panel runs `devcontainer up --workspace-folder <path>`
+      via `AdminSession` (no sudo prompt mid-flow) and
+      streams the build log into a side drawer. Honors
+      `.devcontainer/devcontainer.json` exactly as VSCode +
+      Cursor do; no MDE-specific extensions.
+    * **Mesh angle: "Promote container to peer".** Per-row
+      action that ssh-tunnels the same container onto a
+      target mesh peer. Implementation: `buildah push` to a
+      mesh-local registry served by one peer (new
+      `mded::workers::mesh_registry`, ~200 LoC; podman
+      already supports unauthenticated mesh-local registries
+      over wireguard), then `ssh peer-name -- podman pull
+      <ref> && podman start <name>`. UX: confirm dialog
+      shows "from <local-peer> to <target-peer>" with size
+      estimate; progress drawer streams the push +
+      pull bytes.
+    * **Image source UI.** Pinned image catalog (toolbox,
+      Fedora, Ubuntu, dev-images from the Fedora registry).
+      Pull-from-URL for arbitrary OCI refs. No image-build
+      UI in v2.3 — that's a separate workstream if asked
+      for.
+  Acceptance: (a) the container panel lists every container
+  on the host with no missed engines (toolbox + distrobox +
+  podman parses individually verified); (b) `devcontainer up`
+  on a sample `vscode-remote-try-node` repo succeeds end-to-
+  end on a clean Fedora 44 box in < 5 min;
+  (c) "promote to peer" moves a 2 GB toolbox to a target peer
+  over a healthy mesh in throughput proportional to the
+  wireguard link (≥ 80 % of measured link bandwidth);
+  (d) every container action goes through the existing
+  `AdminSession` (no new pkexec call paths).
+  Depends: Workbench panel chrome (UX-6, shipped);
+  AdminSession (shipped); mesh ssh-by-name (shipped).
+  Effort: Large (estimate 5 weeks; panel + list is ~1 week,
+  devcontainer integration is ~1 week, mesh registry + push/
+  pull is ~2 weeks, polish + tests is ~1 week).
+  Outputs: `crates/mde-workbench/src/panels/containers.rs`;
+  `crates/mded/src/workers/mesh_registry.rs`;
+  `mackes_config::ContainersConfig` schema entry;
+  `dev.mackes.MDE.Containers` D-Bus interface XML.
+  Risk: distrobox / toolbox / podman are moving targets;
+  parse their JSON output (not human-readable lists) so
+  spec drift only breaks the wrapper, not the panel.
+
+- [ ] **MDM-8: Mesh-native secrets vault (age + passkeys +
+  FIDO2) — v2.3 scope** — Today the mesh relays clipboard,
+  files, and notifications but not credentials — every peer
+  re-enrolls every passkey, every keyring stays local. Closes
+  this with a mesh-native vault. Adds:
+    * **`mded::workers::secrets`.** New worker that owns a
+      single `secrets.age` blob in QNM-Shared, encrypted to
+      every authorized peer's age key (one recipient per
+      peer; rotation drops the recipient on the next sync).
+      Storage shape: an append-only log of secret-add /
+      secret-remove / secret-rotate operations, deterministic
+      replay → current state. CRDT not needed (secrets are
+      strictly user-action, not concurrent).
+    * **Passkey unlock via libfido2.** Each peer registers a
+      passkey (yubikey, TPM-backed platform authenticator,
+      or Android phone via hybrid transport) that gates
+      vault unlock. Unlock unwraps an in-memory session key
+      (zeroized on lock); locked vault can't decrypt
+      anything even on the local peer. Honors a per-peer
+      auto-relock timeout (default 5 min, config in
+      Workbench > Security).
+    * **libsecret D-Bus shim.** New
+      `dev.mackes.MDE.Secrets` D-Bus interface that
+      implements the freedesktop Secret Service API
+      (org.freedesktop.secrets). Apps that already use
+      `libsecret` (Chrome, Firefox, VSCode, git-credential-
+      libsecret) transparently use the mesh vault with no
+      app-side changes.
+    * **Workbench > Security panel.** New
+      `crates/mde-workbench/src/panels/security.rs` covering:
+      list secrets (path, modified, last-accessed-peer),
+      add secret manually, register a new passkey, rotate
+      vault (re-encrypt to current peer set), revoke a
+      peer's recipient key, auto-relock timeout slider,
+      audit log (last 100 unlocks + accesses, by peer).
+    * **TPM-backed disk encryption posture.** Read-only
+      Security panel section showing the host's
+      cryptenroll / clevis state, secure-boot status,
+      kernel module signature integrity. Not interactive in
+      v2.3; just surfaces what's already there. Wired up
+      because the same panel is the right home and it's
+      ~50 LoC.
+  Acceptance: (a) a passkey registered on peer A unlocks the
+  vault on peer A only — peer B still needs its own passkey;
+  (b) a secret added on peer A becomes visible to libsecret
+  apps on peer B within one mesh-sync round-trip;
+  (c) revoking peer C's recipient key + rotating the vault
+  makes the next sync unreadable to peer C even with the
+  prior on-disk blob; (d) Chrome's password manager + git's
+  credential helper transparently switch to the mesh vault
+  with no per-app config; (e) auto-relock fires at the
+  configured timeout, after which libsecret calls error
+  with `org.freedesktop.Secret.Error.NoSession` (forcing the
+  app to re-prompt).
+  Depends: QNM-Shared transport (shipped); AdminSession
+  (shipped). libfido2 is a new build dep.
+  Effort: Large (estimate 7 weeks; the worker + age plumbing
+  is ~2 weeks, passkey integration is ~2 weeks, libsecret
+  shim is ~2 weeks, Security panel + tests + audit log is
+  ~1 week). Highest risk of the slate — handles credentials
+  and a bug deletes the world.
+  Outputs: `crates/mded/src/workers/secrets.rs`;
+  `crates/mde-workbench/src/panels/security.rs`;
+  `mackes_config::SecretsConfig` schema entry;
+  `dev.mackes.MDE.Secrets` D-Bus interface XML
+  (Secret Service API compliant);
+  `packaging/fedora/mackes-shell.spec` adds `libfido2-devel`
+  build dep + `libfido2` runtime dep.
+  Risk: the Secret Service spec is large; aim for the
+  subset libsecret consumers actually use (Item, Collection,
+  Session, Search) and refuse the rest with a clear error
+  rather than silently misbehaving.
+
+- [ ] **MDM-9: Accessibility (AT-SPI, screen reader, live
+  captions) — v2.3 scope** — Iced apps historically punt on
+  AT-SPI; MDE inherits that. EU Accessibility Act applies in
+  2026, and federal procurement (Section 508) explicitly
+  checks AT-SPI. Closes the gap. Adds:
+    * **AT-SPI compliance sweep across the Iced surfaces.**
+      Every interactive widget in
+      `crates/mde-panel/`, `crates/mde-workbench/`,
+      `crates/mde-files/`, `crates/mde-peer-card/`,
+      `crates/mde-drawer/`, `crates/mde-logout-dialog/`,
+      `crates/mde-wizard/` gets an AT-SPI `Accessible` name,
+      role, and state. Iced's `accessibility` feature
+      (landing alongside the UX-PRE 0.14 bump) exposes the
+      `accesskit_iced` plumbing; this task wires the
+      per-widget metadata.
+    * **Keyboard navigation audit.** Every panel must be
+      navigable via Tab + arrows + Enter alone, no mouse.
+      Adds a tools/a11y-keyboard-audit.sh script that drives
+      each panel's tab order and records dead-ends.
+    * **Orca integration tests.** New
+      `tests/a11y_orca.sh` boots each Iced surface under a
+      headless Xvfb + Orca and asserts that the screen
+      reader announces every interactive element. CI
+      enforces.
+    * **Live-caption notifications.** Chains on the MDM-5/6
+      AI fabric: `mded::workers::captions` runs
+      `whisper.cpp` (small or tiny model, ~75 MB) against
+      any audio stream the user opts in to — system sounds,
+      meeting audio (PipeWire monitor source), playing
+      media. Captions land in the Notification Center as a
+      separate "Live Captions" lane (toggleable from the
+      drawer). Hard cap: 30 s of audio buffered at a time;
+      no transcription persisted beyond the notification
+      log retention.
+    * **High-contrast + reduce-motion + colorblind-safe
+      themes.** UX-22 ships the data layer (shipped
+      2026-05-21). MDM-9 wires the system-bus
+      `prefers-reduced-motion` + `prefers-high-contrast`
+      signals so the variants apply automatically to
+      respect distro-level a11y settings, not just the
+      Workbench toggle.
+  Acceptance: (a) Orca reads every panel name + every
+  interactive widget label without "unlabeled" errors;
+  (b) every panel can be operated keyboard-only end-to-end
+  (Tab + arrows + Enter + Esc; documented in
+  docs/help/keyboard-accessibility.md);
+  (c) live captions transcribe a meeting-audio clip with
+  WER < 15 % on a known sample; (d) high-contrast variant
+  hits WCAG AAA (7:1 body, 4.5:1 large) verified by an
+  automated contrast checker in CI; (e) reduce-motion
+  variant disables every UX-9 animation (180 ms panel
+  mount, 2 s notification pulse, 120 ms tooltip fade).
+  Depends: UX-22 (data layer, shipped);
+  UX-PRE Iced 0.14 (for accessibility feature, open);
+  MDM-5/6 AI fabric (for live captions).
+  Effort: Large (estimate 8 weeks; AT-SPI sweep is ~3 weeks,
+  keyboard audit + fixes is ~2 weeks, live captions is
+  ~2 weeks, theme + signal plumbing is ~1 week). The
+  slowest of the slate because the sweep touches every
+  panel.
+  Outputs: AT-SPI metadata on ~80 widgets workspace-wide;
+  `crates/mded/src/workers/captions.rs`;
+  `crates/mde-drawer/src/captions_lane.rs`;
+  `tests/a11y_orca.sh`;
+  `tools/a11y-keyboard-audit.sh`;
+  `docs/help/keyboard-accessibility.md`;
+  `dev.mackes.MDE.Captions` D-Bus interface XML.
+  Risk: AT-SPI on Wayland still has compositor-specific
+  quirks (sway needs the `accessibility-bus-launcher` to
+  be running). Document the sway-side prerequisites in the
+  help doc; don't ship a broken-on-sway accessibility
+  story.
+
+- [ ] **MDM-10: WASM plugin API for Workbench panels — v2.3
+  scope** — Currently extending MDE means a Rust PR + RPM
+  rebuild. Every modern editor (VSCode, Zed, Helix) and
+  several desktops (KDE's Plasma scripting, GNOME extensions)
+  have a plugin surface. Defines a narrow WASM-component
+  interface so users can extend without recompiling. Adds:
+    * **`crates/mde-plugins/`.** New crate wrapping
+      `wasmtime` 26+ with the component-model feature.
+      Loads `.wasm` plugins from
+      `~/.config/mde/plugins/<plugin-id>/plugin.wasm`,
+      validates against a Wit interface, sandboxes each
+      plugin in its own store with no host filesystem +
+      no network access by default. Per-plugin capability
+      grants (file paths, mesh peer calls, notification
+      emission) declared in
+      `~/.config/mde/plugins/<plugin-id>/manifest.toml`
+      and confirmed by the user at install time (same
+      `dialog` chrome from UX-9).
+    * **Wit interface.** Locked at v1:
+      ```wit
+      world mde-plugin {
+        import host: interface {
+          notify: func(title: string, body: string);
+          mesh-call: func(peer: string, method: string,
+                          args: list<u8>) -> result<list<u8>, string>;
+          read-config: func(key: string) -> option<string>;
+          write-config: func(key: string, value: string);
+        }
+        export plugin: interface {
+          init: func() -> result<_, string>;
+          panel-id: func() -> option<string>;
+          panel-view: func() -> list<u8>;  // serialized iced Element via mde-plugins/proto
+          panel-update: func(msg: list<u8>) -> list<u8>;
+        }
+      }
+      ```
+      Narrow on purpose — v2.3 ships exactly these verbs;
+      v2.4+ broadens once we see what plugins actually need.
+    * **Plugin host integration.** `mde-workbench`
+      enumerates plugins, mounts each as a sidebar panel
+      under a "Plugins" section. View + update flow uses a
+      serialized iced Element protocol (msgpack over the
+      WASM ABI; plugin builds against
+      `crates/mde-plugins-sdk/` to render Iced widgets in
+      its own process and ship the serialized tree to the
+      host). Per-plugin resource limits (16 MB RAM, 100 ms
+      compute budget per update) enforced by wasmtime.
+    * **`mde plugins` CLI.** Mirrors `flatpak`'s shape:
+      `mde plugins list`, `mde plugins install <path>`,
+      `mde plugins remove <id>`, `mde plugins permissions
+      <id>`. Install validates the manifest, prompts for
+      capability grants, registers the plugin with
+      `mde-workbench` over D-Bus.
+    * **Mesh angle.** The `mesh-call` host verb routes
+      through `mded`'s existing D-Bus surface — a plugin
+      running on peer A can address any service on any
+      peer B by name. Killer demo: a 20-line WASM plugin
+      that polls a peer's CPU and posts a notification
+      when it spikes — works across the whole mesh out of
+      the box.
+    * **`crates/mde-plugins-sdk/`.** A no_std-friendly
+      Rust SDK (also published to crates.io) that
+      generates the Wit bindings + provides a thin Iced-
+      compatible view DSL. Out of scope: TypeScript /
+      Python / Go SDKs (v2.4+ if there's demand).
+  Acceptance: (a) a hello-world plugin
+  (`examples/plugins/hello-mesh/`) installs via
+  `mde plugins install`, appears in the Workbench Plugins
+  section, and renders a button that emits a notification;
+  (b) capability grants are enforced — a plugin without
+  `mesh-call` permission can't reach `mded`;
+  (c) a misbehaving plugin (infinite loop, OOM attempt)
+  is killed by wasmtime within its budget and doesn't
+  hang the workbench; (d) plugin removal cleans up every
+  artifact (config, registered panel, capability grants);
+  (e) the Wit interface is versioned and a v2 plugin
+  surface change can ship without breaking installed v1
+  plugins (cargo workspace gates this; CI enforces
+  backward compat).
+  Depends: Workbench panel chrome (shipped);
+  `mded` D-Bus surface (shipped);
+  UX-PRE Iced 0.14 (for the serialized Element protocol
+  to be stable).
+  Effort: Large (estimate 7 weeks; wasmtime host wiring +
+  Wit interface is ~2 weeks, SDK + serialization is
+  ~2 weeks, CLI + workbench integration is ~2 weeks,
+  capability grants + sandbox + tests is ~1 week).
+  Outputs: `crates/mde-plugins/`;
+  `crates/mde-plugins-sdk/`;
+  `crates/mde-workbench/src/plugins_panel.rs`;
+  `bin/mde-plugins` CLI;
+  `examples/plugins/hello-mesh/` sample;
+  `mackes_config::PluginsConfig` schema entry;
+  `dev.mackes.MDE.Plugins` D-Bus interface XML;
+  `docs/help/plugins-authoring.md`.
+  Risk: pinning a stable Iced Element serialization is
+  hard while Iced itself is moving (0.14 chained on
+  UX-PRE). If the protocol can't be stabilized in v2.3,
+  ship the host + Wit + capability story without the
+  panel-view verb, and let plugins emit notifications +
+  mesh-call only (a useful subset that doesn't depend
+  on a stable view protocol).
 
 ---
 
