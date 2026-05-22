@@ -8,6 +8,14 @@
 //! wire compatibility with stock clients. Extending with MDE-only
 //! plugins is a v2.2+ deferred feature — the trait + registry
 //! below are the seam.
+//!
+//! Per-plugin body types live in submodules. KDC2-2.5 lands
+//! `clipboard` first (smallest body shape); KDC2-2.6..2.9 land
+//! the remaining seven.
+
+pub mod clipboard;
+
+pub use clipboard::{clipboard_packet, from_packet_body, ClipboardBody};
 
 use std::fmt;
 
