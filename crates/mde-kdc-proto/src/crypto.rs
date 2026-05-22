@@ -16,6 +16,10 @@
 //! plugins.
 
 use std::fmt;
+use std::sync::Mutex;
+
+use ring::rand::{SecureRandom, SystemRandom};
+use zeroize::Zeroize;
 
 /// Opaque identifier for a key — used by the wire layer to
 /// reference an active session key without exposing bytes.
@@ -86,6 +90,109 @@ pub trait KeyStore: Send + Sync {
     fn forget(&self, handle: KeyHandle);
 }
 
+// ────────────────────────────────────────────────────────────────
+// KDC2-2.4a — in-memory RingKeyStore (ring 0.17 + zeroize)
+// ────────────────────────────────────────────────────────────────
+
+/// Entry in [`RingKeyStore::keys`]. Wraps the raw key bytes in a
+/// `Vec<u8>` that's zeroed on drop via `zeroize`.
+#[derive(Debug)]
+struct StoredKey {
+    handle: KeyHandle,
+    bytes: Vec<u8>,
+}
+
+impl Drop for StoredKey {
+    fn drop(&mut self) {
+        self.bytes.zeroize();
+    }
+}
+
+/// In-memory [`KeyStore`] impl backed by ring 0.17's `SystemRandom`
+/// for handle-id generation. Holds session keys in a `Mutex<Vec<
+/// StoredKey>>` so it's `Sync` (the host integration crosses an
+/// async task boundary).
+///
+/// Persistence is **deliberately not in this crate** — `mde-kdc`
+/// (KDC2-3) wraps a `RingKeyStore` with a file-backed
+/// `~/.config/mde/connect/devices.toml` layer for cross-restart
+/// pairing. Keeping this in-memory means the protocol-level tests
+/// stay self-contained.
+pub struct RingKeyStore {
+    rng: SystemRandom,
+    keys: Mutex<Vec<StoredKey>>,
+}
+
+impl RingKeyStore {
+    /// New empty key store. Allocates a single `SystemRandom`
+    /// which is cheap (it's just a phantom-data zero-sized type
+    /// in ring 0.17).
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            rng: SystemRandom::new(),
+            keys: Mutex::new(Vec::new()),
+        }
+    }
+
+    /// How many session keys are currently held. Exposed for
+    /// instrumentation + tests.
+    #[must_use]
+    pub fn key_count(&self) -> usize {
+        self.keys.lock().expect("RingKeyStore mutex poisoned").len()
+    }
+}
+
+impl Default for RingKeyStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::fmt::Debug for RingKeyStore {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Don't leak key counts or handles into the debug output —
+        // audit chain readers + panic logs shouldn't see crypto
+        // material indirectly.
+        f.debug_struct("RingKeyStore").finish_non_exhaustive()
+    }
+}
+
+impl KeyStore for RingKeyStore {
+    fn session_key(&self, handle: KeyHandle) -> Option<Vec<u8>> {
+        let keys = self.keys.lock().expect("RingKeyStore mutex poisoned");
+        keys.iter()
+            .find(|k| k.handle == handle)
+            .map(|k| k.bytes.clone())
+    }
+
+    fn install_session_key(&self, raw_key: &[u8]) -> KeyHandle {
+        // ring's SystemRandom-backed handle id keeps the key
+        // referenceable without exposing the key bytes anywhere
+        // they could be logged. 64-bit handle is enough to avoid
+        // collisions across a typical mesh lifetime.
+        let mut id_bytes = [0_u8; 8];
+        self.rng
+            .fill(&mut id_bytes)
+            .expect("ring SystemRandom can always fill");
+        let handle = KeyHandle(u64::from_be_bytes(id_bytes));
+
+        let mut keys = self.keys.lock().expect("RingKeyStore mutex poisoned");
+        keys.push(StoredKey {
+            handle,
+            bytes: raw_key.to_vec(),
+        });
+        handle
+    }
+
+    fn forget(&self, handle: KeyHandle) {
+        let mut keys = self.keys.lock().expect("RingKeyStore mutex poisoned");
+        // `retain` walks every entry; the dropped `StoredKey`s
+        // zeroize via their `Drop` impl.
+        keys.retain(|k| k.handle != handle);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -120,5 +227,87 @@ mod tests {
         let mut set = HashSet::new();
         set.insert(h);
         assert!(set.contains(&KeyHandle(7)));
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // KDC2-2.4a RingKeyStore — install / lookup / forget round trip
+    // ─────────────────────────────────────────────────────────────
+
+    #[test]
+    fn ring_key_store_starts_empty() {
+        let store = RingKeyStore::new();
+        assert_eq!(store.key_count(), 0);
+    }
+
+    #[test]
+    fn install_session_key_returns_unique_handles() {
+        // ring SystemRandom-backed handle ids must avoid collisions
+        // across separate installs.
+        let store = RingKeyStore::new();
+        let h1 = store.install_session_key(&[1, 2, 3]);
+        let h2 = store.install_session_key(&[4, 5, 6]);
+        assert_ne!(h1, h2, "two installs must produce distinct handles");
+        assert_eq!(store.key_count(), 2);
+    }
+
+    #[test]
+    fn session_key_round_trips_through_handle() {
+        let store = RingKeyStore::new();
+        let raw = vec![0xde, 0xad, 0xbe, 0xef];
+        let h = store.install_session_key(&raw);
+        let back = store.session_key(h).expect("just-installed key resolves");
+        assert_eq!(back, raw);
+    }
+
+    #[test]
+    fn session_key_returns_none_for_unknown_handle() {
+        let store = RingKeyStore::new();
+        assert!(store.session_key(KeyHandle(0xdeadbeef)).is_none());
+    }
+
+    #[test]
+    fn forget_removes_a_known_key() {
+        let store = RingKeyStore::new();
+        let h = store.install_session_key(&[7, 8, 9]);
+        assert!(store.session_key(h).is_some());
+        store.forget(h);
+        assert!(store.session_key(h).is_none());
+        assert_eq!(store.key_count(), 0);
+    }
+
+    #[test]
+    fn forget_is_idempotent_for_unknown_handle() {
+        // Idempotent — calling forget on a handle that was never
+        // installed (or already forgotten) must not panic or
+        // mutate the store.
+        let store = RingKeyStore::new();
+        store.forget(KeyHandle(42)); // never installed
+        assert_eq!(store.key_count(), 0);
+        let h = store.install_session_key(&[1]);
+        store.forget(h);
+        store.forget(h); // already gone — still no panic
+        assert_eq!(store.key_count(), 0);
+    }
+
+    #[test]
+    fn debug_impl_omits_key_count_and_handles() {
+        // Audit chain + panic logs must NOT learn anything about
+        // crypto state from a Debug-formatted RingKeyStore.
+        let store = RingKeyStore::new();
+        store.install_session_key(&[1, 2, 3]);
+        store.install_session_key(&[4, 5, 6]);
+        let dbg = format!("{store:?}");
+        // No key count, no handle ids, no key bytes.
+        assert!(!dbg.contains("2"), "Debug leaks key count: {dbg}");
+        assert!(!dbg.contains("0x"), "Debug leaks handle hex: {dbg}");
+    }
+
+    #[test]
+    fn store_is_object_safe_via_keystore_trait() {
+        // The trait is the seam the wire layer dispatches through;
+        // it must accept a Box<dyn KeyStore>.
+        let store: Box<dyn KeyStore> = Box::new(RingKeyStore::new());
+        let h = store.install_session_key(&[42]);
+        assert_eq!(store.session_key(h), Some(vec![42]));
     }
 }

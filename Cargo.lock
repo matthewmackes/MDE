@@ -3211,8 +3211,10 @@ dependencies = [
 name = "mde-kdc-proto"
 version = "0.0.0"
 dependencies = [
+ "ring",
  "serde",
  "serde_json",
+ "zeroize",
 ]
 
 [[package]]
