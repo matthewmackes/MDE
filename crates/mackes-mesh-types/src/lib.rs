@@ -15,8 +15,10 @@
 
 #![forbid(unsafe_code)]
 
+pub mod connect;
 pub mod peer_probe;
 
+pub use connect::{BatterySnapshot, ConnectFacts, PairingState, PeerKind};
 pub use peer_probe::{
     BusTopology, Descriptors, KernelDriver, NatClass, PeerProbe, PowerThermal,
 };
