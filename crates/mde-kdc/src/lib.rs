@@ -30,6 +30,7 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+pub mod dbus;
 pub mod dispatch;
 pub mod keygen;
 pub mod pairing;
