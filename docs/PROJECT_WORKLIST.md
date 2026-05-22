@@ -54,6 +54,94 @@ locked work appears under **Active** with `[ ] Open`.
 > can move it forward today is bench validation (HW-*) or
 > starting on v2.1 scope.
 
+### Console Installer Stack — INST-1..INST-5 (v2.1 scope, locked 2026-05-22)
+
+> Post-RPM, TTY-mode installer that runs on first boot after
+> `dnf install mde`. Same nine-page wizard binary across
+> headless / Wayland / X start states (single Rust binary,
+> `--frontend={gui,tui,headless,auto}`). Stage-2 baseline
+> purge removes competing DEs / display managers / alt
+> compositors / Flatpak / Snap apps before MDE first runs,
+> with a per-app whitelist + abort-on-decline gate. Resolution
+> clamped to ≤ HD at three layers (kernel cmdline, fbset,
+> setfont).
+>
+> Locked design: `docs/design/v2.1.0-console-installer/README.md`.
+> User-locked decisions on 2026-05-22:
+>   * Alternate DMs → remove (not just disable).
+>   * Flatpak / Snap apps → in scope, removed.
+>   * Selection granularity → per-app whitelist (not per-group).
+>   * Decline path → abort the entire install (motd banner +
+>     non-zero exit).
+
+- [✓] **v2.1: INST-1.a baseline-purge data layer** — curated
+  catalog of 70+ removable packages across 13 families (GNOME,
+  KDE, XFCE, MATE, Cinnamon, LXQt, LXDE, Budgie, Pantheon,
+  Deepin, Enlightenment, AltDisplayManager, AltCompositor)
+  plus PROTECTED list (mackes-shell, mde-*, sway, lightdm,
+  NetworkManager, etc.). Pure-data + closure-injectable
+  scanner; 22 unit tests. Commit `664c6d3`.
+- [✓] **v2.1: INST-1.b TUI frontend scaffold** — ratatui +
+  crossterm console wizard runs every existing page; new
+  `--frontend={gui,tui,headless,auto}` flag dispatches the
+  three rendering paths from one binary. Auto-detect collapses
+  to TUI when neither $DISPLAY nor $WAYLAND_DISPLAY is set
+  (which is the case under the systemd installer unit). 12
+  new tests (frontend resolver + tui module). Commit `ba234b8`.
+- [✓] **v2.1: INST-1.c live Purge sub-flow** — multi-step
+  state machine (Warning → Scanning → ListView → Confirm →
+  Executing → Done, or Aborted from any step). Per-app
+  whitelist via ratatui list widget: ↑↓ to move, space/w to
+  toggle keep, / to filter, a to clear-whitelist, enter to
+  confirm. Real rpm/flatpak/snap scanners (RpmDbCache,
+  scan_flatpaks, scan_snaps, scan_system). 14 new state-
+  machine tests. Commit `7a09f05`.
+- [✓] **v2.1: INST-2 TTY launcher + systemd units + spec
+  wiring + HD clamp** — `mde-installer.target`,
+  `mde-installer@.service` (templated TTY unit),
+  `mde-installer-complete.service`, plus
+  `install-helpers/mde-installer-launch.sh` (stops DM,
+  terminates live graphical sessions via loginctl, chvt 1,
+  clamps framebuffer to ≤ 1920×1080 via fbset, bumps font
+  to Terminus 32, execs `mde-wizard --frontend=tui`).
+  `mde-installer-complete.sh` restores graphical default on
+  success. %post on fresh install ($1 == 1 only) creates the
+  firstboot flag, enables the unit, flips default target,
+  appends `video=1920x1080@60` to GRUB_CMDLINE_LINUX.
+  Commit `e9ecf17`.
+- [ ] **v2.1: INST-1.d headless answers-file driver** —
+  `--frontend=headless --answers=/root/install.yaml`. JSON
+  or YAML schema for kickstart + unattended installs. Must
+  refuse to run destructive ops (Stage-2 purge) without
+  explicit `purge: { confirmed: true }` in the answers file.
+- [ ] **v2.1: INST-3 live executor pump** — replace the
+  Executing-step argv preview in `purge_ui::render_executing`
+  with a real subprocess pump that streams `dnf remove -y`
+  output + flatpak uninstall + snap remove into a ratatui
+  progress widget. Writes `purge-manifest.json` to
+  `/var/lib/mde/installer/` before the first removal so the
+  rollback path is intact even if the pump aborts mid-way.
+- [ ] **v2.1: INST-3.b PurgeDeclined motd banner** — on
+  TuiOutcome::PurgeDeclined (exit 3), write
+  `/etc/motd.d/00-mde-installer` explaining the unsupported-
+  configuration state and how to resume:
+  `systemctl start mde-installer@tty1.service` after
+  resolving the conflict. `mde-installer-complete.sh`
+  already clears it on the success path.
+- [ ] **v2.1: INST-3.c `mde install --restore-purged`
+  subcommand** — read `/var/lib/mde/installer/
+  purge-manifest.json`, run the `dnf install` argv from
+  `PurgeManifest::restore_dnf_argv()`. Wire into the
+  existing `mde` binary's subcommand dispatcher.
+- [ ] **v2.1: INST-5 bench validation on real Fedora** —
+  boot clean F44 VM with GNOME pre-installed,
+  `dnf install mde-2.1.x`, reboot, walk the full installer
+  (warning → scan → list → confirm → execute), assert GNOME
+  is gone, MDE session works, lightdm is the only DM, no
+  `gnome-shell` / `gnome-session` left in rpmdb. Belongs in
+  the HW-* epic but pinned to v2.1 because the installer
+  flow is the v2.1 deliverable.
+
 ### v2.0.0 monolithic cut (shipped 2026-05-20)
 
 - [✓] **v2.0.0 cut commit landed (tag `v2.0.0` → fa28cca,
