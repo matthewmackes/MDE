@@ -43,6 +43,7 @@ members  = [
     "crates/mde-mesh-types",
     "crates/mde-panel",
     "crates/mde-peer-card",
+    "crates/mde-popover",
     "crates/mde-session",
     "crates/mde-theme",
     "crates/mde-wizard",

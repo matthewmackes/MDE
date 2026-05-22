@@ -666,6 +666,13 @@ install -D -m 0644 data/applications/mde-workbench.desktop \
 install -D -m 0755 target/release/mde-panel \
     %{buildroot}%{_bindir}/mde-panel
 
+# v3.0.2 panel-host wiring — mde-popover (Iced layer-shell overlay
+# host). Spawned by mde-panel's click handlers; mounts the
+# start-menu overlay today, audio / notifications / clock / network
+# stubs scoped for v3.1 follow-ups.
+install -D -m 0755 target/release/mde-popover \
+    %{buildroot}%{_bindir}/mde-popover
+
 # v2.0.0 Phase D.1 — mde-session Wayland session orchestrator.
 install -D -m 0755 target/release/mde-session \
     %{buildroot}%{_bindir}/mde-session
@@ -812,6 +819,7 @@ fi
 # Phase D.2 logout dialog + Phase A daemon binary + Phase E.8
 # drawer applet + CB-1.10 wizard + 16 applet binaries.
 %{_bindir}/mde-panel
+%{_bindir}/mde-popover
 %{_bindir}/mde-session
 %{_bindir}/mde-logout-dialog
 %{_bindir}/mded

@@ -214,15 +214,29 @@ impl iced_layershell::Application for App {
                 self.top_bar.set_applet_text(kind, text);
             }
             Message::StartClicked => {
-                spawn_detached("mde-applet-start-menu");
+                // v3.0.2 — spawn the unified `mde-popover` host with
+                // the start-menu kind. Layer-shell overlay opens
+                // above the M button.
+                spawn_popover("start-menu");
             }
             Message::TrayClicked(kind) => {
-                // For now, clicking a tray applet re-spawns its binary
-                // detached — the applet itself decides whether to open
-                // a popover. Once the popover binaries land (Phase
-                // E.7.2/E.8/E.11/E.12), this routes to those specific
-                // overlay binaries instead.
-                spawn_detached(kind.binary());
+                // v3.0.2 — route per-applet clicks through the
+                // unified `mde-popover` host. Only `start-menu` has a
+                // real popover today; the rest dispatch to stub
+                // branches that exit 0 (v3.1 follow-up scope).
+                match kind {
+                    applet_host::AppletKind::Audio => spawn_popover("audio"),
+                    applet_host::AppletKind::Network => spawn_popover("network"),
+                    applet_host::AppletKind::NotificationBell => {
+                        spawn_popover("notifications");
+                    }
+                    applet_host::AppletKind::Clock => spawn_popover("clock"),
+                    _ => {
+                        // Sway-cluster / mesh-status / status-cluster /
+                        // dock don't have popovers yet — clicking
+                        // them is a no-op until v3.1.
+                    }
+                }
             }
             // Layer-shell action variants injected by #[to_layer_message] —
             // the runtime intercepts them before they reach user code but
@@ -257,6 +271,22 @@ impl iced_layershell::Application for App {
 fn spawn_detached(binary: &str) {
     use std::process::{Command, Stdio};
     let _ = Command::new(binary)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn();
+}
+
+/// Spawn `mde-popover <kind>` detached — the unified popover host
+/// binary handles all overlay surfaces (start-menu today, audio /
+/// notifications / clock / network stubs ready for v3.1 ports).
+/// Per-popover dedup is left to the popover process itself (each
+/// uses its own `app_id`); a second click while the popover is open
+/// just spawns a redundant process that the compositor coalesces.
+fn spawn_popover(kind: &str) {
+    use std::process::{Command, Stdio};
+    let _ = Command::new("mde-popover")
+        .arg(kind)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())

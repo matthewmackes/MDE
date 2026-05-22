@@ -1,0 +1,48 @@
+[package]
+name        = "mde-popover"
+description = "Iced + layer-shell popover host — mounts start-menu / audio / notifications / network / clock surfaces above the panel edge."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+
+[[bin]]
+name = "mde-popover"
+path = "src/main.rs"
+
+[dependencies]
+# Same Iced + iced_layershell pair as crates/mde-panel — keeps the
+# workspace dep tree on one resolution.
+iced            = { version = "0.13", default-features = false, features = ["wgpu", "tiny-skia", "tokio", "advanced"] }
+iced_layershell = "0.13.7"
+
+# Domain logic libs that already ship with the applet binaries.
+mde-applet-start-menu = { path = "../mde-applets/start-menu" }
+
+# CLI parsing for `mde-popover <kind>` dispatch.
+clap = { version = "4.5", features = ["derive"] }
+
+# Tracing for boot diagnostics — same JSON-line format mde-panel uses.
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# XDG home + cache paths (matches mde-panel + mackesd).
+dirs = "5"
+
+[lints.rust]
+unsafe_code     = "forbid"
+unused_must_use = "deny"
+missing_docs    = "allow"
+
+[lints.clippy]
+pedantic                = { level = "allow", priority = -1 }
+nursery                 = { level = "allow", priority = -1 }
+module_name_repetitions = "allow"
+must_use_candidate      = "allow"
+missing_errors_doc      = "allow"
+missing_panics_doc      = "allow"
+unwrap_used             = "warn"
+panic                   = "warn"
+todo                    = "warn"

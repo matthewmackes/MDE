@@ -3596,6 +3596,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "mde-popover"
+version = "0.0.0"
+dependencies = [
+ "clap",
+ "dirs 5.0.1",
+ "iced",
+ "iced_layershell",
+ "mde-applet-start-menu",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "mde-session"
 version = "0.0.0"
 dependencies = [
