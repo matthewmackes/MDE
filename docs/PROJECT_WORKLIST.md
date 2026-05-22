@@ -5534,10 +5534,14 @@ Removes the platform's last Qt surface. Adds explicit
   gsconnect`** — Prevents co-installation. Both would try
   to bind port 1716; the conflict surfaces the issue at
   install time rather than runtime.
-- [ ] **KDC2-6.4: `%check` stanza asserts Qt-free dep closure** —
-  Add `%check` step: `rpm -qpR %{buildroot}/...rpm |
-  grep -iE '^(qt[0-9]|kf[0-9])' && exit 1 || true`. The
-  build fails loudly if any Qt dep sneaks in.
+- [✓] **KDC2-6.4: `%check` stanza asserts Qt-free dep closure** —
+  Shipped 2026-05-22 in `packaging/fedora/mackes-shell.spec`.
+  Three guards: `ldd target/release/mackesd` + `ldd
+  target/release/mde-session` reject any `libQt[0-9]|libKF[0-9]`
+  match; a Python-tree grep rejects `import PyQt[0-9]+ |
+  import PySide[0-9]+ | import PyKF[0-9]+`. Any hit fails the
+  build with a stable token. Belt-and-suspenders backstop for
+  KDC2-6.1's `Requires:` drop + 6.2/6.3 Obsoletes/Conflicts.
 - [✓] **KDC2-6.5: Delete `crates/mackes-kdc/` + update
   workspace `Cargo.toml`** — Whole crate (296 LOC lib +
   150 LOC tests). Drop the entry from root `Cargo.toml`

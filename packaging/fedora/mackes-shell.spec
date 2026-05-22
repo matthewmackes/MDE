@@ -303,6 +303,35 @@ cargo build --release --workspace
 cargo build --release --features x11 -p mde-session \
     --target-dir target/x11
 
+%check
+# KDC2-6.4 — Qt-free dep-closure gate.
+#
+# The v2.1+ KDC2 native re-implementation deliberately drops
+# every Qt / KF6 dependency. If any sneaks in through a transitive
+# crate or a stray Python import, this stanza fails the build
+# loudly rather than letting the RPM ship with hidden Qt deps.
+#
+# Strategy: scan the built Rust binaries' link map + the Python
+# package source tree for any `Qt`/`KF6` markers.  The previous
+# Phase 13 wrapper required `kdeconnectd` (a Qt app) as a
+# Requires; with KDC2-6.1's drop, nothing in the spec dep
+# block references Qt either — this %check is the belt-and-
+# suspenders backstop.
+set -e
+ldd target/release/mackesd 2>/dev/null | \
+    grep -iE 'libQt[0-9]|libKF[0-9]' && \
+    { echo "FAIL: Qt/KF library linked into mackesd"; exit 1; } || true
+ldd target/release/mde-session 2>/dev/null | \
+    grep -iE 'libQt[0-9]|libKF[0-9]' && \
+    { echo "FAIL: Qt/KF library linked into mde-session"; exit 1; } || true
+# Python tree must not import PyQt or PySide either.
+if grep -rnE '^[[:space:]]*(import|from)[[:space:]]+(PyQt[0-9]+|PySide[0-9]+|PyKF[0-9]+)' \
+        mackes/ 2>/dev/null; then
+    echo "FAIL: Python module imports Qt/KF bindings"
+    exit 1
+fi
+echo "%check: Qt-free dep closure confirmed (KDC2-6.4)"
+
 %install
 # 1. Install the Python package directly into site-packages. Skip
 #    setuptools/pip entirely — Mackes has no C extensions and no
