@@ -5216,24 +5216,24 @@ fuzzable + reproducible.
   table built at startup from policy.toml allow-list. 8 unit
   tests cover dispatch, missing-plugin fallback, allow-list
   filtering.
-- [>] **KDC2-2.13: `plugins::Notification`** — Mirror Android
+- [✓] **KDC2-2.13: `plugins::Notification`** — Mirror Android
   notifications. Handles `kdeconnect.notification` +
   `kdeconnect.notification.reply` + dismissal. 6 unit tests.
-- [>] **KDC2-2.14: `plugins::Clipboard`** — Bidirectional clipboard
+- [✓] **KDC2-2.14: `plugins::Clipboard`** — Bidirectional clipboard
   sync. Handles `kdeconnect.clipboard` +
   `kdeconnect.clipboard.connect` (initial sync on connection).
   Debounce + loop-detection. 8 unit tests.
-- [>] **KDC2-2.15: `plugins::Share` + payload streaming** — File
+- [✓] **KDC2-2.15: `plugins::Share` + payload streaming** — File
   share via the secondary payload channel (KDC2-2.4). Receives
   `kdeconnect.share.request` + reads bytes from the payload
   port. 5 unit tests.
-- [>] **KDC2-2.16: `plugins::Ping` + `plugins::FindMyPhone`** —
+- [✓] **KDC2-2.16: `plugins::Ping` + `plugins::FindMyPhone`** —
   Two simple plugins. Ping: 2-line echo. FindMyPhone: triggers
   remote loud alarm. 4 unit tests.
-- [>] **KDC2-2.17: `plugins::Battery` + `plugins::Mpris`** — Battery
+- [✓] **KDC2-2.17: `plugins::Battery` + `plugins::Mpris`** — Battery
   state poll/push. MPRIS now-playing relay + remote control.
   6 unit tests.
-- [>] **KDC2-2.18: `plugins::Sms` (Android-only)** — SMS thread/
+- [✓] **KDC2-2.18: `plugins::Sms` (Android-only)** — SMS thread/
   message list + send. Gated on `kdeconnect.sms.messages`
   capability advertised by the remote (iOS doesn't have it).
   8 unit tests + capability-gating coverage.
