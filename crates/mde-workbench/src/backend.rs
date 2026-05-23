@@ -68,6 +68,31 @@ pub trait Backend: Send + Sync + 'static {
     async fn healthz(&self) -> Result<String, BackendError> {
         Ok(EMPTY_HEALTHZ_JSON.to_owned())
     }
+
+    /// Enumerate every known setting key
+    /// (`dev.mackes.MDE.Settings.ListKeys`). Powers a future
+    /// settings-explorer panel. The default impl returns an
+    /// empty list so DemoBackend stays useful without seeding
+    /// the full vocabulary.
+    async fn list_keys(&self) -> Result<Vec<String>, BackendError> {
+        Ok(Vec::new())
+    }
+
+    /// Snapshot every current value as a JSON-encoded
+    /// `Snapshot` (`dev.mackes.MDE.Settings.Snapshot`). Used
+    /// by the Maintain → Snapshots panel's "save current" flow.
+    /// Default impl returns the empty snapshot shape so panels
+    /// can render cleanly without a daemon.
+    async fn snapshot(&self) -> Result<String, BackendError> {
+        Ok("{\"values\":{},\"captured_at\":null}".to_owned())
+    }
+
+    /// Restore a previously-captured snapshot
+    /// (`dev.mackes.MDE.Settings.Restore`). Default impl is a
+    /// no-op so DemoBackend tests can dry-run the dispatch path.
+    async fn restore(&self, _snapshot_json: &str) -> Result<(), BackendError> {
+        Ok(())
+    }
 }
 
 /// JSON-encoded `HealthReport::empty()` shape — kept here as a
@@ -144,6 +169,9 @@ impl Backend for DemoBackend {
 trait Settings {
     fn get(&self, key: &str) -> zbus::Result<String>;
     fn set(&self, key: &str, value_json: &str) -> zbus::Result<()>;
+    fn list_keys(&self) -> zbus::Result<Vec<String>>;
+    fn snapshot(&self) -> zbus::Result<String>;
+    fn restore(&self, snapshot_json: &str) -> zbus::Result<()>;
 }
 
 /// `dev.mackes.MDE.Shell` client proxy — same shape as
@@ -208,6 +236,36 @@ impl Backend for DBusBackend {
             .map_err(|e| BackendError::Bus(e.to_string()))?;
         proxy
             .healthz()
+            .await
+            .map_err(|e| BackendError::Bus(e.to_string()))
+    }
+
+    async fn list_keys(&self) -> Result<Vec<String>, BackendError> {
+        let proxy = SettingsProxy::new(&self.conn)
+            .await
+            .map_err(|e| BackendError::Bus(e.to_string()))?;
+        proxy
+            .list_keys()
+            .await
+            .map_err(|e| BackendError::Bus(e.to_string()))
+    }
+
+    async fn snapshot(&self) -> Result<String, BackendError> {
+        let proxy = SettingsProxy::new(&self.conn)
+            .await
+            .map_err(|e| BackendError::Bus(e.to_string()))?;
+        proxy
+            .snapshot()
+            .await
+            .map_err(|e| BackendError::Bus(e.to_string()))
+    }
+
+    async fn restore(&self, snapshot_json: &str) -> Result<(), BackendError> {
+        let proxy = SettingsProxy::new(&self.conn)
+            .await
+            .map_err(|e| BackendError::Bus(e.to_string()))?;
+        proxy
+            .restore(snapshot_json)
             .await
             .map_err(|e| BackendError::Bus(e.to_string()))
     }
@@ -304,5 +362,27 @@ mod tests {
         ] {
             assert!(v.get(k).is_some(), "missing key: {k}");
         }
+    }
+
+    #[tokio::test]
+    async fn default_list_keys_returns_empty_vec() {
+        let backend = DemoBackend::new();
+        let keys = backend.list_keys().await.unwrap();
+        assert!(keys.is_empty());
+    }
+
+    #[tokio::test]
+    async fn default_snapshot_returns_empty_snapshot_shape() {
+        let backend = DemoBackend::new();
+        let json = backend.snapshot().await.unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(v["values"].is_object());
+        assert!(v["captured_at"].is_null());
+    }
+
+    #[tokio::test]
+    async fn default_restore_is_a_noop() {
+        let backend = DemoBackend::new();
+        backend.restore("{\"values\":{}}").await.unwrap();
     }
 }
