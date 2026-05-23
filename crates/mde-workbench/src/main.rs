@@ -7,11 +7,12 @@
 //! `dev.mackes.MDE.Shell.Workbench.Focus` method.
 
 use std::process::ExitCode;
+use std::sync::Arc;
 
 use clap::Parser;
 use mde_workbench::{
-    decide_primary_status, App, PendingFocus, PrimaryStatus, WorkbenchService, BUS_NAME,
-    INTERFACE_NAME, OBJECT_PATH,
+    decide_primary_status, App, Backend, DBusBackend, DemoBackend, PendingFocus, PrimaryStatus,
+    WorkbenchService, BUS_NAME, INTERFACE_NAME, OBJECT_PATH,
 };
 use tracing::{debug, error, info};
 use zbus::fdo::{DBusProxy, RequestNameFlags};
@@ -65,13 +66,18 @@ fn main() -> ExitCode {
     // Single-instance handshake — block on tokio for the bus
     // round-trips, then either hand off and exit, or spawn the
     // long-running zbus connection alongside the Iced loop.
-    let status = match runtime.block_on(acquire_primary()) {
+    // The acquired connection (when present) is also handed to
+    // the settings [`DBusBackend`] so panel writes land on
+    // `dev.mackes.MDE.Settings.Set` (AF-2.3.a).
+    let (status, conn) = match runtime.block_on(acquire_primary()) {
         Ok((status, conn)) => {
             if status == PrimaryStatus::Existing {
                 drop(conn);
                 return hand_off_to_running(&runtime, &cli.focus);
             }
-            register_workbench_service(&runtime, conn)
+            let conn = Arc::new(conn);
+            let status = register_workbench_service(&runtime, &conn);
+            (status, Some(conn))
         }
         Err(e) => {
             // Couldn't reach the session bus at all — fall back
@@ -83,7 +89,7 @@ fn main() -> ExitCode {
                 "session bus unreachable ({e}); launching workbench without \
                  single-instance protection"
             );
-            Err(())
+            (Err(()), None)
         }
     };
 
@@ -91,16 +97,37 @@ fn main() -> ExitCode {
         info!("continuing without D-Bus single-instance protection");
     }
 
+    let backend: Arc<dyn Backend> = match &conn {
+        Some(c) => {
+            info!("settings backend: live DBusBackend over session bus");
+            Arc::new(DBusBackend::new(Arc::clone(c)))
+        }
+        None => {
+            // Without the session bus, settings can't be
+            // persisted or pushed cross-mesh — log so a user
+            // hitting a "save isn't sticking" issue can spot
+            // the cause in journalctl.
+            error!(
+                "settings backend: in-memory DemoBackend (bus unreachable); \
+                 settings changes will not persist or propagate"
+            );
+            Arc::new(DemoBackend::new())
+        }
+    };
+
     // Iced takes over the main thread — keep the tokio runtime
     // (and the zbus connection it owns) alive for the lifetime
     // of the process via a leaked handle.
     let _runtime = Box::leak(Box::new(runtime));
+    if let Some(conn) = conn {
+        Box::leak(Box::new(conn));
+    }
 
     if !initial_focus.is_empty() {
         PendingFocus::submit(initial_focus);
     }
 
-    match App::run() {
+    match App::run_with_backend(backend) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             error!("iced runtime error: {e}");
@@ -149,11 +176,11 @@ fn hand_off_to_running(runtime: &tokio::runtime::Runtime, focus: &Option<String>
 /// Primary-process branch — register the
 /// [`INTERFACE_NAME`] interface on the live connection at
 /// [`OBJECT_PATH`] so the [`PendingFocus`] slot fills whenever
-/// a sibling invocation calls Focus.
-fn register_workbench_service(
-    runtime: &tokio::runtime::Runtime,
-    conn: Connection,
-) -> Result<(), ()> {
+/// a sibling invocation calls Focus. The caller retains the
+/// `Arc<Connection>` so the same socket is reused by the
+/// settings [`DBusBackend`] and leaked alongside the runtime
+/// for the lifetime of the process.
+fn register_workbench_service(runtime: &tokio::runtime::Runtime, conn: &Connection) -> Result<(), ()> {
     runtime.block_on(async {
         conn.object_server()
             .at(OBJECT_PATH, WorkbenchService)
@@ -162,10 +189,6 @@ fn register_workbench_service(
                 error!("failed to register {INTERFACE_NAME} at {OBJECT_PATH}: {e}");
             })?;
         info!(%OBJECT_PATH, %INTERFACE_NAME, "primary workbench D-Bus surface registered");
-        // Leak the connection — its background tokio tasks must
-        // outlive this function. The runtime itself is leaked
-        // by the caller via Box::leak.
-        Box::leak(Box::new(conn));
         Ok(())
     })
 }

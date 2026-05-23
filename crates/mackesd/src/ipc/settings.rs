@@ -101,6 +101,30 @@ impl SettingsService {
     ) -> zbus::Result<()>;
 }
 
+/// Register the [`SettingsService`] on the session bus at the
+/// canonical well-known name + object path. The returned
+/// [`zbus::Connection`] must stay alive for the daemon's lifetime
+/// — drop it and the dbus surface goes away.
+///
+/// AF-2.3.a wire-up (2026-05-23): the per-user mackesd needs to
+/// own this name so the workbench's
+/// [`mde_workbench::DBusBackend`] can land `Get`/`Set` calls on
+/// `dev.mackes.MDE.Settings` rather than no-owner-of-name
+/// failures.
+///
+/// # Errors
+///
+/// Returns whatever zbus reports (typical failure mode is
+/// `NameAlreadyAcquired` if another mackesd is already running on
+/// the same session bus; callers degrade gracefully).
+pub async fn register_settings(state: SettingsService) -> zbus::Result<zbus::Connection> {
+    zbus::connection::Builder::session()?
+        .name(SERVICE_NAME)?
+        .serve_at(OBJECT_PATH, state)?
+        .build()
+        .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

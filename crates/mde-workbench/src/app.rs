@@ -554,8 +554,21 @@ impl App {
         self.focused_pane
     }
 
-    /// Run the Iced application.
+    /// Run the Iced application with the default (DemoBackend)
+    /// settings store — kept for fallback callers that don't have
+    /// a session-bus connection ready.
     pub fn run() -> iced::Result {
+        Self::run_with_backend(Arc::new(DemoBackend::new()))
+    }
+
+    /// Run the Iced application with an explicit settings
+    /// [`Backend`]. `main.rs` calls this with a live
+    /// [`crate::DBusBackend`] wrapping the session bus connection
+    /// so every panel's setting write lands on mackesd's
+    /// `dev.mackes.MDE.Settings.Set` (AF-2.3.a — persistence,
+    /// applier side-effects, and fs_sync cross-mesh propagation
+    /// flow through that path).
+    pub fn run_with_backend(backend: Arc<dyn Backend>) -> iced::Result {
         // UX-4 (d) — request a decoration-less window so the
         // custom `crate::header` bar is the only title strip the
         // user sees. sway tiles Iced apps without server-side
@@ -571,7 +584,7 @@ impl App {
                 decorations: false,
                 ..window::Settings::default()
             })
-            .run()
+            .run_with(move || (Self::with_backend(backend), Task::none()))
     }
 
     /// Iced subscription bundle — polls [`PendingFocus`] on a

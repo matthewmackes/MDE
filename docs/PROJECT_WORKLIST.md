@@ -1126,20 +1126,31 @@ above; integration tasks below in dependency order.
   persistence + cross-mesh settings push. Captured as
   AF-2.3.a below.
 
-- [ ] **AF-2.3.a: mde-workbench backend — settings persistence
-  + cross-mesh push (Tier 2, split from 2.3 on 2026-05-23
-  after the AF-* mega closed the mde-files half)** —
-  `crates/mde-workbench/src/app.rs` constructs a DemoBackend
-  at startup. Local-system reads (theme list, fc-list fonts,
-  sway outputs, dnf check-update) work because each panel
-  reads the live system directly — those panels don't go
-  through the backend. What DOES go through it:
-  settings PERSISTENCE + cross-mesh settings PUSH.
-  Acceptance: changing any setting in Workbench (a) writes
-  to a real config file (b) shows up in `mackesd healthz` /
-  via `swaymsg` / via `fc-cache -r` on the local node and
-  (c) propagates to peers within ~5 s through mackesd's
-  fs_sync worker.
+- [✓] **AF-2.3.a: mde-workbench backend — settings persistence
+  + cross-mesh push (shipped 2026-05-23)** —
+  `crates/mde-workbench/src/main.rs` now reuses the
+  `Arc<Connection>` it acquires for the
+  `dev.mackes.MDE.Workbench` single-instance handshake to
+  build a live `DBusBackend` and hands it to a new
+  `App::run_with_backend(Arc<dyn Backend>)` entry point.
+  Every panel save (Look & Feel themes/fonts, Notifications,
+  Power, Removable, Displays, Wallpaper, Session) now lands
+  on `dev.mackes.MDE.Settings.Set` instead of the in-memory
+  `DemoBackend`. Mackesd-side: `SettingsService` shipped its
+  `#[interface]` decoration in v2.0.0 Phase A but was never
+  `serve_at`'d on the session bus — added
+  `mackesd_core::ipc::settings::register_settings(...)` and
+  called it from `mackesd serve` alongside the existing
+  `register_fleet_files(...)` block (graceful-degrade on
+  `NameAlreadyAcquired` / session-bus-unreachable).
+  Settings writes now exercise the full
+  `crate::settings::apply()` path: applier side-effects
+  (gsettings, fontconfig, swaymsg, etc.), persistence to the
+  SQLite `settings` table, and the `Changed` signal — so
+  fs_sync's cross-mesh propagation runs unchanged downstream.
+  Bus-unreachable fallback retained: missing session bus →
+  warning + in-memory `DemoBackend` so emergency recovery
+  shells still launch the workbench.
 - [✓] **AF-5: mackesd `Shell.{Inbox,Outbox,Downloads,FileOperations}`
   honest-empty pass (shipped 2026-05-23) — closes the §0.12
   Phase-G-jargon leak** — every "wired in Phase G" stub Err

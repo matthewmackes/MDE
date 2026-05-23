@@ -3,6 +3,29 @@
 All notable user-facing and architectural changes. The current line is
 unreleased; tag versions get a date when they ship.
 
+## Unreleased — AF-2.3.a workbench settings backend
+
+* **Workbench settings actually persist.** `mde-workbench` was
+  constructing a `DemoBackend` at startup, so every panel save
+  in Look & Feel / System / Devices / Fleet went into a
+  per-process `HashMap` and disappeared on next launch. Wired
+  the live `DBusBackend` through `App::run_with_backend(...)`:
+  the binary now reuses the session-bus connection it already
+  acquires for the single-instance handshake to drive
+  `dev.mackes.MDE.Settings.Get/Set`. Settings writes now hit
+  mackesd's `crate::settings::apply()` path, fire the real
+  applier side-effects (gsettings, fontconfig, swaymsg, etc.),
+  persist to the SQLite settings table, and propagate to peers
+  through the `fs_sync` worker. (AF-2.3.a)
+* **mackesd registers the Settings dbus surface.** The
+  `SettingsService` had shipped its `#[interface]` decoration
+  since v2.0.0 Phase A but was never `serve_at`'d on the
+  session bus — every workbench `Set` would have hit a
+  no-owner-of-name error. Added `register_settings()` helper
+  alongside the existing `register_fleet_files()` and called
+  it from `mackesd serve` (graceful-degrade on
+  `NameAlreadyAcquired`).
+
 ## 4.0.0 — runtime integration sweep: everything actually works now (2026-05-22)
 
 The headline change: MDE's v3 line shipped most features as

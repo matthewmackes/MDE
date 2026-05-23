@@ -1444,6 +1444,36 @@ fn run_serve(
             }
         }
 
+        // v4.0.1 AF-2.3.a (2026-05-23) — register the
+        // dev.mackes.MDE.Settings surface on the session bus so
+        // the workbench's DBusBackend can land Get/Set calls.
+        // Without this, every panel save fails with a
+        // no-owner-of-name BackendError::Bus. Graceful-degrade:
+        // a `NameAlreadyAcquired` (another mackesd) or session-
+        // bus-unreachable failure logs a warning and the daemon
+        // keeps running — only the workbench's settings path
+        // degrades.
+        match mackesd_core::ipc::settings::register_settings(
+            mackesd_core::ipc::settings::SettingsService::default(),
+        )
+        .await
+        {
+            Ok(conn) => {
+                Box::leak(Box::new(conn));
+                tracing::info!(
+                    "Settings dbus surface registered at {}",
+                    mackesd_core::ipc::settings::OBJECT_PATH
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "Settings dbus registration failed; \
+                     workbench panel saves will surface as bus errors"
+                );
+            }
+        }
+
         // v4.0.1 KDC2-3.3 wire-up (2026-05-23) — spawn the KDC host
         // worker. Owns the pairing store at $XDG_CONFIG_HOME/mde/
         // connect (default ~/.config/mde/connect), the shared
