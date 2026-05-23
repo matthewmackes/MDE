@@ -9876,6 +9876,72 @@ the section header on each subsection carries the explicit
 target so WF-5's release-tag schema is satisfied without
 re-declaring it per-row.
 
+### Epic-wide cross-cutting requirements (locked 2026-05-23)
+
+Two hard requirements apply to **every** CLUST-N story below
+(both existing and any future ones added to this Epic). Each
+story's acceptance criteria carries an explicit bench-observable
+gate for both — CLI-only or daemon-only acceptance is NOT
+sufficient; a CLUST-N story is not `[✓] Done` until both gates
+pass on a clean bench install.
+
+**CCR-1: Workbench GUI panel (mandatory, not optional).** Every
+cluster service ships with a first-class Workbench panel in the
+appropriate group. The panel follows the Carbon refresh pattern
+locked by `mackes/workbench/network/mesh_ssh.py`: breadcrumb +
+`_page_title` + `_page_subtitle` + `_section_title` helpers; PF6
+Page + PageSection + Card + Toolbar layout; routes privileged
+operations through `mackes.admin_session.AdminSession`, never
+raw `pkexec`. Workbench panel grouping lock for the Epic:
+
+| Group | Tab | Stories |
+|---|---|---|
+| Fleet | Host cluster | CLUST-1, CLUST-5 |
+| Fleet | Shared storage | CLUST-7 |
+| Maintain | Disk unlock | CLUST-2 |
+| Maintain | Host services | CLUST-3 |
+| Maintain | Image mode | CLUST-6 |
+| Network | Identity | CLUST-4 |
+
+Per-story Implementation notes cite **"Group: <group> · Tab:
+<tab>"** + the Carbon glyph name so CCR-1 is machine-verifiable.
+A story whose acceptance does not include a "Workbench → <group>
+→ <tab> panel renders …" bullet is malformed and must be
+rewritten before work starts.
+
+**CCR-2: Auto-provision across all peers (mandatory, not
+optional).** Every cluster service auto-provisions across the
+mesh without per-peer manual setup beyond a single opt-in
+gesture on **one** peer. Concretely: the operator clicks
+"Enable" once in the Workbench panel on any peer; the service
+then self-discovers candidate peers via the existing
+mesh-discovery + mDNS + NATS layer (`mackes/mesh_discovery.py`,
+`mackes/mdns_relay.py`, `mackes/mesh_nats.py`); elects roles
+(active / passive, brick / arbiter, master / backup, KDC
+replica / client, Tang server / client) automatically; enrols
+new peers as they join the mesh without operator intervention;
+and reflects all of this state in the same Workbench panel on
+every peer. This matches the platform's foundational lock —
+"the mesh joins itself when there's one to join" — locked in
+the README and reaffirmed under EPIC: Production-Ready Mackes,
+Track 3. Per-peer shell commands (`pcs cluster setup`, `clevis
+luks bind`, `gluster volume create`, `ipa-client-install`) are
+implementation details, NOT operator-facing surfaces; they get
+wrapped by the auto-provision worker (extending the existing
+`crates/mackesd/src/workers/` pool), not exposed.
+
+Auto-provision worker lock: every CLUST-N service adds a worker
+under `crates/mackesd/src/workers/cluster_<service>.rs` that
+shares the desired/observed reconciler model already used for
+mesh peer state. The worker subscribes to the existing
+mesh-discovery event stream + the SQLite-backed desired state
+table; converging actions land via Ansible-pull tasks (the same
+control plane MDE already uses, never a new control plane).
+Failure modes (Tang server unreachable, postgres replica behind,
+KDC ticket expired) emit structured events to the Conky HUD +
+Maintain → Repair, per the EPIC-production-ready-mackes Track 1
+mitigation pattern.
+
 ### Host-role HA failover (v4.1+ scope)
 
 - [ ] **CLUST-1: Pacemaker + Corosync + pcs Host-role HA cluster (Tier 1)**
@@ -9888,26 +9954,49 @@ re-declaring it per-row.
   Caddy for the rest of the fleet.
 
   **Acceptance** (each bench-observable):
-  - [ ] Two peers enrolled via `pcs cluster setup` → `pcs status`
-        on either peer shows both nodes Online + a Designated
-        Coordinator elected.
+  - [ ] **CCR-1 (Workbench panel):** Workbench → Fleet → "Host
+        cluster" tab renders, per the Carbon refresh pattern
+        (breadcrumb + page-title helpers; PF6 Page + PageSection
+        + Card + Toolbar): live cluster status (DC, node health,
+        resource group placement); a "Move host" action button
+        that calls `pcs resource move` under AdminSession; a
+        "Promote / demote peer" action for adding or removing
+        peers from the cluster; failover history table with
+        timestamp + reason + winning node.
+  - [ ] **CCR-2 (Auto-provision):** Operator clicks "Enable
+        Host HA" once on any Host-role peer; within 5 minutes
+        the second Host-role peer (auto-elected by
+        mesh-discovery + the existing role-availability signal)
+        is enrolled into the Pacemaker cluster, postgres
+        streaming replication is converged, and the Workbench
+        panel on **both** peers reflects identical state. No
+        `pcs cluster setup` or `pcs cluster auth` issued by the
+        operator at any shell.
+  - [ ] Pull power on the active node → within 60 s, `pcs status`
+        on the surviving node shows it owning the resource group;
+        a mesh peer's `tailscale status` regains green within the
+        same window; the failover history table on Workbench gains
+        a new row without operator action.
   - [ ] Headscale, postgres, DERP, and Caddy each run as a
         Pacemaker resource in an ordered group on whichever peer
         is currently active; `pcs resource status` shows them all
         Started on the same node.
-  - [ ] Pull power on the active node → within 60 s, `pcs status`
-        on the surviving node shows it owning the resource group;
-        a mesh peer's `tailscale status` regains green within the
-        same window.
   - [ ] `mde fleet host-cluster status` (new subcommand) reads
         `pcs status` without sudo (group membership via the
         existing `mackes` group) and prints a concise summary
-        suitable for Conky HUD ingestion.
-  - [ ] Workbench → Fleet → "Host cluster" tab renders the
-        cluster status + offers a "Move host" button that calls
-        `pcs resource move` under AdminSession.
+        suitable for Conky HUD ingestion — mirrors the Workbench
+        panel content for headless / Node-preset peers.
 
   **Implementation notes:**
+  - **Group: Fleet · Tab: Host cluster** (CCR-1 grouping lock).
+  - **Auto-provision worker:**
+    `crates/mackesd/src/workers/cluster_pacemaker.rs` — extends
+    the existing worker pool (`ansible_pull`, `fs_sync`, etc.).
+    Subscribes to mesh-discovery role events; when two
+    Host-role peers are visible, the leader (lower
+    Tailscale-node-ID wins ties) issues the equivalent of
+    `pcs cluster setup` + `pcs cluster start --all` against
+    both peers via Ansible-pull tasks.
   - Packages: `pacemaker`, `corosync`, `pcs`, `fence-agents-all`
     — all in Fedora core repos.
   - STONITH: bare-metal peers fence via IPMI/iLO/SSH-power-off;
@@ -9942,6 +10031,21 @@ re-declaring it per-row.
   failover.
 
   **Acceptance** (each bench-observable):
+  - [ ] **CCR-1 (Workbench panel):** Workbench → Fleet → "Host
+        cluster" tab (shared with CLUST-1) carries a "Mode"
+        selector — `pacemaker` xor `keepalived` xor `single` —
+        and renders the active mode's status: for `keepalived`,
+        master/backup state, current VIP holder, priority
+        values, and the most recent VRRP transition timestamp.
+        Carbon refresh pattern; AdminSession-routed actions.
+  - [ ] **CCR-2 (Auto-provision):** Operator selects
+        "keepalived" mode once in the Workbench panel; within
+        2 minutes the second Host-role peer is configured with
+        complementary VRRP priorities (master/backup
+        auto-assigned by lower-Tailscale-node-ID-wins), the VIP
+        is provisioned on the mesh-facing interface, and Caddy
+        is reconfigured to bind the VIP — no per-peer
+        `/etc/keepalived/keepalived.conf` edits by the operator.
   - [ ] Two Host-role peers run `keepalived` with a configured
         VRRP instance; `ip addr show` on the master shows the
         floating VIP bound to the mesh-facing interface.
@@ -9957,6 +10061,13 @@ re-declaring it per-row.
         Workbench gates the toggle on this exclusivity.
 
   **Implementation notes:**
+  - **Group: Fleet · Tab: Host cluster** (CCR-1 grouping lock,
+    shared with CLUST-1 — single tab, mode selector switches
+    rendering).
+  - **Auto-provision worker:**
+    `crates/mackesd/src/workers/cluster_keepalived.rs` —
+    parallel to `cluster_pacemaker.rs`. Only one of the two
+    runs per peer-pair (enforced by the Mode selector).
   - Package: `keepalived` (Fedora core).
   - Sequencing: ship CLUST-5 first if the operator wants
     Host-failover sooner — it's roughly a tenth the moving parts
@@ -9977,9 +10088,28 @@ re-declaring it per-row.
   prompt at boot.
 
   **Acceptance** (each bench-observable):
-  - [ ] After `mde maintain bind-disk --tang <host-peer>` runs,
-        reboot succeeds without a passphrase prompt as long as
-        at least one Tang server is reachable on the mesh.
+  - [ ] **CCR-1 (Workbench panel):** Workbench → Maintain →
+        "Disk unlock" tab renders, per the Carbon refresh
+        pattern: current binding state (unbound / bound +
+        mesh-reachable / bound + mesh-unreachable); the list of
+        Tang servers currently reachable on the mesh with RTT
+        and last-successful-unlock timestamp; bind / rebind /
+        unbind action buttons (all under AdminSession); a
+        "Test unlock without rebooting" diagnostic action that
+        runs `clevis luks unlock --dry-run` style verification.
+  - [ ] **CCR-2 (Auto-provision):** Operator clicks "Bind to
+        mesh" once on a peer; the worker auto-discovers Tang
+        servers via mesh-discovery (every Host-role peer runs
+        `tangd.socket` after fleet-wide opt-in — see below);
+        binds against ≥ 2 Tang servers for redundancy; emits a
+        Conky HUD event confirming bind. Fleet-wide opt-in:
+        operator clicks "Enable Tang servers" once on the Host
+        panel → every Host-role peer in the mesh starts
+        `tangd.socket` within 2 minutes via Ansible-pull, with
+        no per-peer SSH-in.
+  - [ ] After binding, reboot succeeds without a passphrase
+        prompt as long as at least one Tang server is reachable
+        on the mesh.
   - [ ] Disconnect the box from the mesh (Wi-Fi off + cable
         pulled), reboot → boot blocks on the LUKS passphrase
         prompt (the fail-closed path is exercised, not just
@@ -9987,14 +10117,22 @@ re-declaring it per-row.
   - [ ] Reconnect to the mesh on the locked-out box, enter the
         recovery passphrase once → next reboot unlocks
         automatically again (no manual rebind needed).
-  - [ ] Workbench → Maintain → "Mesh-bound disk unlock" toggle
-        reflects current binding state + offers bind / rebind /
-        unbind buttons (all routed through AdminSession).
   - [ ] `mde maintain bind-disk status` CLI mirrors the
         Workbench panel exactly so headless / Node-preset peers
         can configure binding without a GUI.
 
   **Implementation notes:**
+  - **Group: Maintain · Tab: Disk unlock** (CCR-1 grouping lock).
+  - **Auto-provision worker:**
+    `crates/mackesd/src/workers/cluster_tang_clevis.rs` —
+    drives the dual flow: (a) on Host-role peers, manage
+    `tangd.socket` lifecycle + key rotation; (b) on every peer,
+    discover reachable Tang servers + drive `clevis luks bind`
+    against the top-N by RTT. Birthright integration: a new
+    `mackes/birthright.py` step offers "Bind disk to mesh?" as
+    an opt-in checkbox during first-run, defaulting on for
+    peers joining a mesh that already has Tang servers
+    advertised.
   - Packages: `tang` (server-side on Host-role peers), `clevis`,
     `clevis-luks`, `clevis-dracut`, `clevis-systemd` (client-side
     on every peer). All in Fedora core.
@@ -10031,6 +10169,23 @@ re-declaring it per-row.
   pursues.
 
   **Acceptance** (each bench-observable):
+  - [ ] **CCR-1 (Workbench panel):** Workbench → Maintain →
+        "Host services" tab renders, per the Carbon refresh
+        pattern: per-service rows for Headscale / postgres /
+        DERP / Caddy showing image tag + container ID + uptime
+        + health-check state; "Pin tag" / "Bump to known-good"
+        / "Rollback" action buttons (AdminSession-routed);
+        rolling event log of recent image swaps with operator
+        attribution.
+  - [ ] **CCR-2 (Auto-provision):** Operator pins an image tag
+        once on any Host peer's Workbench panel; if CLUST-1 is
+        active, the second Host peer in the Pacemaker cluster
+        receives the same tag pin within 2 minutes (via the
+        existing Ansible-pull control plane), so both Hosts
+        always run the same image version — image drift between
+        active and passive Host is detected by the worker and
+        surfaced in the panel as a "Hosts disagree on image
+        tag" warning row.
   - [ ] Headscale, postgres, DERP, and Caddy run as `.container`
         Quadlet units under `/etc/containers/systemd/`;
         `systemctl status headscale.service` shows the
@@ -10039,10 +10194,12 @@ re-declaring it per-row.
   - [ ] `mde maintain host-service-versions` (new CLI under
         AdminSession) lists image tags currently running per
         service and lets the operator pin to a specific tag or
-        bump to a known-good newer tag.
+        bump to a known-good newer tag — mirrors the Workbench
+        panel for headless / Node-preset peers.
   - [ ] A bad image bump rolls back via `mde maintain
-        host-service-versions --rollback <service>` — total
-        downtime under 10 s end-to-end.
+        host-service-versions --rollback <service>` (or the
+        Workbench Rollback button) — total downtime under 10 s
+        end-to-end.
   - [ ] Existing Headscale state (the `headscale-postgres`
         volume from `mackes/headscale_postgres.py`) is migrated
         in place — no fleet-wide re-enrolment.
@@ -10051,6 +10208,12 @@ re-declaring it per-row.
         host reboot without operator intervention.
 
   **Implementation notes:**
+  - **Group: Maintain · Tab: Host services** (CCR-1 grouping lock).
+  - **Auto-provision worker:**
+    `crates/mackesd/src/workers/cluster_quadlet.rs` — manages
+    Quadlet unit generation + image-tag desired-state
+    reconciliation. The existing `ansible_pull` worker is the
+    transport for cross-Host tag sync (no new control plane).
   - Quadlet docs lock: the generated units must use `Volume=`
     not `-v` flags so SELinux relabeling stays Quadlet-native.
   - Image registry: pin to `ghcr.io/juanfont/headscale:vX.Y.Z`
@@ -10081,19 +10244,40 @@ re-declaring it per-row.
   file.
 
   **Acceptance** (each bench-observable):
-  - [ ] After `mde fleet enrol-identity` runs on a peer,
-        `id <kdc-user>` resolves on that peer (sssd is wired to
-        the KDC for both authn + name resolution).
-  - [ ] `sudo -u <kdc-user> whoami` works under the KDC's
-        sudoers policy (which is itself shipped via the existing
-        Ansible-pull control plane, not per-peer drift).
+  - [ ] **CCR-1 (Workbench panel):** Workbench → Network →
+        "Identity" tab renders, per the Carbon refresh pattern:
+        enrolment status (enrolled / not enrolled / KDC
+        unreachable); active Kerberos tickets with expiry
+        timers; user / group resolution diagnostics; sudoers
+        policy preview (read from KDC); re-enrol / forget /
+        kinit action buttons (AdminSession-routed).
+  - [ ] **CCR-2 (Auto-provision):** Operator clicks "Enable
+        fleet identity" once on any peer that has reached the
+        KDC; every other peer in the mesh auto-enrols within 5
+        minutes — sssd configuration is generated from the KDC
+        realm descriptor (advertised via mesh-discovery on the
+        existing NATS topic) and applied via the
+        `cluster_kdc_enrol` worker. No `ipa-client-install` or
+        per-peer `sssd.conf` edits by the operator.
+  - [ ] After auto-provision, `id <kdc-user>` resolves on
+        **every** peer in the mesh (sssd is wired to the KDC
+        for both authn + name resolution).
+  - [ ] `sudo -u <kdc-user> whoami` works on every peer under
+        the KDC's sudoers policy (which is itself shipped via
+        the existing Ansible-pull control plane, not per-peer
+        drift).
   - [ ] `ssh <kdc-user>@peer-name` honors a `kinit`-acquired
         Kerberos ticket — no per-peer SSH key pair needed.
-  - [ ] Workbench → Network → "Identity" panel surfaces
-        enrolment status (enrolled / not enrolled / KDC
-        unreachable) + offers a re-enrol button.
 
   **Implementation notes:**
+  - **Group: Network · Tab: Identity** (CCR-1 grouping lock).
+  - **Auto-provision worker:**
+    `crates/mackesd/src/workers/cluster_kdc_enrol.rs` — extends
+    the existing `kdc_bridge` worker. Subscribes to the
+    mesh-discovery KDC-realm advertisement; on first observed
+    realm, generates `sssd.conf` + `krb5.conf` from the
+    descriptor and applies via Ansible-pull-driven systemd
+    reloads.
   - Packages: `sssd`, `sssd-krb5`, `sssd-tools`, `krb5-workstation`
     (Fedora core). The KDC side already ships via the
     `crates/mde-kdc/` and `crates/mde-kdc-proto/` crates.
@@ -10120,6 +10304,22 @@ re-declaring it per-row.
   from each other over time.
 
   **Acceptance** (each bench-observable):
+  - [ ] **CCR-1 (Workbench panel):** Workbench → Maintain →
+        "Image mode" tab renders on Node-preset peers (hidden
+        on Workstation peers until they also opt in), per the
+        Carbon refresh pattern: current bootc deployment with
+        image digest + signing key + boot count; staged
+        next-deployment with diff vs current; pin / unpin /
+        rollback action buttons (AdminSession-routed);
+        fleet-wide image-version table showing every Node
+        peer's current deployment.
+  - [ ] **CCR-2 (Auto-provision):** Operator pins an image tag
+        once on any Node peer's Workbench panel; every other
+        Node-preset peer in the mesh auto-pulls the same tag
+        within 30 minutes (slower than other CLUST stories
+        because image pulls are large) via the
+        `cluster_bootc_sync` worker. Reflected in the fleet-wide
+        image-version table on every peer's panel.
   - [ ] A `bootc`-built `mde-node:<vX.Y.Z>` OCI image installs
         on a bare-metal target via Anaconda + the bootc-aware
         kickstart; first boot lands on the immutable image with
@@ -10135,12 +10335,19 @@ re-declaring it per-row.
         config).
   - [ ] `mde maintain image-status` CLI reports the current
         bootc deployment + the staged-but-not-yet-booted next
-        deployment, mirroring `rpm-ostree status` output.
-  - [ ] Workbench Maintain → "Image mode" panel reflects the
-        same state (only visible on Node-preset peers; hidden
-        on Workstation peers that aren't on bootc yet).
+        deployment, mirroring `rpm-ostree status` output +
+        mirroring the Workbench panel.
 
   **Implementation notes:**
+  - **Group: Maintain · Tab: Image mode** (CCR-1 grouping lock;
+    Node-preset only by default).
+  - **Auto-provision worker:**
+    `crates/mackesd/src/workers/cluster_bootc_sync.rs` — drives
+    desired-image-tag reconciliation across Node-preset peers.
+    Uses the existing Ansible-pull tick + a podman registry
+    pull, then schedules the `bootc upgrade --reboot` for the
+    next maintenance window declared in
+    `mackes/headless/daemon.py`.
   - This is a major direction shift for the Node preset; it
     deserves a follow-up design doc once CLUST-1..4 land.
     Listed here so the actionable items are tracked in the
@@ -10167,26 +10374,45 @@ re-declaring it per-row.
   eventually-consistent.
 
   **Acceptance** (each bench-observable):
-  - [ ] A 3-peer replicated volume mounts at `/mesh/shared` on
+  - [ ] **CCR-1 (Workbench panel):** Workbench → Fleet →
+        "Shared storage" tab renders, per the Carbon refresh
+        pattern: opt-in toggle (default off); current volume
+        topology with per-brick health + size + heal state;
+        replica count + arbiter slots; "Add peer as brick" /
+        "Remove brick" / "Force heal" action buttons
+        (AdminSession-routed); pending-heal file list (top N
+        by size) for diagnostics.
+  - [ ] **CCR-2 (Auto-provision):** Operator clicks "Enable
+        shared storage" once on any peer in a ≥ 3-peer mesh;
+        within 10 minutes the worker auto-selects three peers
+        (preferring Host-role peers; ties broken by
+        free-disk-space) as initial bricks, creates the
+        replicated volume, and mounts `/mesh/shared` on every
+        peer in the mesh — both brick-holders and pure clients.
+        New peers joining the mesh after enable auto-mount the
+        volume as clients without operator action.
+  - [ ] 3-peer replicated volume mounts at `/mesh/shared` on
         every participating peer; `gluster volume status` shows
         all bricks Online.
   - [ ] Hard-kill one peer (power off) → reads + writes from
         the other two peers continue without hang or error;
         `gluster volume heal <vol> info` reports the pending
-        heal correctly.
+        heal correctly; the Workbench panel reflects the same.
   - [ ] On the killed peer returning, `gluster volume heal
         <vol>` brings the brick back to Synced without
         operator intervention beyond a `systemctl start
         glusterd`.
   - [ ] `mde maintain shared-storage status` CLI reports volume
-        health, heal state, and per-brick free space.
-  - [ ] Workbench → Fleet → "Shared storage" panel exposes the
-        same status + an opt-in toggle (default: off — this is
-        explicitly opt-in per the 2026-05-23 design exploration
-        because Gluster is heavyweight for fleets that don't
-        need it).
+        health, heal state, and per-brick free space — mirrors
+        the Workbench panel exactly.
 
   **Implementation notes:**
+  - **Group: Fleet · Tab: Shared storage** (CCR-1 grouping lock).
+  - **Auto-provision worker:**
+    `crates/mackesd/src/workers/cluster_glusterfs.rs` — handles
+    brick selection, volume creation, client mount lifecycle,
+    and the "promote-new-peer-to-brick-on-demand" flow when an
+    existing brick peer permanently leaves the mesh.
   - Packages: `glusterfs`, `glusterfs-server`, `glusterfs-fuse`,
     `glusterfs-cli` (Fedora core).
   - Sequencing: Gluster wants ≥ 3 peers in the brick set for
@@ -10206,12 +10432,20 @@ re-declaring it per-row.
 
 **How to retire:** each row closes when the named bench-observable
 gates pass on the bench-hardware Epic's clean-Fedora targets
-(HW-1 / HW-2 environment). CLUST-1 / CLUST-2 / CLUST-3 / CLUST-4
-are the Tier-1 stories — operator green-lights v4.1 scope by
-authorizing any subset of those four. CLUST-5 is the
-deliberate-lighter alternative to CLUST-1; if it ships, CLUST-1
-either supersedes it later or stays `[ ] Open` indefinitely as a
-"future-if-needed" capability. CLUST-6 / CLUST-7 are Tier-3 /
-v4.2+ and should not be picked up until CLUST-1..4 have shipped
-and burned in on bench. None of these items block the active
-v4.0.x picture.
+(HW-1 / HW-2 environment) **AND** both CCR-1 (Workbench panel)
+and CCR-2 (auto-provision across the mesh) gates pass. A CLUST-N
+story landing CLI plumbing + Pacemaker / Tang / Quadlet /
+GlusterFS / sssd / bootc daemon configuration but **without** a
+Workbench panel is `[ ] Open`, not `[✓] Done` — CCR-1 is a hard
+requirement, not a soft preference. Same for CCR-2: any story
+that requires per-peer manual setup beyond a single opt-in
+click is `[ ] Open` until the auto-provision worker lands.
+
+CLUST-1 / CLUST-2 / CLUST-3 / CLUST-4 are the Tier-1 stories —
+operator green-lights v4.1 scope by authorizing any subset of
+those four. CLUST-5 is the deliberate-lighter alternative to
+CLUST-1; if it ships, CLUST-1 either supersedes it later or
+stays `[ ] Open` indefinitely as a "future-if-needed"
+capability. CLUST-6 / CLUST-7 are Tier-3 / v4.2+ and should not
+be picked up until CLUST-1..4 have shipped and burned in on
+bench. None of these items block the active v4.0.x picture.
