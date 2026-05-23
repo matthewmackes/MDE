@@ -11,7 +11,9 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use iced::widget::{button, column, container, row, scrollable, svg, text, text_input, Space};
+use iced::widget::{
+    button, column, container, mouse_area, row, scrollable, svg, text, text_input, Space,
+};
 use iced::{Alignment, Background, Border, Color, Element, Length, Padding, Shadow, Task, Theme};
 
 use crate::watermark::{
@@ -348,10 +350,47 @@ impl iced_layershell::Application for App {
             left: 8.0,
         });
 
-        container(body)
+        let card: iced::Element<'_, Message> = container(body)
+            .width(Length::Fixed(WIDTH as f32))
+            .height(Length::Fixed(HEIGHT as f32))
+            .style(popover_surface)
+            .into();
+
+        // v3.0.4 (2026-05-23) — backdrop surround. Card pinned
+        // bottom-left (4 px from left edge, 48 px above the
+        // panel), every other pixel = mouse_area firing Exit
+        // on click.
+        let dismiss = || {
+            mouse_area(
+                container(Space::with_width(Length::Fill))
+                    .width(Length::Fill)
+                    .height(Length::Fill),
+            )
+            .on_press(Message::Exit)
+        };
+        let bottom_strip = row![
+            container(card).padding(iced::Padding {
+                top: 0.0,
+                right: 0.0,
+                bottom: 48.0,
+                left: 4.0,
+            }),
+            dismiss(),
+        ]
+        .height(Length::Fixed((HEIGHT + 48) as f32));
+        container(column![dismiss(), bottom_strip])
             .width(Length::Fill)
             .height(Length::Fill)
-            .style(popover_surface)
+            .style(|_| container::Style {
+                background: Some(iced::Background::Color(iced::Color::TRANSPARENT)),
+                border: iced::Border {
+                    color: iced::Color::TRANSPARENT,
+                    width: 0.0,
+                    radius: 0.0.into(),
+                },
+                shadow: iced::Shadow::default(),
+                text_color: None,
+            })
             .into()
     }
 
@@ -376,16 +415,15 @@ pub fn run() -> iced_layershell::Result {
         id: Some("mde-popover-start-menu".to_string()),
         fonts: crate::fonts::load_fallback_fonts(),
         layer_settings: LayerShellSettings {
-            size: Some((WIDTH, HEIGHT)),
-            // Don't reserve space — popovers float above content.
-            exclusive_zone: 0,
-            // Anchor bottom + left so the popover hugs the bottom-
-            // left corner of the output (matches the panel's M
-            // button position). Margin pushes it up above the panel.
-            anchor: Anchor::Bottom | Anchor::Left,
-            // Margin: 8 px above the panel (which is 40 px tall),
-            // 4 px from the left edge.
-            margin: (0, 0, 48, 4),
+            // v3.0.4 (2026-05-23) — fullscreen surface so the
+            // outer mouse_area covering the rest of the screen
+            // catches click-outside-to-dismiss events. The
+            // visible card stays at WIDTH×HEIGHT pinned
+            // bottom-left by the view's column+row layout.
+            size: None,
+            exclusive_zone: -1,
+            anchor: Anchor::Top | Anchor::Bottom | Anchor::Left | Anchor::Right,
+            margin: (0, 0, 0, 0),
             // Overlay layer so the popover floats above any tiled
             // window and over the panel itself if rendering happens
             // to land there.

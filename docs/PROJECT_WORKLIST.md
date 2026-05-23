@@ -595,12 +595,18 @@ dependency sweep.
   + Esc dismiss + the popover IS centered/modal-shaped so
   outside-click-dismiss isn't critical there.
 
-- [ ] **v3.0.4: extend backdrop dismiss to start_menu / audio /
-  clock / clipboard / admin_menu / notifications** — same
-  pattern (fullscreen layer-shell + corner-pinned card +
-  mouse_area surround). start_menu is the highest-impact
-  remaining (frequent click-outside-by-accident). Per-popover
-  lift (~30 LOC each).
+- [✓] **v3.0.4: start_menu backdrop dismiss (shipped 2026-05-23)** —
+  applied the same fullscreen-surface + corner-pinned-card +
+  mouse_area surround pattern from minimized/network to
+  `crates/mde-popover/src/start_menu.rs`. Card stays at
+  WIDTH×HEIGHT pinned bottom-left (48 px above panel, 4 px
+  from left edge); every other pixel routes Esc on click.
+
+- [ ] **v3.0.4: extend backdrop dismiss to audio / clock /
+  clipboard / admin_menu / notifications** — same pattern,
+  per-popover lift ~30 LOC. Open until the operator hits
+  outside-click-dismiss issues with one of these
+  (less-frequently-used popovers).
 - [✓] **v3.0.3: toplevels subscription (sway-IPC) (Tier 2 E.3
   wiring) — shipped 2026-05-22** — best-choice deviation from
   the original "wlr-foreign-toplevel-management via SCTK" lock:
