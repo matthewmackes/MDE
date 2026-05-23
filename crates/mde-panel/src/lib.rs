@@ -42,7 +42,9 @@ pub const APP_ID: &str = "shell.mackes.Panel";
 // helper at runtime; moving it puts the code in the crate that
 // actually mounts the UI. See git history for the original location.
 pub mod applet_host;
-pub mod clipboard;
+// v3.0.3 — clipboard.rs moved to crates/mde-popover/src/clipboard.rs
+// (the helpers are popover-side; the clip-history popover lives
+// there too).
 pub mod dock_dnd;
 // v3.0.3 — expose.rs moved to crates/mde-popover/src/expose.rs
 // (the F3 exposé grid is a popover surface, not panel chrome).
@@ -58,7 +60,9 @@ pub mod recover;
 pub mod root_menu;
 pub mod sliders;
 pub mod theme;
-pub mod toasts;
+// v3.0.3 — toasts.rs moved to crates/mde-popover/src/toasts.rs
+// (the render surface + every emit site lives in the popover
+// crate now).
 pub mod top_bar;
 pub mod toplevels;
 pub mod toplevels_sub;

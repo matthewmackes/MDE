@@ -93,6 +93,10 @@ bindsym $mod+d exec bemenu-run -fn "Red Hat Text 11" -nb "#262626" -nf "#f4f4f4"
 # v3.0.3 — F3 opens the exposé grid (fullscreen overlay rendering
 # one card per top-level window; click focuses + dismisses).
 bindsym F3 exec mde-popover expose
+# v3.0.3 — Super+V opens the clipboard history popover (mesh-
+# synced entries from ~/.cache/mde/clipboard.json; click an
+# entry to copy it back via wl-copy).
+bindsym $mod+v exec mde-popover clipboard
 
 # Resize mode — Super+r enters resize mode, escape leaves.
 mode "resize" {
@@ -150,6 +154,11 @@ exec mde-panel
 # (Layer::Background, bottom-right, visible only when dnf has
 # updates pending). See crates/mde-popover/src/watermark.rs.
 exec mde-popover watermark
+# v3.0.3 — long-running toast render surface (Layer::Top, tails
+# ~/.cache/mde/toasts.jsonl). Emit sites in the popover crate
+# (clipboard popover today; more land per-feature) append events
+# to that file.
+exec mde-popover toast
 
 # ---------------------------------------------------------------------------
 # Mackes-managed includes

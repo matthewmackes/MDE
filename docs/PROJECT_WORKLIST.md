@@ -529,15 +529,24 @@ dependency sweep.
   never grab keyboard focus. New `Kind::Watermark` in popover
   dispatcher. 13 watermark tests come along from the move; total
   199 tests across both crates.
-- [ ] **v3.0.3: toast render layer + emit sites (Tier 2 E.20
-  wiring)** — render `ToastStack` items as a stacked column above
-  the panel via a layer-shell overlay surface. Tick subscription
-  drives `retain_unexpired()`. Emit sites: clipboard copy event
-  ("copied!"), mesh-send completion ("sent to lab-01"), admin-
-  action failure ("error: sudo prompt cancelled"). Acceptance:
-  selecting copy in a panel context menu surfaces a 2-second
-  toast above the panel; multiple toasts stack with FIFO eviction
-  at STACK_LIMIT=3.
+- [✓] **v3.0.3: toast render layer + emit sites (Tier 2 E.20
+  wiring) — shipped 2026-05-22** — moved `toasts.rs` from mde-
+  panel to mde-popover and added a long-running render surface
+  (`Kind::Toast`, Layer::Top, bottom-center anchor, 48px above
+  the panel's zone). The surface tails `~/.cache/mde/toasts.jsonl`
+  every 200ms via `App::poll_queue`; each new JSON line becomes a
+  `Toast` pushed onto the in-memory `ToastStack` (FIFO eviction
+  at STACK_LIMIT=3 per the existing helper). 33ms tick (via
+  `iced::time::every`) calls `stack.retain_unexpired(now)` so
+  expired toasts vanish on their own. New `toasts::emit(&ToastEvent)`
+  helper appends one JSON line — that's the API every emit site
+  uses. First in-tree emit site: clipboard popover Copy action
+  fires "Copied: <preview>" (success kind) or "clipboard copy
+  failed" (error kind) per outcome. Toast pill: 12px corner
+  radius, accent-tinted hairline border per the v1.x design lock.
+  `data/sway/config` updated with `exec mde-popover toast` so
+  the surface starts at session login. Additional emit sites
+  land per-feature in follow-up commits.
 - [✓] **v3.0.3: admin_menu wiring on Start right-click (Tier 1D
   + Tier 2 E.13 wiring) — shipped 2026-05-22** — closed by
   `git mv crates/mde-panel/src/admin_menu.rs
@@ -578,13 +587,19 @@ dependency sweep.
   existing helper math. Acceptance: dragging the volume slider
   in the drawer adjusts the default sink's volume live; mute
   toggle flips correctly.
-- [ ] **v3.0.3: clipboard subscription + history popover (Tier 2
-  E.5 wiring)** — wire `clipboard::available_mime_types()` and
-  history-cache reads to a clipboard-manager popover. Optional
-  Super+V keybind in sway config. Acceptance: copying text in
-  one window then opening the clipboard popover shows the last
-  N entries; selecting one calls `copy_text(s)` so paste in the
-  next window yields that string.
+- [✓] **v3.0.3: clipboard subscription + history popover (Tier 2
+  E.5 wiring) — shipped 2026-05-22** — moved `clipboard.rs` from
+  mde-panel to mde-popover and added an Iced layer-shell popover
+  (`Kind::Clipboard`, 480×480, bottom-left anchor matching the
+  start menu). Reads `~/.cache/mde/clipboard.json` via the
+  existing `parse_clipboard_history` helper; lists up to 50
+  entries with single-line previews (40-char ellipsized) +
+  origin-peer chip + mime chip. Click an entry → `copy_text(s)`
+  via wl-copy → emit success toast → exit. `data/sway/config`
+  gained `bindsym $mod+v exec mde-popover clipboard`. The
+  mesh-clipboard worker (now actually spawned via the v3.0.3
+  worker-registration commit) is what populates the JSON file;
+  this popover is the read-side UI.
 - [✓] **v3.0.3: expose F3 overlay (Tier 2 E.4.4 wiring) — shipped
   2026-05-22** — best-choice deviation from the "depends on
   toplevels" lock: rather than wiring through the panel's
@@ -1896,9 +1911,8 @@ src/`) and its destination.
   **Re-opened 2026-05-22:** the Iced fullscreen overlay UI and
   F3 sway keybind both still missing. Closes via the v3.0.3
   expose-F3-overlay task. See [[V3_RUNTIME_INTEGRATION_AUDIT]].
-- [>] **v3.0.3: Phase E.5 clipboard via wl-clipboard (helpers shipped
-  2026-05-21, subscription + history popover deferred — audit
-  2026-05-22)** —
+- [✓] **v3.0.3: Phase E.5 clipboard via wl-clipboard (helpers shipped
+  2026-05-21, history popover + Super+V wired 2026-05-22)** —
   best-choice deviation from the original "SCTK
   wlr-data-control" lock: `crates/mde-panel/src/clipboard.rs`
   wraps `wl-paste` + `wl-copy` (the canonical command-line
@@ -2157,8 +2171,8 @@ src/`) and its destination.
   dock right-click handler that surfaces the glyph picker was
   never built. Closes via v3.0.3 icon_mapper-popover task.
   See [[V3_RUNTIME_INTEGRATION_AUDIT]].
-- [>] **v3.0.3: Phase E.20 toasts (helpers shipped 2026-05-21, render
-  layer + emit sites deferred — audit 2026-05-22)** —
+- [✓] **v3.0.3: Phase E.20 toasts (helpers shipped 2026-05-21, render
+  surface + first emit site shipped 2026-05-22)** —
   `crates/mde-panel/src/toasts.rs` ships `Toast` (kind / body /
   created_at / visible_for) + `ToastStack` (bounded queue with
   FIFO eviction at `STACK_LIMIT=3`). `ToastKind` enum carries
