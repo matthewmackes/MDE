@@ -5,15 +5,19 @@
 **Status legend:**
 `[ ] Open` · `[>] In Progress` · `[✓] Done` · `[!] Blocked`
 
-> **Release strategy (locked 2026-05-22 by operator):**
-> **No releases ship until the worklist is cleared. The next
-> cut is v3.0.0.** Tasks tagged `v2.0.4:`, `v2.1:`, `v2.1.0:` or
-> any other intermediate version in their titles still land on
-> `main`, but they ship as part of the v3.0 monolithic cut.
-> Per-task prefixes stay as historical scoping markers; the
-> release-tag they actually ride is v3.0. The iteration loop's
-> exit condition is: every non-Hardware-Testing-epic item
-> `[✓] Done`, then `cut release 3.0.0`.
+> **Release strategy (updated 2026-05-23 by operator):**
+> **v4.0.0 shipped 2026-05-22** (commit `fbd9c5a`, RPM
+> `mde-4.0.0-1.fc44.x86_64`). The current in-flight bundle is
+> **v4.0.1**; per the **2026-05-23 "no new RPM until directed"
+> standing constraint**, v4.0.1 work lands on `main` and deploys
+> via the parity-overlay machinery (see "v4.0.1 operator round 2
+> + parity infra" section below) rather than via a fresh RPM cut.
+> Tasks tagged `v2.0.4:`, `v2.1:`, `v2.1.0:`, `v3.x:` or any
+> other intermediate version in their titles still land on
+> `main`; they ride whatever the next operator-authorized cut
+> becomes. The iteration loop's exit condition is unchanged:
+> every non-Hardware-Testing-epic item `[✓] Done`, then operator
+> invokes `cut release X.Y.Z`.
 
 **Authority:** this file is the only durable worklist. Per
 `.claude/CLAUDE.md` §1, no parallel task tracker (in-session
@@ -855,6 +859,155 @@ above; integration tasks below in dependency order.
   surfaced in the UI. Acceptance: pair with a real KDE Connect
   Android peer, kill `~/.local/share/mde/kdc/pairings.json`, try
   to reconnect — the peer is rejected with the right error.
+
+### v4.0.1 operator round 2 + parity infra (2026-05-23)
+
+Live-operator pass on the v4.0.0 RPM (`mde-4.0.0-1.fc44`) surfaced
+four user-visible bugs. Operator-paired with a parity-infra
+buildout so future bug-fix commits auto-deploy onto the running
+system without cutting a new RPM (per "no RPM until directed"
+standing constraint). Standing authorizations active for this
+section: commit, push to origin + mde-x, best-choice decisions,
+no new RPM cut.
+
+- [>] **v4.0.1: BUG-1 Workbench opens first-run wizard every
+  launch (Tier 1 operator-visible)** — `mackes/state.py:18` reads
+  `~/.config/mackes-shell/state.json` (legacy path, missing on
+  disk) while the Rust components wrote
+  `~/.config/mde/state.json` with `provisioned: true` on
+  2026-05-22. `mackes/app.py:156` gates the wizard on
+  `not state.provisioned`, so the file-not-found load defaults
+  to `provisioned=False` and re-fires the wizard on every
+  `mde --gui` launch. Fix: migrate `CONFIG_DIR` to
+  `~/.config/mde/` with a merge-safe `save()` that preserves the
+  Rust-set fields (`preset`, `mesh_passcode`,
+  `legacy_import_opted_in`, `snapshot_created`) Python doesn't
+  know about. Acceptance: `python3 -c "from mackes.state import
+  MackesState; print(MackesState.load().provisioned)"` prints
+  `True`; relaunching `mde --gui` opens the Workbench shell, not
+  the wizard.
+- [ ] **v4.0.1: BUG-2 Scroll locks the start-menu popover (Tier
+  1 operator-visible)** — `crates/mde-popover/src/start_menu.rs`
+  uses `scrollable(list).height(Length::Fill)` over up to 200
+  `.desktop` entries; the `view()` re-runs `sort_by()` +
+  `filter()` on every redraw. Two suspects: (a)
+  `text_input::focus("start-menu-search")` keeps grabbing
+  focus on layer-shell surfaces and swallowing wheel events,
+  (b) per-redraw list rebuild stalls under inotify-heavy
+  systems. Diagnose under live load + check
+  `iced_layershell` 0.13.7 known issues. Acceptance: scroll
+  wheel over the start-menu list paginates through entries
+  without freezing the popover.
+- [ ] **v4.0.1: BUG-3 Panel title area renders "? def #13"
+  instead of the focused-window hero title (Tier 1
+  operator-visible)** — "? def #13" matches exactly the
+  sway-cluster format (`"{split}  {layout}  {window}"` per
+  `crates/mde-applets/sway-cluster/src/lib.rs:37`). `?` is the
+  split-glyph fallback for leaf cons whose layout is `"none"`
+  (or any unknown sway layout). Two possible layout bugs:
+  (a) the cluster widget is occupying the hero slot in
+  `crates/mde-panel/src/top_bar.rs::view_top_bar` instead of
+  sitting in its cluster zone; (b) the hero is rendering as
+  empty so only the cluster reads, and the operator is calling
+  the cluster "the title area". Resolve by inspecting the
+  panel layout at runtime (screenshot or `swaymsg -t get_tree`
+  + the live `mde-panel` log) and either re-slotting the
+  widgets or repointing the focused-window subscription.
+  Acceptance: panel title area shows the focused window's title
+  string (e.g. "Firefox — Wikipedia") with sway-cluster chips
+  in their own zone.
+- [ ] **v4.0.1: BUG-5 Window Selector applet on the panel is
+  non-interactive (Tier 1 operator-visible)** — the app-
+  switcher applet (`mde-applet-app-switcher`, E1.2.11) renders
+  in the top-bar Tray zone but clicking it does nothing. Two
+  likely causes: (a) the `button(...).on_press(...)` wrap is
+  missing in the panel-host's tray slot for this applet kind,
+  so the surface exists but no message fires; (b) the applet
+  emits an `AppletKind::AppSwitcher` text stream but the
+  panel's host.rs / top_bar.rs never threads a click → focus-
+  cycle action. Investigate `crates/mde-panel/src/host.rs` +
+  `top_bar.rs::view_top_bar`'s tray-zone construction for
+  the app-switcher slot and wire the Super+Tab fallback (or
+  click-to-cycle) via `swayipc` `focus next` on the focused
+  workspace. Acceptance: clicking the app-switcher applet
+  cycles focus to the next window in the current workspace
+  (or surfaces an overview dialog).
+- [ ] **v4.0.1: BUG-4 File manager looks stock cosmic-files
+  (Tier 2 packaging gap + Tier 1 default-handler bug)** —
+  `/usr/bin/mde-files` is NOT in the v4.0.0 RPM
+  (`rpm -ql mde | grep files` returns only icons + the
+  cosmic-files icon). `xdg-mime query default inode/directory`
+  returns `com.system76.CosmicFiles.desktop`, so every "Open
+  folder" gesture lands in stock cosmic-files. The custom code
+  ships in source (`crates/mde-files/src/views.rs` — Artifact
+  Manager titlebar, mesh-first sidebar, Downloads-primary
+  variant, Local-pinned disclosure) but the binary never
+  reaches the user. Fix: (1) add `data/applications/
+  mde-files.desktop` (currently missing — only mde / mde-panel
+  / mde-workbench / mde-clipboard / mde-mesh-uri-handler ship
+  desktop files); (2) add spec install lines for the binary +
+  desktop file; (3) set `xdg-mime default
+  dev.mackes.MDE.Files.desktop inode/directory` in
+  `mackes-enforce-session` so every login normalizes the
+  default handler. Acceptance: clicking a folder anywhere
+  opens mde-files with the Mesh-Overview sidebar visible.
+- [>] **v4.0.1: PARITY-1 write `/usr/local/bin/mde-parity-
+  overlay` script** — staged at
+  `install-helpers/parity-overlay.sh`; user installs to
+  `/usr/local/bin/` via one `sudo install` line. Idempotent:
+  rsync-style copies any newer `mackes/*.py` to
+  `/usr/lib/python3.14/site-packages/mackes/`, drops stale
+  pyc, `cargo build --release` for crates whose tree-hash
+  changed, installs new binaries to `/usr/bin/`, installs new
+  `.desktop` files to `/usr/share/applications/`, refreshes the
+  desktop database + icon caches, restarts the running panel
+  if its binary changed. Takes a lock at
+  `/run/mde-parity.lock`, logs to `/var/log/mde-parity.log`.
+  Acceptance: running the script with no changes is a fast
+  no-op; running after editing `snapshots.py` overlays only
+  that file + log line "1 python module updated".
+- [>] **v4.0.1: PARITY-2 sudoers drop-in** — staged at
+  `install-helpers/sudoers-mde-parity`. Grants user `mm`
+  passwordless NOPASSWD execution of exactly
+  `/usr/local/bin/mde-parity-overlay` (nothing else). Allows
+  the systemd-user service to run the overlay without
+  interactive prompts. Acceptance: `sudo -n -l mm` shows the
+  overlay entry; no other command is unlocked.
+- [>] **v4.0.1: PARITY-3 systemd --user .path + .service** —
+  staged at `data/systemd-user/mde-parity.{path,service}`.
+  Path watches `.git/refs/heads/main` (commit-triggered, not
+  save-triggered, per 2026-05-23 user choice); service
+  invokes the overlay via `sudo -n`. Survives reboot.
+  Acceptance: `git commit` on `main` triggers the overlay
+  within 2s; the deploy log shows the change applied.
+- [ ] **v4.0.1: PARITY-4 initial overlay run + verification**
+  — once PARITY-1/2/3 are installed, run the overlay once
+  manually. Verify: `cd /tmp && python3 -c "import
+  mackes.snapshots; print(mackes.snapshots.__file__)"` reports
+  the site-packages path with the updated mtime; any rebuilt
+  Rust binaries differ from the original v4.0.0 RPM mtime.
+  Acceptance: `journalctl --user -u mde-parity.service` shows
+  one successful run.
+- [ ] **v4.0.1: PARITY-5 update `.claude/CLAUDE.md` §0.2 to
+  document mde-x remote + dual-push** — §0.2 currently
+  declares "mackes-shell has one remote: origin →
+  MAP2-RELEASES.git" but the repo has two remotes (origin
+  + mde-x). Update to describe both, the dual-push protocol
+  (`git push origin main && git push mde-x main`), and the
+  fact that origin/main is protected (bypass message during
+  push is expected). Acceptance: §0.2 text matches
+  `git remote -v` output.
+- [ ] **v4.0.1: CLEAN-1 delete dead `crates/mackes-panel/src/
+  mesh_sync.rs`** — declared at `crates/mackes-panel/src/
+  main.rs:35` (`mod mesh_sync;`) but referenced nowhere in
+  the workspace. Superseded by `mde-applet-mesh-status` per
+  Phase E.21 (line 2444). The orphaned file shouldn't be
+  blocking anything but is a worklist-hygiene defect under
+  §0.12 ("never commit a `pub mod foo;` declaration unless at
+  least one other file references it"). Delete the file +
+  the `mod` line. Acceptance: `cargo check -p mackes-panel`
+  passes; the dead-module rescue grep returns 0 lines for
+  `mackes-panel`.
 
 ### v4.0.1 planning-doc gap pass (audit 2026-05-23)
 
