@@ -152,7 +152,7 @@ pub fn score(
     policy: &Policy,
 ) -> Option<ScoredSelection> {
     // Filter: sendable + carries class + not denylisted.
-    let mut candidates: Vec<&TransportSample> = samples
+    let candidates: Vec<&TransportSample> = samples
         .iter()
         .filter(|s| s.health.is_sendable())
         .filter(|s| s.carries.carries(class))

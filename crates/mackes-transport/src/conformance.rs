@@ -13,7 +13,9 @@
 //! drives the trait + asserts invariants — the impl crate
 //! provides the wiring.
 
+#[cfg(test)]
 use std::future::Future;
+#[cfg(test)]
 use std::pin::Pin;
 
 use crate::{HealthState, MessageClass, Transport, TransportKind};
@@ -244,7 +246,6 @@ pub struct MockTransport {
     kind: TransportKind,
     capabilities: crate::Capabilities,
     paired_peer: String,
-    unpaired_peer: String,
     degraded_peer: String,
 }
 
@@ -262,7 +263,6 @@ impl MockTransport {
                 label: format!("mock-{kind}"),
             },
             paired_peer: "paired".to_string(),
-            unpaired_peer: "unpaired".to_string(),
             degraded_peer: "degraded".to_string(),
         }
     }
@@ -342,6 +342,7 @@ impl ConformanceFixture for MockFixture {
 // but we don't want to pull tokio into the dev-dep tree just for
 // 14 conformance checks. This is a 30-line spin executor;
 // downstream impls that need real I/O use tokio.
+#[cfg(test)]
 fn block_on<F: Future>(fut: F) -> F::Output {
     use std::sync::Arc;
     use std::task::{Context, Poll, Wake, Waker};
