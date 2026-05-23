@@ -1474,6 +1474,32 @@ fn run_serve(
             }
         }
 
+        // v4.0.1 cycle 2 (2026-05-23) — register the
+        // dev.mackes.MDE.Shell surface so the workbench's panel-
+        // sync section + future status-cluster surfaces can call
+        // healthz() / workers() directly off the bus instead of
+        // shelling out to `mackesd healthz` + parsing stdout.
+        match mackesd_core::ipc::shell::register_shell(
+            mackesd_core::ipc::shell::ShellService::default(),
+        )
+        .await
+        {
+            Ok(conn) => {
+                Box::leak(Box::new(conn));
+                tracing::info!(
+                    "Shell dbus surface registered at {}",
+                    mackesd_core::ipc::shell::OBJECT_PATH
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "Shell dbus registration failed; \
+                     workbench sync-status surface will surface as bus errors"
+                );
+            }
+        }
+
         // v4.0.1 KDC2-3.3 wire-up (2026-05-23) — spawn the KDC host
         // worker. Owns the pairing store at $XDG_CONFIG_HOME/mde/
         // connect (default ~/.config/mde/connect), the shared
