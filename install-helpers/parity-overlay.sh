@@ -176,7 +176,51 @@ phase_install() {
             done
         fi
 
-        log "summary: py=$py_changed desktop=$desktop_changed bin=$bin_changed sway=$sway_changed"
+        # 5) Restart the panel + popover stack when a panel-stack
+        #    binary actually changed this tick. v4.0.1 PARITY-6
+        #    (2026-05-23) — without this, the running mde-panel
+        #    keeps its old code in memory after parity ticks
+        #    until the operator manually kills it. Helper runs
+        #    as $SUDO_USER (needs the user's WAYLAND_DISPLAY /
+        #    DBUS_SESSION_BUS_ADDRESS to spawn into the live
+        #    sway session).
+        local restart_log="skipped"
+        # The bin: log lines just emitted name everything that
+        # landed this tick. Grep for the panel-stack subset to
+        # decide whether the helper needs to fire. Workbench /
+        # files / mackesd updates don't need a restart (the
+        # workbench / files window is the operator's to reopen;
+        # mackesd has its own systemd unit).
+        local need_restart=0
+        if [ "$bin_changed" -gt 0 ] && [ -n "$devhome" ]; then
+            if tail -n 30 "$LOG" 2>/dev/null \
+                | grep -E 'bin:\s+(mde-panel|mde-popover|mde-applet-)' \
+                  >/dev/null 2>&1; then
+                need_restart=1
+            fi
+        fi
+        if [ "$need_restart" -eq 1 ] \
+            && [ -x "$REPO/install-helpers/restart-panel-stack.sh" ]; then
+            log "restart-panel-stack: panel-stack binary changed, respawning"
+            local uid
+            uid="$(id -u "$SUDO_USER" 2>/dev/null)"
+            if [ -n "$uid" ] && [ -d "/run/user/$uid" ]; then
+                if sudo -u "$SUDO_USER" \
+                    XDG_RUNTIME_DIR="/run/user/$uid" \
+                    WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-1}" \
+                    DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" \
+                    "$REPO/install-helpers/restart-panel-stack.sh" all \
+                    >>"$LOG" 2>&1; then
+                    restart_log="ok"
+                else
+                    restart_log="not-in-session"
+                fi
+            else
+                restart_log="no-active-session"
+            fi
+        fi
+
+        log "summary: py=$py_changed desktop=$desktop_changed bin=$bin_changed sway=$sway_changed restart=$restart_log"
         log "==== phase=install done ===="
     } 2>&1 | tee -a "$LOG"
 }

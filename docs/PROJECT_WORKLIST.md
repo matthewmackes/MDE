@@ -2404,27 +2404,45 @@ integration needed.
   invokes the overlay via `sudo -n`. Survives reboot.
   Acceptance: `git commit` on `main` triggers the overlay
   within 2s; the deploy log shows the change applied.
-- [ ] **v4.0.1: PARITY-6 panel/popover restart helper +
-  exec_always for live deploys** — `swaymsg reload` only
-  re-runs `exec_always` lines; `data/sway/config` declares
-  `exec mde-panel` / `exec mde-popover watermark` /
-  `exec mde-popover toast` (one-shot). After a parity
-  overlay drops new binaries on disk, the running processes
-  keep their old code in memory until killed + respawned;
-  `swaymsg reload` doesn't help. Two-part fix:
-  (1) Add an `install-helpers/restart-panel-stack.sh` that
-      pkills + relaunches the three processes. Make the
-      overlay script (or a Makefile target) invoke it after
-      every successful install so changes go live without
-      operator intervention.
-  (2) Decide whether `data/sway/config` should switch panel
-      + popover exec lines to `exec_always` so a manual
-      `swaymsg reload` ALSO respawns. Risk: double-spawn if
-      the process was running pre-reload. Mitigation:
-      `pkill -x mde-panel; mde-panel` pattern in the exec
-      line. Acceptance: after a fresh commit + path-watch
-      fire, the running panel and popovers automatically
-      adopt the new binaries within ~5 s.
+- [✓] **v4.0.1: PARITY-6 panel/popover restart helper + parity
+  overlay integration (shipped 2026-05-23)**
+
+  Built `install-helpers/restart-panel-stack.sh` —
+  `pkill -x` + spawn-detached helper that respawns
+  mde-panel + the two mde-popover daemons (watermark, toast)
+  with the newly-installed binaries. Idempotent: missing
+  binaries are skipped with a log line, stubborn processes
+  get a -9 chase. Bails with exit 1 if `$WAYLAND_DISPLAY` /
+  `$DISPLAY` is unset (not in a graphical session).
+
+  Extended `install-helpers/parity-overlay.sh` install phase
+  with step (5): after binaries land, grep the bin: log
+  lines for the panel-stack subset (mde-panel / mde-popover /
+  mde-applet-*). If any matched, re-execute the helper as
+  `$SUDO_USER` with `XDG_RUNTIME_DIR` + `WAYLAND_DISPLAY` +
+  `DBUS_SESSION_BUS_ADDRESS` passed through so it lands in
+  the live sway session. Workbench / files / mackesd
+  updates don't trigger a restart (those are the operator's
+  windows / their own systemd unit).
+
+  Part 2 of the original spec (decide whether sway exec
+  lines switch to exec_always) is intentionally **not**
+  shipped — the helper-on-overlay approach is sufficient
+  and avoids the double-spawn race the original spec
+  flagged.
+
+  Acceptance — after a fresh `git commit` on main:
+  parity-overlay path watcher fires within ~2s, cargo
+  build (incremental cache hot path = ~5s, cold = ~3min)
+  produces new binaries, install phase copies them, step
+  (5) auto-respawns the running stack. Operator sees the
+  new code go live without manual `pkill mde-panel`.
+
+  **Operator one-time setup** (or until next install-parity-
+  infra run): the new helper file lives in the repo. The
+  parity overlay script invocation is what triggers it —
+  no separate install step needed beyond the standard
+  `sudo install-helpers/install-parity-infra.sh`.
 - [✓] **v4.0.1: PARITY-4 initial overlay run + verification
   (deployed 2026-05-23 08:11 EDT)** — `make deploy` ran the
   full chain: installer copied refreshed overlay script +
