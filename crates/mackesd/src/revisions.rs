@@ -48,6 +48,65 @@ pub struct RevisionDiff {
     pub removed: BTreeMap<String, String>,
 }
 
+/// A lightweight projection of one `desired_config` row used by the
+/// CLI's revisions table + the IPC's `Fleet.ListRevisions` reply.
+/// Carries everything an operator needs to glance — id, author,
+/// commit message, lifecycle state, and creation timestamp — without
+/// pulling the full `payload_json`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RevisionSummary {
+    /// Stringified `desired_config.revision_id` (INTEGER → String so
+    /// the JSON shape stays stable when the schema migrates to the
+    /// `r-YYYY-MM-DD-NNNN` form).
+    pub revision_id: String,
+    /// Human author (operator name or `automatic`).
+    pub author: String,
+    /// Free-form summary (mirrors the SQLite `message` column).
+    pub summary: String,
+    /// Lifecycle state (`draft` / `applied` / `verified` / …).
+    pub state: String,
+    /// ISO-8601 UTC timestamp the row was created.
+    pub created_at: String,
+}
+
+/// List every revision in the store in descending id order.
+/// Powers the `mackesd revisions list` CLI subcommand + the
+/// `dev.mackes.MDE.Fleet.ListRevisions` IPC method. `limit` of 0
+/// means "no limit"; positive values cap the result set so
+/// long-running fleets don't blast the bus reply.
+///
+/// # Errors
+///
+/// Returns whatever rusqlite reports when the schema query fails.
+pub fn list_summaries(
+    conn: &rusqlite::Connection,
+    limit: u32,
+) -> rusqlite::Result<Vec<RevisionSummary>> {
+    let sql = if limit == 0 {
+        "SELECT revision_id, author, message, state, created_at \
+         FROM desired_config ORDER BY revision_id DESC"
+            .to_owned()
+    } else {
+        format!(
+            "SELECT revision_id, author, message, state, created_at \
+             FROM desired_config ORDER BY revision_id DESC LIMIT {limit}"
+        )
+    };
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(RevisionSummary {
+                revision_id: r.get::<_, i64>(0)?.to_string(),
+                author: r.get(1)?,
+                summary: r.get(2)?,
+                state: r.get(3)?,
+                created_at: r.get(4)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
 /// Compute a flat diff between two revisions' payloads. Walks the
 /// top-level JSON objects + stringifies values. Sufficient for the
 /// GUI's diff viewer (12.8.3); deep-structure diffs land if needed.

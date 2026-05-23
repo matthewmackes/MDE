@@ -1479,6 +1479,33 @@ fn run_serve(
             }
         }
 
+        // v4.0.1 cycle 6 (2026-05-23) — register the
+        // dev.mackes.MDE.Fleet surface so the workbench's Fleet
+        // Revisions panel (CB-1.5 partial) can list desired_config
+        // rows over the bus instead of shelling out to `mackesd
+        // revisions list`. ListRevisions is wired; PushRevision /
+        // DiffRevisions / Rollback ride downstream tasks.
+        match mackesd_core::ipc::fleet::register_fleet(
+            mackesd_core::ipc::fleet::FleetService::default().with_db_path(db_path.clone()),
+        )
+        .await
+        {
+            Ok(conn) => {
+                Box::leak(Box::new(conn));
+                tracing::info!(
+                    "Fleet dbus surface registered at {}",
+                    mackesd_core::ipc::fleet::OBJECT_PATH
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "Fleet dbus registration failed; \
+                     workbench revisions panel will surface as bus errors"
+                );
+            }
+        }
+
         // v4.0.1 cycle 2 (2026-05-23) — register the
         // dev.mackes.MDE.Shell surface so the workbench's panel-
         // sync section + future status-cluster surfaces can call
