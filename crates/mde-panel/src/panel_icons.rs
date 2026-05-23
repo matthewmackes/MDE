@@ -59,6 +59,17 @@ pub enum PanelIcon {
     LayoutMainSidebar,
     /// Desktop Layout — tabbed. v4.0.1 BUG-16.
     LayoutTabbed,
+    /// Workspace 1 chip. v4.0.1 WM-1.
+    Workspace1,
+    /// Workspace 2 chip. v4.0.1 WM-1.
+    Workspace2,
+    /// Workspace 3 chip. v4.0.1 WM-1.
+    Workspace3,
+    /// Workspace 4 chip. v4.0.1 WM-1.
+    Workspace4,
+    /// Tiny indicator dot next to a workspace chip when that
+    /// workspace has at least one window. v4.0.1 WM-1.
+    WorkspaceDot,
 }
 
 impl PanelIcon {
@@ -120,6 +131,21 @@ impl PanelIcon {
             PanelIcon::LayoutTabbed => {
                 include_bytes!("../../../assets/icons/carbon/layout-tabbed.svg")
             }
+            PanelIcon::Workspace1 => {
+                include_bytes!("../../../assets/icons/carbon/workspace-1.svg")
+            }
+            PanelIcon::Workspace2 => {
+                include_bytes!("../../../assets/icons/carbon/workspace-2.svg")
+            }
+            PanelIcon::Workspace3 => {
+                include_bytes!("../../../assets/icons/carbon/workspace-3.svg")
+            }
+            PanelIcon::Workspace4 => {
+                include_bytes!("../../../assets/icons/carbon/workspace-4.svg")
+            }
+            PanelIcon::WorkspaceDot => {
+                include_bytes!("../../../assets/icons/carbon/workspace-dot.svg")
+            }
         }
     }
 
@@ -159,6 +185,11 @@ mod tests {
             PanelIcon::LayoutGrid,
             PanelIcon::LayoutMainSidebar,
             PanelIcon::LayoutTabbed,
+            PanelIcon::Workspace1,
+            PanelIcon::Workspace2,
+            PanelIcon::Workspace3,
+            PanelIcon::Workspace4,
+            PanelIcon::WorkspaceDot,
         ] {
             let bytes = icon.bytes();
             assert!(bytes.len() > 32, "{icon:?} bytes too small: {}", bytes.len());

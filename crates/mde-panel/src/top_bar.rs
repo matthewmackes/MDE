@@ -151,6 +151,7 @@ pub fn view<'a>(
     state: &'a TopBarState,
     hero: &'a Hero,
     focused: Option<&'a Toplevel>,
+    workspaces: &'a [Option<crate::workspaces::WorkspaceState>; 4],
 ) -> Element<'a, Message> {
     // v3.0.3 Tier 1D fix — wrap the Start button in `mouse_area`
     // so right-click is observable. Iced's built-in `button` is
@@ -236,6 +237,11 @@ pub fn view<'a>(
     // top-right of each managed window (sway native title bars
     // per the data/sway/config change in this commit).
     let desktop_layout_cluster = desktop_layout_cluster_view();
+
+    // v4.0.1 WM-1 — workspace switcher chip row. Four chips for
+    // ws 1..4; focused chip paints in Q2 indigo bg, has-windows
+    // chips show a small indicator dot.
+    let workspace_chips = workspace_chip_row(workspaces);
     // Kept for the focused-state suppress signal pattern used by
     // tests; future re-introduction of an opt-in per-window
     // overlay would consume this. `focused.is_some()` is the
@@ -278,6 +284,8 @@ pub fn view<'a>(
     container(
         row![
             start_btn,
+            Space::with_width(Length::Fixed(f32::from(ZONE_PADDING_X))),
+            workspace_chips,
             Space::with_width(Length::Fixed(f32::from(ZONE_PADDING_X))),
             dock,
             Space::with_width(Length::Fixed(f32::from(ZONE_PADDING_X))),
@@ -352,6 +360,113 @@ fn labeled_zone(label: &str, color: Color, accent: bool) -> Element<'_, Message>
 // v4.0.1 BUG-13.a: `tray_button` (un-iconed text-only tray button)
 // retired — `tray_button_with_icon` replaced every call site. The
 // pre-BUG-13.a function had no remaining consumers.
+
+/// v4.0.1 WM-1 — Q2 indigo background for the focused workspace
+/// chip. Matches the locked visual-identity.md Q2 indigo
+/// (#5b6af5) so chip selection reads as the same accent the
+/// start-menu update chip uses (BUG-11 closure + BUG-12 start
+/// tile pinning).
+const WORKSPACE_FOCUSED_BG: Color = Color {
+    r: 0.357,
+    g: 0.416,
+    b: 0.961,
+    a: 1.0,
+};
+
+/// v4.0.1 WM-1 — render the workspace chip row. Four chips,
+/// indexed 1..4. Empty slots (no workspace at that index) still
+/// render but in a deactivated visual state — switching to an
+/// uncreated workspace IS valid in sway (it creates the workspace
+/// on the fly), so we let the chip dispatch the swaymsg either
+/// way.
+fn workspace_chip_row<'a>(
+    workspaces: &'a [Option<crate::workspaces::WorkspaceState>; 4],
+) -> Element<'a, Message> {
+    row![
+        workspace_chip(1, &workspaces[0]),
+        Space::with_width(Length::Fixed(4.0)),
+        workspace_chip(2, &workspaces[1]),
+        Space::with_width(Length::Fixed(4.0)),
+        workspace_chip(3, &workspaces[2]),
+        Space::with_width(Length::Fixed(4.0)),
+        workspace_chip(4, &workspaces[3]),
+    ]
+    .align_y(iced::Alignment::Center)
+    .into()
+}
+
+/// One workspace chip. Numeric Carbon glyph at 16 px (or 14 if
+/// the rendered chip looks too tall against the panel height).
+/// Focused chip background = Q2 indigo; others use zone_button_style
+/// hover chrome. Has-windows chips include a small Carbon
+/// `circle--solid` dot at 6 px next to the number.
+fn workspace_chip<'a>(
+    num: i32,
+    state: &'a Option<crate::workspaces::WorkspaceState>,
+) -> Element<'a, Message> {
+    let focused = state.as_ref().is_some_and(|s| s.focused);
+    let has_windows = state.as_ref().is_some_and(|s| s.has_windows);
+    let icon = match num {
+        1 => PanelIcon::Workspace1,
+        2 => PanelIcon::Workspace2,
+        3 => PanelIcon::Workspace3,
+        4 => PanelIcon::Workspace4,
+        _ => PanelIcon::Workspace1, // safety net; only 1..=4 reach here
+    };
+    let icon_color = if focused { FG_TEXT } else { FG_MUTED };
+    let number_widget = svg(icon.handle())
+        .width(Length::Fixed(16.0))
+        .height(Length::Fixed(16.0))
+        .style(move |_theme: &Theme, _status: svg::Status| svg::Style {
+            color: Some(icon_color),
+        });
+    let dot_widget: Element<'a, Message> = if has_windows {
+        svg(PanelIcon::WorkspaceDot.handle())
+            .width(Length::Fixed(6.0))
+            .height(Length::Fixed(6.0))
+            .style(move |_theme: &Theme, _status: svg::Status| svg::Style {
+                color: Some(icon_color),
+            })
+            .into()
+    } else {
+        Space::with_width(Length::Fixed(6.0)).into()
+    };
+    let content = row![
+        number_widget,
+        Space::with_width(Length::Fixed(2.0)),
+        dot_widget,
+    ]
+    .align_y(iced::Alignment::Center);
+    let style: fn(&Theme, button::Status) -> button::Style = if focused {
+        workspace_chip_focused_style
+    } else {
+        zone_button_style
+    };
+    button(content)
+        .padding(Padding {
+            top: 5.0,
+            right: 6.0,
+            bottom: 5.0,
+            left: 6.0,
+        })
+        .style(style)
+        .on_press(Message::WorkspaceSelected(num))
+        .into()
+}
+
+/// v4.0.1 WM-1 — focused-workspace chip background.
+fn workspace_chip_focused_style(_theme: &Theme, _status: button::Status) -> button::Style {
+    button::Style {
+        background: Some(Background::Color(WORKSPACE_FOCUSED_BG)),
+        text_color: Color::WHITE,
+        border: Border {
+            color: Color::TRANSPARENT,
+            width: 0.0,
+            radius: 6.0.into(),
+        },
+        shadow: Shadow::default(),
+    }
+}
 
 /// v4.0.1 BUG-16 — Desktop Layout cluster. Five Snap-Layouts-style
 /// buttons that apply a tile arrangement to the focused workspace
@@ -579,12 +694,16 @@ mod tests {
     fn view_renders_without_panic() {
         let state = TopBarState::demo();
         let hero = crate::hero::Hero::new();
-        let _ = view(&state, &hero, None);
+        let workspaces: [Option<crate::workspaces::WorkspaceState>; 4] =
+            [None, None, None, None];
+        let _ = view(&state, &hero, None, &workspaces);
     }
 
     /// v3.0.3 — view renders with a focused toplevel + populated
     /// hero so the new hero zone + window buttons exercise their
     /// happy-path branches too.
+    /// v4.0.1 WM-1 — also exercises the populated-workspace chip
+    /// row so workspace_chip's focused-bg branch hits.
     #[test]
     fn view_renders_with_hero_and_focused() {
         let state = TopBarState::demo();
@@ -599,7 +718,21 @@ mod tests {
                 ..Default::default()
             },
         };
-        let _ = view(&state, &hero, Some(&focused));
+        let workspaces: [Option<crate::workspaces::WorkspaceState>; 4] = [
+            Some(crate::workspaces::WorkspaceState {
+                num: 1,
+                focused: true,
+                has_windows: true,
+            }),
+            Some(crate::workspaces::WorkspaceState {
+                num: 2,
+                focused: false,
+                has_windows: false,
+            }),
+            None,
+            None,
+        ];
+        let _ = view(&state, &hero, Some(&focused), &workspaces);
     }
 
     /// v4.0.1 BUG-16 — Desktop Layout cluster replaces the

@@ -1121,6 +1121,256 @@ no new RPM cut.
   palette's focused/unfocused color contrast becomes visibly
   distinct. Operator can request 6 px (or back to 2) if 4 ends
   up too heavy at desk distance.
+### v4.0.1 WM-* Excellent Window Management epic (audit 2026-05-23)
+
+Operator: "the shell does not have good control of window
+management" — pre-BUG-16 the panel had centered min/max/close
+buttons but no surfaces for switching workspaces, seeing
+minimized windows, focusing-by-click from a window list, or
+visually snapping into Win11-style zones. BUG-16 added Snap
+Layouts; the rest of the muscle-memory surface follows here.
+Each story below stands alone; pick the highest-impact next
+move per the iteration loop's step 2.
+
+- [✓] **v4.0.1: WM-1 visible workspace switcher (Tier 1 chrome) —
+  shipped 2026-05-23**
+
+  **As** an operator,
+  **I want** to see and click numbered workspace chips on the
+  panel (1 / 2 / 3 / 4, current workspace highlighted in the
+  Q2 indigo accent),
+  **so that** I can switch workspaces with the mouse the same
+  way I do on Windows 11 / GNOME / macOS without remembering
+  Super+N keybindings.
+
+  **Acceptance** (each bullet bench-observable):
+  - [ ] Four workspace chips render in the panel, between the
+        dock zone and the Desktop Layout cluster, showing
+        "1 2 3 4" Carbon-numeric glyphs (or fallback text
+        labels if the numeric glyphs aren't in the system
+        Carbon set).
+  - [ ] The currently-focused workspace chip paints its
+        background in Q2 indigo (#5b6af5); other chips render
+        with `zone_button_style` chrome.
+  - [ ] Clicking chip N fires `swaymsg workspace N` and the
+        focus flips within ~200 ms.
+  - [ ] When a workspace has running windows, its chip shows
+        a small unfilled-circle indicator dot to its right
+        (Carbon `circle--solid` at 6 px); empty workspaces
+        omit the dot.
+  - [ ] The applet binary `mde-applet-workspaces` polls
+        `swaymsg -t get_workspaces` every 2 s and emits a
+        JSON line per render so the panel-host can rebuild
+        the chip row without re-parsing sway state.
+
+  **Implementation notes:**
+  - **Chrome influence:** Win11's centered taskbar workspace
+    switcher; Win10's bottom-left task-view button. Chips
+    are square + rounded-corner per Phase 0.8 chrome locks
+    (8 px radius matches the existing tray-button chrome).
+  - **Icon source:** Carbon Icon Set. Glyph candidates per
+    chip number — `number--1`, `number--2`, `number--3`,
+    `number--4`. Indicator dot is `circle--solid` at 6 px
+    in `text-muted`. Bake into `assets/icons/carbon/
+    workspace-{1,2,3,4}.svg` + `assets/icons/carbon/
+    workspace-dot.svg`.
+  - **Crate layout:** new `crates/mde-applets/workspaces/`
+    following the mesh-status / clock / network applet
+    pattern. Pure-fn `parse_workspaces(swaymsg_json)`
+    + `format_chip_row(workspaces)`.
+  - **Panel-host wiring:** new `AppletKind::Workspaces` +
+    `tray_button_with_icon_for_workspace(num, focused,
+    has_windows)` helper in top_bar.rs. Row inserts between
+    `dock` and the leading `Space::with_width(Length::Fill)`
+    so chips sit close to the start button on the left.
+
+- [ ] **v4.0.1: WM-2 minimized-windows tray + popover (Tier 1
+  chrome / closes BUG-15's stretch goal)**
+
+  **As** an operator,
+  **I want** a panel tray icon (Carbon `view--off`) with a
+  badge count of currently-minimized windows, that opens a
+  popover listing each minimized window's title + app, with
+  click-to-restore per row,
+  **so that** I can SEE what I've sent to the scratchpad and
+  pick which one to bring back (instead of cycling blind via
+  Super+Shift+M).
+
+  **Acceptance** (bench-observable):
+  - [ ] When ≥1 window is in sway's scratchpad, a tray icon
+        appears between the clipboard chip and the
+        notification-bell chip showing the Carbon `view--off`
+        glyph + an integer badge in Q2 indigo.
+  - [ ] When zero windows are scratch-hidden, the icon is
+        absent (no greyed-out placeholder).
+  - [ ] Clicking the icon opens a 360 × auto-height
+        layer-shell popover ("MinimizedPopover" kind in
+        mde-popover) listing each scratchpad entry by
+        `app_id` + title. Each row is a button.
+  - [ ] Clicking a row fires `swaymsg [con_id=N] scratchpad
+        show` + closes the popover; the window restores into
+        the focused workspace within ~150 ms.
+  - [ ] The popover's Esc key dismisses it; clicking outside
+        also dismisses (per v3.0.4 backdrop work when that
+        ships).
+
+  **Implementation notes:**
+  - **Chrome influence:** Win11's Notification Center +
+    Action Center, modified for the scratchpad concept.
+  - **Icon source:** Carbon `view--off` for the tray glyph;
+    `restore` or `arrows--vertical` for the per-row restore
+    affordance.
+  - **Data source:** `swaymsg -t get_tree` + walk the
+    scratchpad workspace's nodes. Each row needs
+    `(con_id, app_id, title)`.
+  - **Crate layout:** new `crates/mde-popover/src/
+    minimized.rs` + new tray button in `top_bar.rs`.
+    `Message::MinimizedClicked` routes to
+    `toggle_or_spawn_popover("minimized")`. Tray-state
+    poll loop in the panel-host (same 2 s cadence as the
+    mesh-status applet).
+
+- [ ] **v4.0.1: WM-3 dock interactive: click to focus / right-
+  click for actions (Tier 1 chrome / unblocks BUG-5)**
+
+  **As** an operator,
+  **I want** the dock area to render one clickable button
+  per open window (icon + truncated title), with the
+  focused window highlighted in Q2 indigo and a right-click
+  menu offering "Move to workspace N" / "Close" / "Pin to
+  dock",
+  **so that** I can navigate between open windows with the
+  mouse instead of Super+Tab + can do common per-window ops
+  directly from the panel.
+
+  **Acceptance** (bench-observable):
+  - [ ] Each open window renders as a separate clickable
+        button in the dock zone of the panel, in the order
+        sway's `get_tree` returns.
+  - [ ] Left-click on a dock button focuses that window
+        (calls `swaymsg [con_id=N] focus`) and brings it to
+        the front of its workspace.
+  - [ ] The currently-focused window's button paints with a
+        Q2-indigo bg-tint (not the standard zone-button
+        chrome).
+  - [ ] Right-click opens a 200 × auto-height popover with
+        ≥3 actions: Move to ws (1/2/3/4), Close, Pin to
+        dock. Each click is bench-observable via swaymsg.
+  - [ ] Pinning a window writes its `desktop_id` to
+        `~/.config/mde/dock-pinned.json` per Phase E.9; the
+        existing dock_dnd helpers consume it.
+
+  **Implementation notes (3-task fan-out captured in BUG-5):**
+  - **Chrome influence:** Win11's taskbar — per-window icon
+    + label, focused window underlined in accent.
+  - **Icon source:** the `mde_panel::icon_mapper` already
+    maps `Icon=` strings from .desktop entries to Carbon
+    glyph names. Per-window dock buttons reuse that mapping.
+  - **Data source:** dock applet (`mde-applet-dock`) needs a
+    protocol upgrade — emit one JSON line per window with
+    `(con_id, app_id, title, focused)`. Panel-host parses
+    the JSON and renders one button per row. Closes the
+    3-task fan-out in BUG-5.
+
+- [ ] **v4.0.1: WM-4 drag-to-snap zones with visual feedback
+  (Tier 2 chrome)**
+
+  **As** an operator,
+  **I want** when I drag a window near a screen edge or
+  corner, a translucent indigo overlay to appear showing
+  where the window will snap (left half, right half, top
+  half, four quadrants), and releasing inside the overlay
+  to snap the window into that zone,
+  **so that** I can compose tile layouts with the mouse the
+  same way Win11 Snap Assist does.
+
+  **Acceptance** (bench-observable):
+  - [ ] Dragging a floating window with the mouse and
+        hovering within 24 px of a screen edge shows a 30 %-
+        alpha indigo overlay outlining the would-snap zone.
+  - [ ] Releasing the drag inside the overlay snaps the
+        window — `swaymsg [con_id=N] floating disable; move
+        position 0 0; resize set 50ppt 100ppt` (for the left
+        half), with similar argv for the other zones.
+  - [ ] Releasing outside the overlay cancels the snap (no
+        resize / move applied).
+  - [ ] Five zones supported: left half, right half, top
+        half, bottom half, four corners (TL/TR/BL/BR
+        quadrants).
+
+  **Implementation notes:**
+  - **Chrome influence:** Win11 Snap Assist overlay (the
+    drag-edge visualizer).
+  - **Implementation path:** new `mde-snap-assist`
+    layer-shell overlay that subscribes to sway's input
+    events via swayipc. Fairly substantial — could be a v4.1
+    follow-up.
+  - **Icon source:** no per-zone icons; the indigo overlay
+    IS the affordance.
+
+- [ ] **v4.0.1: WM-5 visible Super+Tab switcher (Tier 1 chrome /
+  retires the invisible mde-applet-app-switcher)**
+
+  **As** an operator,
+  **I want** pressing Super+Tab to show a centered overlay
+  with one card per open window (icon + title + screenshot
+  thumbnail), cycling on each Tab press, releasing Super to
+  focus the highlighted window,
+  **so that** I get visual feedback during the Alt-Tab idiom
+  the same way Win11 / macOS / GNOME do.
+
+  **Acceptance** (bench-observable):
+  - [ ] Pressing + holding Super, then tapping Tab, opens a
+        centered overlay listing all open windows.
+  - [ ] Each Tab press advances the selection ring to the
+        next window; Shift+Tab reverses.
+  - [ ] Releasing Super focuses the highlighted window via
+        `swaymsg [con_id=N] focus` and dismisses the overlay
+        within 150 ms.
+  - [ ] Each card shows the Carbon app icon (per icon_mapper)
+        + the window's title + (when feasible) a `grim`-captured
+        thumbnail of the window's current state.
+
+  **Implementation notes:**
+  - **Chrome influence:** Win11 Alt-Tab + GNOME Activities
+    overview.
+  - **Existing surface:** `mde-applet-app-switcher` (Phase
+    E1.2.11) is the prior `--manifest` + stdout-text
+    applet; that retires for this version.
+  - **Implementation path:** new `mde-popover app-switcher`
+    kind. Layer-shell overlay anchored center, full
+    keyboard-grab while open. Sway binding `bindsym
+    Mod1+Tab exec mde-popover app-switcher` (Mod1 = Alt;
+    Super+Tab is reserved for the workspace switcher).
+
+- [ ] **v4.0.1: WM-6 floating window keyboard ops (Tier 2 chrome)**
+
+  **As** an operator,
+  **I want** named keyboard shortcuts in sway config for the
+  common per-window operations the panel doesn't directly
+  expose (move floating, resize precisely, tile to half,
+  send to other monitor),
+  **so that** my power-user keyboard workflow stays cohesive
+  with the panel's mouse workflow.
+
+  **Acceptance** (bench-observable):
+  - [ ] Super+H / Super+L bind to "tile focused window left
+        half" / "right half" (in addition to the existing
+        focus-h / focus-l).
+  - [ ] Super+Shift+arrow already bound to "move container";
+        Super+Ctrl+arrow added for "move window between
+        outputs" (`swaymsg move container to output …`).
+  - [ ] Super+Enter opens a terminal in the active output
+        (already exists, verify).
+  - [ ] data/sway/config.d/mackes-keybinds-wm.conf ships
+        these so user customizations in config.d stay
+        intact.
+
+  **Implementation notes:**
+  - **Chrome influence:** GNOME's Settings → Keyboard →
+    Window Management page documents the common idioms.
+  - **Icon source:** N/A (keyboard-only).
+
 - [✓] **v4.0.1: BUG-16 per-window controls → Win11 standard
   location; panel center → Desktop Layout buttons (Tier 1
   chrome) — shipped 2026-05-23**

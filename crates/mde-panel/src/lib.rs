@@ -52,6 +52,7 @@ pub mod hero;
 pub mod host;
 pub mod icon_mapper;
 pub mod panel_icons;
+pub mod workspaces;
 // v3.0.3 — layer_shell.rs retired. The module was a Phase E.2 set
 // of config helpers (anchor/exclusive-zone constants) for an
 // integration that ended up shipping via `iced_layershell 0.13.7`
@@ -202,6 +203,10 @@ pub enum Message {
     /// a sway-IPC layout command to the focused workspace per the
     /// Win11 Snap Layouts vocabulary.
     DesktopLayoutSelected(DesktopLayout),
+    /// v4.0.1 WM-1 — operator clicked a workspace chip on the
+    /// panel. Routes to `swaymsg workspace number <N>`. The number
+    /// is the 1-indexed workspace.
+    WorkspaceSelected(i32),
 }
 
 /// v4.0.1 BUG-16 — Snap-Layouts-style tile templates. Each maps to
@@ -267,6 +272,10 @@ pub struct App {
     /// `update` when a `ToplevelEvent` lands a new focused window;
     /// `tick()` advances the slide on every `Message::Tick`.
     hero: hero::Hero,
+    /// v4.0.1 WM-1 — workspace switcher state. Refreshed on a 2 s
+    /// cadence by polling `swaymsg -t get_workspaces` inside the
+    /// existing Tick subscription (every 60th tick at ~33 ms).
+    workspaces: [Option<workspaces::WorkspaceState>; 4],
 }
 
 impl App {
@@ -280,6 +289,7 @@ impl App {
             popovers: std::collections::HashMap::new(),
             toplevels: toplevels::ToplevelModel::new(),
             hero: hero::Hero::new(),
+            workspaces: [None, None, None, None],
         }
     }
 
@@ -360,6 +370,7 @@ impl iced_layershell::Application for App {
                 popovers: std::collections::HashMap::new(),
                 toplevels: toplevels::ToplevelModel::new(),
                 hero: hero::Hero::new(),
+                workspaces: [None, None, None, None],
             },
             Task::none(),
         )
@@ -381,6 +392,26 @@ impl iced_layershell::Application for App {
                 // no animation is in progress (hero::tick is a
                 // no-op when there's no incoming entry).
                 self.hero.tick(std::time::Instant::now());
+                // v4.0.1 WM-1 — workspace switcher poll. Refresh
+                // every 60th tick (= ~2s at 33ms/tick) so the chip
+                // row picks up sway focus/window changes without
+                // burning CPU every frame.
+                if self.ticks.is_multiple_of(60) {
+                    let raw = std::process::Command::new("swaymsg")
+                        .args(["-t", "get_workspaces"])
+                        .output()
+                        .ok()
+                        .and_then(|o| {
+                            if o.status.success() {
+                                String::from_utf8(o.stdout).ok()
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or_default();
+                    let parsed = workspaces::parse_workspaces(&raw);
+                    self.workspaces = workspaces::fixed_four_slots(&parsed);
+                }
             }
             Message::AppletText(kind, text) => {
                 tracing::debug!(
@@ -499,6 +530,16 @@ impl iced_layershell::Application for App {
                     .stderr(std::process::Stdio::null())
                     .spawn();
             }
+            Message::WorkspaceSelected(num) => {
+                tracing::info!(workspace = num, "workspace chip clicked");
+                let arg = format!("workspace number {num}");
+                let _ = std::process::Command::new("swaymsg")
+                    .arg(&arg)
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn();
+            }
             Message::TrayClicked(kind) => {
                 // v3.0.3 — toggle the popover for the clicked
                 // tray applet. Each kind has its own slot so an
@@ -539,7 +580,12 @@ impl iced_layershell::Application for App {
         // shows the focused-window title; v3.0.3 Tier 1E — window-
         // management buttons read the same focused state for their
         // greyed-out check.
-        top_bar::view(&self.top_bar, &self.hero, self.toplevels.focused())
+        top_bar::view(
+            &self.top_bar,
+            &self.hero,
+            self.toplevels.focused(),
+            &self.workspaces,
+        )
     }
 
     fn subscription(&self) -> iced::Subscription<Message> {
