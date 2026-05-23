@@ -6316,10 +6316,16 @@ Locked 25-Q survey 2026-05-19 in
   (which Headscale inherits automatically). 9 unit tests cover
   the unit's gating, flags, lockdown, resource caps, and the
   spec install lines for both files.
-- [>] **v3.0.3: 12.17 ICE/STUN augmentation for symmetric-NAT edges
-  (helpers shipped 2026-05-20, daemon never invokes them —
-  audit 2026-05-22)** —
-  shipped 2026-05-20. New module `crates/mackesd/src/stun.rs`
+- [✓] **v3.0.3: 12.17 ICE/STUN augmentation for symmetric-NAT edges
+  (helpers shipped 2026-05-20, daemon wired 2026-05-23 —
+  closes audit 2026-05-22 finding)** —
+  `StunGatherWorker` is spawned in `mackesd serve`
+  (`crates/mackesd/src/bin/mackesd.rs:1376`) sharing
+  `router_state` with `MeshRouterWorker` so reflexive
+  candidates land on every tracked peer's `PeerPath.candidates`
+  list. 30 s cadence; per-server probe timeout 1.4 s; pool is
+  IP-pinned Google STUN to skip DNS on the hot path.
+  Original helper shipped 2026-05-20: `crates/mackesd/src/stun.rs`
   ships a real RFC 5389/8489 STUN client:
   `encode_binding_request(txid)` returns the 20-byte header,
   `parse_binding_response(buf)` walks the attribute list and
@@ -6333,11 +6339,20 @@ Locked 25-Q survey 2026-05-19 in
   attribute-padding handling, txid uniqueness, and a timeout
   smoke test. Q8 ≤ 1.5 s gather budget enforced via the
   `timeout` arg.
-- [>] **v3.0.3: 12.18 HTTPS-tunneled fallback (policy layer) (helpers
-  shipped 2026-05-20, fallback activation never wired — audit
-  2026-05-22)** — shipped
-  2026-05-20. New module `crates/mackesd/src/https_fallback.rs`
-  ships the activation-policy state machine:
+- [✓] **v3.0.3: 12.18 HTTPS-tunneled fallback (policy layer) (helpers
+  shipped 2026-05-20, fallback transport wired 2026-05-23 —
+  closes audit 2026-05-22 finding)** —
+  `mesh_router` consumes `https_fallback::observe_peer(...)` on
+  every probe outcome / handshake event (see
+  `crates/mackesd/src/workers/mesh_router.rs:330,353`) and
+  `mackesd serve` registers the `Https443Transport` in the
+  router's `TransportRegistry` at startup
+  (`crates/mackesd/src/bin/mackesd.rs:1361`). The transport
+  reports `Misconfigured(no_fallback_host)` until
+  `MDE_HTTPS_FALLBACK_HOST` is set so daemons without it boot
+  clean. Helper shipped 2026-05-20: module
+  `crates/mackesd/src/https_fallback.rs` ships the
+  activation-policy state machine:
   Inactive → Activating → Active → Failing, plus the
   `FailureWindow` counter that locks the Q10 "3 consecutive
   direct-UDP + DERP-UDP failures" rule (`FAILURE_THRESHOLD =
@@ -7954,12 +7969,15 @@ fuzzable + reproducible.
   is the device identity. Use `rcgen` to issue the cert with
   device-id CN. `generate_identity_cert(&KeyStore, device_id) ->
   CertChain`. 5 unit tests.
-- [>] **KDC2-2.8: `crypto` — TLS handshake helper (rustls) (pure
-  helper shipped, KDC host never invokes it — audit 2026-05-22)** — Pure
+- [✓] **KDC2-2.8: `crypto` — TLS handshake helper (rustls) (shipped
+  2026-05-23, closes audit 2026-05-22 finding)** — Pure
   helper that wraps a `tokio_rustls::TlsStream` with the cert
   pinning logic. Verifies remote cert matches the paired-device
   fingerprint stored by the host (KDC2-3.7). 8 unit tests with
-  mocked rustls config.
+  mocked rustls config. `KdcHost::open()` now performs the real
+  TLS-pinned handshake via `tls::connect_pinned_tls(addr,
+  &device.id, Some(fingerprint))`; see the v3.0.3 section above
+  for the full wire-up detail.
 - [✓] **KDC2-2.9: `discovery::mdns` — TXT-record encoder/decoder** —
   Pure-data half shipped 2026-05-22 inside
   `mde-kdc-proto::discovery`:
@@ -8068,18 +8086,25 @@ service. Hosts the `dev.mackes.MDE.Connect.*` D-Bus interface.
   `Cargo.toml` to drop the `mackes-kdc` re-export dep and add
   real deps (`mde-kdc-proto`, `mackes-transport`, `zbus 5`,
   `tokio`, `serde`). Update `src/lib.rs` skeleton.
-- [>] **KDC2-3.2: `KdcHost` struct implementing `Transport`** —
-  Wraps `mde-kdc-proto` with the `Transport` trait from
-  KDC2-1.2. Routes incoming packets through the protocol
-  plugins; exposes outgoing-packet API for the D-Bus methods.
-  8 unit tests.
-- [>] **KDC2-3.3: D-Bus host scaffold (zbus 5) (bus acquisition
-  shipped, concrete methods explicitly deferred to KDC2-3.4..3.6/3.9
-  — audit 2026-05-22)** — Acquire bus
-  name `dev.mackes.MDE.Connect` on the user session bus.
-  `Connect` object at `/dev/mackes/MDE/Connect`. Single-instance
-  guard via name-acquired check. 4 unit tests with
-  zbus's connection-mocking helpers.
+- [✓] **KDC2-3.2: `KdcHost` struct implementing `Transport`** —
+  Lives at `crates/mde-kdc/src/transport.rs:69` with the full
+  `impl Transport for KdcHost` block (line 157). `open()` does
+  pairing lookup → discovery lookup → TCP-connect → TLS-pinned
+  handshake → `KdcTlsConnection` and returns the boxed
+  connection back to the mesh-router. 11 `transport::tests`
+  cover the success + every error path. Spawned by
+  `KdcHostWorker` from `mackesd serve` (see KDC2-3.3 above).
+- [✓] **KDC2-3.3: D-Bus host scaffold (zbus 5) (shipped 2026-05-23,
+  closes audit 2026-05-22 finding)** — `dev.mackes.MDE.Connect`
+  is acquired at `/dev/mackes/MDE/Connect` by the
+  `KdcHostWorker` on its first tick after `init_host`. The
+  method + signal bundle (ListDevices/GetDevice, PairDevice/
+  UnpairDevice, RingDevice/SendSms/SendClipboard/SendFile,
+  DeviceAdded/Removed/Updated) ships in
+  `crates/mde-kdc/src/dbus.rs::ConnectInterface`. Graceful-
+  degrade on `NameAlreadyAcquired` or session-bus-unreachable
+  per the lan_discovery convention. See the v3.0.3 section
+  above for `busctl` acceptance commands.
 - [✓] **KDC2-3.4: D-Bus methods `ListDevices` + `GetDevice`** —
   Method signatures per plan §5. Returns paired devices with
   capability dicts. 5 unit tests.
