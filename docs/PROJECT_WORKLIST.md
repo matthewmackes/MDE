@@ -9851,3 +9851,367 @@ bench / CI capability is in place and the named smoke passes on
 that capability. Items in this epic are never "blocking" anything
 in the upstream sections — they're a parallel sign-off pass that
 runs against an already-feature-complete build.
+
+---
+
+## Epic: Fedora Clustering
+
+**Directive 2026-05-23 (operator-asked, Claude-recommended):**
+MDE today is mesh-fabric-rich (Headscale + Tailscale data plane,
+Ansible-pull control plane, NATS, mde-kdc, mesh-fs/ssh/mdns/wol)
+but thin on classic *cluster* primitives. The Host peer is a
+single point of failure: Headscale + postgres + DERP + Caddy all
+sit on one machine. Disk encryption is per-box, not mesh-aware.
+Host services are hand-rolled systemd units, not image-pinned.
+This Epic lifts the seven Fedora-native clustering recommendations
+from the 2026-05-23 exploration into a parallel-cadence work
+stream — same framing as Epic: Hardware Testing. Items are NOT
+blockers on the active v4.0.x development picture; they run on
+their own cadence once the operator green-lights a release window
+that wants to absorb cluster scope. Status marker is `[ ] Open`
+(a todo on the epic's own timeline), not `[!] Blocked`. Target
+release is **v4.1+ scope** for the Tier-1 stories (CLUST-1..4) and
+**v4.2+ scope** for the deeper-investment stories (CLUST-5..7);
+the section header on each subsection carries the explicit
+target so WF-5's release-tag schema is satisfied without
+re-declaring it per-row.
+
+### Host-role HA failover (v4.1+ scope)
+
+- [ ] **CLUST-1: Pacemaker + Corosync + pcs Host-role HA cluster (Tier 1)**
+
+  **As** an MDE operator running a 16-peer fleet,
+  **I want** two peers to share the Host role in an active/passive
+  Pacemaker + Corosync cluster (with `pcs` as the admin driver),
+  **so that** a power loss / kernel panic / planned reboot on the
+  active Host doesn't take down Headscale, postgres, DERP, and
+  Caddy for the rest of the fleet.
+
+  **Acceptance** (each bench-observable):
+  - [ ] Two peers enrolled via `pcs cluster setup` → `pcs status`
+        on either peer shows both nodes Online + a Designated
+        Coordinator elected.
+  - [ ] Headscale, postgres, DERP, and Caddy each run as a
+        Pacemaker resource in an ordered group on whichever peer
+        is currently active; `pcs resource status` shows them all
+        Started on the same node.
+  - [ ] Pull power on the active node → within 60 s, `pcs status`
+        on the surviving node shows it owning the resource group;
+        a mesh peer's `tailscale status` regains green within the
+        same window.
+  - [ ] `mde fleet host-cluster status` (new subcommand) reads
+        `pcs status` without sudo (group membership via the
+        existing `mackes` group) and prints a concise summary
+        suitable for Conky HUD ingestion.
+  - [ ] Workbench → Fleet → "Host cluster" tab renders the
+        cluster status + offers a "Move host" button that calls
+        `pcs resource move` under AdminSession.
+
+  **Implementation notes:**
+  - Packages: `pacemaker`, `corosync`, `pcs`, `fence-agents-all`
+    — all in Fedora core repos.
+  - STONITH: bare-metal peers fence via IPMI/iLO/SSH-power-off;
+    VMs use `fence_virsh` against the hypervisor; document the
+    "no STONITH = unsupported configuration" lock in the Help
+    topic. The 2026-05-23 design exploration flagged this as the
+    main tradeoff.
+  - Carbon glyph for the Workbench tab: `cluster` (canonical
+    Carbon icon name; bake to
+    `assets/icons/carbon/cluster.svg` + add the arm to
+    `mde_theme::ResolvedIcon::svg_bytes()`).
+  - Runtime reachability per §0.8 gate 7: the new
+    `mde fleet host-cluster` subcommand must be reachable from
+    the existing `mde fleet` dispatcher in
+    `crates/mde-workbench/src/fleet/` (or `mackes/workbench/fleet/`
+    if the Python wrapper survives by then); a `grep -rln
+    "host_cluster" --include='*.rs' crates/mde-workbench` test in
+    CI guards against the v3.x dead-module pattern.
+  - Cross-reference: complements `mackes/headscale_postgres.py`
+    (which already runs postgres for Headscale) — postgres
+    becomes a Pacemaker `ocf:heartbeat:pgsql` resource rather
+    than a free-running systemd unit.
+
+- [ ] **CLUST-5: Keepalived VRRP floating VIP (Tier 2 — lighter alternative)**
+
+  **As** an MDE operator who wants Host failover without the
+  weight of full Pacemaker + STONITH,
+  **I want** a Keepalived-managed floating VIP that the active
+  Host peer advertises,
+  **so that** Caddy + Headscale clients connect to a stable
+  endpoint that survives a single-peer outage with sub-3-second
+  failover.
+
+  **Acceptance** (each bench-observable):
+  - [ ] Two Host-role peers run `keepalived` with a configured
+        VRRP instance; `ip addr show` on the master shows the
+        floating VIP bound to the mesh-facing interface.
+  - [ ] Caddy listens on the VIP (not the peer's primary IP);
+        the existing ACME-issued TLS cert continues to serve
+        after a failover.
+  - [ ] Kill keepalived on the master → backup acquires the VIP
+        within 3 s; an active `curl --keepalive https://<VIP>/`
+        loop sees ≤ 1 dropped request.
+  - [ ] Decision lock: CLUST-1 and CLUST-5 are mutually
+        exclusive per Host-pair — `mde fleet host-cluster mode`
+        reports `pacemaker` xor `keepalived` xor `single` and
+        Workbench gates the toggle on this exclusivity.
+
+  **Implementation notes:**
+  - Package: `keepalived` (Fedora core).
+  - Sequencing: ship CLUST-5 first if the operator wants
+    Host-failover sooner — it's roughly a tenth the moving parts
+    of CLUST-1 and gets ~80% of the user value. CLUST-1 supersedes
+    it once postgres-as-cluster-resource lands.
+  - Carbon glyph: re-uses `cluster` from CLUST-1.
+
+### Mesh-bound disk unlock (v4.1+ scope)
+
+- [ ] **CLUST-2: Tang + Clevis mesh-bound LUKS unlock (Tier 1)**
+
+  **As** an MDE operator,
+  **I want** every peer's LUKS root volume to unlock automatically
+  when the mesh is reachable, and refuse to unlock when it is
+  not,
+  **so that** a stolen / off-site laptop is fail-closed by
+  default while in-mesh boxes never need a manual passphrase
+  prompt at boot.
+
+  **Acceptance** (each bench-observable):
+  - [ ] After `mde maintain bind-disk --tang <host-peer>` runs,
+        reboot succeeds without a passphrase prompt as long as
+        at least one Tang server is reachable on the mesh.
+  - [ ] Disconnect the box from the mesh (Wi-Fi off + cable
+        pulled), reboot → boot blocks on the LUKS passphrase
+        prompt (the fail-closed path is exercised, not just
+        assumed).
+  - [ ] Reconnect to the mesh on the locked-out box, enter the
+        recovery passphrase once → next reboot unlocks
+        automatically again (no manual rebind needed).
+  - [ ] Workbench → Maintain → "Mesh-bound disk unlock" toggle
+        reflects current binding state + offers bind / rebind /
+        unbind buttons (all routed through AdminSession).
+  - [ ] `mde maintain bind-disk status` CLI mirrors the
+        Workbench panel exactly so headless / Node-preset peers
+        can configure binding without a GUI.
+
+  **Implementation notes:**
+  - Packages: `tang` (server-side on Host-role peers), `clevis`,
+    `clevis-luks`, `clevis-dracut`, `clevis-systemd` (client-side
+    on every peer). All in Fedora core.
+  - Server: `tangd.socket` runs on Host-role peers; the Tang
+    advertisement port (default 7500) lives on the Tailscale
+    interface only — never on the WAN side. Document this in the
+    Help topic alongside the existing DERP / Headscale port
+    notes.
+  - Client binding: `clevis luks bind -d /dev/<luks-dev> tang
+    '{"url":"http://<host-peer-tailscale-ip>:7500"}'` — wraps in
+    a `mde maintain bind-disk` subcommand under AdminSession.
+  - Carbon glyph: `locked` for unbound state, `unlocked` for
+    bound + mesh-reachable, `warning--filled` for bound +
+    mesh-unreachable (degraded but not failed yet).
+  - Runtime reachability per §0.8 gate 7: the new bind-disk path
+    must be invocable from both `mackes/birthright.py` (so a
+    fresh install can opt in during first-boot) and Workbench
+    Maintain (so an existing install can adopt it later).
+  - The 2026-05-23 design exploration ranked this as the cleanest
+    expression of "the mesh is the trust anchor" — no new daemon
+    model, all initramfs hooks already exist upstream.
+
+### Host service unit modernization (v4.1+ scope)
+
+- [ ] **CLUST-3: Podman Quadlet conversion of Host-role services (Tier 1)**
+
+  **As** an MDE operator,
+  **I want** Headscale, postgres, DERP, and Caddy on the Host
+  peer to run from image-pinned Podman Quadlet units instead of
+  hand-rolled systemd units,
+  **so that** image versions are explicit, rollbacks are a tag
+  flip + restart, and the Host service tree integrates cleanly
+  with the rpm-ostree / bootc image-mode direction CLUST-6
+  pursues.
+
+  **Acceptance** (each bench-observable):
+  - [ ] Headscale, postgres, DERP, and Caddy run as `.container`
+        Quadlet units under `/etc/containers/systemd/`;
+        `systemctl status headscale.service` shows the
+        generated unit + podman backend; `podman ps` shows the
+        four containers Running.
+  - [ ] `mde maintain host-service-versions` (new CLI under
+        AdminSession) lists image tags currently running per
+        service and lets the operator pin to a specific tag or
+        bump to a known-good newer tag.
+  - [ ] A bad image bump rolls back via `mde maintain
+        host-service-versions --rollback <service>` — total
+        downtime under 10 s end-to-end.
+  - [ ] Existing Headscale state (the `headscale-postgres`
+        volume from `mackes/headscale_postgres.py`) is migrated
+        in place — no fleet-wide re-enrolment.
+  - [ ] Mesh-shared volumes that contain user data (e.g. the
+        Caddy ACME data dir) survive a `systemctl restart` and a
+        host reboot without operator intervention.
+
+  **Implementation notes:**
+  - Quadlet docs lock: the generated units must use `Volume=`
+    not `-v` flags so SELinux relabeling stays Quadlet-native.
+  - Image registry: pin to `ghcr.io/juanfont/headscale:vX.Y.Z`
+    + `docker.io/library/postgres:16-alpine` +
+    `ghcr.io/tailscale/derper:vX.Y.Z` +
+    `docker.io/library/caddy:2-alpine` initially; we can move
+    to a self-hosted registry later if upstream tag churn hurts.
+  - Cross-reference: collapses `mackes/headscale_postgres.py` +
+    `mackes/caddy_gateway.py` + `mackes/mesh_derp.py` from
+    "drive raw daemons" to "drive Quadlet units" — the Python
+    wrappers become thin status readers, not lifecycle managers.
+  - Carbon glyph for the Workbench surface: `container`.
+  - Runtime reachability per §0.8 gate 7: the new
+    `host-service-versions` subcommand must be reachable from
+    the `mde maintain` dispatcher; CI guards against
+    dead-module landings.
+
+### Fleet identity (v4.1+ scope)
+
+- [ ] **CLUST-4: sssd + mde-kdc fleet identity (Tier 2)**
+
+  **As** an MDE operator,
+  **I want** every peer in the fleet to trust the `mde-kdc`
+  Kerberos KDC for login / sudo / SSH,
+  **so that** a single password change propagates to every box
+  without per-peer account drift, and `ssh peer-name` works on
+  a Kerberos ticket instead of a hand-copied authorized_keys
+  file.
+
+  **Acceptance** (each bench-observable):
+  - [ ] After `mde fleet enrol-identity` runs on a peer,
+        `id <kdc-user>` resolves on that peer (sssd is wired to
+        the KDC for both authn + name resolution).
+  - [ ] `sudo -u <kdc-user> whoami` works under the KDC's
+        sudoers policy (which is itself shipped via the existing
+        Ansible-pull control plane, not per-peer drift).
+  - [ ] `ssh <kdc-user>@peer-name` honors a `kinit`-acquired
+        Kerberos ticket — no per-peer SSH key pair needed.
+  - [ ] Workbench → Network → "Identity" panel surfaces
+        enrolment status (enrolled / not enrolled / KDC
+        unreachable) + offers a re-enrol button.
+
+  **Implementation notes:**
+  - Packages: `sssd`, `sssd-krb5`, `sssd-tools`, `krb5-workstation`
+    (Fedora core). The KDC side already ships via the
+    `crates/mde-kdc/` and `crates/mde-kdc-proto/` crates.
+  - Sequencing: depends on `mde-kdc` reaching runtime-reachable
+    status on every peer (track in the existing v3.x integration
+    audit). Until then, this story is `[ ] Open` pending the
+    KDC's own readiness signal — not `[!] Blocked`, since the
+    KDC work is in flight.
+  - Carbon glyph: `user--identification`.
+  - Cross-reference: supersedes the per-peer SSH-key plumbing
+    in `mackes/mesh_ssh.py` for users who opt in; the existing
+    key path remains as fallback for non-KDC peers.
+
+### Image-mode Node peer (v4.2+ scope)
+
+- [ ] **CLUST-6: rpm-ostree / bootc image-mode Node preset (Tier 3)**
+
+  **As** an MDE fleet operator running fileserver / NAS-class
+  peers under the Node preset,
+  **I want** those peers to boot from a `bootc`-built immutable
+  Fedora image rather than a mutable Anaconda install,
+  **so that** fleet updates are atomic (one image swap, one
+  reboot, deterministic rollback) and Node peers stop drifting
+  from each other over time.
+
+  **Acceptance** (each bench-observable):
+  - [ ] A `bootc`-built `mde-node:<vX.Y.Z>` OCI image installs
+        on a bare-metal target via Anaconda + the bootc-aware
+        kickstart; first boot lands on the immutable image with
+        `/` mounted read-only outside of the documented
+        writable paths.
+  - [ ] `bootc upgrade` pulls a new image; the next reboot
+        boots into it; `bootc rollback` reverts to the prior
+        deployment without operator intervention beyond a
+        reboot.
+  - [ ] mesh-fs, mesh-ssh, mesh-discovery, mesh-mdns, and
+        mackesd all run inside the immutable image (no host-side
+        package layering needed for the steady-state Node
+        config).
+  - [ ] `mde maintain image-status` CLI reports the current
+        bootc deployment + the staged-but-not-yet-booted next
+        deployment, mirroring `rpm-ostree status` output.
+  - [ ] Workbench Maintain → "Image mode" panel reflects the
+        same state (only visible on Node-preset peers; hidden
+        on Workstation peers that aren't on bootc yet).
+
+  **Implementation notes:**
+  - This is a major direction shift for the Node preset; it
+    deserves a follow-up design doc once CLUST-1..4 land.
+    Listed here so the actionable items are tracked in the
+    canonical worklist per §1.
+  - Cross-reference: pairs naturally with CLUST-3 (Quadlet
+    services) — image-mode + Quadlet is the Fedora-canonical
+    "containers all the way down" stack.
+  - Carbon glyph: `download`.
+  - Out of scope: Workstation-preset peers (the
+    desktop-environment side); user-state portability via
+    systemd-homed is its own future story.
+
+### Replicated shared storage (v4.2+ scope, opt-in)
+
+- [ ] **CLUST-7: GlusterFS replicated volume under mesh-fs (Tier 3)**
+
+  **As** an MDE operator with 3+ peers and a real need for
+  storage redundancy beyond mesh-fs FUSE's lazy-sync model,
+  **I want** an opt-in GlusterFS replicated volume mounted at
+  `/mesh/shared` on every participating peer,
+  **so that** losing one peer doesn't take a chunk of the
+  fleet's data offline, and read-after-write semantics on
+  shared paths are strong-consistent rather than mesh-fs
+  eventually-consistent.
+
+  **Acceptance** (each bench-observable):
+  - [ ] A 3-peer replicated volume mounts at `/mesh/shared` on
+        every participating peer; `gluster volume status` shows
+        all bricks Online.
+  - [ ] Hard-kill one peer (power off) → reads + writes from
+        the other two peers continue without hang or error;
+        `gluster volume heal <vol> info` reports the pending
+        heal correctly.
+  - [ ] On the killed peer returning, `gluster volume heal
+        <vol>` brings the brick back to Synced without
+        operator intervention beyond a `systemctl start
+        glusterd`.
+  - [ ] `mde maintain shared-storage status` CLI reports volume
+        health, heal state, and per-brick free space.
+  - [ ] Workbench → Fleet → "Shared storage" panel exposes the
+        same status + an opt-in toggle (default: off — this is
+        explicitly opt-in per the 2026-05-23 design exploration
+        because Gluster is heavyweight for fleets that don't
+        need it).
+
+  **Implementation notes:**
+  - Packages: `glusterfs`, `glusterfs-server`, `glusterfs-fuse`,
+    `glusterfs-cli` (Fedora core).
+  - Sequencing: Gluster wants ≥ 3 peers in the brick set for
+    quorum; document that 2-peer fleets are NOT a supported
+    configuration for this story. mesh-fs FUSE remains the
+    correct primitive at < 3-peer scale.
+  - Cross-reference: complements `mackes/mesh_fs.py` +
+    `mackes/mesh_fs_fuse.py`. mesh-fs handles the
+    per-peer-folder presentation; GlusterFS sits underneath
+    `/mesh/shared` specifically when strong consistency is
+    needed.
+  - Carbon glyph: `data--share`.
+  - Out of scope: Ceph (overkill at 16-peer fleet ceiling) and
+    DRBD9 / LINSTOR (block-level — useful under Pacemaker
+    resources in CLUST-1 but not a fit for shared-filesystem
+    semantics).
+
+**How to retire:** each row closes when the named bench-observable
+gates pass on the bench-hardware Epic's clean-Fedora targets
+(HW-1 / HW-2 environment). CLUST-1 / CLUST-2 / CLUST-3 / CLUST-4
+are the Tier-1 stories — operator green-lights v4.1 scope by
+authorizing any subset of those four. CLUST-5 is the
+deliberate-lighter alternative to CLUST-1; if it ships, CLUST-1
+either supersedes it later or stays `[ ] Open` indefinitely as a
+"future-if-needed" capability. CLUST-6 / CLUST-7 are Tier-3 /
+v4.2+ and should not be picked up until CLUST-1..4 have shipped
+and burned in on bench. None of these items block the active
+v4.0.x picture.
