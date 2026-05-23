@@ -57,7 +57,35 @@ pub trait Backend: Send + Sync + 'static {
     /// the side effect (gsettings call, fontconfig rewrite,
     /// etc.) inside `dev.mackes.MDE.Settings.Set`.
     async fn set(&self, key: &str, value_json: &str) -> Result<(), BackendError>;
+
+    /// Read the JSON-encoded `HealthReport` from
+    /// `dev.mackes.MDE.Shell.healthz()`. Powers the Look & Feel
+    /// → Panel sync-status section (v4.0.1 panel.toml task).
+    /// The default impl returns the same `empty()` baseline the
+    /// daemon prints when no live data is wired — so DemoBackend
+    /// inherits a uniform "no daemon" shape without each impl
+    /// hand-rolling the JSON.
+    async fn healthz(&self) -> Result<String, BackendError> {
+        Ok(EMPTY_HEALTHZ_JSON.to_owned())
+    }
 }
+
+/// JSON-encoded `HealthReport::empty()` shape — kept here as a
+/// string constant so the workbench doesn't need to depend on
+/// `mackesd_core` to mint the baseline. Mirrors what
+/// `mackesd_core::health::HealthReport::empty().to_json_line()`
+/// produces.
+pub const EMPTY_HEALTHZ_JSON: &str = "{\
+\"schema\":1,\
+\"is_leader\":false,\
+\"applied_revision\":null,\
+\"node_count\":0,\
+\"healthy_nodes\":0,\
+\"degraded_nodes\":0,\
+\"unreachable_nodes\":0,\
+\"audit_chain_intact\":true,\
+\"version\":\"dev\"\
+}";
 
 /// In-memory backend used by unit tests + the workbench's
 /// `--demo` invocation (CB-1.6 follow-up). Maintains the same
@@ -118,6 +146,19 @@ trait Settings {
     fn set(&self, key: &str, value_json: &str) -> zbus::Result<()>;
 }
 
+/// `dev.mackes.MDE.Shell` client proxy — same shape as
+/// `crates/mackesd/src/ipc/shell.rs`'s `ShellService`. Only the
+/// `healthz` method is wired today; `workers` lands once a panel
+/// surface needs it.
+#[zbus::proxy(
+    interface = "dev.mackes.MDE.Shell",
+    default_service = "dev.mackes.MDE.Shell",
+    default_path = "/dev/mackes/MDE/Shell"
+)]
+trait Shell {
+    fn healthz(&self) -> zbus::Result<String>;
+}
+
 /// Live backend that talks to mackesd over the session bus.
 /// Holds an `Arc<Connection>` so panels can clone the backend
 /// cheaply into `Task::perform` futures.
@@ -157,6 +198,16 @@ impl Backend for DBusBackend {
             .map_err(|e| BackendError::Bus(e.to_string()))?;
         proxy
             .set(key, value_json)
+            .await
+            .map_err(|e| BackendError::Bus(e.to_string()))
+    }
+
+    async fn healthz(&self) -> Result<String, BackendError> {
+        let proxy = ShellProxy::new(&self.conn)
+            .await
+            .map_err(|e| BackendError::Bus(e.to_string()))?;
+        proxy
+            .healthz()
             .await
             .map_err(|e| BackendError::Bus(e.to_string()))
     }
@@ -221,5 +272,37 @@ mod tests {
         let clone = backend.clone();
         backend.set("theme.mode", "\"auto\"").await.unwrap();
         assert_eq!(clone.get("theme.mode").await.unwrap(), "\"auto\"");
+    }
+
+    #[tokio::test]
+    async fn default_healthz_returns_empty_baseline_json() {
+        let backend = DemoBackend::new();
+        let line = backend.healthz().await.unwrap();
+        let v: serde_json::Value = serde_json::from_str(&line).expect("parse healthz JSON");
+        assert_eq!(v["schema"], 1);
+        assert_eq!(v["node_count"], 0);
+        assert_eq!(v["is_leader"], false);
+        assert!(v["applied_revision"].is_null());
+        assert_eq!(v["audit_chain_intact"], true);
+    }
+
+    #[test]
+    fn empty_healthz_json_constant_parses_clean() {
+        let v: serde_json::Value =
+            serde_json::from_str(EMPTY_HEALTHZ_JSON).expect("parse empty healthz");
+        // Every documented field present, no typos.
+        for k in [
+            "schema",
+            "is_leader",
+            "applied_revision",
+            "node_count",
+            "healthy_nodes",
+            "degraded_nodes",
+            "unreachable_nodes",
+            "audit_chain_intact",
+            "version",
+        ] {
+            assert!(v.get(k).is_some(), "missing key: {k}");
+        }
     }
 }
