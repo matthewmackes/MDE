@@ -1191,14 +1191,46 @@ no new RPM cut.
   invokes the overlay via `sudo -n`. Survives reboot.
   Acceptance: `git commit` on `main` triggers the overlay
   within 2s; the deploy log shows the change applied.
-- [ ] **v4.0.1: PARITY-4 initial overlay run + verification**
-  — once PARITY-1/2/3 are installed, run the overlay once
-  manually. Verify: `cd /tmp && python3 -c "import
-  mackes.snapshots; print(mackes.snapshots.__file__)"` reports
-  the site-packages path with the updated mtime; any rebuilt
-  Rust binaries differ from the original v4.0.0 RPM mtime.
-  Acceptance: `journalctl --user -u mde-parity.service` shows
-  one successful run.
+- [ ] **v4.0.1: PARITY-6 panel/popover restart helper +
+  exec_always for live deploys** — `swaymsg reload` only
+  re-runs `exec_always` lines; `data/sway/config` declares
+  `exec mde-panel` / `exec mde-popover watermark` /
+  `exec mde-popover toast` (one-shot). After a parity
+  overlay drops new binaries on disk, the running processes
+  keep their old code in memory until killed + respawned;
+  `swaymsg reload` doesn't help. Two-part fix:
+  (1) Add an `install-helpers/restart-panel-stack.sh` that
+      pkills + relaunches the three processes. Make the
+      overlay script (or a Makefile target) invoke it after
+      every successful install so changes go live without
+      operator intervention.
+  (2) Decide whether `data/sway/config` should switch panel
+      + popover exec lines to `exec_always` so a manual
+      `swaymsg reload` ALSO respawns. Risk: double-spawn if
+      the process was running pre-reload. Mitigation:
+      `pkill -x mde-panel; mde-panel` pattern in the exec
+      line. Acceptance: after a fresh commit + path-watch
+      fire, the running panel and popovers automatically
+      adopt the new binaries within ~5 s.
+- [✓] **v4.0.1: PARITY-4 initial overlay run + verification
+  (deployed 2026-05-23 08:11 EDT)** — `make deploy` ran the
+  full chain: installer copied refreshed overlay script +
+  sudoers + systemd-user units, enabled the path-watch, then
+  ran the overlay once. Result per
+  `/var/log/mde-parity.log`: `summary: py=8 desktop=3 bin=27`
+  — 8 Python modules + 3 .desktop files + 27 Rust binaries
+  swapped in. Verification: `python3 -c "from mackes.state
+  import CONFIG_DIR, MackesState; print(CONFIG_DIR,
+  MackesState.load().provisioned)"` reports
+  `/home/mm/.config/mde True` (Bug 1 deployed). `/usr/bin/
+  mde-files` is a 17 MB fresh binary (BUG-4 deployed).
+  `xdg-mime query default inode/directory` returns
+  `mde-files.desktop` after running the override manually
+  (session-start ExecStartPost path fires this on next
+  login too). Path-watch `mde-parity.path` is
+  `active (waiting)`. Running panel + popovers were killed
+  + respawned to pick up the new binaries — all v4.0.1
+  changes now visible at runtime.
 - [✓] **v4.0.1: PARITY-5 CLAUDE.md §0.2 rewritten for dual
   remote (shipped 2026-05-23)** — §0.2 now documents both
   `origin` (releases, protected `main`) and `mde-x`
