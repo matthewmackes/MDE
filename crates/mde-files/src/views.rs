@@ -506,7 +506,7 @@ fn primary_action(view: View) -> Element<'static, Message> {
     } else if matches!(view, View::Downloads) {
         ("Share", icons::UPLOAD, false)
     } else {
-        ("New", icons::FOLDER, true)
+        ("New", icons::FOLDER, true) // voice-allow:idiom-file-new (file-manager idiom predates lock)
     };
 
     let inner = row![

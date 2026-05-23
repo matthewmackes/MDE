@@ -264,7 +264,7 @@ mod tests {
     fn format_dock_marks_urgent_windows() {
         let windows = vec![DockWindow {
             id: 1,
-            app_id: "foo".into(),
+            app_id: "foo".into(), // voice-allow:test-data
             focused: false,
             urgent: true,
         }];

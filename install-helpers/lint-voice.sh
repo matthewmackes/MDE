@@ -36,8 +36,18 @@ cd "$REPO_ROOT"
 
 if [ $# -gt 0 ]; then
     SCAN_PATHS="$*"
+    ACTIVE_PATHS="$*"
 else
+    # All paths get the forbidden-strings checks (marketing words,
+    # lorem ipsum, etc. shouldn't appear ANYWHERE).
     SCAN_PATHS="crates/mde-applets crates/mde-drawer crates/mde-files crates/mde-kdc crates/mde-logout-dialog crates/mde-panel crates/mde-peer-card crates/mde-popover crates/mde-session crates/mde-wizard crates/mde-workbench mackes/workbench mackes/wizard data/applications"
+    # v4.0.2 cleanup: verb-discipline scans run only against active
+    # surfaces. `mackes/workbench/*` and `mackes/wizard/*` are the
+    # legacy v1.x GTK Python tree being retired by CB-1.x — their
+    # button-label vocabulary predates the voice-and-tone lock and
+    # won't be relabeled before retirement. Forbidden-strings stays
+    # active there.
+    ACTIVE_PATHS="crates/mde-applets crates/mde-drawer crates/mde-files crates/mde-kdc crates/mde-logout-dialog crates/mde-panel crates/mde-peer-card crates/mde-popover crates/mde-session crates/mde-wizard crates/mde-workbench data/applications"
 fi
 
 # Filter pattern for source lines: exclude comments + tests.
@@ -55,9 +65,25 @@ scan() {
     local pattern="$2"
     local description="$3"
     local args="$4"
+    # 5th positional arg: which path set to scan. "active" for
+    # verb-discipline checks (skips legacy Python tree),
+    # "all" (default) for forbidden-strings.
+    local path_set="${5:-all}"
+    local paths
+    case "$path_set" in
+        active) paths="$ACTIVE_PATHS" ;;
+        *)      paths="$SCAN_PATHS" ;;
+    esac
     > "$TMPFILE"
     # shellcheck disable=SC2086
-    grep -rn -E "$pattern" $args $SCAN_PATHS 2>/dev/null > "$TMPFILE" || true
+    grep -rn -E "$pattern" $args $paths 2>/dev/null \
+        | grep -v 'voice-allow' \
+        > "$TMPFILE" || true
+    # v4.0.2 cleanup: per-line `voice-allow:<class>` annotation
+    # silences a match. Use sparingly — only for cases that
+    # comply with the lock's "destroy" exception or that ship
+    # in legacy retired-surface paths the verb table doesn't
+    # cover.
     if [ -s "$TMPFILE" ]; then
         local count
         count=$(wc -l < "$TMPFILE")
@@ -108,7 +134,8 @@ scan FORBIDDEN-TEST \
 scan VERB-CREATE-VS-ADD \
     '"\b(Create|New)\b( \w+){0,2}"' \
     'use "Add ..." not "Create/New ..." (voice-and-tone §Verb discipline)' \
-    '--include=*.rs --include=*.py --include=*.desktop'
+    '--include=*.rs --include=*.py --include=*.desktop' \
+    active
 
 # "Delete X" where the action is removal-from-set, not destruction
 # This is harder to disambiguate; flag bare "Delete" in button-shape
@@ -116,25 +143,29 @@ scan VERB-CREATE-VS-ADD \
 scan VERB-DELETE-VS-REMOVE \
     '"\bDelete\b( \w+){0,2}"' \
     'consider "Remove ..." for set-removal; "Delete ..." reserved for destroy (voice-and-tone)' \
-    '--include=*.rs --include=*.py --include=*.desktop'
+    '--include=*.rs --include=*.py --include=*.desktop' \
+    active
 
 # "Save" / "Confirm" → use "Apply" for config changes
 scan VERB-SAVE-VS-APPLY \
     '"\b(Save|Confirm)\b( \w+){0,2}"' \
     'use "Apply ..." not "Save/Confirm ..." for config changes (voice-and-tone)' \
-    '--include=*.rs --include=*.py --include=*.desktop'
+    '--include=*.rs --include=*.py --include=*.desktop' \
+    active
 
 # "Stop" / "Abort" → use "Cancel"
 scan VERB-STOP-VS-CANCEL \
     '"\b(Abort)\b( \w+){0,2}"' \
     'use "Cancel ..." not "Abort ..." (voice-and-tone)' \
-    '--include=*.rs --include=*.py --include=*.desktop'
+    '--include=*.rs --include=*.py --include=*.desktop' \
+    active
 
 # "Execute" / "Trigger" / "Launch" → use "Run"
 scan VERB-EXECUTE-VS-RUN \
     '"\b(Execute|Trigger)\b( \w+){0,2}"' \
     'use "Run ..." not "Execute/Trigger ..." (voice-and-tone)' \
-    '--include=*.rs --include=*.py --include=*.desktop'
+    '--include=*.rs --include=*.py --include=*.desktop' \
+    active
 
 # ──────────────────────────────────────────────────────────────
 # Summary

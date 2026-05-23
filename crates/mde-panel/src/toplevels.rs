@@ -184,10 +184,10 @@ mod tests {
     fn updated_event_replaces_in_place() {
         let mut m = ToplevelModel::new();
         m.apply(ToplevelEvent::Added(mock(1, "Old", false)));
-        let changed = m.apply(ToplevelEvent::Updated(mock(1, "New", false)));
+        let changed = m.apply(ToplevelEvent::Updated(mock(1, "New", false))); // voice-allow:test-data
         assert!(changed);
         assert_eq!(m.len(), 1);
-        assert_eq!(m.ordered()[0].title, "New");
+        assert_eq!(m.ordered()[0].title, "New"); // voice-allow:test-data
     }
 
     #[test]

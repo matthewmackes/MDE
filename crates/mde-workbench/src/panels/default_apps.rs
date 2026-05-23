@@ -504,7 +504,7 @@ Exec=firefox %U
     fn parse_desktop_entry_falls_back_to_id_stem_when_name_missing() {
         let raw = "[Desktop Entry]\nType=Application\n";
         let h = parse_desktop_entry("foo.desktop", raw).unwrap();
-        assert_eq!(h.name, "foo");
+        assert_eq!(h.name, "foo"); // voice-allow:test-data
     }
 
     #[test]

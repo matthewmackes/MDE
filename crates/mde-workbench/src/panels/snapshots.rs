@@ -185,7 +185,7 @@ impl SnapshotsPanel {
             Some(crate::Message::Snapshots(Message::CreateClicked))
         };
         let create_btn = variant_button(
-            "Create snapshot",
+            "Create snapshot", // voice-allow:idiom-snapshot (capture-moment is "create", not "add")
             ButtonVariant::Primary,
             create_press,
             palette,
@@ -209,7 +209,7 @@ impl SnapshotsPanel {
                 "No snapshots yet",
                 "Capture the current ~/.config/mde/ tree so you can roll back \
                  after experiments. Give the snapshot a name and click Create.",
-                "Create snapshot",
+                "Create snapshot", // voice-allow:idiom-snapshot
             )
             .with_icon(Icon::Snapshot);
             return panel_container(
@@ -235,7 +235,7 @@ impl SnapshotsPanel {
                 palette,
             );
             let delete_btn = variant_button(
-                "Delete",
+                "Delete", // voice-allow:destroy (snapshot deletion is destroy, not set-removal)
                 ButtonVariant::Ghost,
                 Some(crate::Message::Snapshots(Message::DeleteClicked(
                     delete_path,

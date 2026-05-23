@@ -65,12 +65,14 @@ jobs:
         # "New" where "Add" is the lock, "Oops"/"Whoops"/"Yikes"
         # marketing copy, lorem ipsum, etc.
         #
-        # Soft-gate while the v4.0.0-inherited backlog of ~26
-        # legacy / false-positive hits gets triaged (see worklist
-        # v4.0.2 cleanup task). Flips to a hard gate when the
-        # linter exits 0 on a clean tree.
+        # v4.0.1 flipped to a hard gate (2026-05-23): legacy GTK
+        # Python (`mackes/workbench/*`, `mackes/wizard/*`) is
+        # excluded from verb-discipline scans (those surfaces are
+        # actively retired by CB-1.x); the remaining active-Rust
+        # exceptions carry `voice-allow:<class>` per-line
+        # annotations the linter honors. Adding a new violation
+        # in active code now breaks CI.
         run: install-helpers/lint-voice.sh
-        continue-on-error: true
 
       - name: pytest
         # tests/test_imports.py::test_every_non_gui_module_imports already

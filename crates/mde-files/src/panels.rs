@@ -205,7 +205,7 @@ impl ContextMenuItem {
             Self::CopyPath => "Copy path",
             Self::SendTo => "Send to…",
             Self::Rename => "Rename",
-            Self::Delete => "Delete",
+            Self::Delete => "Delete", // voice-allow:destroy (file deletion is destroy, not set-removal)
             Self::Properties => "Properties",
         }
     }
@@ -568,7 +568,7 @@ mod tests {
         assert_eq!(ContextMenuItem::CopyPath.label(), "Copy path");
         assert_eq!(ContextMenuItem::SendTo.label(), "Send to…");
         assert_eq!(ContextMenuItem::Rename.label(), "Rename");
-        assert_eq!(ContextMenuItem::Delete.label(), "Delete");
+        assert_eq!(ContextMenuItem::Delete.label(), "Delete"); // voice-allow:test-data
         assert_eq!(ContextMenuItem::Properties.label(), "Properties");
     }
 
