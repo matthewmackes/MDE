@@ -430,11 +430,16 @@ fn main() -> anyhow::Result<()> {
             println!("migrations applied: {n}");
         }
         Cmd::Healthz => {
-            // First-class panel/CLI parity per 12.1.3. Today the
-            // report is the empty baseline; subsequent substeps
-            // (12.3.3 heartbeats, 12.5.1 drift detector) populate
-            // the live fields.
-            let report = mackesd_core::health::HealthReport::empty();
+            // First-class panel/CLI parity per 12.1.3. The report
+            // pulls live `applied_revision` + per-health `nodes`
+            // counts from the SQLite store. Subsequent substeps
+            // (12.3.3 leader election, 12.6.3 audit-chain verify)
+            // populate the remaining two fields.
+            let report = match mackesd_core::store::open(&db_path) {
+                Ok(conn) => mackesd_core::health::HealthReport::compute(&conn)
+                    .unwrap_or_else(|_| mackesd_core::health::HealthReport::empty()),
+                Err(_) => mackesd_core::health::HealthReport::empty(),
+            };
             println!("{}", report.to_json_line()?);
         }
         Cmd::GeneratePasscode => {
@@ -1480,7 +1485,7 @@ fn run_serve(
         // healthz() / workers() directly off the bus instead of
         // shelling out to `mackesd healthz` + parsing stdout.
         match mackesd_core::ipc::shell::register_shell(
-            mackesd_core::ipc::shell::ShellService::default(),
+            mackesd_core::ipc::shell::ShellService::default().with_db_path(db_path.clone()),
         )
         .await
         {

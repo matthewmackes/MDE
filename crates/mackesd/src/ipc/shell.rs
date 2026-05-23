@@ -8,11 +8,30 @@
 
 #![cfg(feature = "async-services")]
 
+use std::path::PathBuf;
+
 use zbus::interface;
 
 /// Object exposed at `/dev/mackes/MDE/Shell`.
+///
+/// Holds the path to the SQLite store so `healthz()` can return a
+/// live `HealthReport`; if no path is configured the service falls
+/// back to `HealthReport::empty()` so the unit-test default still
+/// works under `ShellService::default()`.
 #[derive(Debug, Default, Clone)]
-pub struct ShellService;
+pub struct ShellService {
+    db_path: Option<PathBuf>,
+}
+
+impl ShellService {
+    /// Bind a live SQLite store path so `healthz()` computes counts
+    /// from rows instead of returning the empty baseline.
+    #[must_use]
+    pub fn with_db_path(mut self, db_path: PathBuf) -> Self {
+        self.db_path = Some(db_path);
+        self
+    }
+}
 
 /// Stable D-Bus name used by Phase 0.4-onward callers. The legacy
 /// `org.mackes.Shell` alias ships through one v2.x line for
@@ -30,15 +49,21 @@ impl ShellService {
         env!("CARGO_PKG_VERSION")
     }
 
-    /// JSON-encoded [`crate::health::HealthReport`]. Today returns
-    /// the same `HealthReport::empty()` baseline the `mackesd healthz`
-    /// CLI prints so the workbench's panel-sync surface can render
-    /// consistently between the two consumers. Live-supervisor
-    /// populated fields ride downstream wire-up in
-    /// `mackesd_core::healthz_live` (12.3.3 heartbeats, 12.5.1 drift
-    /// detector).
+    /// JSON-encoded [`crate::health::HealthReport`]. Reads the
+    /// SQLite store (when `with_db_path` is set) to populate
+    /// `applied_revision` + per-health `nodes` counts, matching what
+    /// the `mackesd healthz` CLI prints. Without a db path bound
+    /// (test harness), falls back to `HealthReport::empty()` so the
+    /// shape stays stable.
     async fn healthz(&self) -> zbus::fdo::Result<String> {
-        let report = crate::health::HealthReport::empty();
+        let report = match &self.db_path {
+            Some(path) => match crate::store::open(path) {
+                Ok(conn) => crate::health::HealthReport::compute(&conn)
+                    .unwrap_or_else(|_| crate::health::HealthReport::empty()),
+                Err(_) => crate::health::HealthReport::empty(),
+            },
+            None => crate::health::HealthReport::empty(),
+        };
         report
             .to_json_line()
             .map_err(|e| zbus::fdo::Error::Failed(format!("healthz serialize: {e}")))
@@ -89,7 +114,7 @@ mod tests {
 
     #[tokio::test]
     async fn version_matches_crate() {
-        let svc = ShellService;
+        let svc = ShellService::default();
         assert_eq!(svc.version().await, env!("CARGO_PKG_VERSION"));
     }
 
@@ -106,7 +131,7 @@ mod tests {
 
     #[tokio::test]
     async fn healthz_returns_json_health_report() {
-        let svc = ShellService;
+        let svc = ShellService::default();
         let line = svc.healthz().await.expect("healthz");
         let report: crate::health::HealthReport =
             serde_json::from_str(&line).expect("parse");
@@ -116,7 +141,7 @@ mod tests {
 
     #[tokio::test]
     async fn workers_lists_supervisor_worker_set() {
-        let svc = ShellService;
+        let svc = ShellService::default();
         let names = svc.workers().await.expect("workers");
         assert!(names.iter().any(|n| n == "fs_sync"));
         assert!(names.iter().any(|n| n == "mesh_router"));
