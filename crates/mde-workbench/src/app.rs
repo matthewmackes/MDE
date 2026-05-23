@@ -12,7 +12,7 @@ use iced::widget::{column, container, row, text};
 use iced::{window, Color, Element, Length, Size, Subscription, Task, Theme};
 use mde_theme::Palette;
 
-use crate::backend::{Backend, DemoBackend};
+use crate::backend::{Backend, DemoBackend, FileBackend};
 use crate::dbus::PendingFocus;
 use crate::header::HeaderAction;
 use crate::keyboard::{KeyAction, Pane};
@@ -266,8 +266,15 @@ impl std::fmt::Debug for App {
 }
 
 impl Default for App {
+    /// v4.0.1 AF-2.3.a (2026-05-23) — production default now
+    /// uses `FileBackend` which persists settings to
+    /// `~/.config/mde/workbench-settings.toml` instead of the
+    /// in-memory `DemoBackend` that lost every change on
+    /// restart. Cross-mesh push half (AF-2.3.b) still chains
+    /// on the DBus settings surface; FileBackend covers the
+    /// local-persistence half today.
     fn default() -> Self {
-        Self::with_backend(Arc::new(DemoBackend::new()))
+        Self::with_backend(Arc::new(FileBackend::new()))
     }
 }
 

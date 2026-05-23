@@ -105,6 +105,157 @@ impl Backend for DemoBackend {
     }
 }
 
+/// v4.0.1 AF-2.3.a (2026-05-23) — file-backed settings store.
+/// Persists every `set(key, value_json)` to
+/// `$XDG_CONFIG_HOME/mde/workbench-settings.toml` (with a
+/// fallback to `$HOME/.config/mde/`); reads happen against
+/// the in-memory cache that's populated on construction.
+/// Closes the half of AF-2.3.a that doesn't depend on mackesd:
+/// settings PERSISTENCE. The cross-mesh PUSH half stays on
+/// the DBusBackend route, captured as AF-2.3.b.
+///
+/// File format: TOML with `[settings]` table whose keys are
+/// the same dot-notated setting names the API uses (e.g.
+/// `theme.gtk = "Mackes-Dark"`, `font.body = "Geologica"`).
+/// Values are stored as TOML strings carrying the JSON
+/// serialization so the `value_json` contract from the
+/// `Backend` trait round-trips losslessly.
+pub struct FileBackend {
+    path: std::path::PathBuf,
+    values: Arc<Mutex<HashMap<String, String>>>,
+}
+
+impl fmt::Debug for FileBackend {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let n = self
+            .values
+            .lock()
+            .map(|g| g.len())
+            .unwrap_or(0);
+        f.debug_struct("FileBackend")
+            .field("path", &self.path)
+            .field("keys", &n)
+            .finish()
+    }
+}
+
+impl FileBackend {
+    /// Build a FileBackend rooted at the canonical
+    /// `~/.config/mde/workbench-settings.toml` path. Loads any
+    /// existing file content into the in-memory cache.
+    #[must_use]
+    pub fn new() -> Self {
+        let path = default_settings_path();
+        let values = match std::fs::read_to_string(&path) {
+            Ok(raw) => Arc::new(Mutex::new(parse_settings(&raw))),
+            Err(_) => Arc::new(Mutex::new(HashMap::new())),
+        };
+        Self { path, values }
+    }
+
+    /// Build a FileBackend at an explicit path — used by tests
+    /// that need a writable tempfile.
+    #[must_use]
+    pub fn with_path(path: std::path::PathBuf) -> Self {
+        let values = match std::fs::read_to_string(&path) {
+            Ok(raw) => Arc::new(Mutex::new(parse_settings(&raw))),
+            Err(_) => Arc::new(Mutex::new(HashMap::new())),
+        };
+        Self { path, values }
+    }
+
+    fn flush(&self, values: &HashMap<String, String>) -> Result<(), BackendError> {
+        if let Some(parent) = self.path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                BackendError::Bus(format!("mkdir {}: {e}", parent.display()))
+            })?;
+        }
+        let raw = serialize_settings(values);
+        std::fs::write(&self.path, raw)
+            .map_err(|e| BackendError::Bus(format!("write {}: {e}", self.path.display())))?;
+        Ok(())
+    }
+}
+
+impl Default for FileBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl Backend for FileBackend {
+    async fn get(&self, key: &str) -> Result<String, BackendError> {
+        Ok(self
+            .values
+            .lock()
+            .map_err(|e| BackendError::Bus(format!("poisoned mutex: {e}")))?
+            .get(key)
+            .cloned()
+            .unwrap_or_default())
+    }
+
+    async fn set(&self, key: &str, value_json: &str) -> Result<(), BackendError> {
+        let mut guard = self
+            .values
+            .lock()
+            .map_err(|e| BackendError::Bus(format!("poisoned mutex: {e}")))?;
+        guard.insert(key.to_string(), value_json.to_string());
+        self.flush(&guard)?;
+        Ok(())
+    }
+}
+
+/// Canonical path for the workbench's persisted-settings file.
+#[must_use]
+pub fn default_settings_path() -> std::path::PathBuf {
+    let base = std::env::var_os("XDG_CONFIG_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config")))
+        .unwrap_or_else(|| std::path::PathBuf::from("/tmp"));
+    base.join("mde").join("workbench-settings.toml")
+}
+
+/// Pure parser for the workbench-settings.toml shape. Returns
+/// an empty map on garbage (so a corrupt file falls back to
+/// defaults, the operator doesn't get a startup error).
+#[must_use]
+pub fn parse_settings(raw: &str) -> HashMap<String, String> {
+    let value: toml::Value = match toml::from_str(raw) {
+        Ok(v) => v,
+        Err(_) => return HashMap::new(),
+    };
+    let mut out = HashMap::new();
+    if let Some(tbl) = value.get("settings").and_then(|v| v.as_table()) {
+        for (k, v) in tbl {
+            if let Some(s) = v.as_str() {
+                out.insert(k.clone(), s.to_string());
+            }
+        }
+    }
+    out
+}
+
+/// Serialise the in-memory map back to TOML. Stable order by
+/// key so diffs read cleanly.
+#[must_use]
+pub fn serialize_settings(values: &HashMap<String, String>) -> String {
+    let mut keys: Vec<&String> = values.keys().collect();
+    keys.sort();
+    let mut out = String::from("# mde-workbench settings — written by AF-2.3.a FileBackend.\n");
+    out.push_str("# Do not edit while mde-workbench is running; settings can race.\n\n");
+    out.push_str("[settings]\n");
+    for k in keys {
+        let v = &values[k];
+        // TOML basic-string escaping: " and \. Values are JSON
+        // strings already so they may contain embedded quotes;
+        // escape them.
+        let escaped = v.replace('\\', "\\\\").replace('"', "\\\"");
+        out.push_str(&format!("\"{k}\" = \"{escaped}\"\n"));
+    }
+    out
+}
+
 /// `dev.mackes.MDE.Settings` client proxy. Generated from the
 /// same interface name + method signatures the service in
 /// `crates/mackesd/src/ipc/settings.rs` exposes.
@@ -221,5 +372,90 @@ mod tests {
         let clone = backend.clone();
         backend.set("theme.mode", "\"auto\"").await.unwrap();
         assert_eq!(clone.get("theme.mode").await.unwrap(), "\"auto\"");
+    }
+
+    #[test]
+    fn parse_settings_handles_empty_input() {
+        let m = parse_settings("");
+        assert!(m.is_empty());
+    }
+
+    #[test]
+    fn parse_settings_decodes_known_shape() {
+        let raw = r#"
+            [settings]
+            "theme.gtk" = "\"Mackes-Dark\""
+            "font.body" = "\"Geologica\""
+        "#;
+        let m = parse_settings(raw);
+        assert_eq!(m.len(), 2);
+        assert_eq!(m.get("theme.gtk").map(String::as_str), Some("\"Mackes-Dark\""));
+        assert_eq!(m.get("font.body").map(String::as_str), Some("\"Geologica\""));
+    }
+
+    #[test]
+    fn parse_settings_returns_empty_for_garbage() {
+        assert!(parse_settings("not toml").is_empty());
+    }
+
+    #[test]
+    fn serialize_settings_round_trips_through_parse() {
+        let mut m = HashMap::new();
+        m.insert("theme.gtk".to_string(), "\"Mackes-Dark\"".to_string());
+        m.insert("font.body".to_string(), "\"Geologica\"".to_string());
+        let raw = serialize_settings(&m);
+        let back = parse_settings(&raw);
+        assert_eq!(back, m);
+    }
+
+    #[test]
+    fn serialize_settings_escapes_embedded_quotes() {
+        let mut m = HashMap::new();
+        m.insert("custom.key".to_string(), "{\"name\":\"with\\\"quotes\"}".to_string());
+        let raw = serialize_settings(&m);
+        // Round-trip should preserve the escaped JSON body.
+        let back = parse_settings(&raw);
+        assert_eq!(back.get("custom.key"), m.get("custom.key"));
+    }
+
+    #[tokio::test]
+    async fn file_backend_persists_set_across_construction() {
+        let tmp = std::env::temp_dir().join(format!(
+            "mde-workbench-test-{}.toml",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&tmp);
+        let backend = FileBackend::with_path(tmp.clone());
+        backend.set("theme.gtk", "\"Mackes-Dark\"").await.expect("set");
+        // Reconstructing from the same path reads the value back.
+        let backend2 = FileBackend::with_path(tmp.clone());
+        let got = backend2.get("theme.gtk").await.expect("get");
+        assert_eq!(got, "\"Mackes-Dark\"");
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[tokio::test]
+    async fn file_backend_unknown_key_returns_empty_string() {
+        let tmp = std::env::temp_dir().join(format!(
+            "mde-workbench-empty-test-{}.toml",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&tmp);
+        let backend = FileBackend::with_path(tmp.clone());
+        let got = backend.get("nothing.here").await.expect("get");
+        assert_eq!(got, "");
+    }
+
+    #[test]
+    fn default_settings_path_lands_under_xdg_or_home() {
+        let path = default_settings_path();
+        // Must end with the canonical filename.
+        assert_eq!(
+            path.file_name().and_then(|s| s.to_str()),
+            Some("workbench-settings.toml")
+        );
+        // Parent must contain "mde".
+        let parent = path.parent().unwrap();
+        assert!(parent.ends_with("mde"));
     }
 }

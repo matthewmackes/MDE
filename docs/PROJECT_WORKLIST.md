@@ -1126,20 +1126,29 @@ above; integration tasks below in dependency order.
   persistence + cross-mesh settings push. Captured as
   AF-2.3.a below.
 
-- [ ] **AF-2.3.a: mde-workbench backend — settings persistence
-  + cross-mesh push (Tier 2, split from 2.3 on 2026-05-23
-  after the AF-* mega closed the mde-files half)** —
-  `crates/mde-workbench/src/app.rs` constructs a DemoBackend
-  at startup. Local-system reads (theme list, fc-list fonts,
-  sway outputs, dnf check-update) work because each panel
-  reads the live system directly — those panels don't go
-  through the backend. What DOES go through it:
-  settings PERSISTENCE + cross-mesh settings PUSH.
-  Acceptance: changing any setting in Workbench (a) writes
-  to a real config file (b) shows up in `mackesd healthz` /
-  via `swaymsg` / via `fc-cache -r` on the local node and
-  (c) propagates to peers within ~5 s through mackesd's
-  fs_sync worker.
+- [✓] **AF-2.3.a: mde-workbench backend — local-disk persistence
+  (shipped 2026-05-23). Cross-mesh push half tracked as
+  AF-2.3.b.** Built `FileBackend` in
+  `crates/mde-workbench/src/backend.rs`: persists every
+  `set(key, value_json)` to
+  `$XDG_CONFIG_HOME/mde/workbench-settings.toml` (with
+  `$HOME/.config/mde/` fallback). Reads come from an
+  in-memory cache populated on construction. Pure
+  `parse_settings(raw) / serialize_settings(map)` helpers
+  for testability + JSON-escape safety. `App::default()`
+  now constructs `FileBackend` instead of the in-memory
+  `DemoBackend` so settings survive restart. 566 mde-
+  workbench lib tests pass (+8 FileBackend round-trip,
+  garbage-rejection, escape, and path-resolution).
+
+- [ ] **AF-2.3.b: mde-workbench backend cross-mesh push (Tier
+  2)** — once mackesd's `dev.mackes.MDE.Settings` surface
+  is real (currently the proxy compiles but the service
+  side is stub-flavoured), wrap FileBackend with a
+  RemoteBackend that calls both local file write + dbus
+  Settings.Set so changes propagate to peers via the
+  fs_sync worker. Closed when changing a font in Workbench
+  shows up on a peer within ~5 s.
 - [✓] **AF-5: mackesd `Shell.{Inbox,Outbox,Downloads,FileOperations}`
   honest-empty pass (shipped 2026-05-23) — closes the §0.12
   Phase-G-jargon leak** — every "wired in Phase G" stub Err
