@@ -6210,6 +6210,322 @@ Locked 25-Q survey 2026-05-19 in
   Tailscale when the guard returns false — that wiring lives
   with the routing layer.
 
+### Connectivity efficiency — Round 2: Passcode-Anchored Mesh (Phase 12.24–12.33, v4.1+ scope)
+
+Locked 2026-05-23 in `docs/design/v12-passcode-anchored-mesh.md`.
+Closes the 10 gaps surfaced by the 2026-05-23 mesh-functionality
+evaluation by promoting the existing 16-char enrollment passcode
+(`crates/mackesd/src/passcode.rs:35-44`,
+`mackes/wizard/pages/mesh_passcode.py:39-45`) from authentication
+credential to cryptographic anchor for the entire mesh. All 10
+items below derive subkeys from the same passcode via Argon2id +
+HKDF (foundation spec in the design doc § "Cryptographic
+foundation"). When this round conflicts with Phase 12.14–12.23,
+the Round 2 design wins per `.claude/CLAUDE.md` §1.
+
+- [ ] **v4.1+: 12.24 Passcode-Derived Rendezvous (PDR) (Tier 1A)**
+  **As** a peer joining a mesh from any network in the world,
+  **I want** to find the mesh using only the 16-char passcode,
+  **so that** I never have to know or paste the current control URL.
+  **Acceptance** (each bullet bench-observable):
+    - [ ] `cargo test -p mackesd rendezvous::topic_derivation` — same
+      passcode + same epoch_hour → identical 32-byte topic on every
+      peer; different passcode → different topic.
+    - [ ] Two peers in the 6-peer fleet on different ISPs, given
+      only the same passcode (no join link, no LAN), publish and
+      resolve `RendezvousRecord` via libp2p kad within 10 s.
+    - [ ] DHT topic rotates hourly; previous-hour record fetches
+      return empty after the TTL boundary.
+    - [ ] Signed record with wrong `K_sign` is rejected without
+      logging the passcode-derived bytes.
+  **Implementation notes:**
+    - foundation for 12.25, 12.27, 12.28, 12.31, 12.32 — must ship first
+    - new module `crates/mackesd/src/workers/rendezvous.rs`
+    - dep: `libp2p` 0.55 with `kad` + `noise` + `tcp` features
+    - Carbon glyph: `connection--signal` for the rendezvous status row
+    - cross-refs: `docs/design/v12-passcode-anchored-mesh.md § 12.24`,
+      gap 1/5/6 in the eval report (`mackes/mesh_vpn.py:323`,
+      `mackes/mesh_discovery.py:196-211`)
+
+- [ ] **v4.1+: 12.25 Passcode-authenticated ICE/STUN bootstrap (Tier 1A)**
+  **As** a peer behind symmetric NAT,
+  **I want** ICE candidate exchange to use the passcode-derived
+  rendezvous as its signaling channel,
+  **so that** I get direct UDP to peers without depending on
+  Tailscale's public DERP or any third-party signaling server.
+  **Acceptance** (each bullet bench-observable):
+    - [ ] Two symmetric-NAT bench peers establish direct UDP within
+      the Q8 ≤ 3 s first-packet budget using only PDR signaling.
+    - [ ] ICE candidate exchange uses PDR (12.24) as its
+      signaling channel — no Tailscale signaling, no third-party
+      STUN/TURN broker. Builds on the just-shipped 12.17 STUN
+      wire (commit `2d04d67`, worklist line 816) by replacing
+      its signaling layer with a passcode-encrypted topic.
+    - [ ] Candidate envelope is ChaCha20-Poly1305 encrypted with
+      `K_trans`; tamper test (1 bit flip) → rejected, no fallback.
+    - [ ] Failure to gather a server-reflexive candidate within
+      Q8's 1.5 s STUN budget falls through to relayed candidates
+      without blocking the rest of the ICE round.
+  **Implementation notes:**
+    - builds on shipped Phase 12.17 STUN wire (`2d04d67`,
+      worklist line 816); does not "activate dead code" — adds
+      a passcode-derived signaling layer on top of the existing
+      candidate-gathering machinery
+    - depends on 12.24 (PDR signaling channel)
+    - Carbon glyph: `flow` for the connection-establishing row
+    - cross-refs: `docs/design/v12-passcode-anchored-mesh.md § 12.25`,
+      eval gap 2
+
+- [ ] **v4.1+: 12.26 Passcode-keyed reachability probes (Tier 1A)**
+  **As** a SEED-wizard user about to mint a join link,
+  **I want** the wizard to prove from an outside vantage that my
+  control endpoint is reachable before declaring success,
+  **so that** I never hand out a join link that other peers cannot use.
+  **Acceptance** (each bullet bench-observable):
+    - [ ] 3 single-region x86_64 probe-relay VPSes provisioned;
+      `mackesd-probe-relay` systemd unit + RPM under
+      `packaging/fedora/mackesd-probe-relay.spec` (separate
+      package from `mde`).
+    - [ ] Relay accepts only `HMAC(K_probe, body)`-signed
+      `ProbeMe` requests; unsigned → 401, logged at debug.
+    - [ ] 2-of-3 quorum probe completes in ≤ 5 s; result includes
+      `{reachable, observed_public_ip, observed_port}`.
+    - [ ] CGNAT detection: `observed_public_ip != STUN-reported IP`
+      → wizard surfaces "This network uses carrier-grade NAT and
+      cannot host a mesh seed."
+    - [ ] Per-source-IP token bucket on the relay (10 req/min)
+      prevents offline passcode brute-force from a single host.
+  **Implementation notes:**
+    - new crate `crates/mackesd-probe-relay`
+    - relay infra: ops/IaC under `infra/probe-relay/` (terraform
+      or ansible — defer to implementation task)
+    - foundation for 12.33 wizard truth-gate
+    - Carbon glyph: `radar` for the probe status row
+    - cross-refs: `docs/design/v12-passcode-anchored-mesh.md § 12.26`,
+      eval gap 3
+
+- [ ] **v4.1+: 12.27 Rolling passcode-signed endpoint records (DDNS killer) (Tier 1B)**
+  **As** a peer on a residential ISP with a rotating public IP,
+  **I want** my endpoint published in the rendezvous to always
+  reflect my current IP within one heartbeat,
+  **so that** other peers reach me without me running ddclient or
+  owning a DNS zone.
+  **Acceptance** (each bullet bench-observable):
+    - [ ] `rendezvous::heartbeat_worker` re-publishes every 60 s
+      with 180 s TTL; bench rotate-IP test shows the new endpoint
+      visible to a second peer within 90 s.
+    - [ ] Records signed by both `K_sign` (mesh root) AND a
+      per-peer ed25519 subkey; forgery requires the passcode AND
+      the peer's local private key.
+    - [ ] Stale-record cleanup: after 2× TTL with no heartbeat,
+      DHT entry is allowed to expire; a polling peer sees the
+      empty result and falls through to relay.
+    - [ ] No ddclient, no nsupdate, no DDNS daemon required.
+  **Implementation notes:**
+    - depends on 12.24 (PDR)
+    - extends `crates/mackesd/src/workers/rendezvous.rs` with
+      the heartbeat loop
+    - Carbon glyph: `renew` for the heartbeat indicator
+    - cross-refs: `docs/design/v12-passcode-anchored-mesh.md § 12.27`,
+      eval gap 4
+
+- [ ] **v4.1+: 12.28 Passcode-as-locator join link (Tier 1B)**
+  **As** a user sharing my mesh with a teammate,
+  **I want** to share just the 16-char passcode (or a QR of it),
+  **so that** the link is stable across IP changes and the
+  receiver can re-join the same mesh forever using only the
+  passcode.
+  **Acceptance** (each bullet bench-observable):
+    - [ ] SEED wizard generates `mackes://join#<16-char-passcode>`
+      (URL fragment; passcode never traverses HTTPS server logs).
+    - [ ] JOIN wizard parses both new fragment-form AND legacy
+      `mackes://join/<mesh-id>?control=<url>` form for the v4.1
+      → v4.2 migration window; v4.3 drops legacy parser.
+    - [ ] Passcode chip in `mackes/wizard/pages/mesh_passcode.py`
+      gets a "Copy" button + a QR rendered via `qrencode`; chip
+      is the prominent shareable artifact, the link is a
+      one-click convenience built on top.
+    - [ ] Rotating the seed's IP does not invalidate any
+      previously-shared join link.
+  **Implementation notes:**
+    - depends on 12.24 (joiner must resolve mesh via PDR, not
+      embedded URL)
+    - touches `mackes/wizard/pages/mesh_passcode.py` (new copy/QR
+      UI) and `mackes/mesh_vpn.py:~470` (link generator)
+    - Carbon glyph: `qr-code` for the QR control,
+      `share-knowledge` for the copy chip
+    - cross-refs: `docs/design/v12-passcode-anchored-mesh.md § 12.28`,
+      eval gap 5/6
+
+- [ ] **v4.1+: 12.29 Passcode-anchored self-signed PKI (Tier 1B)**
+  **As** a mesh operator without a public DNS zone,
+  **I want** Headscale's TLS cert to be trusted by every peer
+  with the passcode,
+  **so that** I never have to buy a domain, run ACME, or expose
+  port 80 to Let's Encrypt.
+  **Acceptance** (each bullet bench-observable):
+    - [ ] `K_sign`-derived ed25519 root keypair is identical on
+      every peer with the same passcode (pure deterministic seed).
+    - [ ] SEED wizard mints a TLS cert via `rcgen` for the
+      control endpoint signed by the root; cert SAN includes
+      the seed's current public IP + `mesh.local`.
+    - [ ] Joining peer's Tailscale client trusts the cert
+      because the root pubkey is recomputed from the passcode
+      and pinned via Tailscale client TLS config patch.
+    - [ ] Headscale `server_url` may be a bare IP (no domain
+      required); replaces today's hardcoded
+      `mackes/mesh_vpn.py:323` `http://0.0.0.0:8080`.
+    - [ ] No new dependency on a public CA, no port 80 listener.
+  **Implementation notes:**
+    - dep: `rcgen` 0.13 (cert minting), `ed25519-dalek` 2.x
+    - upstream patch may be required to `tailscale` for custom-
+      CA pinning; track separately if so
+    - Carbon glyph: `certificate--check` for the TLS status row
+    - cross-refs: `docs/design/v12-passcode-anchored-mesh.md § 12.29`,
+      eval gap 8 (`mackes/caddy_gateway.py:68-72`)
+
+- [ ] **v4.1+: 12.30 Passcode-authorized port plumbing + HTTPS-on-443 fallback (Tier 1B)**
+  **As** a SEED peer behind a residential router or a corporate
+  firewall,
+  **I want** the wizard to open the needed inbound ports
+  automatically OR fall back to HTTPS-on-443,
+  **so that** I never have to manually configure port-forwarding
+  and my mesh works from coffee shops + hotel Wi-Fi.
+  **Acceptance** (each bullet bench-observable):
+    - [ ] SEED wizard attempts UPnP / NAT-PMP / PCP via the `igd`
+      crate against 8080 (Headscale) + 3478/UDP (DERP).
+    - [ ] On UPnP success, 12.26 probe confirms reach within 5 s.
+    - [ ] On UPnP failure, fallback path activates the
+      just-shipped Https443 Transport (12.18 D.2, commit
+      `4442522`, worklist line 910) with the 12.29 passcode-
+      derived cert + realistic SNI + `K_trans`-encrypted wire
+      bytes. SEED wizard becomes the first operator-visible
+      caller of the transport.
+    - [ ] DPI bench rig: fallback traffic passes through a
+      packet-inspecting firewall configured to drop non-HTTPS;
+      Q10 lock from `v12-connectivity-scope.md:124-129` satisfied.
+    - [ ] `mackes/workbench/network/firewall.py:72` service list
+      gains `headscale` (8080) + `mackes-derp` (3478/UDP) entries
+      AND the SEED flow actually calls them.
+  **Implementation notes:**
+    - dep: `igd` crate for UPnP, `natpmp` crate for NAT-PMP
+    - builds on shipped 12.18 D.1 (`ab8e1ee`, line 859) +
+      12.18 D.2 (`4442522`, line 910); coordinates with the
+      still-open 12.18 D.3 MeshRouterWorker tick wiring at
+      line 975 — 12.30 is the operator-visible wizard surface,
+      D.3 is the data-plane scorer integration; ship together
+      to land the full HTTPS-fallback story
+    - depends on 12.29 (PKI)
+    - Carbon glyph: `partly-cloudy` for the fallback-active state,
+      `port-output` for the port-open success state
+    - cross-refs: `docs/design/v12-passcode-anchored-mesh.md § 12.30`,
+      eval gap 7
+
+- [ ] **v4.1+: 12.31 Passcode-elected multi-control + failover (Tier 1C)**
+  **As** an operator whose seed peer's laptop closes mid-day,
+  **I want** another peer with the passcode to take over the
+  control role automatically,
+  **so that** enrollment + reconciliation keep working without my
+  intervention.
+  **Acceptance** (each bullet bench-observable):
+    - [ ] Replace `crates/mackesd/src/leader.rs:1-9`'s filesystem
+      lock with rendezvous-published leases (60 s TTL, 20 s
+      heartbeat).
+    - [ ] Election order is deterministic from
+      `HMAC(K_ctrl, peer_id)`; bench test with 4 peers shows
+      identical ranking on every peer without negotiation.
+    - [ ] Kill-the-leader test: 6-peer fleet, leader process
+      killed mid-cycle; next-ranked peer assumes the role and
+      publishes takeover within 60 s; enrollment that was
+      mid-flight succeeds against the new leader.
+    - [ ] 16-peer cap (Q2 lock) enforced by the leader at
+      `EnrollmentRequest` time; 17th request rejected with a
+      specific error code the wizard renders as
+      "Mesh is at the 16-peer cap."
+    - [ ] `VoteFor` signed by `K_ctrl`; unsigned/forged votes
+      rejected; no peer without the passcode can be elected.
+  **Implementation notes:**
+    - depends on 12.24 (PDR), 12.27 (heartbeat infra)
+    - replaces `leader.rs` entirely — old filesystem lock retired
+    - Carbon glyph: `events--alt` for the leader-status row,
+      `chevron--sort` for the priority/rank surfacing
+    - cross-refs: `docs/design/v12-passcode-anchored-mesh.md § 12.31`,
+      eval gap 9
+
+- [ ] **v4.1+: 12.32 Passcode-sealed enrollment envelope (Tier 1A)**
+  **As** a joining peer behind a NAT the leader cannot reach
+  directly,
+  **I want** my enrollment request to travel the rendezvous as
+  an encrypted envelope the leader polls,
+  **so that** enrollment works across NATs without any peer
+  needing a writable shared filesystem.
+  **Acceptance** (each bullet bench-observable):
+    - [ ] Joiner publishes
+      `EnrollmentRequest { peer_id, peer_pubkey, requested_name }`
+      ChaCha20-Poly1305-encrypted with `K_trans` to topic
+      `BLAKE3(K_rdv || "enroll")`.
+    - [ ] Leader polls that topic, decrypts, validates against
+      `mackesd_core::policy`, publishes signed
+      `EnrollmentResponse { headscale_preauth_key, peer_assigned_ip }`
+      to `BLAKE3(K_rdv || peer_id)` within 30 s.
+    - [ ] Closes the stub at `mackes/mesh_vpn.py:819-829` and the
+      manual inbox-drop at `crates/mackesd/src/bin/mackesd.rs:368`;
+      neither is reachable from any runtime entry point afterward
+      (per `.claude/CLAUDE.md` §0.8 gate 7).
+    - [ ] Invalid passcode → leader cannot decrypt → silently
+      dropped; no oracle for brute-force.
+    - [ ] 16-peer cap rejection arrives as a signed
+      `EnrollmentRejected { reason: AtCapacity }` so the joiner's
+      wizard renders a meaningful error.
+  **Implementation notes:**
+    - depends on 12.24, 12.27, 12.31
+    - new module `crates/mackesd_core/src/enrollment_envelope.rs`
+    - touches `mackes/mesh_vpn.py:819-829` (remove stub) and
+      `crates/mackesd/src/bin/mackesd.rs:368` (remove inbox path)
+    - Carbon glyph: `enterprise` for the enrollment-in-flight row
+    - cross-refs: `docs/design/v12-passcode-anchored-mesh.md § 12.32`,
+      eval gap (architectural inversion)
+
+- [ ] **v4.1+: 12.33 Reachability oath in the SEED wizard (Tier 1A)**
+  **As** a user setting up a new mesh seed,
+  **I want** the wizard to refuse to mint a join link until it
+  has verified my seed is reachable from outside my network,
+  **so that** I am never handed a green checkmark for a mesh that
+  silently doesn't work.
+  **Acceptance** (each bullet bench-observable):
+    - [ ] New step "Verify external reachability" inserted in
+      `mackes/wizard/headscale_setup.py` between
+      `_s_start_headscale` (line 426) and `_s_generate_link`
+      (line 431).
+    - [ ] The step runs: STUN gather (12.25) → UPnP/PCP open
+      (12.30) → 12.26 probe → end-to-end joiner-simulation
+      enrollment via 12.32 against a passcode-authorized probe
+      peer-id. Must return green (4/4) before
+      `_s_generate_link` is reachable.
+    - [ ] On failure, the wizard branches to one of three
+      operator-visible choices: HTTPS-fallback mode (12.30) /
+      Host-mode-on-another-peer (lists viable seeds from the
+      rendezvous) / Manual override (with the explicit warning
+      copy "peers outside this network will not be able to join").
+    - [ ] The four false-green scenarios from the eval report
+      (seed on 192.168.1.x no port forward; seed behind CGNAT;
+      join link with private hostname; joiner behind NAT no UPnP)
+      ALL produce non-green wizard states on the bench rig.
+    - [ ] New `mackes/workbench/network/mesh_control.py` action
+      "Rotate mesh passcode" appears in the panel + works
+      end-to-end (mints a new passcode, re-enrolls every peer).
+  **Implementation notes:**
+    - the user-visible glue for everything above; ships last
+    - depends on 12.25, 12.26, 12.29, 12.30, 12.32
+    - voice-and-tone lint (`install-helpers/lint-voice.sh`) will
+      run on the new wizard strings — keep verbs in the locked
+      table from `docs/design/voice-and-tone.md`
+    - Carbon glyph: `checkmark--filled` for the green-oath row,
+      `warning--alt` for the manual-override branch,
+      `password` for the rotate-passcode action
+    - cross-refs: `docs/design/v12-passcode-anchored-mesh.md § 12.33`,
+      eval gap 10 + the four false-green scenarios
+
 ### KDE Connect (Phase 13 — 25 substeps) — SUPERSEDED by KDC2 (2026-05-22)
 
 > **STATUS: SUPERSEDED.** The Option A wrapper-of-upstream-`kdeconnectd`
