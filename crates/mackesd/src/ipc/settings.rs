@@ -39,14 +39,23 @@ impl SettingsService {
     /// Write a setting by dot-notated key. `value_json` is the
     /// JSON-encoded payload. Routes through `crate::settings::apply()`
     /// which validates value shape, persists, and runs the applier.
-    async fn set(&self, key: &str, value_json: &str) -> zbus::fdo::Result<()> {
-        let parsed_key: crate::settings::SettingKey = key
-            .parse()
-            .map_err(|e| zbus::fdo::Error::InvalidArgs(format!("{e}")))?;
-        let value: crate::settings::SettingValue = serde_json::from_str(value_json)
-            .map_err(|e| zbus::fdo::Error::InvalidArgs(format!("value_json: {e}")))?;
-        crate::settings::apply(parsed_key, &value)
-            .map_err(|e| zbus::fdo::Error::Failed(format!("{e:#}")))
+    /// Emits the [`Self::changed`] signal on success so subscribers
+    /// (workbench panels, the in-process reconcile worker) refresh
+    /// without polling.
+    async fn set(
+        &self,
+        #[zbus(signal_emitter)] emitter: zbus::object_server::SignalEmitter<'_>,
+        key: &str,
+        value_json: &str,
+    ) -> zbus::fdo::Result<()> {
+        apply_set_call(key, value_json)?;
+        // Signal emission failure shouldn't fail the write — the
+        // setting already landed. Log + return Ok so callers (the
+        // workbench DBusBackend) get the success they need.
+        if let Err(e) = Self::changed(&emitter, key).await {
+            tracing::warn!(error = %e, key, "Settings.changed signal emit failed");
+        }
+        Ok(())
     }
 
     /// Enumerate every known setting key (dot-notated string form).
@@ -101,6 +110,20 @@ impl SettingsService {
     ) -> zbus::Result<()>;
 }
 
+/// Validate + apply a `(key, value_json)` pair the way the bus
+/// surface does, minus the SignalEmitter requirement, so unit
+/// tests can exercise the malformed-key / malformed-value paths
+/// without minting a live zbus connection.
+fn apply_set_call(key: &str, value_json: &str) -> zbus::fdo::Result<()> {
+    let parsed_key: crate::settings::SettingKey = key
+        .parse()
+        .map_err(|e| zbus::fdo::Error::InvalidArgs(format!("{e}")))?;
+    let value: crate::settings::SettingValue = serde_json::from_str(value_json)
+        .map_err(|e| zbus::fdo::Error::InvalidArgs(format!("value_json: {e}")))?;
+    crate::settings::apply(parsed_key, &value)
+        .map_err(|e| zbus::fdo::Error::Failed(format!("{e:#}")))
+}
+
 /// Register the [`SettingsService`] on the session bus at the
 /// canonical well-known name + object path. The returned
 /// [`zbus::Connection`] must stay alive for the daemon's lifetime
@@ -145,11 +168,16 @@ mod tests {
         assert!(format!("{err}").contains("unknown setting key"));
     }
 
-    #[tokio::test]
-    async fn set_rejects_malformed_value_json() {
-        let svc = SettingsService::default();
-        let err = svc.set("theme.name", "{not json}").await.unwrap_err();
+    #[test]
+    fn set_rejects_malformed_value_json() {
+        let err = apply_set_call("theme.name", "{not json}").unwrap_err();
         assert!(format!("{err}").contains("value_json"));
+    }
+
+    #[test]
+    fn set_rejects_unknown_setting_key() {
+        let err = apply_set_call("never.a.real.key", "true").unwrap_err();
+        assert!(format!("{err}").contains("unknown setting key"));
     }
 
     #[tokio::test]
