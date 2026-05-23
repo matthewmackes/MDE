@@ -32,6 +32,7 @@ pub mod font;
 pub mod keybinds;
 pub mod notification;
 pub mod power;
+pub mod session;
 pub mod theme;
 pub mod wallpaper;
 
@@ -111,6 +112,16 @@ pub enum SettingKey {
     /// `stretch` / `fit` / `fill` / `center` / `tile`.
     WallpaperMode,
 
+    // --- session ---
+    /// Save the running session (open windows / apps) on logout so
+    /// next login restores them.
+    SessionSaveOnExit,
+    /// Lock the screen automatically when the system suspends.
+    SessionLockOnSuspend,
+    /// Snapshot the running session every N seconds so a crashed
+    /// session can be restored on the next login.
+    SessionAutoSave,
+
     // --- keybinds ---
     /// JSON dict of binding -> command (rendered into
     /// `~/.config/sway/config.d/mackes-bindings.conf`).
@@ -155,6 +166,9 @@ impl SettingKey {
             Self::AutomountAutorun => "automount.autorun",
             Self::WallpaperPath => "wallpaper.path",
             Self::WallpaperMode => "wallpaper.mode",
+            Self::SessionSaveOnExit => "session.save_on_exit",
+            Self::SessionLockOnSuspend => "session.lock_on_suspend",
+            Self::SessionAutoSave => "session.auto_save",
             Self::KeybindsMap => "keybinds.map",
             Self::AutostartHidden => "autostart.hidden",
             Self::AutostartExtra => "autostart.extra",
@@ -192,6 +206,9 @@ impl SettingKey {
             Self::AutomountAutorun,
             Self::WallpaperPath,
             Self::WallpaperMode,
+            Self::SessionSaveOnExit,
+            Self::SessionLockOnSuspend,
+            Self::SessionAutoSave,
             Self::KeybindsMap,
             Self::AutostartHidden,
             Self::AutostartExtra,
@@ -321,6 +338,9 @@ pub fn apply(key: SettingKey, value: &SettingValue) -> anyhow::Result<()> {
         | SettingKey::AutomountOpenOnMount
         | SettingKey::AutomountAutorun => automount::apply(key, value),
         SettingKey::WallpaperPath | SettingKey::WallpaperMode => wallpaper::apply(key, value),
+        SettingKey::SessionSaveOnExit
+        | SettingKey::SessionLockOnSuspend
+        | SettingKey::SessionAutoSave => session::apply(key, value),
         SettingKey::KeybindsMap => keybinds::apply(key, value),
         SettingKey::AutostartHidden | SettingKey::AutostartExtra => autostart::apply(key, value),
     }
@@ -362,6 +382,9 @@ pub fn current(key: SettingKey) -> anyhow::Result<SettingValue> {
         | SettingKey::AutomountOpenOnMount
         | SettingKey::AutomountAutorun => automount::current(key),
         SettingKey::WallpaperPath | SettingKey::WallpaperMode => wallpaper::current(key),
+        SettingKey::SessionSaveOnExit
+        | SettingKey::SessionLockOnSuspend
+        | SettingKey::SessionAutoSave => session::current(key),
         SettingKey::KeybindsMap => keybinds::current(key),
         SettingKey::AutostartHidden | SettingKey::AutostartExtra => autostart::current(key),
     }

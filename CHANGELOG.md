@@ -25,6 +25,17 @@ unreleased; tag versions get a date when they ship.
   alongside the existing `register_fleet_files()` and called
   it from `mackesd serve` (graceful-degrade on
   `NameAlreadyAcquired`).
+* **Session prefs round-trip end-to-end.** The Workbench
+  System → Session panel wrote three booleans
+  (`session.save_on_exit`, `session.lock_on_suspend`,
+  `session.auto_save`) that mackesd's `SettingKey` enum didn't
+  know about, so every Save toast surfaced an "unknown setting
+  key" bus error. Added `SettingKey::SessionSaveOnExit /
+  SessionLockOnSuspend / SessionAutoSave` variants + a
+  `settings::session` applier that persists the three flags to
+  `~/.cache/mde/session-prefs.json` (the Phase F.6 sidecar
+  contract mde-session reads at login). 8 unit tests lock the
+  round-trip + the XDG-cache resolution.
 
 ## 4.0.0 — runtime integration sweep: everything actually works now (2026-05-22)
 
