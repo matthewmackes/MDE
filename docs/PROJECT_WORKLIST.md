@@ -1126,6 +1126,72 @@ above; integration tasks below in dependency order.
   persistence + cross-mesh settings push. Captured as
   AF-2.3.a below.
 
+- [✓] **AF-2.3.a follow-on: backend ipc cleanup (cycles 1-10
+  shipped 2026-05-23)** —
+  Ten-cycle hygiene sweep on the backend ipc layer that
+  AF-2.3.a's workbench-side wiring exposed:
+  - cycle 1: mackesd lint sweep — 3 dead-code warnings dropped
+    (`UNIMPLEMENTED` const, two unused imports).
+  - cycle 2: closed `dev.mackes.MDE.Shell.{healthz,workers}`
+    Phase-A stubs + registered `ShellService` on the session
+    bus from `mackesd serve`.
+  - cycle 3: `HealthReport::compute(&Connection)` reads real
+    `desired_config.applied_revision` + per-`health` row counts
+    from `nodes`. CLI + IPC both use it.
+  - cycle 4: workbench Backend trait gained `healthz()`
+    powered by a new `ShellProxy`; default returns the
+    `EMPTY_HEALTHZ_JSON` baseline.
+  - cycle 5: `Settings.changed` signal emits from `Set` after
+    every successful apply (was declared in Phase A, never
+    fired).
+  - cycle 6: `Fleet.ListRevisions` reads `desired_config` via
+    the hoisted `revisions::list_summaries(conn, limit)` +
+    register_fleet wired into `mackesd serve`.
+  - cycle 7: `Fleet.DiffRevisions` loads two revisions via
+    the new `revisions::load(conn, id)` and runs the existing
+    `revisions::diff()` helper.
+  - cycle 8: mackes-transport lint sweep — 3 dead-code
+    warnings dropped.
+  - cycle 9: workbench Backend trait gained `list_keys` +
+    `snapshot` + `restore` proxies so the full Settings IPC
+    surface is reachable from panels.
+  - cycle 10 (this commit): worklist + CHANGELOG sync +
+    follow-ups below.
+
+- [ ] **AF-2.3.a-follow-1: Fleet.PushRevision wire-up** —
+  Last unclosed Phase-G Fleet stub. Inserts a new
+  `desired_config` row with state=`approved`, kicks the
+  reconcile worker, returns the new `revision_id`. Needs:
+  spec_json validation (parse as
+  `BTreeMap<String,SettingValue>` minimum, schema-version
+  guard), peer-selector grammar (`all` / `region:X` /
+  `node:a,b`), reconcile-worker handle plumbing
+  (Arc<Notify>?). Skip until an operator workflow drives it
+  — `mackesd revisions push` CLI is the bench path today.
+
+- [ ] **AF-2.3.a-follow-2: Fleet.Rollback wire-up** —
+  Same shape as PushRevision: load target revision, copy its
+  spec_json into a new approved row, kick reconcile. Same
+  blocker on the reconcile-handle plumbing.
+
+- [ ] **AF-2.3.a-follow-3: HealthReport live is_leader +
+  audit_chain_intact** — `compute()` leaves both as the
+  baseline defaults (`false` / `true`). Light up once
+  12.3.3 leader-election + 12.6.3 audit-chain `verify()` are
+  reachable from a read-only Connection. Both are
+  store-readable: leader lives in `events` (kind=
+  `leader_promoted`), audit-chain `verify()` walks `events`
+  for hash-chain integrity. Add when the panel needs them.
+
+- [ ] **AF-2.3.a-follow-4: Settings.changed Iced subscription** —
+  Workbench panels now have a signal to subscribe to but no
+  subscription path. Add an `iced::subscription` that opens a
+  long-lived `SettingsProxy` + drains
+  `receive_changed_signal()` into a `Message::SettingChanged(
+  key)` so open panels refresh themselves without polling.
+  Default open: the in-progress fix can land alongside any
+  panel that wants live updates.
+
 - [✓] **AF-2.3.a: mde-workbench backend — settings persistence
   + cross-mesh push (shipped 2026-05-23)** —
   `crates/mde-workbench/src/main.rs` now reuses the

@@ -3,6 +3,41 @@
 All notable user-facing and architectural changes. The current line is
 unreleased; tag versions get a date when they ship.
 
+## Unreleased — AF-2.3.a + backend ipc cleanup
+
+* **Settings.Changed signal emits.** The `dev.mackes.MDE.Settings.Changed`
+  signal was declared on the interface in Phase A but never emitted.
+  `Set` now fires `changed(key)` on every successful apply so
+  workbench panels (and the in-process reconcile worker) can react
+  without polling.
+* **Shell.healthz / Shell.workers actually answer.** Phase-A stubs
+  closed — `healthz()` returns the same JSON the `mackesd healthz`
+  CLI prints, populated via the new
+  `HealthReport::compute(&Connection)` (most-recent applied
+  `revision_id`, per-`health` row counts from `nodes`).
+  `workers()` returns the static supervisor set every `mackesd
+  serve` invocation spawns. ShellService is registered on the
+  session bus alongside the existing Settings + Fleet.Files
+  surfaces.
+* **Fleet.ListRevisions + Fleet.DiffRevisions answer.** Two more
+  Phase-G stubs closed. `list_revisions(limit)` reads
+  `desired_config` rows via the hoisted
+  `mackesd_core::revisions::list_summaries` helper;
+  `diff_revisions(from, to)` loads both rows via the new
+  `revisions::load(&conn, id)` and walks `revisions::diff()`.
+  FleetService registered on the session bus.
+* **Workbench Backend trait — full Settings surface coverage.**
+  Trait gained `healthz()`, `list_keys()`, `snapshot()`,
+  `restore(json)` so panels can drive every IPC method without
+  open-coding `SettingsProxy::new`. DemoBackend defaults return
+  empty/no-op shapes so unit tests stay stateless; DBusBackend
+  delegates to the live proxies.
+* **Lint sweep.** Dropped 6 dead-code warnings across
+  `mackesd` (3) + `mackes-transport` (3): unused imports,
+  the never-reached `UNIMPLEMENTED` const, the `MockTransport.
+  unpaired_peer` field (impl returns a static literal), and
+  `conformance::block_on` (now gated behind `#[cfg(test)]`).
+
 ## Unreleased — AF-2.3.a workbench settings backend
 
 * **Workbench settings actually persist.** `mde-workbench` was
