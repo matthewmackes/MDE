@@ -78,11 +78,31 @@ impl FleetService {
             .map_err(|e| zbus::fdo::Error::Failed(format!("serialize summary: {e}")))
     }
 
-    /// Diff two revisions. Returns a JSON-encoded RevisionDiff.
-    async fn diff_revisions(&self, _from: &str, _to: &str) -> zbus::fdo::Result<String> {
-        Err(zbus::fdo::Error::Failed(
-            "Fleet.DiffRevisions — not implemented until v2.0.0 Phase G".into(),
-        ))
+    /// Diff two revisions. Returns the JSON encoding of one
+    /// [`crate::revisions::RevisionDiff`]. Requires a `db_path`
+    /// bound (the IPC's only way to reach the store); without one,
+    /// returns an empty diff so the workbench's revisions panel
+    /// renders cleanly in a daemon-less test harness.
+    async fn diff_revisions(&self, from: &str, to: &str) -> zbus::fdo::Result<String> {
+        let Some(path) = &self.db_path else {
+            return serde_json::to_string(&crate::revisions::RevisionDiff {
+                from: from.to_owned(),
+                to: to.to_owned(),
+                ..Default::default()
+            })
+            .map_err(|e| zbus::fdo::Error::Failed(format!("serialize empty diff: {e}")));
+        };
+        let conn = crate::store::open(path)
+            .map_err(|e| zbus::fdo::Error::Failed(format!("open store: {e:#}")))?;
+        let from_rev = crate::revisions::load(&conn, from).map_err(|e| {
+            zbus::fdo::Error::Failed(format!("load revision {from}: {e}"))
+        })?;
+        let to_rev = crate::revisions::load(&conn, to)
+            .map_err(|e| zbus::fdo::Error::Failed(format!("load revision {to}: {e}")))?;
+        let diff = crate::revisions::diff(&from_rev, &to_rev)
+            .map_err(|e| zbus::fdo::Error::Failed(format!("diff: {e}")))?;
+        serde_json::to_string(&diff)
+            .map_err(|e| zbus::fdo::Error::Failed(format!("serialize diff: {e}")))
     }
 
     /// Rollback to a given revision (fleet-wide or per-peer based on
@@ -186,5 +206,57 @@ mod tests {
     fn service_name_carries_mde_namespace() {
         assert_eq!(SERVICE_NAME, "dev.mackes.MDE.Fleet");
         assert!(SERVICE_NAME.starts_with("dev.mackes.MDE."));
+    }
+
+    #[tokio::test]
+    async fn diff_revisions_without_db_path_returns_empty_diff() {
+        let svc = FleetService::default();
+        let json = svc.diff_revisions("1", "2").await.expect("ok");
+        let diff: crate::revisions::RevisionDiff = serde_json::from_str(&json).unwrap();
+        assert_eq!(diff.from, "1");
+        assert_eq!(diff.to, "2");
+        assert!(diff.changed.is_empty());
+        assert!(diff.added.is_empty());
+        assert!(diff.removed.is_empty());
+    }
+
+    #[tokio::test]
+    async fn diff_revisions_surfaces_added_and_changed_keys() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let db_path = tmp.path().join("mackesd.db");
+        {
+            let conn = crate::store::open(&db_path).expect("open store");
+            conn.execute(
+                "INSERT INTO desired_config (author, message, spec_json, state, created_at) \
+                 VALUES ('op', 'r1', '{\"k\":\"old\"}', 'applied', '2026-05-23T00:00:00Z')",
+                [],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO desired_config (author, message, spec_json, state, created_at) \
+                 VALUES ('op', 'r2', '{\"k\":\"new\",\"k2\":\"added\"}', 'applied', '2026-05-23T01:00:00Z')",
+                [],
+            )
+            .unwrap();
+        }
+        let svc = FleetService::default().with_db_path(db_path);
+        let json = svc.diff_revisions("1", "2").await.expect("ok");
+        let diff: crate::revisions::RevisionDiff = serde_json::from_str(&json).unwrap();
+        assert_eq!(diff.from, "1");
+        assert_eq!(diff.to, "2");
+        assert_eq!(diff.changed.len(), 1);
+        assert_eq!(diff.added.len(), 1);
+        assert!(diff.removed.is_empty());
+    }
+
+    #[tokio::test]
+    async fn diff_revisions_rejects_unknown_revision_id() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let db_path = tmp.path().join("mackesd.db");
+        crate::store::open(&db_path).expect("open store");
+        let svc = FleetService::default().with_db_path(db_path);
+        let err = svc.diff_revisions("99", "100").await.unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("load revision"), "got: {msg}");
     }
 }

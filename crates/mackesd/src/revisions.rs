@@ -107,6 +107,47 @@ pub fn list_summaries(
     Ok(rows)
 }
 
+/// Load one revision's full payload by id. The `revision_id` arg
+/// is the stringified `desired_config.revision_id` INTEGER (today)
+/// or the `r-YYYY-MM-DD-NNNN` form (post-schema-migration).
+///
+/// # Errors
+///
+/// Returns an error when `revision_id` isn't parseable or no row
+/// matches it in the store.
+pub fn load(conn: &rusqlite::Connection, revision_id: &str) -> rusqlite::Result<Revision> {
+    let rev: i64 = revision_id.parse().map_err(|_| {
+        rusqlite::Error::FromSqlConversionFailure(
+            0,
+            rusqlite::types::Type::Integer,
+            Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("revision id must be an integer (got {revision_id})"),
+            )),
+        )
+    })?;
+    conn.query_row(
+        "SELECT revision_id, author, message, created_at, spec_json \
+         FROM desired_config WHERE revision_id = ?",
+        [rev],
+        |r| {
+            let id: i64 = r.get(0)?;
+            let created: String = r.get(3)?;
+            // Best-effort epoch-ms: parse if it looks ISO-8601, fall
+            // back to 0 so the type still satisfies serde.
+            let created_at_ms =
+                chrono::DateTime::parse_from_rfc3339(&created).map_or(0, |t| t.timestamp_millis());
+            Ok(Revision {
+                id: id.to_string(),
+                author: r.get(1)?,
+                summary: r.get(2)?,
+                created_at: created_at_ms,
+                payload_json: r.get(4)?,
+            })
+        },
+    )
+}
+
 /// Compute a flat diff between two revisions' payloads. Walks the
 /// top-level JSON objects + stringifies values. Sufficient for the
 /// GUI's diff viewer (12.8.3); deep-structure diffs land if needed.
