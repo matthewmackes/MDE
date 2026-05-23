@@ -441,7 +441,8 @@ for helper in \
     add-mackes-repo.sh install-recovery.sh \
     capture-xfce-baseline.sh apply-xfce-baseline.sh \
     configure-lightdm.sh create-mackes-user.sh \
-    mesh-ca-trust.sh register-gvfs-mesh.sh ; do
+    mesh-ca-trust.sh register-gvfs-mesh.sh \
+    sync-user-sway-exec-lines.sh ; do
     install -m 0755 install-helpers/$helper \
         %{buildroot}%{_datadir}/%{name}/install-helpers/
 done

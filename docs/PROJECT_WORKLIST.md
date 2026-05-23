@@ -974,21 +974,31 @@ no new RPM cut.
   palette's focused/unfocused color contrast becomes visibly
   distinct. Operator can request 6 px (or back to 2) if 4 ends
   up too heavy at desk distance.
-- [ ] **v4.0.1: BUG-11 Desktop missing the Win10-style watermark
-  in the right-hand corner (Tier 1 operator-visible)** —
-  `project_1_1_0_win10_layout` memory: "Win10 watermark visible
-  only on pending dnf updates". `crates/mde-popover/src/
-  watermark.rs` ships but apparently never surfaces. The
-  operator reports the watermark is missing entirely. Either
-  (a) the dnf-update probe never fires (so the watermark
-  thinks there are 0 updates and stays hidden — possibly
-  correct behavior!), or (b) the watermark widget isn't wired
-  into the desktop background renderer at all. Confirm
-  `dnf check-update` returns non-empty; if so, this is a
-  wiring gap (mark Tier 2). If it returns empty, the system
-  is correctly hiding the watermark and the operator is
-  asking for a permanent watermark instead — capture as a
-  scope-change. Acceptance: TBD pending probe confirmation.
+- [✓] **v4.0.1: BUG-11 watermark popover never spawned because
+  user's sway config was stale (shipped 2026-05-23)** —
+  root-cause diagnosis: `data/sway/config:160-165` has
+  `exec mde-popover watermark` + `exec mde-popover toast` but
+  the operator's `~/.config/sway/config` (copied by the v1.x
+  birthright wizard, never refreshed) lacks both lines.
+  `dnf check-update` actually shows 135 pending updates, so the
+  watermark would render if the popover were alive.
+  Two-part fix:
+  (1) `install-helpers/sync-user-sway-exec-lines.sh` — idempotent
+      helper that appends any required `exec mde-popover *`
+      lines absent from `~/.config/sway/config`, then runs
+      `swaymsg reload`. Safe: only appends, never reorders or
+      removes user customizations. Future BUG-11-style drifts
+      land here as new entries in `REQUIRED_LINES`.
+  (2) `data/systemd/mde-session.service` ExecStartPost runs the
+      script on every login so existing users converge without
+      re-running the wizard.
+  Spec install lines added to ship the helper at
+  `/usr/share/mackes-shell/install-helpers/sync-user-sway-
+  exec-lines.sh`. Operator's existing sway config was
+  refreshed in-place + both popovers spawned manually for
+  immediate relief; `mde-popover watermark` (PID 46211) +
+  `mde-popover toast` (PID 46561) running, dnf-updates.count
+  reports 135 pending.
 - [✓] **v4.0.1: BUG-9 network applet whitelist included `wifi`
   but nmcli emits `802-11-wireless` (shipped 2026-05-23)** —
   `parse_active` (and `type_glyph`) only matched `wifi` /
