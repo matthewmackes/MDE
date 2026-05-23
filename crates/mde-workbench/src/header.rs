@@ -81,13 +81,15 @@ pub fn view<'a, Message: Clone + 'a>(
     let max_action = on_action(HeaderAction::ToggleMaximize);
     let min_action = on_action(HeaderAction::Minimize);
 
-    let min_glyph = mde_icon(Icon::WindowMinimize, IconSize::Inline).fallback_glyph;
-    let max_glyph = mde_icon(Icon::WindowMaximize, IconSize::Inline).fallback_glyph;
-    let close_glyph = mde_icon(Icon::WindowClose, IconSize::Inline).fallback_glyph;
+    // v4.0.1 BUG-13.c: window controls now route through
+    // `control_button` which prefers `Icon::svg_bytes()` for the
+    // Carbon glyph and falls back to fallback_glyph text only if
+    // the variant isn't baked. WindowMinimize/Maximize/Close all
+    // resolve to Some so the SVG render path always wins today.
     let controls = row![
-        control_button(min_glyph, min_action, palette, false),
-        control_button(max_glyph, max_action, palette, false),
-        control_button(close_glyph, close_action, palette, true),
+        control_button(Icon::WindowMinimize, min_action, palette, false),
+        control_button(Icon::WindowMaximize, max_action, palette, false),
+        control_button(Icon::WindowClose, close_action, palette, true),
     ]
     .spacing(0);
 
@@ -125,18 +127,40 @@ pub fn view<'a, Message: Clone + 'a>(
 /// destructive click reads at-a-glance — the min/max buttons
 /// hover-tint with the indigo accent per Q2.
 fn control_button<'a, Message: Clone + 'a>(
-    glyph: &'a str,
+    icon: Icon,
     on_press: Message,
     palette: Palette,
     accent_close: bool,
 ) -> Element<'a, Message> {
-    let label = text(glyph)
-        .size(16.0)
-        .color(palette.text_muted.into_iced_color())
-        .align_x(alignment::Horizontal::Center)
-        .align_y(alignment::Vertical::Center)
+    let resolved = mde_icon(icon, IconSize::Inline);
+    let muted = palette.text_muted.into_iced_color();
+    let label: Element<'a, Message> = if let Some(svg_bytes) = resolved.svg_bytes() {
+        use iced::widget::svg as widget_svg;
+        widget_svg(widget_svg::Handle::from_memory(svg_bytes))
+            .width(Length::Fixed(16.0))
+            .height(Length::Fixed(16.0))
+            .style(move |_t: &iced::Theme, _s: widget_svg::Status| widget_svg::Style {
+                color: Some(muted),
+            })
+            .into()
+    } else {
+        text(resolved.fallback_glyph)
+            .size(16.0)
+            .color(muted)
+            .align_x(alignment::Horizontal::Center)
+            .align_y(alignment::Vertical::Center)
+            .width(Length::Fixed(CONTROL_WIDTH))
+            .height(Length::Fixed(HEADER_HEIGHT))
+            .into()
+    };
+    // Wrap whatever content we picked in a fixed-size container so
+    // the button width stays predictable regardless of whether
+    // we rendered an SVG or a text fallback.
+    let label = iced::widget::container(label)
         .width(Length::Fixed(CONTROL_WIDTH))
-        .height(Length::Fixed(HEADER_HEIGHT));
+        .height(Length::Fixed(HEADER_HEIGHT))
+        .align_x(alignment::Horizontal::Center)
+        .align_y(alignment::Vertical::Center);
 
     let style = move |_theme: &iced::Theme, status: ButtonStatus| {
         let bg: Color = match status {

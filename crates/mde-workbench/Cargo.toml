@@ -20,7 +20,9 @@ path = "src/main.rs"
 # v2.0.0 Phase E + CB-1 lock: Iced 0.13 is the Wayland-only UI
 # toolkit shared with mde-files / mde-logout-dialog (same feature
 # set so the workspace dep tree stays one resolution).
-iced       = { version = "0.13", default-features = false, features = ["wgpu", "tiny-skia", "tokio", "advanced"] }
+# v4.0.1 BUG-13.c: `svg` so panel_chrome + header can render Carbon
+# glyphs via iced::widget::svg when Icon::svg_bytes() is Some.
+iced       = { version = "0.13", default-features = false, features = ["wgpu", "tiny-skia", "svg", "tokio", "advanced"] }
 # CB-1.13 will land the dev.mackes.MDE.Shell.Workbench.Focus
 # interface; CB-1.1's single-instance handshake already needs the
 # dep so the bus-name constants + RequestNameReply mapping live

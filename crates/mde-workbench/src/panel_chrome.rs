@@ -240,13 +240,30 @@ pub fn empty_state<'a, Message: Clone + 'a>(
     // UX-8 — render the hero icon when set; otherwise reserve
     // the slot as empty space so the body block centers
     // consistently across panels that opt out of the icon.
+    //
+    // v4.0.1 BUG-13.c: prefer the baked Carbon SVG via
+    // `Icon::svg_bytes()` (every variant now resolves to Some).
+    // The Unicode fallback_glyph path stays as a safety net for
+    // any future variant that ships an unbaked Icon.
     let icon_slot: Element<'a, Message> = if let Some(icon) = state.icon {
         let resolved = mde_icon(icon, IconSize::EmptyState);
-        text(resolved.fallback_glyph)
-            .size(resolved.size_px())
-            .color(palette.text_muted.into_iced_color())
-            .align_x(alignment::Horizontal::Center)
-            .into()
+        if let Some(svg_bytes) = resolved.svg_bytes() {
+            use iced::widget::svg as widget_svg;
+            let muted = palette.text_muted.into_iced_color();
+            widget_svg(widget_svg::Handle::from_memory(svg_bytes))
+                .width(Length::Fixed(resolved.size_px()))
+                .height(Length::Fixed(resolved.size_px()))
+                .style(move |_t: &iced::Theme, _s: widget_svg::Status| widget_svg::Style {
+                    color: Some(muted),
+                })
+                .into()
+        } else {
+            text(resolved.fallback_glyph)
+                .size(resolved.size_px())
+                .color(palette.text_muted.into_iced_color())
+                .align_x(alignment::Horizontal::Center)
+                .into()
+        }
     } else {
         Space::with_height(Length::Fixed(EMPTY_ICON_SIZE)).into()
     };

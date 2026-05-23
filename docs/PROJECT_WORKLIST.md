@@ -978,9 +978,9 @@ no new RPM cut.
   `svg_bytes_wired_for_nav_surfaces` (every nav icon must be
   Some) + `svg_bytes_returns_none_for_unwired_variants`
   (Snapshot/Wallpaper/Fonts still fall through).
-- [>] **v4.0.1: BUG-13.c bake every remaining Carbon SVG
-  (shipped 2026-05-23; workbench iced-svg consumer swap
-  pending)** — all 49 `Icon` variants now resolve to
+- [✓] **v4.0.1: BUG-13.c bake every remaining Carbon SVG +
+  workbench consumer swap (shipped 2026-05-23)** —
+  all 49 `Icon` variants now resolve to
   `Some(SVG bytes)`. Beyond the BUG-13.b starter batch this
   added: save (Snapshot), machine-learning-model (Peer), list
   (Logs), rocket (Update), volume-up (Sound), screen (Display),
@@ -997,13 +997,14 @@ no new RPM cut.
   trash-can (Delete), edit (Edit), checkmark (Confirm).
   New test `svg_bytes_wired_for_every_variant` iterates every
   Icon variant + asserts `svg_bytes()` is Some — catches the
-  next-time-we-add-a-variant unwired regression. **Remaining
-  scope** (BUG-13.c continued): add `svg` cargo feature to
-  `crates/mde-workbench/Cargo.toml`, update `header.rs` +
-  `panel_chrome.rs` to prefer `svg::Handle::from_memory(
-  bytes)` over `text(fallback_glyph)` when `svg_bytes()` is
-  Some. Pure consumer-side wiring; no API change. Holding
-  this open as the last v4.0.1 BUG-13 step.
+  next-time-we-add-a-variant unwired regression.
+  **Workbench consumer swap (2026-05-23):**
+  `crates/mde-workbench/Cargo.toml` picked up the iced
+  `svg` feature; `header.rs::control_button` now takes an
+  `Icon` and renders the baked SVG (with text-fallback safety
+  net for any future unbaked variant); `panel_chrome.rs`'s
+  empty-state hero icon resolves the same way. cargo test
+  -p mde-workbench --lib → 493 passed.
 
 - [✓] **v4.0.1: BUG-12 pinned Files+Workbench tiles at top of
   start menu (shipped 2026-05-23)** — `crates/mde-popover/src/
