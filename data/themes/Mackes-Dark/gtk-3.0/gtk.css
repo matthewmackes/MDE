@@ -1,0 +1,246 @@
+/*
+ * Mackes-Dark — GTK3 theme for the LightDM greeter (and any GTK3
+ * surface the operator points at the theme via theme-name=Mackes-Dark).
+ *
+ * v4.0.2 (2026-05-23) — built to satisfy the v4.0.1 Q36 spec lock:
+ * the LightDM greeter must show a Carbon-styled 20 px dark panel
+ * stripe matching the in-session top bar. Before this theme shipped
+ * the greeter borrowed Orchis-Dark (third-party); operators saw a
+ * brand discontinuity from login → desktop. This theme keeps the
+ * widget palette small (greeter-only surfaces: window background,
+ * login form, indicator bar, password input, indicator menus) so
+ * the file size + load latency stay reasonable.
+ *
+ * Palette (Carbon + brand-locked):
+ *   --mde-bg-deep   #0a0a0d  panel + indicator bar background
+ *   --mde-bg-card   #16161a  login form / panel surface
+ *   --mde-bg-hover  #1f1f24  row hover / indicator menu hover
+ *   --mde-fg-text   #f4f4f5  primary text on dark
+ *   --mde-fg-muted  #a8a8b0  secondary text + placeholder
+ *   --mde-accent    #5b6af5  indigo accent — focus + selection
+ *   --mde-border    rgba(255,255,255,0.08)
+ *
+ * The theme deliberately stays close to gtk-defaults for surfaces
+ * the greeter doesn't show (treeviews, menus inside Workbench,
+ * etc.) — the in-session Iced UI carries its own theme so we
+ * don't try to skin every widget here.
+ */
+
+@define-color mde_bg_deep  #0a0a0d;
+@define-color mde_bg_card  #16161a;
+@define-color mde_bg_hover #1f1f24;
+@define-color mde_fg_text  #f4f4f5;
+@define-color mde_fg_muted #a8a8b0;
+@define-color mde_accent   #5b6af5;
+@define-color mde_border   alpha(white, 0.08);
+
+/* ---- Window + base surfaces ---------------------------------- */
+
+window, .background {
+    background-color: @mde_bg_deep;
+    color: @mde_fg_text;
+}
+
+decoration {
+    background-color: @mde_bg_deep;
+    border-radius: 0;
+}
+
+label {
+    color: @mde_fg_text;
+}
+
+/* ---- LightDM greeter panel stripe ---------------------------- */
+/*
+ * The greeter renders its indicator bar as a GtkBox with class
+ * `.lightdm-gtk-greeter` (panel-position=bottom in our config) +
+ * a default class `.panel`. Hit both so a future greeter rewrite
+ * doesn't lose the styling.
+ */
+
+.lightdm-gtk-greeter,
+.panel,
+panel {
+    background-color: @mde_bg_deep;
+    color: @mde_fg_text;
+    border: none;
+    border-top: 1px solid @mde_border;
+    min-height: 20px;
+    padding: 0 6px;
+}
+
+.lightdm-gtk-greeter label,
+.panel label,
+panel label {
+    color: @mde_fg_text;
+    font-weight: 500;
+}
+
+.lightdm-gtk-greeter button,
+.panel button,
+panel button {
+    background: transparent;
+    color: @mde_fg_text;
+    border: none;
+    padding: 2px 8px;
+    border-radius: 3px;
+}
+
+.lightdm-gtk-greeter button:hover,
+.panel button:hover,
+panel button:hover {
+    background-color: @mde_bg_hover;
+}
+
+/* ---- Login form (centre dialog) ----------------------------- */
+
+dialog, messagedialog {
+    background-color: @mde_bg_card;
+    color: @mde_fg_text;
+    border-radius: 8px;
+    border: 1px solid @mde_border;
+}
+
+dialog .titlebar, messagedialog .titlebar,
+headerbar {
+    background-color: @mde_bg_card;
+    color: @mde_fg_text;
+    border-bottom: 1px solid @mde_border;
+    box-shadow: none;
+}
+
+/* ---- Text + password input --------------------------------- */
+
+entry {
+    background-color: @mde_bg_deep;
+    color: @mde_fg_text;
+    border: 1px solid @mde_border;
+    border-radius: 4px;
+    padding: 6px 10px;
+    caret-color: @mde_accent;
+}
+
+entry:focus, entry:focus-within {
+    border-color: @mde_accent;
+    box-shadow: inset 0 -2px 0 0 @mde_accent;
+}
+
+entry placeholder, entry text {
+    color: @mde_fg_muted;
+}
+
+/* ---- Buttons (login, switch user, etc.) -------------------- */
+
+button {
+    background-color: @mde_bg_card;
+    color: @mde_fg_text;
+    border: 1px solid @mde_border;
+    border-radius: 4px;
+    padding: 6px 12px;
+    box-shadow: none;
+}
+
+button:hover {
+    background-color: @mde_bg_hover;
+    border-color: @mde_accent;
+}
+
+button:active, button:checked {
+    background-color: @mde_accent;
+    color: @mde_fg_text;
+    border-color: @mde_accent;
+}
+
+button.suggested-action,
+button.default {
+    background-color: @mde_accent;
+    color: @mde_fg_text;
+    border-color: @mde_accent;
+}
+
+button.suggested-action:hover,
+button.default:hover {
+    background-color: shade(@mde_accent, 1.10);
+}
+
+/* ---- Indicator menus (clock, session, language, a11y, power) - */
+
+popover, menu, .menu {
+    background-color: @mde_bg_card;
+    color: @mde_fg_text;
+    border: 1px solid @mde_border;
+    border-radius: 6px;
+    padding: 4px;
+}
+
+menuitem, .menuitem {
+    color: @mde_fg_text;
+    background: transparent;
+    padding: 6px 12px;
+    border-radius: 3px;
+}
+
+menuitem:hover, .menuitem:hover {
+    background-color: @mde_bg_hover;
+}
+
+menuitem:disabled, .menuitem:disabled {
+    color: @mde_fg_muted;
+}
+
+separator {
+    background-color: @mde_border;
+    min-height: 1px;
+    margin: 4px 0;
+}
+
+/* ---- Combobox + selectors --------------------------------- */
+
+combobox, combobox button,
+combobox entry {
+    background-color: @mde_bg_card;
+    color: @mde_fg_text;
+    border-color: @mde_border;
+}
+
+combobox button:hover {
+    background-color: @mde_bg_hover;
+}
+
+/* ---- Selection markers ------------------------------------ */
+
+selection, *:selected, *:focus:selected {
+    background-color: @mde_accent;
+    color: @mde_fg_text;
+}
+
+/* ---- Tooltips --------------------------------------------- */
+
+tooltip {
+    background-color: @mde_bg_deep;
+    color: @mde_fg_text;
+    border: 1px solid @mde_border;
+    border-radius: 4px;
+    padding: 4px 8px;
+}
+
+/* ---- Spinner + indicator dot ------------------------------ */
+
+spinner {
+    color: @mde_accent;
+}
+
+/* ---- Brand-stripe accent under panel ---------------------- */
+/*
+ * Q36 calls for a 2 px accent line under the panel stripe so the
+ * greeter visually echoes the in-session top bar's bottom border.
+ * GTK CSS can't render a fixed-height bottom strip on the panel
+ * itself reliably across greeter versions, so we drop the
+ * accent on the panel's box-shadow inset which renders behind
+ * any child widgets.
+ */
+.lightdm-gtk-greeter,
+.panel,
+panel {
+    box-shadow: inset 0 -2px 0 0 @mde_accent;
+}

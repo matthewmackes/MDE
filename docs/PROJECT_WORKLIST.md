@@ -2959,17 +2959,31 @@ through them in priority order.
   below since it's a GTK theme bundling task that needs
   visual design coordination.
 
-- [ ] **v4.0.2: ship Mackes-styled GTK greeter theme** —
-  split from the v4.0.1 lightdm-gtk-greeter task on
-  2026-05-23. Greeter currently uses Orchis-Dark (third-
-  party). Q36 spec calls for a Mackes-styled 20 px dark
-  panel stripe matching the in-session top bar. Build
-  involves: (a) author a GTK CSS theme in
-  `data/themes/Mackes-Dark/gtk-3.0/` matching the desktop
-  panel chrome; (b) install via spec; (c) update
-  `configure-lightdm.sh` to set `theme-name=Mackes-Dark`.
-  Acceptance: fresh `dnf install mde && reboot` shows the
-  Carbon-styled panel stripe (not Orchis-Dark).
+- [✓] **v4.0.2: ship Mackes-styled GTK greeter theme (shipped
+  2026-05-23 — pending RPM cut)** — Q36 spec close. New
+  `data/themes/Mackes-Dark/` with:
+    - `index.theme` declaring the metatheme + Mackes-Carbon
+      icon set + Adwaita cursor + `:close` button layout.
+    - `gtk-3.0/gtk.css` (~210 LOC) keyed on the greeter's
+      surface set — `.lightdm-gtk-greeter` + `.panel` get
+      the 20 px Carbon dark stripe with a 2 px indigo
+      accent inset-shadow; login dialog gets the
+      `@mde_bg_card` panel surface; password `entry` gets
+      the indigo focus underline; buttons get accent hover;
+      indicator menus get the matching popover styling.
+      Palette comments lock the 7 Carbon colours.
+    - `gtk-2.0/gtkrc` fallback for any GTK2 indicator
+      plugins legacy lightdm versions surface.
+  Spec gains the install lines copying the theme dir to
+  `%{_datadir}/themes/Mackes-Dark/` + a %files entry so
+  the directory ships in the RPM. `install-helpers/
+  configure-lightdm.sh` flipped `GTK_THEME` from
+  `Orchis-Dark` to `Mackes-Dark` with a code comment
+  explaining the graceful fallback when the theme dir is
+  missing (older RPMs / manual overrides). Acceptance per
+  spec: `dnf install mde && reboot` shows the Carbon
+  panel stripe — actual reboot validation lives under
+  the Hardware Testing epic.
 - [✓] **v4.0.1: Plymouth theme — already shipped (verified
   2026-05-23)** — audit found the work was complete: theme
   directory exists at `data/plymouth/mackes/{mackes.plymouth,

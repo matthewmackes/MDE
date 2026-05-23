@@ -1,0 +1,42 @@
+# Mackes-Dark — GTK2 fallback theme for the LightDM greeter.
+#
+# v4.0.2 (2026-05-23) — minimal companion to gtk-3.0/gtk.css so
+# any GTK2 widget surfaced by the greeter (rare, but legacy
+# indicator plugins still ship them) gets the Carbon dark palette
+# instead of falling through to system defaults.
+#
+# Palette mirrors gtk.css's @define-color values.
+
+gtk-color-scheme = "base_color:#16161a"
+gtk-color-scheme = "bg_color:#0a0a0d"
+gtk-color-scheme = "fg_color:#f4f4f5"
+gtk-color-scheme = "selected_bg_color:#5b6af5"
+gtk-color-scheme = "selected_fg_color:#f4f4f5"
+gtk-color-scheme = "text_color:#f4f4f5"
+gtk-color-scheme = "tooltip_bg_color:#0a0a0d"
+gtk-color-scheme = "tooltip_fg_color:#f4f4f5"
+
+style "default" {
+    fg[NORMAL]      = @fg_color
+    fg[PRELIGHT]    = @fg_color
+    fg[ACTIVE]      = @fg_color
+    fg[SELECTED]    = @selected_fg_color
+    fg[INSENSITIVE] = darker(@fg_color)
+
+    bg[NORMAL]      = @bg_color
+    bg[PRELIGHT]    = shade(1.05, @bg_color)
+    bg[ACTIVE]      = @selected_bg_color
+    bg[SELECTED]    = @selected_bg_color
+    bg[INSENSITIVE] = @bg_color
+
+    base[NORMAL]    = @base_color
+    base[ACTIVE]    = @selected_bg_color
+    base[SELECTED]  = @selected_bg_color
+    base[INSENSITIVE] = @bg_color
+
+    text[NORMAL]    = @text_color
+    text[ACTIVE]    = @selected_fg_color
+    text[SELECTED]  = @selected_fg_color
+    text[INSENSITIVE] = darker(@text_color)
+}
+class "*" style "default"

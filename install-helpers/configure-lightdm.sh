@@ -24,7 +24,16 @@ declare -A ACCENT=(
 ACCENT_HEX="${ACCENT[$PRESET]:-#fa4d56}"
 
 WALLPAPER="/usr/share/mackes-shell/branding/standard-wallpaper.png"
-GTK_THEME="Orchis-Dark"
+# v4.0.2 (2026-05-23) — switched from third-party Orchis-Dark to
+# the in-house Mackes-Dark theme so the LightDM greeter renders
+# with the same Carbon palette + indigo accent the in-session
+# top bar uses. The theme ships at
+# /usr/share/themes/Mackes-Dark via the spec install step (added
+# in v4.0.2). If Mackes-Dark isn't installed (older RPMs, manual
+# overrides), lightdm-gtk-greeter falls back to its compile-time
+# default theme — the greeter still boots, just without the
+# brand stripe.
+GTK_THEME="Mackes-Dark"
 # v4.0.1 Q36: lock requires Carbon glyphs on the greeter for visual
 # continuity with the desktop. Mackes-Carbon is the icon set the
 # Workbench + panel use; pinning it here means the LightDM

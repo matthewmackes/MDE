@@ -384,6 +384,11 @@ cp -r data/systemd        %{buildroot}%{_datadir}/%{name}/data/
 install -d %{buildroot}%{_datadir}/themes
 cp -r data/themes/Orchis-Dark   %{buildroot}%{_datadir}/themes/
 cp -r data/themes/Shiki-Statler %{buildroot}%{_datadir}/themes/
+# v4.0.2 — Mackes-Dark greeter theme (Carbon palette + indigo
+# accent). configure-lightdm.sh sets theme-name=Mackes-Dark so a
+# fresh `dnf install mde && reboot` lands the in-house brand
+# stripe instead of the third-party Orchis fallback.
+cp -r data/themes/Mackes-Dark   %{buildroot}%{_datadir}/themes/
 install -d %{buildroot}%{_datadir}/icons
 cp -r data/icons/Black-Sun     %{buildroot}%{_datadir}/icons/
 cp -r data/icons/Mackes-Carbon %{buildroot}%{_datadir}/icons/
@@ -981,6 +986,10 @@ fi
 # Shiki-Statler provides the classic xfwm4 window borders.
 %{_datadir}/themes/Orchis-Dark/
 %{_datadir}/themes/Shiki-Statler/
+# v4.0.2 — Mackes-Dark greeter theme. configure-lightdm.sh
+# selects this for the LightDM session so the operator sees
+# the Carbon palette + indigo accent stripe at login.
+%{_datadir}/themes/Mackes-Dark/
 # Vendored Black-Sun icon theme (GPL-3.0, github.com/SethStormR/Black-Sun)
 %{_datadir}/icons/Black-Sun/
 # Mackes-Carbon — IBM Carbon Design System symbolic icons (Apache 2.0,

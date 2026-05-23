@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=X-GNOME-Metatheme
+Name=Mackes-Dark
+Comment=Mackes Desktop Environment dark theme — Carbon palette matching the in-session top bar.
+Encoding=UTF-8
+
+[X-GNOME-Metatheme]
+GtkTheme=Mackes-Dark
+MetacityTheme=Mackes-Dark
+IconTheme=Mackes-Carbon
+CursorTheme=Adwaita
+ButtonLayout=:close
