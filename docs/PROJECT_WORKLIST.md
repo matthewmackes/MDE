@@ -2705,14 +2705,23 @@ integration needed.
   **v4.0.1: BUG-8.c per-app schema + grouping** below if
   the operator wants it.
 
-- [ ] **v4.0.1: BUG-8.c per-app schema + collapse-by-app** —
-  needs an `app_id` field added to
-  `mde-applet-notifications::NotificationRow` (writer side:
-  the notification daemon populates it from the DBus
-  source's appname). Then the popover can group by app
-  with a click-to-collapse header. Open until operator
-  asks for inline collapse vs nm-connection-editor-style
-  cards.
+- [✓] **v4.0.1: BUG-8.c per-app schema + collapse-by-app
+  (shipped 2026-05-23)** — Cycle H. Added `app_id: String`
+  (serde-default) to `mde_applet_notifications::NotificationRow`
+  so the notification daemon's writer side can populate the
+  DBus source appname; old snapshots round-trip cleanly via
+  the default empty string. New `group_by_app(rows)` pure
+  helper buckets by `app_id` (empty → "Other"), sorts within
+  each bucket by `created_at` DESC. Notifications popover
+  gained: `GroupMode { Peer, App }` selector wired to a "By
+  app | By peer" toggle button next to ClearAll; per-bucket
+  click-to-collapse via chevron-prefixed header buttons (▼
+  expanded, ▶ collapsed); `collapsed: HashSet<String>` lives
+  for the popover's open lifetime. Mute button is hidden in
+  app-mode (peer-only concept). 4 new lib tests
+  (group_by_app buckets / clusters / emits-Other-only-when-
+  present / app_id round-trip JSON). 17 notifications lib
+  tests + 116 popover tests green.
 - [✓] **v4.0.1: BUG-5 "Window Selector" — closed 2026-05-23 as
   superseded by DOCK-1 + WM-3 (which together deliver the
   fix this entry's diagnosis spelled out)**

@@ -14,8 +14,8 @@ use iced_layershell::reexport::{Anchor, KeyboardInteractivity, Layer};
 use iced_layershell::settings::{LayerShellSettings, Settings};
 use iced_layershell::to_layer_message;
 use mde_applet_notifications::{
-    group_and_sort, is_phone_origin, notifications_cache_path, parse_notifications, visible,
-    NotificationRow,
+    group_and_sort, group_by_app, is_phone_origin, notifications_cache_path,
+    parse_notifications, visible, NotificationRow,
 };
 
 const WIDTH: u32 = 480;
@@ -65,6 +65,20 @@ pub enum Message {
     /// in-memory groups list so muted peers disappear
     /// immediately.
     ToggleMute(String),
+    /// BUG-8.c (2026-05-23) — flip between peer-grouped and
+    /// app-grouped layouts.
+    ToggleGroupMode,
+    /// BUG-8.c — collapse / expand a single group bucket. Key
+    /// is the bucket label (peer name or app_id).
+    ToggleCollapse(String),
+}
+
+/// BUG-8.c — group layout selector. Default is `Peer` so existing
+/// users see the previously-shipped layout without surprise.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GroupMode {
+    Peer,
+    App,
 }
 
 pub struct App {
@@ -74,6 +88,14 @@ pub struct App {
     /// in this set, its group is filtered out of `groups`
     /// before render.
     muted_peers: std::collections::HashSet<String>,
+    /// BUG-8.c — active group-by selector. Survives a single
+    /// popover open; not persisted across sessions (the user
+    /// re-clicks "By app" each time they want it, matching
+    /// nm-connection-editor-style transient view options).
+    group_mode: GroupMode,
+    /// BUG-8.c — bucket keys the user has collapsed. Persists
+    /// for the popover's lifetime. Click the header to flip.
+    collapsed: std::collections::HashSet<String>,
 }
 
 impl iced_layershell::Application for App {
@@ -84,16 +106,15 @@ impl iced_layershell::Application for App {
 
     fn new(_flags: ()) -> (Self, Task<Message>) {
         let muted_peers = load_muted_peers();
-        let all_groups = load_groups();
-        let groups: Vec<_> = all_groups
-            .into_iter()
-            .filter(|(peer, _)| !muted_peers.contains(peer))
-            .collect();
+        let group_mode = GroupMode::Peer;
+        let groups = load_groups_for(group_mode, &muted_peers);
         tracing::info!(group_count = groups.len(), muted = muted_peers.len(), "notifications popover open");
         (
             Self {
                 groups,
                 muted_peers,
+                group_mode,
+                collapsed: std::collections::HashSet::new(),
             },
             Task::none(),
         )
@@ -127,11 +148,26 @@ impl iced_layershell::Application for App {
                     self.muted_peers.insert(peer);
                 }
                 let _ = save_muted_peers(&self.muted_peers);
-                let all = load_groups();
-                self.groups = all
-                    .into_iter()
-                    .filter(|(p, _)| !self.muted_peers.contains(p))
-                    .collect();
+                self.groups = load_groups_for(self.group_mode, &self.muted_peers);
+                Task::none()
+            }
+            Message::ToggleGroupMode => {
+                self.group_mode = match self.group_mode {
+                    GroupMode::Peer => GroupMode::App,
+                    GroupMode::App => GroupMode::Peer,
+                };
+                // Reset collapses on mode flip — the bucket
+                // keys mean different things across modes.
+                self.collapsed.clear();
+                self.groups = load_groups_for(self.group_mode, &self.muted_peers);
+                Task::none()
+            }
+            Message::ToggleCollapse(key) => {
+                if self.collapsed.contains(&key) {
+                    self.collapsed.remove(&key);
+                } else {
+                    self.collapsed.insert(key);
+                }
                 Task::none()
             }
             _ => Task::none(),
@@ -163,13 +199,14 @@ impl iced_layershell::Application for App {
             } else {
                 group_name.clone()
             };
-            let group_label = text(label_text.clone()).size(11).color(FG_MUTED);
-            // BUG-8.b — per-peer Mute button. Stays visible even
-            // when the operator-clicks "Clear all" so they can
-            // pre-mute a peer that's about to start spamming.
-            let peer_for_mute = group_name.clone();
-            let mute_btn: Element<'_, Message> = iced::widget::Button::new(
-                text("Mute").size(10).color(FG_MUTED),
+            // BUG-8.c — collapsed flag drives the chevron glyph
+            // + body visibility.
+            let is_collapsed = self.collapsed.contains(group_name);
+            let chevron = if is_collapsed { "▶" } else { "▼" };
+            let header_label = format!("{chevron}  {label_text}  ({})", rows.len());
+            let collapse_key = group_name.clone();
+            let header_btn: Element<'_, Message> = iced::widget::Button::new(
+                text(header_label).size(11).color(FG_TEXT),
             )
             .padding(Padding {
                 top: 2.0,
@@ -180,40 +217,82 @@ impl iced_layershell::Application for App {
             .style(|_t: &Theme, status: iced::widget::button::Status| {
                 let bg = match status {
                     iced::widget::button::Status::Hovered => Color {
-                        r: 0.18,
-                        g: 0.18,
-                        b: 0.20,
+                        r: 0.14,
+                        g: 0.14,
+                        b: 0.16,
                         a: 1.0,
                     },
                     _ => Color::TRANSPARENT,
                 };
                 iced::widget::button::Style {
                     background: Some(Background::Color(bg)),
-                    text_color: FG_MUTED,
+                    text_color: FG_TEXT,
                     border: Border {
-                        color: Color {
-                            a: 0.12,
-                            ..Color::WHITE
-                        },
-                        width: 1.0,
+                        color: Color::TRANSPARENT,
+                        width: 0.0,
                         radius: 3.0.into(),
                     },
                     shadow: Shadow::default(),
                 }
             })
-            .on_press(Message::ToggleMute(peer_for_mute))
+            .on_press(Message::ToggleCollapse(collapse_key))
             .into();
 
+            // BUG-8.b — per-peer Mute button only makes sense in
+            // peer-grouped mode; hide it in app-grouped mode
+            // (muting "firefox" doesn't have the same wire
+            // semantics — that would be a future BUG-8.d).
+            let mute_btn: Element<'_, Message> = if self.group_mode == GroupMode::Peer {
+                let peer_for_mute = group_name.clone();
+                iced::widget::Button::new(text("Mute").size(10).color(FG_MUTED))
+                    .padding(Padding {
+                        top: 2.0,
+                        right: 8.0,
+                        bottom: 2.0,
+                        left: 8.0,
+                    })
+                    .style(|_t: &Theme, status: iced::widget::button::Status| {
+                        let bg = match status {
+                            iced::widget::button::Status::Hovered => Color {
+                                r: 0.18,
+                                g: 0.18,
+                                b: 0.20,
+                                a: 1.0,
+                            },
+                            _ => Color::TRANSPARENT,
+                        };
+                        iced::widget::button::Style {
+                            background: Some(Background::Color(bg)),
+                            text_color: FG_MUTED,
+                            border: Border {
+                                color: Color {
+                                    a: 0.12,
+                                    ..Color::WHITE
+                                },
+                                width: 1.0,
+                                radius: 3.0.into(),
+                            },
+                            shadow: Shadow::default(),
+                        }
+                    })
+                    .on_press(Message::ToggleMute(peer_for_mute))
+                    .into()
+            } else {
+                Space::with_width(Length::Fixed(0.0)).into()
+            };
+
             let group_header = row![
-                group_label,
+                header_btn,
                 Space::with_width(Length::Fill),
                 mute_btn,
             ]
             .align_y(iced::Alignment::Center);
 
             let mut group_column = column![group_header].spacing(4);
-            for row_data in rows.iter().take(40) {
-                group_column = group_column.push(render_row(row_data));
+            if !is_collapsed {
+                for row_data in rows.iter().take(40) {
+                    group_column = group_column.push(render_row(row_data));
+                }
             }
             list = list.push(group_column);
         }
@@ -277,12 +356,56 @@ impl iced_layershell::Application for App {
             Space::with_width(Length::Fixed(0.0)).into()
         };
 
+        // BUG-8.c — group-mode toggle. Label reflects the
+        // mode the click will switch TO (so "By app" means
+        // currently grouped by peer; clicking flips to app).
+        let mode_label = match self.group_mode {
+            GroupMode::Peer => "By app",
+            GroupMode::App => "By peer",
+        };
+        let mode_btn: Element<'_, Message> =
+            iced::widget::Button::new(text(mode_label).size(11).color(FG_TEXT))
+                .padding(Padding {
+                    top: 3.0,
+                    right: 10.0,
+                    bottom: 3.0,
+                    left: 10.0,
+                })
+                .style(|_t: &Theme, status: iced::widget::button::Status| {
+                    let bg = match status {
+                        iced::widget::button::Status::Hovered => Color {
+                            r: 0.18,
+                            g: 0.18,
+                            b: 0.20,
+                            a: 1.0,
+                        },
+                        _ => Color::TRANSPARENT,
+                    };
+                    iced::widget::button::Style {
+                        background: Some(Background::Color(bg)),
+                        text_color: FG_TEXT,
+                        border: Border {
+                            color: Color {
+                                a: 0.15,
+                                ..Color::WHITE
+                            },
+                            width: 1.0,
+                            radius: 4.0.into(),
+                        },
+                        shadow: Shadow::default(),
+                    }
+                })
+                .on_press(Message::ToggleGroupMode)
+                .into();
+
         let body = column![
             row![
                 header,
                 Space::with_width(Length::Fill),
                 subhead,
                 Space::with_width(Length::Fixed(8.0)),
+                mode_btn,
+                Space::with_width(Length::Fixed(6.0)),
                 clear_btn,
                 Space::with_width(Length::Fixed(8.0)),
                 // v3.0.3 — always-visible close button (Esc still
@@ -418,6 +541,30 @@ fn load_groups() -> Vec<(String, Vec<NotificationRow>)> {
     let rows = parse_notifications(&raw);
     let visible_rows = visible(rows);
     group_and_sort(visible_rows)
+}
+
+/// BUG-8.c — load + group rows for the current `GroupMode`,
+/// filtering muted peers in peer-mode (mute is a peer concept;
+/// app-mode users want the full firehose so they can still see
+/// chatty apps even from muted peers).
+fn load_groups_for(
+    mode: GroupMode,
+    muted_peers: &std::collections::HashSet<String>,
+) -> Vec<(String, Vec<NotificationRow>)> {
+    let path: PathBuf = notifications_cache_path();
+    let raw = match fs::read_to_string(&path) {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+    let rows = parse_notifications(&raw);
+    let visible_rows = visible(rows);
+    match mode {
+        GroupMode::Peer => group_and_sort(visible_rows)
+            .into_iter()
+            .filter(|(peer, _)| !muted_peers.contains(peer))
+            .collect(),
+        GroupMode::App => group_by_app(visible_rows),
+    }
 }
 
 /// BUG-8.b — resolve the mute file path. Returns the canonical

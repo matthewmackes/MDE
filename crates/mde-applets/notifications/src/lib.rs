@@ -63,6 +63,14 @@ pub struct NotificationRow {
     /// snapshots round-trip cleanly.
     #[serde(default)]
     pub origin: String,
+    /// BUG-8.c (v4.0.1, 2026-05-23) — originating app id.
+    /// Populated from the DBus source's appname when the
+    /// notification daemon writes the row. Allows the
+    /// notification center to collapse rows by app. Defaults
+    /// to empty so old snapshots round-trip cleanly; empty
+    /// rows render under an "Other" bucket.
+    #[serde(default)]
+    pub app_id: String,
 }
 
 /// KDC2-5.11 — phone glyph the center prepends to rows whose
@@ -105,6 +113,31 @@ pub fn group_and_sort(rows: Vec<NotificationRow>) -> Vec<(String, Vec<Notificati
     let mut grouped: BTreeMap<String, Vec<NotificationRow>> = BTreeMap::new();
     for r in rows {
         grouped.entry(r.peer.clone()).or_default().push(r);
+    }
+    for (_, list) in grouped.iter_mut() {
+        list.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    }
+    grouped.into_iter().collect()
+}
+
+/// BUG-8.c — group + sort by `app_id`. Rows with empty
+/// `app_id` cluster under `"Other"` so the renderer can always
+/// emit a header. Within each app bucket, sort `created_at`
+/// DESC (newest first) to match the peer-bucket convention.
+/// The first-element tuple is the bucket key (the display
+/// label for the section header); the second element is the
+/// rows in display order.
+#[must_use]
+pub fn group_by_app(rows: Vec<NotificationRow>) -> Vec<(String, Vec<NotificationRow>)> {
+    use std::collections::BTreeMap;
+    let mut grouped: BTreeMap<String, Vec<NotificationRow>> = BTreeMap::new();
+    for r in rows {
+        let key = if r.app_id.is_empty() {
+            "Other".to_string()
+        } else {
+            r.app_id.clone()
+        };
+        grouped.entry(key).or_default().push(r);
     }
     for (_, list) in grouped.iter_mut() {
         list.sort_by(|a, b| b.created_at.cmp(&a.created_at));
@@ -161,6 +194,7 @@ mod tests {
             read,
             dismissed: false,
             origin: String::new(),
+            app_id: String::new(),
         }
     }
 
@@ -300,6 +334,73 @@ mod tests {
             !s.contains(PHONE_ORIGIN_GLYPH),
             "local row must not wear phone glyph",
         );
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // BUG-8.c — per-app grouping
+    // ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn group_by_app_buckets_by_app_id_and_sorts_desc() {
+        let mut rows = vec![
+            make_row("a1", "alpha", "first", 100, false),
+            make_row("a2", "alpha", "second", 200, false),
+            make_row("b1", "beta", "third", 150, false),
+        ];
+        rows[0].app_id = "firefox".into();
+        rows[1].app_id = "firefox".into();
+        rows[2].app_id = "slack".into();
+        let grouped = group_by_app(rows);
+        assert_eq!(grouped.len(), 2);
+        // BTreeMap keys are alphabetical.
+        assert_eq!(grouped[0].0, "firefox");
+        assert_eq!(grouped[1].0, "slack");
+        // Within firefox: newer (200) first.
+        assert_eq!(grouped[0].1.len(), 2);
+        assert_eq!(grouped[0].1[0].id, "a2");
+    }
+
+    #[test]
+    fn group_by_app_clusters_empty_app_ids_into_other() {
+        let rows = vec![
+            make_row("a1", "alpha", "first", 100, false),
+            make_row("b1", "beta", "second", 200, false),
+        ];
+        let grouped = group_by_app(rows);
+        // Both rows have empty app_id → both land in "Other".
+        assert_eq!(grouped.len(), 1);
+        assert_eq!(grouped[0].0, "Other");
+        assert_eq!(grouped[0].1.len(), 2);
+    }
+
+    #[test]
+    fn group_by_app_emits_other_only_when_present() {
+        let mut rows = vec![make_row("a1", "alpha", "first", 100, false)];
+        rows[0].app_id = "firefox".into();
+        let grouped = group_by_app(rows);
+        assert_eq!(grouped.len(), 1);
+        assert_eq!(grouped[0].0, "firefox");
+        // No "Other" bucket because there are no rows lacking
+        // an app_id.
+        assert!(grouped.iter().all(|(k, _)| k != "Other"));
+    }
+
+    #[test]
+    fn app_id_round_trips_through_json() {
+        // BUG-8.c — the parser must pick up app_id when the
+        // notification daemon emits it, but old snapshots
+        // without the field still parse (Option<>-style
+        // default).
+        let raw = r#"[
+            {"id": "n1", "peer": "", "title": "T", "body": "B",
+             "created_at": 1, "read": false, "dismissed": false,
+             "app_id": "firefox"},
+            {"id": "n2", "peer": "", "title": "T", "body": "B",
+             "created_at": 2, "read": false, "dismissed": false}
+        ]"#;
+        let rows = parse_notifications(raw);
+        assert_eq!(rows[0].app_id, "firefox");
+        assert!(rows[1].app_id.is_empty());
     }
 
     #[test]
