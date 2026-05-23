@@ -37,7 +37,8 @@ use crate::panels::{
     printers as printers_panel, remote_desktop as remote_desktop_panel,
     removable as removable_panel, repair as repair_panel,
     resources as resources_panel, run_history as run_history_panel, session as session_panel,
-    snapshots as snapshots_panel, sound as sound_panel, system_update as system_update_panel,
+    snapshots as snapshots_panel, sound as sound_panel,
+    sync_status as sync_status_panel, system_update as system_update_panel,
     themes as themes_panel, vpn as vpn_panel, wallpaper as wallpaper_panel, wifi as wifi_panel,
     window_manager as window_manager_panel,
 };
@@ -167,6 +168,7 @@ pub enum Message {
     MeshTopology(mesh_topology_panel::Message),
     PanelApps(panel_apps_panel::Message),
     RemoteDesktop(remote_desktop_panel::Message),
+    SyncStatus(sync_status_panel::Message),
     /// CB-1.8 partial — Network → Firewall panel sub-message.
     Firewall(firewall_panel::Message),
     /// CB-1.8 partial — Network → Wi-Fi panel sub-message.
@@ -242,6 +244,7 @@ pub struct App {
     mesh_topology: mesh_topology_panel::MeshTopologyPanel,
     panel_apps: panel_apps_panel::PanelAppsPanel,
     remote_desktop: remote_desktop_panel::RemoteDesktopPanel,
+    sync_status: sync_status_panel::SyncStatusPanel,
     firewall: firewall_panel::FirewallPanel,
     wifi: wifi_panel::WifiPanel,
     vpn: vpn_panel::VpnPanel,
@@ -331,6 +334,7 @@ impl App {
             mesh_topology: mesh_topology_panel::MeshTopologyPanel::new(),
             panel_apps: panel_apps_panel::PanelAppsPanel::new(),
             remote_desktop: remote_desktop_panel::RemoteDesktopPanel::new(),
+            sync_status: sync_status_panel::SyncStatusPanel::new(),
             firewall: firewall_panel::FirewallPanel::new(),
             wifi: wifi_panel::WifiPanel::new(),
             vpn: vpn_panel::VpnPanel::new(),
@@ -679,6 +683,7 @@ impl App {
             Message::MeshTopology(msg) => self.mesh_topology.update(msg),
             Message::PanelApps(msg) => self.panel_apps.update(msg),
             Message::RemoteDesktop(msg) => self.remote_desktop.update(msg),
+            Message::SyncStatus(msg) => self.sync_status.update(msg),
             Message::Firewall(msg) => self.firewall.update(msg),
             Message::Wifi(msg) => self.wifi.update(msg),
             Message::Vpn(msg) => self.vpn.update(msg),
@@ -749,6 +754,8 @@ impl App {
             (Group::Network, "mesh_pending") => mesh_pending_panel::MeshPendingPanel::load(),
             // v4.0.1 WB-2.d — load applet visibility from panel.toml.
             (Group::Apps, "panel") => panel_apps_panel::PanelAppsPanel::load(),
+            // v4.0.1 — panel.toml sync-status surface (Look & Feel).
+            (Group::LookAndFeel, "sync_status") => sync_status_panel::SyncStatusPanel::load(),
             // v4.0.1 WB-2.k — peer roster via `mackesd nodes list --json`.
             (Group::Network, "mesh_topology") => mesh_topology_panel::MeshTopologyPanel::load(),
             // v4.0.1 WB-2.j — same pattern for mesh services.
@@ -986,6 +993,13 @@ impl App {
                 group: Group::Apps,
                 panel: "panel",
             } => self.panel_apps.view(),
+            // v4.0.1 (2026-05-23) — Look & Feel → Panel Sync
+            // Status reads panel.toml mtime + mackesd healthz
+            // JSON to surface the mesh-sync state.
+            View::Panel {
+                group: Group::LookAndFeel,
+                panel: "sync_status",
+            } => self.sync_status.view(),
             // v4.0.1 WB-2.e (2026-05-23) — the Maintain → Debloat
             // sidebar entry routes to the same curated-bloat-list
             // panel the Apps → Remove path uses. Two nav paths

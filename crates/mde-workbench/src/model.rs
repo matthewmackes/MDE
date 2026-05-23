@@ -214,6 +214,11 @@ pub fn nav_model() -> Vec<NavEntry> {
                 Panel::new("themes", "Themes"),
                 Panel::new("fonts", "Fonts"),
                 Panel::new("wallpaper", "Wallpaper"),
+                // v4.0.1 (2026-05-23) — panel.toml sync-status
+                // surface. Reads mackesd healthz JSON + the local
+                // panel.toml mtime to surface "synced to revision
+                // N at HH:MM by peer-X" or "drifted by N keys".
+                Panel::new("sync_status", "Panel Sync Status"),
             ],
         },
         NavEntry {

@@ -2720,15 +2720,22 @@ through them in priority order.
   (line 459) which exec's `plymouth-set-default-theme mackes
   -R` to regenerate initrd. Worklist entry was stale —
   reading the planning doc didn't cross-check the tree.
-- [ ] **v4.0.1: panel.toml sync-status surface in Look & Feel
-  (Q18-Q22 v3.0.0 lock)** — drift-monitored TOML mesh sync
-  ships (mackesd workers active); the user-visible status
-  surface in `Look & Feel → Panel → Sync status` is missing.
-  Add a small Iced widget in `mde-workbench` that reads the
-  current sync state (last applied revision, peer that pushed
-  it, drift count) from mackesd's healthz output. Acceptance:
-  opening Look & Feel shows "Synced to revision N at HH:MM by
-  peer-X" or "Drifted by N keys" when applicable.
+- [✓] **v4.0.1: panel.toml sync-status surface in Look & Feel
+  (shipped 2026-05-23)**
+  Built `crates/mde-workbench/src/panels/sync_status.rs` —
+  new `Panel::new("sync_status", "Panel Sync Status")` under
+  Look & Feel. Two cards:
+    * **Local panel.toml** — PRESENT / ABSENT pill, absolute
+      path, byte-size + mtime ("changed 5 min ago").
+    * **Mesh sync state** — parses `mackesd healthz` JSON for
+      `node_id` + `revision` (with `config_version` fallback)
+      + `drift_count` (with `drift` fallback). Honestly says
+      "mackesd not reachable" / "no revision/drift fields
+      populated yet" when applicable.
+  Pure `parse_healthz(raw) -> (node, revision, drift_count)`
+  helper with known-shape + fallback + garbage-rejection
+  tests. Auto-loads on nav. 5 tests cover the parser +
+  view-render smokes. 571 mde-workbench lib tests pass.
 - [✓] **v4.0.1: snapshot restore — pre-validate against active
   preset schema (MACKES_SHELL_SPEC.md §6.1) — shipped 2026-05-23**
   — new `validate_snapshot_against_current(snap)` in

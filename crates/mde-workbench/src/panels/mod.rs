@@ -43,6 +43,7 @@ pub mod run_history;
 pub mod session;
 pub mod snapshots;
 pub mod sound;
+pub mod sync_status;
 pub mod system_update;
 pub mod themes;
 pub mod vpn;
