@@ -438,13 +438,31 @@ neither defect was caught at release time.
   filter + signal-desc sort + signal_bars threshold lock.
   106 mde-popover tests pass (was 102; +4).
 
-- [ ] **AF-NET-1.a: NM D-Bus click-to-connect** — adds per-AP
-  Connect button that invokes
-  `org.freedesktop.NetworkManager.ActivateConnection` (with
-  password prompt for secured nets), plus a `StateChanged`
-  subscription so the popover refreshes live without
-  manual click. Sits inside the existing network popover.
-  Open until operator wants the inline-connect UX.
+- [✓] **AF-NET-1.a: per-AP Connect button via nmcli (shipped
+  2026-05-23) — covers the open-network + saved-profile half;
+  password-prompt UX for secured-new networks stays as
+  AF-NET-1.b.**
+
+  Each Wi-Fi row now has a "Connect" ghost button (when not
+  in_use). Click shells out to `nmcli device wifi connect
+  <ssid>` via iced::Task::perform. The popover's subtitle
+  reflects the status ("connecting to X…" / "connected to X" /
+  "connect failed: <stderr snippet>"). After completion the
+  popover re-scans active connections + devices + APs so the
+  row reflects the new state.
+
+  Works today for: (a) open networks (no security), (b)
+  already-saved profiles (NM uses the stored secret).
+
+- [ ] **AF-NET-1.b: NM password-prompt flow for secured new
+  networks** — when nmcli returns "no secrets" for a fresh
+  WPA2/WPA3 connection, surface an inline password input
+  (text_input with `is_secure(true)`) on the AP row, then
+  retry with `nmcli device wifi connect <ssid> password <X>`.
+  Plus a `StateChanged` D-Bus subscription so other
+  state-change sources (network down, peer connects) refresh
+  the popover live. Open until operator wants the inline
+  password UX vs nm-connection-editor.
 - [ ] **v3.1: dock applet — full inline rendering with icons,
   drag-to-pin, drag-to-reorder** — The current
   `mde-applet-dock --now` emits a text summary

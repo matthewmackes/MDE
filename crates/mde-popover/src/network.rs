@@ -67,6 +67,12 @@ const CARD_BG: Color = Color {
 pub enum Message {
     Refresh,
     OpenNmApplet,
+    /// AF-NET-1.a — connect to the SSID via `nmcli device wifi
+    /// connect <ssid>`. Shells out; popover closes on success
+    /// or surfaces the stderr on failure.
+    ConnectToAp(String),
+    /// AF-NET-1.a — result of a ConnectToAp shellout.
+    ConnectResult { ssid: String, ok: bool, stderr: String },
     Esc,
 }
 
@@ -104,6 +110,9 @@ pub struct App {
     pub active: Vec<ActiveConnection>,
     pub devices: Vec<DeviceRow>,
     pub aps: Vec<AccessPoint>,
+    /// AF-NET-1.a — last connect attempt's outcome banner.
+    /// Empty until the user clicks Connect on a row.
+    pub status_msg: String,
 }
 
 impl iced_layershell::Application for App {
@@ -117,6 +126,7 @@ impl iced_layershell::Application for App {
             active: scan_active_connections(),
             devices: scan_devices(),
             aps: scan_access_points(),
+            status_msg: String::new(),
         };
         (app, Task::none())
     }
@@ -141,6 +151,50 @@ impl iced_layershell::Application for App {
                 let _ = Command::new("nm-connection-editor").spawn();
                 Task::none()
             }
+            Message::ConnectToAp(ssid) => {
+                // Shells `nmcli device wifi connect <ssid>`. Works
+                // for open networks + already-saved profiles
+                // (NM auto-uses the stored secret). Secured
+                // networks without a saved profile return
+                // "no secrets" — the operator falls back to
+                // nm-connection-editor for the password prompt.
+                self.status_msg = format!("connecting to {ssid}…");
+                let s = ssid.clone();
+                iced::Task::perform(
+                    async move {
+                        // Synchronous shell-out wrapped in async
+                        // (no tokio::process dep in mde-popover);
+                        // nmcli's per-connect call is fast enough
+                        // that blocking the small iced thread for
+                        // a few hundred ms is acceptable.
+                        let out = std::process::Command::new("nmcli")
+                            .args(["device", "wifi", "connect", &s])
+                            .output();
+                        match out {
+                            Ok(o) => {
+                                let stderr = String::from_utf8_lossy(&o.stderr).into_owned();
+                                (s, o.status.success(), stderr)
+                            }
+                            Err(e) => (s, false, format!("nmcli spawn: {e}")),
+                        }
+                    },
+                    |(ssid, ok, stderr)| Message::ConnectResult { ssid, ok, stderr },
+                )
+            }
+            Message::ConnectResult { ssid, ok, stderr } => {
+                self.status_msg = if ok {
+                    format!("connected to {ssid}")
+                } else {
+                    let snippet = stderr.lines().next().unwrap_or("").trim();
+                    format!("connect failed: {snippet}")
+                };
+                // Refresh state so the row reflects the new
+                // connection.
+                self.active = scan_active_connections();
+                self.devices = scan_devices();
+                self.aps = scan_access_points();
+                Task::none()
+            }
             Message::Esc => std::process::exit(0),
             _ => Task::none(),
         }
@@ -150,14 +204,17 @@ impl iced_layershell::Application for App {
         let title = text("Network")
             .size(15)
             .color(FG_TEXT);
-        let subtitle = text(format!(
-            "{} active · {} device{}",
-            self.active.len(),
-            self.devices.len(),
-            if self.devices.len() == 1 { "" } else { "s" },
-        ))
-        .size(11)
-        .color(FG_MUTED);
+        let subtitle_text = if self.status_msg.is_empty() {
+            format!(
+                "{} active · {} device{}",
+                self.active.len(),
+                self.devices.len(),
+                if self.devices.len() == 1 { "" } else { "s" },
+            )
+        } else {
+            self.status_msg.clone()
+        };
+        let subtitle = text(subtitle_text).size(11).color(FG_MUTED);
 
         let refresh_btn = button(text("Refresh").size(11).color(FG_TEXT))
             .padding(Padding::from([4u16, 10u16]))
@@ -367,6 +424,19 @@ fn ap_card<'a>(ap: &'a AccessPoint) -> Element<'a, Message> {
     });
     let signal_label = text(format!("{}%", ap.signal)).size(10).color(FG_FAINT);
 
+    // AF-NET-1.a — per-AP Connect button. Hidden for the
+    // currently-connected AP (button reads "ACTIVE" instead).
+    let action: Element<'a, Message> = if ap.in_use {
+        text("ACTIVE").size(10).color(ACCENT).into()
+    } else {
+        let ssid = ap.ssid.clone();
+        button(text("Connect").size(10).color(FG_TEXT))
+            .padding(Padding::from([3u16, 8u16]))
+            .style(|_, status| ghost_btn_style(status))
+            .on_press(Message::ConnectToAp(ssid))
+            .into()
+    };
+
     container(
         row![
             column![title, security].spacing(2),
@@ -374,6 +444,8 @@ fn ap_card<'a>(ap: &'a AccessPoint) -> Element<'a, Message> {
             bars_text,
             Space::with_width(Length::Fixed(4.0)),
             signal_label,
+            Space::with_width(Length::Fixed(8.0)),
+            action,
         ]
         .align_y(iced::alignment::Vertical::Center),
     )
