@@ -1,4 +1,10 @@
 [Desktop Entry]
+# v4.0.1 (2026-05-23): NoDisplay=true. mackes-clipboard is a
+# background daemon (the mesh clipboard sync worker); operators
+# never launch it from the start menu — sway autostart spawns
+# it via the user systemd unit. Hiding it keeps the apps list
+# focused on actual user-launchable surfaces. The .desktop still
+# ships so D-Bus / WM_CLASS associations stay resolvable.
 Type=Application
 Name=Mackes Mesh Clipboard
 GenericName=Distributed clipboard
@@ -6,6 +12,7 @@ Comment=Share clipboard items across every mesh peer (Mackes Shell)
 Exec=mackes-clipboard
 Icon=edit-paste
 Terminal=false
+NoDisplay=true
 StartupNotify=true
 Categories=Utility;System;
 Keywords=clipboard;mesh;mackes;

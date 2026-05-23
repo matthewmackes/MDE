@@ -1062,6 +1062,30 @@ no new RPM cut.
   any one of them directly.
   Acceptance for (a): after a minimize, pressing Super+Shift+M
   brings the window back into view. (b) is tracked under BUG-5.
+- [✓] **v4.0.1: hide platform-internal entries from default
+  start menu (shipped 2026-05-23)** — three MDE-platform
+  `.desktop` files in `data/applications/` gained
+  `NoDisplay=true` so they no longer pollute the all-apps list:
+  (a) `mackes-clipboard.desktop` — background mesh-clipboard
+      daemon, never user-launched.
+  (b) `mackes-shell.desktop` — legacy v1.x "Mackes XFCE
+      Workstation" entry; superseded by `mde.desktop` at v2.0.0.
+  (c) `mde.desktop` — root system entry; end users are already
+      inside MDE, the "Mackes Desktop Environment" tile is
+      meaningless from inside the running DE. The Wizard /
+      Drawer Desktop Actions stay reachable via `gio launch
+      mde.desktop --wizard` for callers that still go that
+      route.
+  Three other MDE internals already had `NoDisplay=true`:
+  `mackes-enforce-session`, `mackes-mesh-uri-handler`,
+  `mackes-panel`. `mde-files` + `mde-workbench` intentionally
+  stay visible — they're real apps end users launch (also
+  pinned at top of the start menu via BUG-12). The start
+  menu's `AppEntry.hidden` flag (set when `NoDisplay=true`
+  OR `Hidden=true`) already filters out hidden entries in
+  the default no-query view; typing a search query bypasses
+  the filter so power-users can still find background
+  components by name.
 - [✓] **v4.0.1: watermark → start-menu footer move (shipped
   2026-05-23)** — operator retired the standalone Win10 watermark
   popover. The Win10 system-identity strip ("MDE X.Y.Z · Fedora

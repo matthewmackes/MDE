@@ -3,6 +3,15 @@
 # mackes-shell.desktop at the v2.0.0 cut; both ship through the
 # one-release backward-compat window so menu entries created by
 # either name resolve.
+#
+# v4.0.1 (2026-05-23): NoDisplay=true. End users are already
+# inside MDE when they look at the start menu; a "Mackes Desktop
+# Environment" tile is meaningless from inside the running DE.
+# The launchable surfaces live behind their own .desktop entries
+# (mde-workbench, mde-files). The Wizard / Drawer Desktop
+# Actions stay on the file for the few callers that still go
+# through `gio launch mde.desktop --wizard`, but the entry no
+# longer pollutes the all-apps list.
 Type=Application
 Name=Mackes Desktop Environment
 GenericName=Settings & Mesh
@@ -10,6 +19,7 @@ Comment=Unified Wayland desktop with mesh-first file sharing, notifications, and
 Exec=mde
 Icon=mde
 Terminal=false
+NoDisplay=true
 Categories=Settings;System;DesktopSettings;
 Keywords=settings;preferences;control;panel;mesh;tailscale;headscale;fleet;ansible;workstation;mde;mackes;
 StartupNotify=true
