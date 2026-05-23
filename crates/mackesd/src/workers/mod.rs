@@ -88,6 +88,7 @@ pub mod heartbeat;
 // kdeconnectd wrapper. The native KDC host worker
 // (`workers::kdc_host`) replaces it in the v2.1+ stack.
 pub mod kdc_host;
+pub mod kdc_inbound;
 pub mod lan_discovery;
 pub mod mdns;
 pub mod media_sync;

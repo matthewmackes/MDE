@@ -8423,6 +8423,126 @@ service. Hosts the `dev.mackes.MDE.Connect.*` D-Bus interface.
   calls the device-aware variant. 4 new policy tests +
   1 dispatch test, 16/16 policy / 6/6 dispatch green.
 
+#### UC — Unified Clipboard backend (v2.1 scope, locked 2026-05-23)
+
+> **Why:** the 2026-05-23 clipboard review surfaced a forked
+> backend: the Python `mackes/clipboard_app.py` + `mesh_sync.py`
+> QNM-bucket pipeline ships fully wired (local copy ↔ mesh peer
+> ↔ local paste, via `~/QNM-Shared/.qnm-sync/clipboard/` +
+> SSHFS-mounted `~/QNM-Mesh/<peer>/`), but the Rust KDC clipboard
+> plugin (`crates/mde-kdc-proto/src/plugins/clipboard.rs`) is dead
+> at runtime — no inbound TLS accept loop, no `kdc_outbound`
+> drain worker, and `ClipboardPlugin` never registered with the
+> host. Result: phone↔desktop clipboard packets go nowhere. UC
+> closes the loop by making both transports write to and read
+> from the same QNM bucket, so a clip from any source (local app,
+> mesh peer, paired phone) reaches every other surface.
+>
+> **Constraint per §0.12:** ships as one coherent landing — all
+> seven sub-tasks reachable from a runtime entry point before
+> `[✓] Done` flips on the workstream. No "data layer now,
+> wiring later" splits. Branch `claude/clipboard-system-review-D4P9s`
+> holds the in-progress tree until end-to-end works.
+
+- [>] **v2.1: UC-1 `ClipboardPlugin::on_received` callback hook**
+  — Add an optional stdlib-only `Box<dyn Fn(&ClipboardBody) +
+  Send + Sync>` callback on `ClipboardPlugin` so the host can
+  mirror inbound clips out-of-band. Existing `take_received()`
+  drain mode stays for tests + the legacy in-memory path. The
+  bridge (UC-7) wires a closure that pushes onto a tokio mpsc
+  Sender. Acceptance: callback fires on each `process()` that
+  successfully decodes a body; passes existing 4 clipboard tests
+  + 2 new callback tests; protocol crate stays tokio-free.
+  **Status 2026-05-23:** code + 3 new tests landed
+  (`crates/mde-kdc-proto/src/plugins/clipboard.rs`); 12/12
+  clipboard tests pass. Stays `[>]` until the UC workstream is
+  runtime-reachable end-to-end per §0.12.
+- [>] **v2.1: UC-2 `PairingStore::find_by_fingerprint`** —
+  Lookup by SHA-256 cert fingerprint (uppercase hex with `:` per
+  `tls::compute_fingerprint`). Server-side TLS accept (UC-3)
+  consumes this to map an accepted connection's presented cert
+  back to its `PairedDevice` record. Acceptance: returns
+  `Some(device)` for a paired fingerprint, `None` for unknown,
+  3 unit tests (hit, miss, multi-device disambiguation).
+  **Status 2026-05-23:** code + 4 lookup tests + 1
+  `host_id()` stability test landed
+  (`crates/mde-kdc/src/pairing.rs`). The `host_id()` helper is
+  a sibling addition needed by UC-4: deterministic 32-hex-char
+  device id derived from the pkcs8 keypair via SHA-256, used
+  as the cert CN at boot. 14/14 pairing tests pass.
+- [>] **v2.1: UC-3 `tls::accept_pinned_tls` server-side** —
+  Mirror of `connect_pinned_tls`: spawns a server-side rustls
+  `TlsAcceptor` with mandatory client-cert auth + a custom
+  `ClientCertVerifier` that validates the client's leaf cert
+  fingerprint against the pairing store via UC-2. Returns
+  `(TlsStream<TcpStream>, PairedDevice)`. Acceptance: loopback
+  test pairs a fake client cert into the store + completes the
+  mutual handshake; mismatched fingerprint surfaces
+  `AcceptError::Untrusted`.
+  **Status 2026-05-23:** code + 8 new tests landed
+  (`crates/mde-kdc/src/tls.rs`): `PinnedClientCertVerifier`,
+  `AcceptError` (Tls/Untrusted/NoPeerCert/BadCertChain),
+  `build_server_config`, `accept_pinned_tls`. Loopback mutual-TLS
+  with rcgen-issued certs proven both for the happy path and
+  for the unpaired-client rejection (server surfaces
+  `AcceptError::Tls`). 18/18 tls tests pass.
+- [>] **v2.1: UC-4 `KdcHost::serve()` inbound accept loop** —
+  Bind `0.0.0.0:1716`, accept TCP, mutual-TLS via UC-3, spawn a
+  per-connection task that reads framed packets via
+  `mde_kdc_proto::codec::FrameDecoder`, runs every packet
+  through `dispatch::check_plugin_allowed`, routes allowed
+  packets through a shared `Arc<Mutex<Registry>>::dispatch`,
+  writes the registry's response packets back via
+  `codec::encode_frame`. Acceptance: loopback inbound test
+  sends a `kdeconnect.clipboard` packet from a fake client →
+  appears on the registered `ClipboardPlugin`'s `take_received`
+  drain; policy denial drops the packet + emits audit entry.
+  **Status 2026-05-23:** code + 3 new tests landed
+  (`crates/mde-kdc/src/transport.rs`): `KdcHost::serve()`,
+  `ServeConfig`, `ServeEvent` (5 variants —
+  Listening/PeerConnected/PeerDisconnected/AcceptRejected/
+  PacketDispatched), per-connection `handle_inbound` reader
+  with FrameDecoder + policy gate + registry dispatch + response
+  write-back. End-to-end loopback proved: fake-phone TLS
+  client → mutual handshake → frame decode → policy gate →
+  Registry dispatch → ClipboardPlugin callback fires with the
+  decoded content. Policy-denial path also verified. 14/14
+  transport tests pass.
+- [>] **v2.1: UC-5 `KdcInboundWorker` registered in mackesd** —
+  New `crates/mackesd/src/workers/kdc_inbound.rs` wraps
+  `KdcHost::serve()` with the existing `Worker` trait +
+  shutdown semantics. Constructed with `Arc<KdcHost>` +
+  `Arc<Mutex<Registry>>` from `KdcHostWorker`. Acceptance:
+  worker starts the listener inside the daemon, exits cleanly
+  on shutdown, port `1716` reachable after `daemon-status`.
+  **Status 2026-05-23:** worker code + event→tracing
+  translator + 3 tests landed (name/shutdown/bind-error). NOT
+  YET registered in `mackesd.rs` — that wiring lands with
+  UC-6 + UC-7 so the registry is fully populated before the
+  listener starts accepting. 3/3 worker tests pass.
+- [ ] **v2.1: UC-6 `KdcOutboundWorker` drains PendingSends** —
+  Closes the long-deferred `KDC2-3.2.a follow-up` (queue drain
+  → KdcHost::open → write framed packet). Per-device connection
+  cache (`HashMap<device_id, KdcTlsConnection>`) so successive
+  sends reuse one TLS session. Acceptance: D-Bus
+  `SendClipboard(device_id, content)` results in
+  `kdeconnect.clipboard` frame on the wire to the named peer;
+  reconnect transparently on stale connection.
+- [ ] **v2.1: UC-7 `KdcClipboardBridge` worker — the unification
+  seam** — The bridge that joins the QNM bucket and the KDC
+  plugin. Two directions: **(a)** the UC-1 callback receives
+  inbound clipboard bodies, the bridge writes them into
+  `~/QNM-Shared/.qnm-sync/clipboard/<ts>_<hash>.txt` via the
+  same `mackes::mesh_sync::put` semantics the Python daemon
+  uses (mirror as a Rust-side `bucket::put`). **(b)** inotify-
+  watches `~/QNM-Shared/.qnm-sync/clipboard/` for new entries;
+  for each new clip, enumerates paired devices whose
+  `capabilities` include `kdeconnect.clipboard` and pushes
+  `OutboundSend { device_id, packet: clipboard_packet(...) }`
+  onto `PendingSends`. Acceptance: end-to-end loopback test —
+  inbound packet → bucket file appears; bucket file write →
+  outbound packet enqueued for each paired peer.
+
 #### KDC2-4.x — Mesh-shunt inside protocol
 
 The v13.0 mesh-mDNS bridge concept survives but moves inside

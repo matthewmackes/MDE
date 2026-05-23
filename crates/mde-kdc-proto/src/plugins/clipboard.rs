@@ -172,32 +172,140 @@ mod tests {
         plugin.process(&bad, &ctx);
         assert_eq!(plugin.pending_count(), 0);
     }
+
+    // ─────────────────────────────────────────────────────────
+    // UC-1 — on_received callback hook
+    // ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn clipboard_plugin_callback_fires_on_decoded_body() {
+        use std::sync::{Arc, Mutex};
+        let observed: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let observed_cb = Arc::clone(&observed);
+        let mut plugin = ClipboardPlugin::with_callback(Box::new(move |body| {
+            observed_cb.lock().unwrap().push(body.content.clone());
+        }));
+        let ctx = PluginContext::new("alice", true);
+        plugin.process(&clipboard_packet(1, "hello from phone".into()), &ctx);
+        plugin.process(&clipboard_packet(2, "and a second one".into()), &ctx);
+        let seen = observed.lock().unwrap();
+        assert_eq!(seen.as_slice(),
+            &["hello from phone".to_string(), "and a second one".to_string()]);
+        // Drain mode still also captures (so host can dedup
+        // against recent history without losing the audit trail).
+        assert_eq!(plugin.pending_count(), 2);
+    }
+
+    #[test]
+    fn clipboard_plugin_callback_skipped_for_malformed_body() {
+        use std::sync::{Arc, Mutex};
+        let observed: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
+        let observed_cb = Arc::clone(&observed);
+        let mut plugin = ClipboardPlugin::with_callback(Box::new(move |_body| {
+            *observed_cb.lock().unwrap() += 1;
+        }));
+        let ctx = PluginContext::new("alice", true);
+        let bad = Packet {
+            id: 1,
+            kind: "kdeconnect.clipboard".to_string(),
+            body: serde_json::json!({"not_content": 42}),
+            mde_caps: None,
+            payload_size: None,
+            payload_transfer_info: None,
+        };
+        plugin.process(&bad, &ctx);
+        assert_eq!(*observed.lock().unwrap(), 0,
+            "callback must not fire when body fails to decode");
+    }
+
+    #[test]
+    fn clipboard_plugin_set_callback_replaces_after_construction() {
+        use std::sync::{Arc, Mutex};
+        let observed: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
+        let observed_cb = Arc::clone(&observed);
+        let mut plugin = ClipboardPlugin::new();
+        plugin.set_callback(Box::new(move |_body| {
+            *observed_cb.lock().unwrap() += 1;
+        }));
+        let ctx = PluginContext::new("alice", true);
+        plugin.process(&clipboard_packet(1, "x".into()), &ctx);
+        assert_eq!(*observed.lock().unwrap(), 1);
+    }
 }
 
 // ────────────────────────────────────────────────────────────────
 // KDC2-2.14 — ClipboardPlugin (Plugin trait impl, adapter pattern)
 // ────────────────────────────────────────────────────────────────
 
+/// Callback fired on every successfully-decoded inbound
+/// clipboard body. The host (`mde-kdc` / `mackesd`) wires a
+/// closure that bridges into the QNM mesh-clipboard bucket;
+/// the protocol crate stays runtime-agnostic — no tokio, no
+/// channel types in the trait signature.
+///
+/// `Send + Sync` so the plugin remains object-safe when held
+/// behind `Box<dyn Plugin>` in the host's `Registry`.
+pub type OnReceived = Box<dyn Fn(&ClipboardBody) + Send + Sync>;
+
 /// `Plugin` impl that mirrors inbound clipboard content.
 ///
 /// Adapter pattern (same as `NotificationPlugin`): the protocol
-/// crate stays pure. Host (`mde-kdc`) drains via
-/// `take_received()` and writes to the local clipboard (via
-/// `wl-copy` on Wayland or equivalent).
-#[derive(Debug, Default)]
+/// crate stays pure. Two consumption modes coexist:
+///
+/// * **Drain mode** (default, used by tests + the legacy in-
+///   memory path): `process()` pushes onto an internal `Vec`;
+///   callers drain via `take_received()`.
+/// * **Callback mode** (production, wired by UC-7): construct
+///   via `with_callback()` — `process()` invokes the closure
+///   inline AND still pushes onto the internal Vec, so a host
+///   that wires a callback can also still observe the drain
+///   (useful for audit + the bridge's deduplication window).
+#[derive(Default)]
 pub struct ClipboardPlugin {
     received: Vec<ClipboardBody>,
     handles: [&'static str; 1],
+    on_received: Option<OnReceived>,
+}
+
+impl std::fmt::Debug for ClipboardPlugin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ClipboardPlugin")
+            .field("received_len", &self.received.len())
+            .field("handles", &self.handles)
+            .field("on_received", &self.on_received.as_ref().map(|_| "<fn>"))
+            .finish()
+    }
 }
 
 impl ClipboardPlugin {
-    /// New empty plugin.
+    /// New empty plugin in drain mode (no callback).
     #[must_use]
     pub fn new() -> Self {
         Self {
             received: Vec::new(),
             handles: ["kdeconnect.clipboard"],
+            on_received: None,
         }
+    }
+
+    /// New plugin with an inbound-mirror callback. The callback
+    /// fires before the body is pushed onto the internal drain
+    /// queue, so the host can react synchronously without
+    /// polling `take_received()`.
+    #[must_use]
+    pub fn with_callback(on_received: OnReceived) -> Self {
+        Self {
+            received: Vec::new(),
+            handles: ["kdeconnect.clipboard"],
+            on_received: Some(on_received),
+        }
+    }
+
+    /// Replace the existing callback (or set one on a previously
+    /// callback-less plugin). Used when the host wires the
+    /// bridge channel after construction.
+    pub fn set_callback(&mut self, on_received: OnReceived) {
+        self.on_received = Some(on_received);
     }
 
     /// Drain every received clipboard body.
@@ -228,6 +336,9 @@ impl crate::plugins::Plugin for ClipboardPlugin {
         _ctx: &crate::plugins::PluginContext,
     ) -> Vec<crate::wire::Packet> {
         if let Ok(body) = from_packet_body::<ClipboardBody>(packet) {
+            if let Some(cb) = &self.on_received {
+                cb(&body);
+            }
             self.received.push(body);
         }
         Vec::new()

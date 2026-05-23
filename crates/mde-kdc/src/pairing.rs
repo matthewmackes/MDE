@@ -194,6 +194,29 @@ impl PairingStore {
         &self.identity
     }
 
+    /// UC-4 — stable host-side `deviceId` for the KDC wire
+    /// protocol's identity packet + cert CN. Derived
+    /// deterministically from the pkcs8 keypair bytes
+    /// (SHA-256, truncated to 16 bytes, lower-case hex) so it
+    /// stays stable across restarts without a separate
+    /// persisted file. Mirrors stock KDE Connect's 32-char
+    /// hex `deviceId` shape.
+    ///
+    /// Stable invariant: regenerating the identity (new
+    /// keypair) yields a new host id, which the wire protocol
+    /// expects (a new keypair is observationally a new device
+    /// from the peer's point of view).
+    #[must_use]
+    pub fn host_id(&self) -> String {
+        use sha2::{Digest, Sha256};
+        let digest = Sha256::digest(self.identity.pkcs8_bytes());
+        digest[..16].iter().fold(String::with_capacity(32), |mut s, b| {
+            use std::fmt::Write;
+            let _ = write!(s, "{b:02x}");
+            s
+        })
+    }
+
     /// Total number of paired devices. Cheap.
     #[must_use]
     pub fn paired_count(&self) -> usize {
@@ -248,6 +271,33 @@ impl PairingStore {
             .values()
             .cloned()
             .collect()
+    }
+
+    /// UC-2 — Look up a paired device by its cert fingerprint
+    /// (the upper-case-hex SHA-256 of the cert DER, with `:`
+    /// separators, exactly the format `tls::compute_fingerprint`
+    /// produces).
+    ///
+    /// The inbound TLS accept path (UC-3) uses this to map an
+    /// accepted client's leaf cert back to its `PairedDevice`
+    /// record. Comparison is case-insensitive on the hex bytes —
+    /// the store canonically stores upper-case, but defensive
+    /// folding lets a future caller pass a value derived from a
+    /// different formatter without silently mismatching.
+    ///
+    /// Returns the first match if multiple devices share the
+    /// same fingerprint (which shouldn't happen — each device
+    /// generates its own keypair — but defending the lookup
+    /// against duplicates costs one extra comparison).
+    #[must_use]
+    pub fn find_by_fingerprint(&self, fingerprint: &str) -> Option<PairedDevice> {
+        let target = fingerprint.to_ascii_uppercase();
+        self.devices
+            .lock()
+            .expect("pairing-store mutex poisoned")
+            .values()
+            .find(|d| d.fingerprint.to_ascii_uppercase() == target)
+            .cloned()
     }
 
     /// Where the store lives on disk. Used by tests + diagnostics.
@@ -508,6 +558,93 @@ mod tests {
             .unwrap();
         assert_eq!(store.paired_count(), 1);
         assert!(store.get("from-arc").is_some());
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // UC-2 — find_by_fingerprint lookup for inbound TLS accept
+    // ─────────────────────────────────────────────────────────
+
+    fn make_paired(id: &str, fingerprint: &str) -> PairedDevice {
+        PairedDevice {
+            id: id.into(),
+            name: id.into(),
+            kind: "phone".into(),
+            fingerprint: fingerprint.into(),
+            public_key_b64: "AA==".into(),
+            capabilities: vec!["kdeconnect.clipboard".into()],
+            paired_at: 1_700_000_000,
+            last_seen_at: 1_700_000_500,
+        }
+    }
+
+    #[test]
+    fn find_by_fingerprint_returns_paired_device_on_match() {
+        let tmp = tempdir().unwrap();
+        let store = PairingStore::open_or_init(tmp.path()).unwrap();
+        store
+            .upsert(make_paired("alice", "AB:CD:EF:01:23:45"))
+            .unwrap();
+        store
+            .upsert(make_paired("bob", "11:22:33:44:55:66"))
+            .unwrap();
+        let hit = store
+            .find_by_fingerprint("AB:CD:EF:01:23:45")
+            .expect("alice's fingerprint must resolve");
+        assert_eq!(hit.id, "alice");
+    }
+
+    #[test]
+    fn find_by_fingerprint_returns_none_for_unknown() {
+        let tmp = tempdir().unwrap();
+        let store = PairingStore::open_or_init(tmp.path()).unwrap();
+        store.upsert(make_paired("alice", "AB:CD:EF")).unwrap();
+        assert!(store.find_by_fingerprint("ZZ:ZZ:ZZ").is_none());
+        assert!(store.find_by_fingerprint("").is_none());
+    }
+
+    #[test]
+    fn find_by_fingerprint_is_case_insensitive() {
+        let tmp = tempdir().unwrap();
+        let store = PairingStore::open_or_init(tmp.path()).unwrap();
+        store.upsert(make_paired("alice", "AB:CD:EF")).unwrap();
+        // Stored uppercase; lookup with lowercase must hit.
+        let hit = store.find_by_fingerprint("ab:cd:ef").expect("case fold");
+        assert_eq!(hit.id, "alice");
+    }
+
+    #[test]
+    fn find_by_fingerprint_disambiguates_against_other_devices() {
+        let tmp = tempdir().unwrap();
+        let store = PairingStore::open_or_init(tmp.path()).unwrap();
+        store.upsert(make_paired("alice", "AA:BB")).unwrap();
+        store.upsert(make_paired("bob", "CC:DD")).unwrap();
+        store.upsert(make_paired("carol", "EE:FF")).unwrap();
+        assert_eq!(
+            store.find_by_fingerprint("CC:DD").map(|d| d.id),
+            Some("bob".to_string()),
+        );
+        assert_eq!(
+            store.find_by_fingerprint("EE:FF").map(|d| d.id),
+            Some("carol".to_string()),
+        );
+    }
+
+    #[test]
+    fn host_id_is_32_hex_chars_and_stable() {
+        let tmp = tempdir().unwrap();
+        let store = PairingStore::open_or_init(tmp.path()).unwrap();
+        let id = store.host_id();
+        assert_eq!(id.len(), 32, "host id must be 32 hex chars, got {id:?}");
+        assert!(
+            id.chars().all(|c| c.is_ascii_hexdigit()),
+            "host id must be all hex chars",
+        );
+        // Stable across calls.
+        assert_eq!(store.host_id(), id);
+        // Stable across re-open with the same identity.pem.
+        drop(store);
+        let store2 = PairingStore::open_or_init(tmp.path()).unwrap();
+        assert_eq!(store2.host_id(), id);
     }
 
     #[test]
