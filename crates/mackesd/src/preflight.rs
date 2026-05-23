@@ -37,7 +37,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use crate::path_safety::{PathError, PathPolicy};
+use crate::path_safety::PathPolicy;
 
 /// One check outcome row, ordered as it appears in the Send-To
 /// dialog list.

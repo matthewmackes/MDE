@@ -18,7 +18,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -234,6 +234,4 @@ mod tests {
         p
     }
 
-    #[allow(dead_code)]
-    fn _ensure_path_unused(_: &Path) {} // path import used in signatures only
 }

@@ -390,11 +390,6 @@ pub fn current(key: SettingKey) -> anyhow::Result<SettingValue> {
     }
 }
 
-/// Common "not yet implemented" error returned by every Phase A
-/// applier stub. Phase C replaces the stub bodies, at which point
-/// this constant becomes unused (and the lint will catch any drift).
-pub(crate) const UNIMPLEMENTED: &str = "applier not implemented until v2.0.0 Phase C";
-
 /// v2.0.0 Phase G.2 — apply every (key, value_json) pair from a
 /// fleet revision. Returns one `ApplyOutcome` per pair so callers
 /// (the reconcile loop, the Workbench Fleet panel) can render
