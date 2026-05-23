@@ -1089,6 +1089,50 @@ no new RPM cut.
   palette's focused/unfocused color contrast becomes visibly
   distinct. Operator can request 6 px (or back to 2) if 4 ends
   up too heavy at desk distance.
+- [ ] **v4.0.1: BUG-16 reverse BUG-6 — restore per-window controls
+  to MS Windows standard location (top-right of each window),
+  free the panel center for Desktop Layout buttons (Tier 1
+  operator-visible)** — operator reversed the BUG-6 decision
+  after living with the centered min/max/close cluster: the
+  Windows 11 standard (per-window title-bar controls, top-right
+  corner) is what most users have muscle memory for, and
+  centralizing window chrome on the panel conflicts with sway's
+  multi-window-per-workspace model. New layout:
+  (a) Per-window controls move OUT of the panel center back to
+      the title bar of each managed window. Sway needs
+      `default_border normal <px>` instead of `pixel` so the
+      title bar renders, with min/max/close glyphs drawn via
+      sway's per-window button area. Alternative if sway native
+      title bars don't compose well with the rest of the
+      design: keep `default_border pixel 4` (per BUG-10) but
+      add an `mde-window-controls` layer-shell overlay that
+      pins three buttons to the top-right of the focused
+      window, tracking the toplevels subscription.
+  (b) Panel center gets `mde-applet-desktop-layout` — a small
+      cluster of buttons that select a tile layout for the
+      current workspace. Win11-inspired Snap Layouts:
+      single (1 fullscreen), vertical-split (2 side-by-side),
+      grid-4 (2×2), main+sidebar (60/40), tabbed. Click a
+      button → swayipc applies the layout to the current
+      workspace's windows. Glyphs are Carbon SVG icons mirroring
+      Snap Layouts' visual vocabulary.
+  Per the iteration skill's design-criteria pass (Phase 0.8
+  added 2026-05-23), the visual treatment should incorporate
+  the Win11 + Ableton influence locks:
+  - Rounded 6-8 px button corners (Win11 Fluent 2.0).
+  - Single accent color across the cluster (Q2 indigo from
+    visual-identity.md).
+  - Compact dense layout (Ableton-style: minimal whitespace,
+    parameter-display feel).
+  - Hover micro-animations (140 ms ease per UX-9).
+  Acceptance:
+  - Min/max/close buttons render at top-right of every managed
+    window (not on the panel).
+  - Panel center shows ≥3 Desktop Layout buttons; clicking one
+    re-tiles the focused workspace.
+  - Visual treatment matches the locked Win11/Ableton hybrid
+    chrome described above.
+
 - [✓] **v4.0.1: BUG-15 minimize button sends windows into the
   scratchpad with no recovery path (captured 2026-05-23)** —
   operator reports clicking the minimize button on the panel's
