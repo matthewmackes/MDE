@@ -569,7 +569,7 @@ dependency sweep.
   click popover gets the same toggle + zombie-reap path as the
   other popovers. 24 mde-popover tests green (was 16 + 8 admin-
   menu tests inherited from the move).
-- [ ] **v3.0.3: icon_mapper popover on dock right-click (Tier 2
+- [!] **v3.0.3: icon_mapper popover (BLOCKED on dock-applet right-click refresh) on dock right-click (Tier 2
   E.19 wiring + depends on dock applet right-click support)** —
   coordinate with v3.1 dock applet work. When a dock entry is
   right-clicked, open a small popover listing builtin Carbon
@@ -646,7 +646,7 @@ dependency sweep.
   attribution footer. Shows "Weather loading…" before the
   first fetch lands. 14 weather tests come along from the move;
   51 mde-popover tests total.
-- [ ] **v3.0.3: dock_dnd integration with dock applet (Tier 2
+- [!] **v3.0.3: dock_dnd integration (BLOCKED on dock-applet drag-recognition refresh) with dock applet (Tier 2
   E.9 wiring + depends on dock applet drag recognition)** —
   coordinate with v3.1 dock applet work. The applet adds Iced
   drag-source on tasklist entries + drop-target on pinned strip;
@@ -750,7 +750,7 @@ above; integration tasks below in dependency order.
   v3.0.3 to keep the runtime-wiring sweep moving. Acceptance:
   grep mackesd journal for a single correlation_id yields all
   log lines from one full tick + nothing from other ticks.
-- [ ] **v3.0.3: 12.17 wire STUN candidate gathering into the
+- [!] **v3.0.3: 12.17 wire STUN (BLOCKED on TransportRegistry having concrete Transport impls) candidate gathering into the
   transport handshake (Tier 3 mackesd::stun)** — `mackesd/src/stun.rs`
   ships an RFC 5389/8489 STUN client but nothing in `transport/`
   or `workers/mesh_router.rs` calls it. Wire `gather_candidates()`
@@ -760,7 +760,7 @@ above; integration tasks below in dependency order.
   one STUN binding response per probe; the resulting
   server-reflexive candidate appears in `peer_path.rs::candidates`
   before any DERP fallback.
-- [ ] **v3.0.3: 12.18 wire HTTPS-tunneled fallback activation
+- [!] **v3.0.3: 12.18 wire HTTPS (BLOCKED on TransportRegistry having concrete Transport impls)-tunneled fallback activation
   (Tier 3 mackesd::https_fallback)** — `mackesd/src/https_fallback.rs`
   ships the policy layer (3-failed-cycle activation rule, etc.)
   but the transport supervisor never consults it. Wire the failure
@@ -793,7 +793,7 @@ above; integration tasks below in dependency order.
   rendering with metadata) is a v4.0.1 follow-up — the math + the
   Iced widget composition are separate workstreams, and the math
   was the dead-code item.
-- [ ] **v3.0.3: 2.3 close DBusBackend deferral by lifting model
+- [!] **v3.0.3: 2.3 close DBusBackend (BLOCKED on Phase G model::{Peer,SelfNode,FileRow} migration off `&'static str`) deferral by lifting model
   fields from `&'static str` (Tier 2 mde-files::dbus_backend +
   Phase G model migration)** — the deferral note explicitly
   blames `model::{Peer,SelfNode,FileRow}` for using `&'static str`
@@ -820,7 +820,7 @@ above; integration tasks below in dependency order.
   expand, details close / copy-path, context menu submenu) follow
   the same pattern incrementally per v4.0.1 — the dead-code item
   (the labels table) is now reachable.
-- [ ] **v3.0.3: KDC2-3.3 wire the D-Bus host scaffold to
+- [!] **v3.0.3: KDC2-3.3 wire (BLOCKED on KDC2-3.4..3.6/3.9 method bundle in the KDC2 epic) the D-Bus host scaffold to
   concrete methods (Tier 2 mde-kdc::dbus + KDC2-3.4/3.5/3.6/3.9
   bundle)** — the scaffold acquires
   `dev.mackes.MDE.Connect` but exposes no methods. Per §0.12 this
@@ -833,7 +833,7 @@ above; integration tasks below in dependency order.
   dev.mackes.MDE.Connect ListDevices` returns the actual paired
   device list; signal subscription via `busctl --user monitor`
   shows DeviceAdded when a phone pairs.
-- [ ] **v3.0.3: KDC2-2.8 wire TLS handshake into KDC host
+- [!] **v3.0.3: KDC2-2.8 wire (BLOCKED on KDC host transport refactor in the KDC2 epic) TLS handshake into KDC host
   transport (Tier 2 mde-kdc::tls)** — `tls.rs` ships the
   fingerprint-pinning helper but the KDC host transport never
   uses it (currently bypasses TLS or uses a different path).

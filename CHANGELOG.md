@@ -3,6 +3,136 @@
 All notable user-facing and architectural changes. The current line is
 unreleased; tag versions get a date when they ship.
 
+## 4.0.0 — runtime integration sweep: everything actually works now (2026-05-22)
+
+The headline change: MDE's v3 line shipped most features as
+helpers + tests that were never wired into the runtime. A live
+operator session on 2026-05-22 hit four user-visible bugs ("start
+menu won't close", "notification panel won't close", "missing
+window management buttons", "right-click on the start menu does
+not work") that all traced back to the same root cause — 13 of
+18 mde-panel modules were marked `[✓] shipped` but never
+referenced from `update()`/`view()`. The v3.0 cut shipped Iced
+panel chrome where most of the panel was placeholder text.
+
+v4.0.0 is "the version where everything actually works." 16
+integration commits closed every dead-code module the audit
+surfaced, wired the 6 unspawned mackesd workers, codified the
+no-stubs rule (`§0.12`) + runtime-reachability gate
+(`§0.8 gate 7`) that would have caught the gap, and added a
+worklist-rescue Phase 0 to the iteration loop so it can't
+recur.
+
+### Headline (operator-visible)
+
+* **Popovers actually close.** Toggle dedup on the panel side
+  (clicking a tray icon a second time closes the existing
+  popover instead of stacking a new one), zombie reaping (no
+  more 18 defunct `mde-popover` processes after a session),
+  visible × close button in every popover header, Esc still
+  works via keyboard subscription. Bug fix for "start menu
+  won't close" + "notifications panel won't close" + the
+  underlying spawn-and-leak infrastructure problem.
+* **Window-management buttons in the panel.** Min / max / close
+  cluster between the tray and the clock. Min routes to sway
+  scratchpad-hide; max toggles floating-fill (not fullscreen)
+  per the v8.7 lock; close fires `swaymsg kill`. Greyed out
+  when no toplevel is focused.
+* **Right-click on the M button opens the admin menu.** Custom
+  `mouse_area` wrap (Iced's built-in `button` is left-click
+  only — this was the exact gap). 9 admin actions across 5
+  sections (Shells / Packages / Services / Security / Storage)
+  route through pkexec per the v2.0.3 polkit lock.
+* **Focused-window hero in the panel.** Left of the tray, with
+  the 280ms slide animation per the v1.1.0 Win10 layout lock.
+* **F3 opens an exposé grid.** Fullscreen layer-shell overlay
+  with one card per top-level window; click to focus.
+* **Super+V opens the clipboard history popover.** Reads the
+  mesh-synced JSON file populated by mackesd's clipboard
+  worker (now actually spawned). Click an entry to copy it
+  back to the local clipboard; fires a toast confirming.
+* **Toasts.** Long-running render surface tails
+  `~/.cache/mde/toasts.jsonl`; emit sites append JSON. First
+  in-tree producer: clipboard popover Copy. Stack of 3 with
+  FIFO eviction.
+* **Bottom-right Win10-style watermark.** Visible only when
+  `dnf check-update --quiet` reports pending updates; click
+  fires `pkexec dnf upgrade -y`. Polls every 4 hours.
+* **Clock popover shows a calendar + a weather column.** Weather
+  fetched via `curl https://wttr.in/?format=j1` every 30 min.
+* **mde-files toolbar search filters the visible rows.** Grid-
+  layout helpers also now consumed at render time.
+* **Drawer renders real brightness + volume sliders.** Bound
+  to brightnessctl + pactl via the existing helper math.
+
+### Headline (architectural)
+
+* **mackesd async supervisor spawns 6 Phase B workers** —
+  clipboard, mdns, fs_sync, heartbeat, mesh_router (with
+  empty bootstrap state), notification_relay. Each gets
+  `RestartPolicy::OnFailure`. The legacy reconcile worker
+  continues on its own std::thread alongside.
+* **wlr-foreign-toplevel subscription via swaymsg** — the
+  panel observes every sway top-level via `swaymsg -t
+  subscribe -m '["window"]'`. Drives the hero widget + window
+  buttons + (future) tasklist.
+* **Structured tracing context** — `LogContext::fresh()` at
+  daemon startup attaches correlation_id + node_id to every
+  log line via a tracing span. Per-tick correlation IDs land
+  in v4.0.1.
+* **§0.12 no-stubs rule** codified in `.claude/CLAUDE.md`.
+  Never commit `pub mod foo;` that no other file references;
+  never commit `Kind::Foo => exit 0` stubs; every commit ships
+  fully complete code reachable from a runtime entry point.
+* **§0.8 Definition-of-Done gate 7: runtime reachability.**
+  A worklist item is not `[✓]` until at least one runtime
+  entry point invokes one of its public functions. The grep
+  test is the same one the worklist-rescue Phase 0 runs.
+
+### Worklist hygiene
+
+* **22 misleading `[✓] shipped` entries re-cued to `[>] In
+  Progress`** during the audit + later closed by integration
+  commits in this release.
+* **3 pure-doc scaffold directories deleted** (`mackesd::deploy`,
+  `mackesd::service`, panel `layer_shell.rs`). They were
+  reserving directory layout for "future submodules" — exactly
+  the pattern §0.12 forbids.
+* **`root_menu.rs` retired** after wireability investigation —
+  swaybg owns the wallpaper, no clean event hook exists, and
+  all four root_menu actions are already exposed via
+  Workbench / mde-files / `xdg-open ~/QNM-Shared`.
+* **iteration skill gained Phase 0** — the worklist-rescue
+  pipeline now runs before any iteration commit so the loop
+  can't add dead modules on top of a rotten foundation.
+
+### Known-blocked deferrals
+
+These v3.0.3 items are blocked on larger architecture work
+that owns its own epic; they ship in v4.1+ as their respective
+epics close:
+
+* **icon_mapper popover** — blocked on dock-applet right-click
+  refresh.
+* **dock_dnd integration** — blocked on dock-applet drag
+  recognition refresh.
+* **12.17 STUN candidate gathering / 12.18 HTTPS-tunneled
+  fallback wiring** — blocked on `TransportRegistry` having
+  concrete `Transport` impls (transport-architecture work).
+* **mde-files DBusBackend `impl Backend`** — blocked on Phase G
+  `model::{Peer,SelfNode,FileRow}` migration off
+  `&'static str` fields.
+* **KDC2-3.3 dbus methods** — blocked on the KDC2-3.4..3.9
+  bundle in the KDC2 epic (`docs/PROJECT_WORKLIST.md` §KDC2).
+* **KDC2-2.8 TLS wiring into KDC host** — blocked on KDC host
+  transport refactor in the same epic.
+
+### Audit doc
+
+Full inventory + dependency-ordered integration plan +
+process retro at
+[`docs/V3_RUNTIME_INTEGRATION_AUDIT.md`](docs/V3_RUNTIME_INTEGRATION_AUDIT.md).
+
 ## 3.0.1 — KDC2 native re-implementation + v3 cut (2026-05-22)
 
 (Tagged v3.0.1 rather than v3.0.0 — the v3.0.0 git tag was
