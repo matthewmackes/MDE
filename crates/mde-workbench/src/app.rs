@@ -20,7 +20,8 @@ use crate::model::{view_from_focus_slug, Group, View};
 use crate::panels::{
     apps_install as apps_install_panel, apps_installed as apps_installed_panel,
     apps_remove as apps_remove_panel, apps_sources as apps_sources_panel,
-    datetime as datetime_panel, default_apps as default_apps_panel, displays as displays_panel,
+    connect as connect_panel, datetime as datetime_panel,
+    default_apps as default_apps_panel, displays as displays_panel,
     firewall as firewall_panel, fleet_revisions as fleet_revisions_panel,
     fleet_settings as fleet_settings_panel, fonts as fonts_panel, inventory as inventory_panel,
     logs as logs_panel, mesh_history as mesh_history_panel, mesh_join as mesh_join_panel,
@@ -187,6 +188,9 @@ pub struct App {
     displays: displays_panel::DisplaysPanel,
     sound: sound_panel::SoundPanel,
     printers: printers_panel::PrintersPanel,
+    /// v4.0.1 WB-1 — Connected Devices panel state. Hosts the
+    /// paired-peer list + per-row action handlers.
+    connect: connect_panel::ConnectPanel,
     inventory: inventory_panel::InventoryPanel,
     playbooks: playbooks_panel::PlaybooksPanel,
     run_history: run_history_panel::RunHistoryPanel,
@@ -257,6 +261,7 @@ impl App {
             displays: displays_panel::DisplaysPanel::new(),
             sound: sound_panel::SoundPanel::new(),
             printers: printers_panel::PrintersPanel::new(),
+            connect: connect_panel::ConnectPanel::new(),
             inventory: inventory_panel::InventoryPanel::new(),
             playbooks: playbooks_panel::PlaybooksPanel::new(),
             run_history: run_history_panel::RunHistoryPanel::new(),
@@ -651,6 +656,11 @@ impl App {
             (Group::Devices, "displays") => displays_panel::DisplaysPanel::load(self.backend()),
             (Group::Devices, "sound") => sound_panel::SoundPanel::load(),
             (Group::Devices, "printers") => printers_panel::PrintersPanel::load(),
+            // v4.0.1 WB-1 (Phase 0.7 rescue): Connected Devices
+            // panel. Real D-Bus subscription wiring chains on
+            // KDC2-3.9 signals; the panel.load() returns
+            // Task::none today.
+            (Group::Devices, "connect") => connect_panel::ConnectPanel::load(),
             (Group::Fleet, "inventory") => inventory_panel::InventoryPanel::load(),
             (Group::Fleet, "playbooks") => playbooks_panel::PlaybooksPanel::load(),
             (Group::Fleet, "run_history") => run_history_panel::RunHistoryPanel::load(),
@@ -811,6 +821,10 @@ impl App {
                 group: Group::Devices,
                 panel: "printers",
             } => self.printers.view(),
+            View::Panel {
+                group: Group::Devices,
+                panel: "connect",
+            } => self.connect.view(),
             View::Panel {
                 group: Group::Fleet,
                 panel: "inventory",

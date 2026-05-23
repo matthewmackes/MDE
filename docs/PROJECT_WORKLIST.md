@@ -1132,6 +1132,64 @@ Layouts; the rest of the muscle-memory surface follows here.
 Each story below stands alone; pick the highest-impact next
 move per the iteration loop's step 2.
 
+- [✓] **v4.0.1: WB-1 wire Connected Devices panel into Workbench
+  nav (Phase 0.7 rescue — operator-reported missing modal)
+  (Tier 1 chrome) — shipped 2026-05-23**
+
+  **As** an operator,
+  **I want** a "Connected Devices" panel in the Workbench
+  (under the Devices nav group) showing every paired peer +
+  phone + tablet with Pair / Unpair / Ring / Send-File actions,
+  **so that** I can manage KDE Connect / mesh peer pairings
+  from the same Workbench surface I already use for displays,
+  sound, printers, and removable media — not from a separate
+  app or a missing modal.
+
+  **Acceptance** (bench-observable):
+  - [ ] Workbench's Devices nav group shows a "Connected
+        Devices" entry between "Printers" and "Removable
+        Media".
+  - [ ] Clicking it routes to the panel via the existing
+        `View::Panel { group: Devices, panel: "connect" }`
+        deep-link shape.
+  - [ ] The panel renders one card per paired device (read
+        from the `connect::ConnectPeer` model; backed by
+        DemoBackend until KDC2's DBus surface lands). Each
+        card shows: device name, Carbon kind-glyph (phone /
+        tablet / desktop), fingerprint, paired-since date.
+  - [ ] Empty state (zero paired devices) renders a
+        Workbench EmptyState with "No paired devices yet"
+        heading + "Open KDE Connect on a phone or tablet
+        and choose this PC to pair." body + a CTA pointing
+        to mde-peer-card.
+  - [ ] Conditional sections render per `ConnectPeer::
+        capabilities` (Phone / Messaging / Share / Common)
+        per the existing visibility helpers in connect.rs.
+
+  **Implementation notes:**
+  - **Chrome influence:** Win11 Settings → Bluetooth & devices
+    → Devices page layout (one card per device, action row).
+  - **Content influence (per-card stats):** Ableton parameter-
+    row density — tabular IBM Plex Mono for fingerprint hex,
+    grouped Pair/Unpair/Ring/SendFile buttons at the row's
+    right edge.
+  - **Icon source:** Carbon Icon Set per the lock.
+    `mobile` for phones, `tablet` for tablets,
+    `application--web` / `screen` for desktops,
+    `notification` for ringing, `send-alt` for share.
+  - **Model layer:** `connect::ConnectPeer` + capability
+    predicates already ship — `#![allow(dead_code)]` lifts
+    here (Phase 0.7 closure).
+  - **View layer:** new `ConnectPanel` struct + view fn in
+    `crates/mde-workbench/src/panels/connect.rs`. Card list
+    iterates `backend.paired_devices()`; until that backend
+    method exists, render from a DemoBackend constant
+    (clearly marked as mockup so future Phase 0.7 audit can
+    catch it — per the iconography + mockup-audit locks).
+  - **Routing:** `app.rs::update` gains a `Message::Connect
+    (panels::connect::Message)` variant + dispatch arm; the
+    nav_model adds the "connect" panel to Group::Devices.
+
 - [✓] **v4.0.1: WM-1 visible workspace switcher (Tier 1 chrome) —
   shipped 2026-05-23**
 

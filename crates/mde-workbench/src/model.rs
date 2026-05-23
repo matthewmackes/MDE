@@ -186,6 +186,16 @@ pub fn nav_model() -> Vec<NavEntry> {
                 Panel::new("sound", "Sound"),
                 Panel::new("printers", "Printers"),
                 Panel::new("removable", "Removable Media"),
+                // v4.0.1 WB-1 (Phase 0.7 rescue 2026-05-23):
+                // wire the Connected Devices surface that
+                // crates/mde-workbench/src/panels/connect.rs
+                // has been shipping in #![allow(dead_code)]
+                // form since KDC2-5.4..5.7. The previous nav
+                // model retired the standalone panel in favor
+                // of mde-peer-card — that produced a missing-
+                // modal report from the operator, so the
+                // Workbench surface is back.
+                Panel::new("connect", "Connected Devices"),
             ],
         },
         NavEntry {
