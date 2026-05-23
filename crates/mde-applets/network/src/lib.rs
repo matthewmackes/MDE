@@ -31,6 +31,16 @@ pub struct ActiveConnection {
 /// Parse the first active wifi/ethernet connection out of
 /// nmcli's colon-separated active-connection list.
 /// Returns `None` when no connection is active.
+///
+/// v4.0.1 BUG-9: `nmcli connection show --active` reports the
+/// connection.type column using the IEEE/NM technical names —
+/// `802-11-wireless` for Wi-Fi and `802-3-ethernet` for wired —
+/// NOT the short names like `wifi` or `ethernet`. The original
+/// whitelist (`wifi`/`802-3-ethernet`/`ethernet`) silently dropped
+/// every active Wi-Fi connection so the chip showed "Disconnected"
+/// even when wlp2s0 was associated. The aliases stay in the
+/// whitelist so older NM versions / `nmcli device` paths that emit
+/// the short names continue to match.
 #[must_use]
 pub fn parse_active(raw: &str) -> Option<ActiveConnection> {
     for line in raw.lines() {
@@ -42,7 +52,7 @@ pub fn parse_active(raw: &str) -> Option<ActiveConnection> {
             continue;
         }
         let kind = parts[1];
-        if kind != "wifi" && kind != "802-3-ethernet" && kind != "ethernet" {
+        if !is_real_iface_kind(kind) {
             continue;
         }
         return Some(ActiveConnection {
@@ -53,12 +63,27 @@ pub fn parse_active(raw: &str) -> Option<ActiveConnection> {
     None
 }
 
+/// Connection-type allow-list for what counts as "the network the
+/// user sees in the chip". Excludes loopback, vpn, bridge, etc. —
+/// those don't represent the upstream-internet path.
+#[must_use]
+pub const fn is_real_iface_kind(kind: &str) -> bool {
+    matches!(
+        kind.as_bytes(),
+        b"wifi"
+            | b"802-11-wireless"
+            | b"802-3-ethernet"
+            | b"ethernet"
+    )
+}
+
 /// Glyph for a connection type. The host paints the actual
 /// icon; the text is for fallback + accessibility.
 #[must_use]
 pub const fn type_glyph(kind: &str) -> &'static str {
     match kind.as_bytes() {
-        b"wifi" => "\u{25EF}",                         // large circle = wifi-ish glyph
+        // v4.0.1 BUG-9: include `802-11-wireless` alongside `wifi`.
+        b"wifi" | b"802-11-wireless" => "\u{25EF}", // large circle = wifi-ish glyph
         b"802-3-ethernet" | b"ethernet" => "\u{2261}", // ≡ = ethernet
         _ => "?",
     }
@@ -121,9 +146,23 @@ mod tests {
     #[test]
     fn type_glyph_maps_wifi_and_ethernet() {
         assert_eq!(type_glyph("wifi"), "\u{25EF}");
+        // v4.0.1 BUG-9: nmcli's IEEE name for Wi-Fi.
+        assert_eq!(type_glyph("802-11-wireless"), "\u{25EF}");
         assert_eq!(type_glyph("ethernet"), "\u{2261}");
         assert_eq!(type_glyph("802-3-ethernet"), "\u{2261}");
         assert_eq!(type_glyph("vpn"), "?");
+    }
+
+    #[test]
+    fn parse_active_extracts_802_11_wireless() {
+        // v4.0.1 BUG-9 — operator's `nmcli connection show --active`
+        // emits "802-11-wireless" for the Wi-Fi connection-type
+        // column; the original whitelist dropped this and the chip
+        // showed "Disconnected" even when wlp2s0 was associated.
+        let raw = "FRANKS-REDHOTS:802-11-wireless:wlp2s0:activated\nlo:loopback:lo:activated\n";
+        let c = parse_active(raw).unwrap();
+        assert_eq!(c.name, "FRANKS-REDHOTS");
+        assert_eq!(c.kind, "802-11-wireless");
     }
 
     #[test]

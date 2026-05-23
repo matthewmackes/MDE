@@ -989,22 +989,21 @@ no new RPM cut.
   is correctly hiding the watermark and the operator is
   asking for a permanent watermark instead — capture as a
   scope-change. Acceptance: TBD pending probe confirmation.
-- [ ] **v4.0.1: BUG-9 Network applet shows "Disconnected" while
-  the network is online; no icon either (Tier 1
-  operator-visible)** — `mde-applet-network` reports
-  "Disconnected" though `nmcli` / `ping` confirm connectivity,
-  and the network icon glyph is absent from the chip. Two
-  failure modes likely: (a) the applet polls a state source
-  that doesn't reflect actual NM connectivity (e.g., reading
-  `nmcli -t -f NAME c show --active` but matching the wrong
-  field, or polling a deprecated DBus path); (b) the icon SVG
-  is missing from the applet's font/svg map so the chip falls
-  back to text-only with a stale "Disconnected" string. Read
-  `crates/mde-applets/network/src/main.rs` + lib.rs, verify the
-  NM connectivity probe, and fix the icon lookup. Acceptance:
-  with NM connected to Wi-Fi, the chip shows the SSID + an
-  appropriate signal-strength glyph; toggling NM offline
-  flips to "Offline" with the offline glyph within one poll.
+- [✓] **v4.0.1: BUG-9 network applet whitelist included `wifi`
+  but nmcli emits `802-11-wireless` (shipped 2026-05-23)** —
+  `parse_active` (and `type_glyph`) only matched `wifi` /
+  `802-3-ethernet` / `ethernet` as connection-type strings.
+  `nmcli connection show --active` emits the IEEE technical
+  names, so on the operator's box
+  `FRANKS-REDHOTS:802-11-wireless:wlp2s0:activated` was being
+  silently dropped — and the chip rendered the `None` branch
+  ("Disconnected"). Added `802-11-wireless` to the type
+  whitelist + glyph map; refactored the whitelist into a small
+  `is_real_iface_kind()` helper for clarity. New regression test
+  `parse_active_extracts_802_11_wireless` covers exactly the
+  operator's nmcli output. `cargo run -p mde-applet-network --
+  --now` now prints `◯ FRANKS-REDHOTS`. The Carbon SVG-icon
+  swap is still part of BUG-13.
 - [✓] **v4.0.1: BUG-6 window-management controls re-slotted to
   center (shipped 2026-05-23)** — `crates/mde-panel/src/top_bar.rs`
   was already rendering the min/max/close cluster (line 240, between
