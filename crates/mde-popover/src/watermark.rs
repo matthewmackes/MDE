@@ -338,10 +338,15 @@ pub fn run() -> iced_layershell::Result {
             keyboard_interactivity: KeyboardInteractivity::None,
             // Don't reserve compositor space — we're just chrome.
             exclusive_zone: 0,
-            // Variable size, fits whatever the rendered line needs.
-            // Letting iced_layershell auto-size keeps the surface
-            // tight to the text.
-            size: None,
+            // v4.0.1 fix (2026-05-23): explicit size cap. While the
+            // watermark is corner-anchored (Bottom | Right) which
+            // SHOULD auto-fit, leaving size=None hits the same
+            // iced_layershell fallback the toast stack tripped over
+            // when render_line() is empty (zero pending updates →
+            // 1x1 widget → fullscreen surface allocation). Capping
+            // at 280x32 keeps the surface tight to the longest line
+            // we ship ("MDE 4.0.1 · fc44 · build-XXX · 999 pending").
+            size: Some((280, 32)),
             ..Default::default()
         },
         ..Default::default()

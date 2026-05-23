@@ -420,12 +420,21 @@ pub fn run() -> iced_layershell::Result {
             // Top layer so toasts sit above the panel + over any
             // normal window. Bottom-center anchor: 48px above the
             // panel's 40px exclusive zone.
+            //
+            // v4.0.1 fix (2026-05-23): explicit `size` instead of
+            // None. `Anchor::Bottom` alone (no left/right) stretches
+            // the surface full-screen-width with auto-height; when
+            // the stack is empty the 1x1 dummy widget inside leaves
+            // the rest as a giant blank surface covering every
+            // window. Bounding the surface at 360x200 keeps stacks
+            // of up to 3 toasts inside one pill, centered on the
+            // bottom edge, with no fullscreen fallback when empty.
             layer: Layer::Top,
             anchor: Anchor::Bottom,
             margin: (0, 0, 48, 0),
             keyboard_interactivity: KeyboardInteractivity::None,
             exclusive_zone: 0,
-            size: None,
+            size: Some((360, 200)),
             ..Default::default()
         },
         ..Default::default()
