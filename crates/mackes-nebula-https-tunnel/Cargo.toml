@@ -1,0 +1,49 @@
+[package]
+name        = "mackes-nebula-https-tunnel"
+description = "NF-1 — TCP/443 covert transport for the v2.5 Nebula fabric. Wraps Nebula UDP frames in a long-lived rustls TLS 1.3 stream with ALPN h2/http/1.1 + 4-byte length-prefixed framing; byte-indistinguishable from an HTTP/2 long-poll to a passive observer. Ships the listener + dialer + framing layer + activation state machine + server-side UDS demux helper."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+
+[lib]
+name = "mackes_nebula_https_tunnel"
+path = "src/lib.rs"
+
+[dependencies]
+# rustls 0.23 with ring — matches the workspace's existing TLS
+# stack (mde-kdc + mackesd::transport::https443 both pin the same
+# pair). default-features = false because we don't want the
+# aws-lc-rs alternative provider; ring is the audit-locked one.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring"] }
+# PEM parsing for the server-cert / server-key / ca-bundle paths
+# the listen() + dial() entry points consume. Transitively
+# present in the workspace already (mde-kdc pulls it via
+# tokio-rustls); declaring it explicitly here so the crate's
+# dependency surface is self-documenting.
+rustls-pemfile = "2"
+
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "net", "io-util", "macros", "sync", "time", "fs"] }
+bytes = "1"
+
+tracing = "0.1"
+
+[dev-dependencies]
+# Self-signed cert generation for the framing + handshake +
+# throughput integration tests. Same version mackesd and mde-kdc
+# pin so the workspace builds with one rcgen copy.
+rcgen = "0.13"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "test-util", "io-util", "net", "time", "fs"] }
+tempfile = "3"
+
+[features]
+# NF-1.6 — throughput floor test. Off by default so CI doesn't
+# allocate the 100 MB working set on every PR. Enable with
+# `cargo test -p mackes-nebula-https-tunnel --features bench`.
+bench = []
+
+[lints]
+workspace = true
