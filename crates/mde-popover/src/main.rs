@@ -30,6 +30,7 @@ mod clock;
 mod dismiss;
 mod expose;
 mod fonts;
+mod icon_mapper;
 mod minimized;
 mod network;
 mod notifications;
@@ -101,6 +102,13 @@ enum Kind {
     /// quadrants); targets the focused sway window. Bound to
     /// `bindsym $mod+z exec mde-popover snap-assist`.
     SnapAssist,
+    /// v3.0.3 E.19 — icon-mapper glyph picker. Reads target
+    /// via MDE_ICON_MAPPER_APP_ID env var; writes the picked
+    /// Carbon glyph to ~/.local/share/applications/
+    /// <app>.desktop's X-MDE-Icon= line. Spawned via the
+    /// "Customize Icon..." entry on the WM-3 window-actions
+    /// popover.
+    IconMapper,
 }
 
 fn main() -> iced_layershell::Result {
@@ -130,5 +138,6 @@ fn main() -> iced_layershell::Result {
         Kind::AppSwitcher => app_switcher::run(),
         Kind::WindowActions => window_actions::run(),
         Kind::SnapAssist => snap_assist::run(),
+        Kind::IconMapper => icon_mapper::run(),
     }
 }

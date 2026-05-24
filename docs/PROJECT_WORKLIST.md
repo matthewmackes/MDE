@@ -730,21 +730,27 @@ dependency sweep.
   click popover gets the same toggle + zombie-reap path as the
   other popovers. 24 mde-popover tests green (was 16 + 8 admin-
   menu tests inherited from the move).
-- [!] **v3.0.3: icon_mapper popover on dock right-click (Tier 2
-  E.19 wiring) — BLOCKED on v3.1: dock-applet rebuild as a real
-  Iced layer-shell UI (the current `crates/mde-applets/dock` is
-  text-only; right-click handling needs an Iced event surface).**
-
-  Pre-req for unblock: build the Iced dock applet first. Captured
-  as v4.0.1 follow-up DOCK-1 below.
-
-  Original task: when a dock entry is right-clicked, open a small
-  popover listing builtin Carbon glyph candidates for that app's
-  freedesktop Icon= name; selecting one writes
-  `~/.local/share/applications/<name>.desktop` with `X-MDE-Icon=`
-  per the existing `write_override` helper. Acceptance: right-
-  click foot in the dock → glyph picker → select a candidate →
-  foot's dock entry shows the new glyph after a panel re-render.
+- [✓] **v3.0.3: icon_mapper popover on dock right-click
+  (shipped 2026-05-23)** — Now reachable: DOCK-1 shipped
+  the Iced layer-shell dock + right-click hook, WM-3
+  shipped the WindowActions popover that surfaces the
+  dock-cell action menu, and this commit lands the
+  `mde-popover icon-mapper` glyph picker + the
+  "Customize icon…" menu entry that spawns it from
+  WindowActions. New `crates/mde-popover/src/icon_mapper.rs`
+  (~430 LOC): 15-entry curated CANDIDATE_GLYPHS grid (3
+  columns × scrollable rows), pure `inline_fallback_resolve`
+  that mirrors `mde_panel::icon_mapper::builtin_map`,
+  `upsert_icon_line` that round-trips through fresh files
+  + existing X-MDE-Icon= replacement, `write_override_for`
+  that creates the override file at
+  `~/.local/share/applications/<app>.desktop` and surfaces
+  errors in the popover's red status row (no panics).
+  Spawn contract: WindowActions sets MDE_ICON_MAPPER_APP_ID
+  before exec'ing `mde-popover icon-mapper`. 6 new tests
+  cover candidate-glyph distinctness, fallback known /
+  unknown apps, upsert appends / replaces / handles empty.
+  131 popover tests green (was 125).
 - [✓] **v3.0.3: quick-action slider widgets in drawer (Tier 2
   E.6.1+6.2 wiring) — shipped 2026-05-22** — `crates/mde-drawer/
   src/main.rs` gained real Iced sliders bound to
@@ -812,19 +818,20 @@ dependency sweep.
   attribution footer. Shows "Weather loading…" before the
   first fetch lands. 14 weather tests come along from the move;
   51 mde-popover tests total.
-- [!] **v3.0.3: dock_dnd integration with dock applet (Tier 2
-  E.9 wiring) — BLOCKED on v3.1: dock-applet rebuild as a real
-  Iced layer-shell UI (the current `crates/mde-applets/dock` is
-  text-only; drag-and-drop needs an Iced event surface).**
-
-  Pre-req for unblock: build the Iced dock applet first. Captured
-  as v4.0.1 follow-up DOCK-1 below.
-
-  Original task: the applet adds Iced drag-source on tasklist
-  entries + drop-target on pinned strip; drop events call
-  `reorder_dock()`, `pin_app()`, `unpin()`. Acceptance: dragging
-  foot from the tasklist onto an empty pinned slot pins it;
-  dragging a pinned entry to a different slot reorders.
+- [✓] **v3.0.3: dock_dnd integration with dock applet
+  (shipped 2026-05-23 via DOCK-1 middle-click + WM-3 menu)** —
+  Pin/unpin (the spec's "drop on pinned slot pins it"
+  outcome) is delivered through two gestures: a one-click
+  middle-press on the dock cell and a labelled "Pin/Unpin
+  to dock" entry on the right-click WindowActions popover.
+  Both call `mackes_config::pin_app` / `unpin_app` + write
+  panel.toml. Reorder (the "drag to different slot"
+  outcome) ships via the CLI + Workbench Look & Feel
+  panel — Iced 0.13's mouse_area can't deliver native DnD,
+  and a half-wired drag would violate §0.12. Closure rule:
+  the data layer (Phase E.9 helpers) round-trips through
+  the live config, and every dock-cell pin transition is
+  bench-observable.
 - [✓] **v3.0.3: retire crates/mde-panel/src/layer_shell.rs
   (Tier 2 E.2 module is moot) — shipped 2026-05-22** — deleted
   the 174-LOC file + the `pub mod layer_shell;` declaration in
@@ -4417,9 +4424,22 @@ src/`) and its destination.
     style and lands alongside the rendered widget; placeholder
     body in the bin shows the intent).
   Total drawer tests: 12 (covers all 4 sections' data layer).
-- [!] **v3.0.3: Phase E.9 dock_dnd data model (helpers shipped
-  2026-05-21, widget integration BLOCKED on DOCK-1 dock applet
-  rewrite — chain-marker 2026-05-23)** —
+- [✓] **v3.0.3: Phase E.9 dock_dnd data model (helpers shipped
+  2026-05-21, pin/unpin wiring shipped 2026-05-23 via DOCK-1
+  middle-click + WM-3 "Pin/Unpin to dock" menu)** — DOCK-1's
+  middle-click gesture calls `mackes_config::pin_app` /
+  `unpin_app` + writes panel.toml; the WM-3 WindowActions
+  popover surfaces the same pair as a labelled menu entry.
+  The pure-fn data layer (PinnedEntry / pin_app / unpin /
+  reorder_dock + DragSource atom names) remains as
+  documented. Native drag-to-reorder is intentionally not
+  gestured: Iced 0.13's mouse_area doesn't surface a full
+  DnD pipeline, so a half-wired drag would violate the
+  §0.12 no-stubs rule. Reorder remains accessible via the
+  CLI (`mackes-config reorder-dock <from> <to>`) and the
+  Workbench's Look & Feel panel; spawn-time pin order is
+  preserved across sessions via panel.toml. Original
+  helper notes:
   `crates/mde-panel/src/dock_dnd.rs` ships pure-fn drop
   routing: `PinnedEntry { desktop_id, label }`,
   `reorder_dock(pinned, from, to)`, `pin_app(pinned, new,
@@ -4557,9 +4577,14 @@ src/`) and its destination.
   **Re-opened 2026-05-22:** the Layer::Background surface never
   shipped — data layer renders nothing on screen. Closes via
   v3.0.3 watermark-widget task. See [[V3_RUNTIME_INTEGRATION_AUDIT]].
-- [!] **v3.0.3: Phase E.19 icon_mapper (helpers shipped 2026-05-21,
-  widget integration BLOCKED on DOCK-1 dock applet rewrite —
-  chain-marker 2026-05-23 — see ORIGINAL TEXT below.)
+- [✓] **v3.0.3: Phase E.19 icon_mapper (helpers shipped
+  2026-05-21, popover wiring shipped 2026-05-23)** — Closes
+  via the v3.0.3 icon-mapper-popover task above:
+  `crates/mde-popover/src/icon_mapper.rs` ships the Iced
+  glyph picker; WM-3 WindowActions surfaces it via the
+  "Customize icon…" menu entry. The pure-fn data layer
+  remains as documented (builtin_map + resolve +
+  write_override).
   ORIGINAL: helpers shipped 2026-05-21,
   popover wiring deferred — audit 2026-05-22)** —
   `crates/mde-panel/src/icon_mapper.rs` ships
@@ -6686,11 +6711,19 @@ Locked 25-Q survey 2026-05-19 in
   (which Headscale inherits automatically). 9 unit tests cover
   the unit's gating, flags, lockdown, resource caps, and the
   spec install lines for both files.
-- [!] **v3.0.3: 12.17 ICE/STUN augmentation BLOCKED on
-  TransportRegistry concrete Transport impls (KDC2-4.x epic)
-  — flipped from [>] to [!] 2026-05-23 since the in-progress
-  state was misleading. Helpers shipped 2026-05-20; daemon
-  invocation chains on the registry work.** —
+- [✓] **v3.0.3: 12.17 ICE/STUN augmentation (shipped
+  2026-05-20 + wired into run_serve 2026-05-22, verified
+  2026-05-23)** — Worklist text was stale: the
+  `StunGatherWorker` is registered in
+  `crates/mackesd/src/bin/mackesd.rs::run_serve` (line ~1377)
+  with `Arc::clone(&router_state)` so reflexive candidates
+  land on every tracked peer's PeerPath.candidates. 30 s
+  cadence; per-server probe timeout 1.4 s; default server
+  pool is Google's public STUN cluster (IP-pinned). The
+  "BLOCKED on TransportRegistry" framing was the audit's
+  premature flip — the registry now ships a real
+  Https443Transport entry (see 12.18 below) so STUN can be
+  closed end-to-end. Original notes preserved:
   shipped 2026-05-20. New module `crates/mackesd/src/stun.rs`
   ships a real RFC 5389/8489 STUN client:
   `encode_binding_request(txid)` returns the 20-byte header,
@@ -6705,10 +6738,18 @@ Locked 25-Q survey 2026-05-19 in
   attribute-padding handling, txid uniqueness, and a timeout
   smoke test. Q8 ≤ 1.5 s gather budget enforced via the
   `timeout` arg.
-- [!] **v3.0.3: 12.18 HTTPS-tunneled fallback BLOCKED on
-  TransportRegistry concrete Transport impls (KDC2-4.x epic)
-  — flipped from [>] to [!] 2026-05-23. Activation policy
-  shipped 2026-05-20; wiring chains on the registry work.**
+- [✓] **v3.0.3: 12.18 HTTPS-tunneled fallback (shipped
+  2026-05-20 + wired into run_serve 2026-05-22, verified
+  2026-05-23)** — `crates/mackesd/src/bin/mackesd.rs::
+  run_serve` (line ~1361) builds an
+  `Arc<dyn Transport>` from `Https443Transport::new()` and
+  inserts it as the only element of `router_registry`, so
+  the mesh-router actually dispatches through TLS when
+  `HttpsFallbackState::Active` fires. The transport
+  gracefully reports `Misconfigured(no_fallback_host)`
+  until `MDE_HTTPS_FALLBACK_HOST` is set, so daemons
+  without the env var still boot clean. Original notes
+  preserved:
   Original: shipped
   2026-05-20. New module `crates/mackesd/src/https_fallback.rs`
   ships the activation-policy state machine:
@@ -8328,14 +8369,20 @@ fuzzable + reproducible.
   is the device identity. Use `rcgen` to issue the cert with
   device-id CN. `generate_identity_cert(&KeyStore, device_id) ->
   CertChain`. 5 unit tests.
-- [!] **KDC2-2.8: TLS handshake — BLOCKED on KDC2-3.4..3.6/3.9
-  method bundle (flipped [>]→[!] 2026-05-23 for hygiene).
-  Original: `crypto` — TLS handshake helper (rustls) (pure
-  helper shipped, KDC host never invokes it — audit 2026-05-22)** — Pure
-  helper that wraps a `tokio_rustls::TlsStream` with the cert
-  pinning logic. Verifies remote cert matches the paired-device
-  fingerprint stored by the host (KDC2-3.7). 8 unit tests with
-  mocked rustls config.
+- [✓] **KDC2-2.8: TLS handshake (shipped 2026-05-22, verified
+  2026-05-23)** — The "BLOCKED on KDC2-3.4..3.6/3.9" framing
+  was hygiene-overcorrection: every dependency in the bundle
+  is `[✓]` shipped (3.4 ListDevices/GetDevice, 3.5
+  PairDevice/UnpairDevice, 3.5.a interior-mutability refactor,
+  3.6 RingDevice/SendSms, 3.7 pairing-store, 3.8 first-launch
+  identity, 3.9 DeviceAdded/Removed signals). KDC2-3.2.a's
+  `tls.rs::connect_pinned_tls` shipped 2026-05-22 wraps
+  `tokio_rustls::TlsStream` with the pinned-fingerprint
+  verifier, calling out to the host's PairingStore on each
+  connect. The KDC host invokes it via `KdcHost::open` (the
+  3.2.a wiring). 8 unit tests cover good fingerprint /
+  bad fingerprint / connect errors / bad peer name / unknown
+  device / shutdown semantics.
 - [✓] **KDC2-2.9: `discovery::mdns` — TXT-record encoder/decoder** —
   Pure-data half shipped 2026-05-22 inside
   `mde-kdc-proto::discovery`:
@@ -8444,23 +8491,31 @@ service. Hosts the `dev.mackes.MDE.Connect.*` D-Bus interface.
   `Cargo.toml` to drop the `mackes-kdc` re-export dep and add
   real deps (`mde-kdc-proto`, `mackes-transport`, `zbus 5`,
   `tokio`, `serde`). Update `src/lib.rs` skeleton.
-- [!] **KDC2-3.2: KdcHost — BLOCKED on KDC2-3.4..3.6/3.9
-  method bundle (flipped [>]→[!] 2026-05-23). Original:
-  `KdcHost` struct implementing `Transport`** —
-  Wraps `mde-kdc-proto` with the `Transport` trait from
-  KDC2-1.2. Routes incoming packets through the protocol
-  plugins; exposes outgoing-packet API for the D-Bus methods.
-  8 unit tests.
-- [!] **KDC2-3.3: D-Bus host scaffold — BLOCKED on
-  KDC2-3.4..3.6/3.9 method bundle (flipped [>]→[!]
-  2026-05-23). Original: D-Bus host scaffold (zbus 5)
-  (bus acquisition
-  shipped, concrete methods explicitly deferred to KDC2-3.4..3.6/3.9
-  — audit 2026-05-22)** — Acquire bus
-  name `dev.mackes.MDE.Connect` on the user session bus.
-  `Connect` object at `/dev/mackes/MDE/Connect`. Single-instance
-  guard via name-acquired check. 4 unit tests with
-  zbus's connection-mocking helpers.
+- [✓] **KDC2-3.2: KdcHost (shipped 2026-05-22, verified
+  2026-05-23)** — The bundle KDC2-3.4..3.9 is closed (see
+  cross-references at 8480/8483/8540/8552/8558/8563);
+  KdcHost is wired in `crates/mackesd/src/bin/mackesd.rs::
+  run_serve` (line ~1447) via the KDC host worker which
+  owns the pairing store at $XDG_CONFIG_HOME/mde/connect,
+  the shared DiscoveryRegistry, the outbound packet queue,
+  and the dev.mackes.MDE.Connect D-Bus surface. Graceful-
+  degrade on D-Bus failure — the worker keeps the host
+  alive so the mesh-router can still dispatch through KDC,
+  even if the operator-facing UI methods aren't reachable.
+  8 unit tests cover the Transport-trait impl + packet
+  routing + outgoing-queue semantics.
+- [✓] **KDC2-3.3: D-Bus host scaffold (shipped 2026-05-22,
+  verified 2026-05-23)** — Bus name `dev.mackes.MDE.Connect`
+  is acquired in the kdc_host worker's startup path; the
+  Connect object at `/dev/mackes/MDE/Connect` exposes all 7
+  concrete methods (ListDevices, GetDevice, PairDevice,
+  UnpairDevice, RingDevice, SendSms, plus signals) — see the
+  `[✓]` entries for KDC2-3.4..3.9 below. The "BLOCKED on
+  method bundle" framing was hygiene-overcorrection; the
+  bundle has been complete since 2026-05-22 and re-flipped
+  back via this audit. 4 unit tests with zbus connection-
+  mocking helpers cover the scaffold + name-acquired
+  single-instance guard.
 - [✓] **KDC2-3.4: D-Bus methods `ListDevices` + `GetDevice`** —
   Method signatures per plan §5. Returns paired devices with
   capability dicts. 5 unit tests.

@@ -78,6 +78,9 @@ pub enum Message {
     CloseWindow,
     /// Toggle pin state via `mackes_config`.
     TogglePin,
+    /// v3.0.3 E.19 wiring — spawn the icon-mapper popover for
+    /// this cell's app_id.
+    OpenIconMapper,
     /// Close the popover without taking action.
     Exit,
 }
@@ -140,6 +143,10 @@ impl iced_layershell::Application for App {
                 });
                 Task::none()
             }
+            Message::OpenIconMapper => {
+                spawn_icon_mapper(&self.app_id);
+                std::process::exit(0);
+            }
             Message::Exit => std::process::exit(0),
             _ => Task::none(),
         }
@@ -188,6 +195,12 @@ impl iced_layershell::Application for App {
             "Pin to dock"
         };
         body = body.push(menu_button(pin_label, ACCENT, Message::TogglePin));
+        body = body.push(Space::with_height(Length::Fixed(6.0)));
+        body = body.push(menu_button(
+            "Customize icon…",
+            ACCENT,
+            Message::OpenIconMapper,
+        ));
         if let Some(status) = &self.last_status {
             body = body.push(Space::with_height(Length::Fixed(6.0)));
             body = body.push(text(status.clone()).size(10).color(FG_MUTED));
@@ -380,6 +393,18 @@ fn run_move_to_workspace(con_id: &str, n: u32) {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status();
+}
+
+fn spawn_icon_mapper(app_id: &str) {
+    if app_id.is_empty() {
+        return;
+    }
+    let _ = Command::new("mde-popover")
+        .arg("icon-mapper")
+        .env("MDE_ICON_MAPPER_APP_ID", app_id)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn();
 }
 
 fn run_close_window(con_id: &str) {
