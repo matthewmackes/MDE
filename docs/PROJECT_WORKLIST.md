@@ -115,6 +115,141 @@ locked work appears under **Active** with `[ ] Open`.
 > / 12.18 entries below carry in-place retraction notes
 > pointing to the NF-N.M sub-tasks that replace them.
 
+### GF-1..GF-15: v5.0.0 — GlusterFS mesh-home (primary file sync, locked 2026-05-24 via 25-Q survey)
+
+> **v5.0.0 = SemVer-major bump.** KDC2 file-transfer removal is a
+> user-visible breaking change for paired phones; GlusterFS fold-in is
+> the headline feature carried by the bump.
+>
+> **Design lock:** `docs/design/v5.0.0-gluster-mesh-home.md` (lands with
+> GF-10.2). Every peer holds every file (full-mesh replicated
+> `replica = N`); XDG dirs (`~/Documents`, `~/Pictures`, `~/Music`,
+> `~/Videos`, `~/Downloads`) ARE the mesh, FUSE-mounted in-place; the
+> Nebula overlay is the auth + transport boundary; KDC2 file-transfer is
+> replaced by a Gluster-backed drop folder. Depends on the v2.5 Nebula
+> fabric being live on every target peer.
+>
+> **25-Q survey locks:** (1) Gluster replaces KDC2 file-transfer + owns
+> all cross-peer sync; (2) full-mesh replicated topology; (3) Nebula
+> overlay only — plaintext glusterd inside the tunnel, no second TLS
+> layer; (4) XDG dirs ARE the mesh, local-only files in `~/Local/`;
+> (5) brick at `/var/lib/gluster/bricks/<volume>/` on `/`; (6) one
+> shared fleet volume `mesh-home`, system-wide mount; (7) full local
+> cache, read+write offline, sync on reconnect; (8) LWW by `mtime` +
+> `.conflict-<hostname>-<ts>` siblings, mde-files badge + notification;
+> (9) auto-merge on enrollment, pre-mesh content archived to
+> `~/Local/pre-mesh-<ts>/`; (10) no throttle, LAN-first heal, throughput-
+> first; (11) birthright pins primary account to uid/gid 1000:1000,
+> migrates non-1000 primaries; (12) new `mackesd::gluster_worker` +
+> `dev.mackes.MDE.Gluster.Status` D-Bus; (13) auto-join on Nebula
+> `EnrollmentCompleted` (single-passcode per
+> `project_open_mesh_directive`); (14) birthright auto-creates
+> `mesh-home` if missing; (15) auto-shrink on decommission;
+> (16) fleet quota = `0.8 × min(free brick)`, hourly probe, EROFS at
+> cap; (17) no version history — live state only; (18) per-file sync
+> badge in mde-files + yellow chip on `.conflict-*`; (19) fold into
+> existing `mde-applet-mesh-status` (no new applet); (20) hard
+> `Requires: glusterfs-server, glusterfs-fuse`; (21) KDC2 phone
+> share-sheet rewrites to `~/Documents/From-<phone-name>/`;
+> (22) dedicated "Mesh Storage" sidebar item under the Mesh group;
+> (23) files `>5 GB` become `.mesh-stub` placeholders, fetch-on-demand;
+> (24) v5.0.0 target — major bump; (25) extend NF-18.4
+> `nebula_ca_backup` → `mackesd_state_backup` (single tarball, both CA +
+> volume config).
+
+#### Substrate (RPM + glusterd bind)
+
+- [ ] **GF-1.1: Add hard `Requires: glusterfs-server, glusterfs-fuse`** to `packaging/fedora/mackes-shell.spec` after the existing `nebula >= 1.9.0` line in the `Requires:` block.
+- [ ] **GF-1.2: `%post` scriptlet — `systemctl enable --now glusterd`** alongside the existing `mackesd.service` enable in `packaging/fedora/mackes-shell.spec:856`.
+- [ ] **GF-1.3: Ship `/etc/glusterfs/glusterd.vol.d/10-nebula-bind.vol` drop-in** binding `transport.socket.bind-address` to the Nebula overlay address. New `mackes-glusterd-nebula-bind.service` generator unit reads `/var/lib/mackesd/nebula/overlay-ip` at boot and renders the drop-in.
+
+#### Daemon & D-Bus (`mackesd::gluster_worker`)
+
+- [ ] **GF-2.1: Create `crates/mackesd/src/workers/gluster_worker.rs`** mirroring `nebula_supervisor.rs:46` (Worker trait, 5 s tick, `ShutdownToken` `select!`, owned `Arc<Mutex<Connection>>` store handle).
+- [ ] **GF-2.2: Create `crates/mackesd/src/ipc/gluster.rs`** exposing `dev.mackes.MDE.Gluster.Status` on `/dev/mackes/MDE/Gluster/Status` (zbus 5 `#[interface]`, service `org.mackes.mackesd`). Methods: `Status()`, `ListPeers()`, `AddPeer(node_id)`, `RemovePeer(node_id)`, `ConflictList()`, `HealStatus()`, `MountStatus()`, `BootstrapVolume()`. Signals: `PeerStateChanged`, `ConflictDetected`, `HealCompleted`, `QuotaWarning`, `VolumeReady`. Register as the sixth service in `crates/mackesd/src/ipc/mod.rs:43`.
+- [ ] **GF-2.3: Spawn `GlusterWorker` in `run_serve()`** at `crates/mackesd/src/bin/mackesd.rs:1915` via `sup.spawn(Spawn::new(…, RestartPolicy::Always))`.
+- [ ] **GF-2.4: Genesis path — bootstrap `mesh-home` if no peer in the Nebula has it.** Create as a single-brick replica volume; subsequent peers join via `gluster peer probe <nebula-ip>` + `add-brick`. Idempotent on every tick.
+- [ ] **GF-2.5: Subscribe `gluster_worker` to `nebula_supervisor::EnrollmentCompleted`** → call `gluster_worker::add_peer(node_id)` (single-passcode auto-join per `project_open_mesh_directive`).
+- [ ] **GF-2.6: Subscribe `gluster_worker` to `ca_revoke`** (or equivalent CA-revocation signal) → unconditional `gluster peer detach` (auto-shrink per Q15).
+- [ ] **GF-2.7: Hourly free-space probe** — set `gluster volume quota mesh-home limit-usage / <bytes>` to `0.8 × min(free brick across peers)`. Emit `QuotaWarning` at the cap.
+- [ ] **GF-2.8: Conflict detector** — walk brick `.glusterfs/indices/xattrop/` for split-brain entries; emit `ConflictDetected{path, peers}`.
+- [ ] **GF-2.9: Conflict resolver — last-write-wins by `mtime`** — rename loser to `<file>.conflict-<hostname>-<ts>`; emit `HealCompleted`.
+
+#### Birthright pipeline (Python)
+
+- [ ] **GF-3.1: `apply_uid_normalize()` in `mackes/birthright.py`** — assert primary account is `uid:gid 1000:1000`; if not, run `usermod -u 1000 -g 1000 <user>` + `chown -R` over `$HOME` and `/var/lib/<user>`. Routed through `admin_session.run()`.
+- [ ] **GF-3.2: `apply_gluster_bootstrap()` in `mackes/birthright.py`** — call new CLI `mackesd gluster bootstrap-or-join` which delegates to `gluster_worker::bootstrap_or_join()`. Idempotent.
+- [ ] **GF-3.3: `apply_xdg_mesh_mount()` in `mackes/birthright.py`** — move existing `~/Documents`, `~/Pictures`, `~/Music`, `~/Videos`, `~/Downloads` content to `~/Local/pre-mesh-<ts>/<dirname>/`; mount `mesh-home` at the XDG dirs via per-user systemd unit `mde-mesh-mount@.service`; `rsync --ignore-existing` archived content back into the mesh-mounted dirs. Conflicts handled by GF-2.9.
+- [ ] **GF-3.4: Register the three new steps in `mackes/wizard/pages/apply.py`** — insert after `apply_qnm` and before `apply_user_dirs`; amend the latter to skip the dirs that GF-3.3 now owns.
+
+#### FUSE size cap + stub placeholders
+
+- [ ] **GF-4.1: Ship systemd user unit `mde-mesh-mount@.service`** that FUSE-mounts `mesh-home` at `%I` (Documents/Pictures/Music/Videos/Downloads).
+- [ ] **GF-4.2: Write-watcher in `gluster_worker` — 5 GB size cap** — files exceeding 5 GB become a `.mesh-stub` containing `{origin_host, size, sha256, gfid}`. mde-files renders these as placeholders.
+- [ ] **GF-4.3: New CLI subcommand `mackesd gluster fetch-stub <path>`** — pulls the real bytes from the origin host over Nebula on demand.
+
+#### KDC2 phone-bridge rewrite (breaking change for v5.0.0)
+
+- [ ] **GF-5.1: Rewrite KDC2 file-transfer destination in `crates/mde-kdc/src/`** — received files land in `~/Documents/From-<phone-name>/` (folder created idempotently on first receive). Mesh replicates from there to every peer.
+- [ ] **GF-5.2: Remove every KDC2 file-share UI surface** (share / upload / pull buttons) from `crates/mde-kdc/`. The mesh drop folder is the only surface.
+
+#### mde-files UI (Iced)
+
+- [ ] **GF-6.1: Extend `FileRow` in `crates/mde-files/src/model.rs:58`** with `sync_status: SyncStatus { Synced, Syncing, Offline, Conflict, Stub }`.
+- [ ] **GF-6.2: Add a per-row sync-status badge to `file_row()` in `crates/mde-files/src/widgets.rs:405`** (Carbon icon, 12 px, leading column ahead of the mime icon).
+- [ ] **GF-6.3: Detect `.conflict-<host>-<ts>` filenames in `crates/mde-files/src/backend.rs`** → `SyncStatus::Conflict`; render a yellow chip + right-click "Resolve…" menu item.
+- [ ] **GF-6.4: mde-files backend subscribes to `dev.mackes.MDE.Gluster.*` D-Bus signals** (`PeerStateChanged`, `ConflictDetected`, `HealCompleted`) → emits an Iced subscription event for re-render.
+- [ ] **GF-6.5: Render `.mesh-stub` files with a Carbon `cloud-download` icon** + size + origin-host label. Right-click "Fetch from peer-X" invokes `mackesd gluster fetch-stub`.
+
+#### mde-panel — fold mesh status into existing `mde-applet-mesh-status`
+
+- [ ] **GF-7.1: Extend the existing `mde-applet-mesh-status` binary** at `crates/mde-applets/mesh-status/` with a secondary status line per peer (`"mesh in sync"` / `"heal pending N files"` / `"offline"`).
+- [ ] **GF-7.2: Applet subscribes to `dev.mackes.MDE.Gluster.PeerStateChanged`** via D-Bus (long-running stdio mode per `crates/mde-panel/src/applet_host.rs:20`).
+
+#### Workbench "Mesh Storage" panel (Python GTK3)
+
+- [ ] **GF-8.1: Insert `NavItem("Mesh Storage", "drive-harddisk-symbolic", …)`** into `_network_advanced()` at `mackes/workbench/shell/sidebar_window.py:298`, positioned after "Mesh Services".
+- [ ] **GF-8.2: Create `mackes/workbench/network/mesh_storage.py`** using the Carbon refresh helpers from `mackes/workbench/network/mesh_ssh.py:34–63` (`_breadcrumb`, `_page_title`, `_page_subtitle`, `_section_title`). Sections: **volume overview** (size · used · free · peer count · heal queue · conflict count) · **per-peer table** (host · role · free brick · last seen · heal state) · **conflict list** (rows with a "Resolve" button each, opens the same dialog as GF-13.1) · **quota gauge** (red ≥ 80%).
+- [ ] **GF-8.3: Panel subscribes to `dev.mackes.MDE.Gluster.*` signals** via `Gio.DBusProxy`.
+
+#### Backup worker extension (subsumes NF-18.4)
+
+- [ ] **GF-9.1: Rename `crates/mackesd/src/workers/nebula_ca_backup.rs` → `mackesd_state_backup.rs`** and update `crates/mackesd/src/workers/mod.rs` re-exports.
+- [ ] **GF-9.2: Extend the 24 h tick to also snapshot `gluster volume info --xml` + `gluster peer status --xml` + brick xattr config** into the same encrypted tarball at `{qnm_root}/{node}/mackesd/state-backup.enc` (`BACKUP_FILENAME` constant updated).
+- [ ] **GF-9.3: New CLI `mackesd state restore <bundle>`** reconstructs both the Nebula CA and the Gluster volume config on a bare peer.
+- [ ] **GF-9.4: Update NF-18.4's worklist entry to reflect the rename** (close as superseded with a pointer to GF-9.x).
+
+#### Docs, voice/tone lint, CHANGELOG
+
+- [ ] **GF-10.1: Write `docs/help/mesh-storage.md`** — user-facing primer (what `mesh-home` is, where files go, conflict handling, the 5 GB cap, how to opt content out via `~/Local/`).
+- [ ] **GF-10.2: Write `docs/design/v5.0.0-gluster-mesh-home.md`** — design lock document embedding the 25-Q table verbatim.
+- [ ] **GF-10.3: CHANGELOG.md draft entry** under `## 5.0.0 — GlusterFS mesh-home + KDC2 file-transfer removal (YYYY-MM-DD)`. Lead with the SemVer-major reason (KDC2 file-share rip per GF-5).
+- [ ] **GF-10.4: `install-helpers/lint-voice.sh` pass** over every new user-visible string (per CLAUDE.md §0.7 gate #6).
+
+#### Tests + CI
+
+- [ ] **GF-11.1: Unit tests for `gluster_worker`** (mocked `glusterd` via a fake CLI shim — pattern from existing `nebula_supervisor` tests).
+- [ ] **GF-11.2: VM-CI integration test** — extend the existing VM CI harness with: two-peer enrollment → cross-peer file create → conflict generation → LWW resolution → `.conflict-*` sibling appears.
+- [ ] **GF-11.3: Hardware Testing — three-peer split-brain bench test** added to the Hardware Testing epic at the bottom of this worklist: pull network on peer-B, edit `~/Documents/foo.md` on both A and B, reconnect, observe `foo.md.conflict-B-<ts>.md` on peer-A and the yellow chip in mde-files.
+
+#### Migration & rollout
+
+- [ ] **GF-12.1: Document the in-place upgrade path from v4.0.x to v5.0.0** — what happens to existing `~/Documents` content (auto-archived to `~/Local/pre-mesh-<ts>/`). Lands in `docs/help/mesh-storage.md` (GF-10.1).
+- [ ] **GF-12.2: Pre-flight checker in `mde-workbench`** — warn (don't block) if `/var/lib/gluster/bricks` has less than `1.5 × sizeof(~/Documents + ~/Pictures + ~/Music + ~/Videos + ~/Downloads)`.
+
+#### Conflict resolution UI
+
+- [ ] **GF-13.1: mde-files right-click "Resolve…" handler** — opens a two-pane diff in the default app for the mime type (fallback: open both versions side-by-side). User picks the winner; loser moves to `~/Local/conflict-archive/<ts>/`.
+
+#### Quota UX
+
+- [ ] **GF-14.1: `QuotaWarning` surfacing** — mde-files shows a persistent banner ("Mesh almost full — peer-X has Y MB free"); Workbench Mesh Storage panel highlights the limiting peer in red.
+
+#### Phone bridge integration (depends on GF-5)
+
+- [ ] **GF-15.1: On phone pairing, create `~/Documents/From-<phone-name>/`** (idempotent, replicated by the mesh).
+- [ ] **GF-15.2: Smoke test — pair a phone, push a file, observe on a second peer** within `<2 s` (LAN) or `<heal-interval>` (WAN).
+
 ### v2.5: Nebula fabric rebuild (locked 2026-05-23)
 
 > **Design lock:** `docs/design/v2.5-nebula-fabric.md`.
