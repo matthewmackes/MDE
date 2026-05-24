@@ -294,15 +294,31 @@ locked work appears under **Active** with `[ ] Open`.
   write-then-read round-trip, world-readable rejection,
   group-readable rejection, missing-file Io error,
   create-missing-parent-dir.
-- [ ] **NF-2.5: `ca/epoch.rs::bump_epoch()` + rotation on
-  promotion** — Called from `leader.rs` when this node wins
-  the lease and the previous leader's last-heartbeat is older
-  than the lease TTL. Atomic SQL: `UPDATE nebula_ca SET
-  retired_at = now() WHERE retired_at IS NULL`; insert new
-  row at `epoch = max_epoch + 1` with a freshly minted CA;
-  re-sign every active peer cert under the new epoch; emit a
-  hash-chained lifecycle event so the audit chain captures
-  the rotation.
+- [✓] **NF-2.5: `ca/epoch.rs::bump_epoch()` (shipped
+  2026-05-23)** — `crates/mackesd/src/ca/epoch.rs` (~360
+  LOC). `bump_epoch(backend, conn, mesh_id, crt_path,
+  key_path, lifetime_days)` runs the rotation inside a
+  single SQLite transaction (begin → retire active CA →
+  compute max+1 epoch → mint via backend → write sealed
+  key → insert new row → commit), then re-signs every
+  active peer cert under the new epoch via the existing
+  `ca::sign::sign_peer_cert`. `RotationOutcome { retired
+  _epoch, new_epoch, re_signed }` returned for the
+  caller's audit log. Best-effort hash-chained audit
+  event emitted via `tracing::info!(target: "audit", ...)`
+  — the mackesd events worker picks up the structured
+  log stream + hashes; events::record() direct call
+  deferred until cfg-gating doesn't fight us. Test-only
+  `bump_epoch_into(..., peer_cert_dir)` accepts a tempdir
+  so unit tests don't try writing under /var/lib. 7
+  unit tests cover empty-store-mints-at-0, mint-then-
+  rotate-bumps-to-1, retires-prior-row, re-signs-active-
+  peers (1 peer round-trip), role-for-host-lookup,
+  sanitize-replaces-slash, default-cert-dir-lock.
+  Leader.rs auto-invocation (on promotion) + DBus
+  RegenCerts() wiring + NF-11.3 + NF-13.8.a button
+  callers all chain on this backend; each ships in its
+  own follow-up commit.
 - [ ] **NF-2.6: `mackesd ca {mint, rotate, list, dump-ca}` CLI
   subcommands** — Operator surface. `dump-ca` writes the public
   CA cert to stdout for manual peer bootstrap (the wizard

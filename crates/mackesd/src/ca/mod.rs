@@ -36,6 +36,9 @@
 //! depend on the binary being installed.
 
 pub mod bundle;
+// NF-2.5 (v2.5) — CA epoch rotation. Called by leader.rs
+// on promotion + by the `mackesd ca rotate` CLI (NF-2.6).
+pub mod epoch;
 pub mod mint;
 pub mod seal;
 pub mod sign;
