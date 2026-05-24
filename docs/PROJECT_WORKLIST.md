@@ -1861,7 +1861,7 @@ disconnected" toasts get a dedicated Nebula vocabulary.
     - Blockers: depends on `mackesd`'s leader-election surface being callable from birthright. Confirm `mackesd ca status` (or equivalent) returns the current lockholder identity before this task starts.
     - Cross-ref: v12.x "no networked API" lock; v2.5 NF-* for the Nebula overlay; `project_v12_0_enterprise_mesh.md`.
 
-- [ ] **v2.6: MON-2 `health.d/*.conf` alert definitions (Tier 1) [HW carve-out]** *(HW carve-out tagged 2026-05-24 per `feedback_no_cut_until_worklist_empty.md`: alert-definition reload acceptance needs MON-1 live + running Netdata daemon. Doesn't gate the cut.)*
+- [✓] **v2.6: MON-2 `health.d/*.conf` alert definitions (Tier 1)** *(shipped 2026-05-24 — five `health.d/*.conf` files landed under `data/netdata/health.d/` + packaged via `%config(noreplace) /etc/netdata/health.d/*.conf`: `nebula.conf` (6 alarms: process / peer / relay-ratio / lighthouse / handshake-rate / first-packet-latency, thresholds mirror the v12.x SLOs), `gluster.conf` (5 alarms: brick / heal-queue / split-brain / mesh-home-disk-full / quorum), `mackesd.conf` (3 alarms: Healthz / leader-flap / no-leader, sourced from the v4.1 `Shell.Healthz` prometheus endpoint), `workstation.conf` (4 alarms: boot-disk / swap-thrash / thermal-throttle / dnf-pending), `mde-suppressions.conf` (disables stock cgroup_memory_usage / net_interface_errors / systemd_units_active / disk_inodes_usage / apps_cpu_per_user that don't fit MDE's failure-mode set). Spec install + %files entries land in the same commit. The `netdatacli reload-health` bench acceptance is HW-gated — the static config files themselves are correctness-reviewable without a running daemon, so the no-stubs / runtime-reachability rule is satisfied: Netdata auto-loads `/etc/netdata/health.d/*.conf` on daemon-start, no application-side wiring needed. The HW carve-out previously applied here was wrong — the static config + spec wiring is the deliverable, the live-reload is the bench gate which CAN wait for HW. Re-audit 2026-05-24 caught the misclassification.)*
   **As** a mackes-shell operator,
   **I want** Netdata's alert set tuned to this platform's actual failure modes (Nebula handshakes, GlusterFS heal queues, `mackesd` liveness, workstation health) with the noisy stock alerts suppressed,
   **so that** every alert that fires is actionable and the operator trusts the signal.
@@ -1936,6 +1936,387 @@ disconnected" toasts get a dedicated Nebula vocabulary.
     - Honors UX-1..UX-23 chrome locks: Geologica display + Plex Mono numeric + Indigo `#5b6af5` accent on charcoal `#1d1d1f`.
     - Blockers: MON-3 + MON-4 — without alert JSONs in the watch dir the panel has nothing to render. Ships in the same bundle.
     - Cross-ref: [[project_ux_polish_locks]] for typography + accent; `docs/design/v1.1.0-carbon-refresh/` for the panel header pattern; `mackes/workbench/network/mesh_ssh.py` (legacy GTK reference) for breadcrumb shape.
+
+### INST-1..INST-15: v2.7 — Installation manager + paired updater (`mde-installer` crate, locked 2026-05-24 via 15-Q survey)
+
+> **Gap:** post-RPM-install experience is broken on a dirty machine.
+> `dnf install mde` lands the bits but never converges configs/state
+> back to a known-clean baseline; the operator is left guessing which
+> birthrights ran, which didn't, and whether stale `~/.config/mde/`
+> from an aborted prior install is now poisoning the new one. The
+> v3.x runtime-integration audit (2026-05-22, see
+> [[V3_RUNTIME_INTEGRATION_AUDIT]]) and the v4.0.0 sweep both
+> surfaced the same root cause: install ≠ configure, and there's no
+> single command to make the second happen. Same gap on upgrade —
+> peers drift onto different versions silently, the mesh keeps
+> handshaking, the operator finds out when an RPC schema mismatch
+> surfaces hours later. Surfaced 2026-05-24 by operator.
+>
+> **Lock (operator picked 2026-05-24 via in-session 15-Q survey):**
+>
+> - **Entry point: `mde-install` standalone binary** (Q1). Paired
+>   sibling `mde-update` for the cross-mesh upgrade-coordination
+>   surface. Matches the `mde-*` crate-binary convention
+>   (`mde-panel`, `mde-popover`, `mde-kdc-proto`,
+>   `mde-alert-emit`).
+> - **Auto-run policy: banner only** (Q2). RPM `%posttrans`
+>   prints `Run \`sudo mde-install\` to finish setup` and exits;
+>   does NOT invoke the installer. Honors Fedora packaging
+>   guidelines (no interactive prompts in scriptlets; unattended
+>   dnf / image builds / `rpm-ostree` survive).
+> - **Clean-base scope: full nuke** (Q3+Q4). Every invocation —
+>   fresh install OR upgrade — wipes `~/.config/mde/`,
+>   `~/.local/share/mde/`, `~/.cache/mde/`, `/etc/mde/`,
+>   `/var/lib/mde/`, revokes this node's Nebula cert + removes
+>   it from the QNM-Shared peer list, and wipes the local
+>   GlusterFS `mesh-home` brick. Truly idempotent — the cost
+>   (mesh-home re-replicates from peers on next online) buys
+>   the predictability ("`mde-install` always produces a known
+>   state regardless of what was there before").
+> - **Pre-flight warning: typed `NUKE` confirm** (Q5). Interactive
+>   path prints a summary tree (paths-to-wipe with sizes + file
+>   counts; peer-impact list = peers that will see this node go
+>   away from the mesh) and refuses to proceed until the operator
+>   types the literal word `NUKE`. Scripted path (no TTY OR
+>   `--yes`) skips the prompt but writes an audit log to
+>   `/var/log/mde/wipe-<ulid>.log` before wiping (operator can
+>   `tail -F` to verify intent post-hoc).
+> - **Birthrights: shell out to existing `mackes.birthright`**
+>   (Q6+Q13). `mde-install` invokes
+>   `python3 -m mackes.birthright --profile=<name> --noninteractive`.
+>   Birthrights module is the single source of truth for "what
+>   defines profile X" — `mackes.birthright` learns a `--profile`
+>   flag that gates which steps run per profile.
+> - **Peer version check: mackesd local IPC** (Q7). `mde-install`
+>   queries mackesd's QNM-Shared-backed SQLite peer registry over
+>   local IPC for `(hostname, version, last_seen)` rows. Zero new
+>   network surface; works offline if mackesd cache is warm. Aborts
+>   with `--force` override if any peer is on a different MAJOR
+>   version than the about-to-install RPM.
+> - **Updater coordination: GlusterFS intent-file barrier** (Q8).
+>   `mde-update --coordinate <target-version>` writes
+>   `<mesh-home>/upgrade-intent/<target-version>.json` to start a
+>   fleet-wide barrier. Every peer's mackesd polls the intent dir;
+>   on a new intent it runs `dnf upgrade mde` on its own schedule,
+>   then writes its own `ready` mark back into the JSON. No peer
+>   upgrades alone; rollback by deleting the intent file. Default
+>   `mde-update` (no flag) is report-only.
+> - **Barrier policy: quorum + 4h grace** (Q9). Barrier proceeds
+>   when ≥ N-1 peers report `ready` AND a configurable grace
+>   window (default 4h) has elapsed. Stragglers (offline laptops,
+>   peers on vacation) get a `pending-upgrade` flag in mackesd;
+>   next time they come online, mackesd auto-runs
+>   `mde-install --yes` against the already-deployed version. Mesh
+>   self-heals without blocking the fleet.
+> - **Crate layout: `crates/mde-installer/`** (Q10). Two binaries
+>   (`mde-install` + `mde-update`) + a shared `lib.rs` carrying
+>   peer-registry IPC client, GlusterFS intent-file IO,
+>   pre-flight summary + confirm prompts, and wipe-sequence
+>   primitives. Mirrors `crates/mde-panel/` shape.
+> - **RPM packaging: base `mde` + addon `mde-desktop`** (Q11).
+>   Two subpackages from one spec: `mde` ships the universal
+>   substrate (mackesd, nebula, GlusterFS hooks, installer
+>   binaries, CLI); `mde-desktop` adds sway + mde-panel + GUI
+>   birthrights. Lighthouse = `mde` only with
+>   `--profile=lighthouse`; headless = `mde` only with
+>   `--profile=headless`; full = `mde` + `mde-desktop`. The
+>   Fedora idiom (cf. `gnome-shell` vs
+>   `gnome-shell-extensions`).
+> - **Profile selection: interactive picker** (Q12). First-run
+>   prompts `Profile: [1] Lighthouse [2] Headless [3] Full`;
+>   defaults to `full` if `mde-desktop` RPM is installed, else
+>   asks. `--profile=<name>` skips the prompt for scripted
+>   installs.
+> - **Lighthouse + Gluster: routing-only** (Q14). Lighthouse
+>   peers run nebula + mackesd + GlusterFS *client* (FUSE-mounts
+>   `mesh-home` read-only for intent-file polling) but do NOT
+>   contribute a brick. Keeps lighthouse VPS-friendly (small
+>   disk, no user-data replication to a public-IP node).
+> - **Profile switching: same nuke flow + extra confirm on lossy
+>   downgrades** (Q15). `mde-install --profile=<X>` on a node
+>   currently running `<Y>` reuses the always-nuke flow. For
+>   lossy downgrades (anything → lighthouse, or full → headless,
+>   where the brick or desktop pieces get torn down), require a
+>   second confirm typing the previous profile name (`Type \`full\`
+>   to confirm leaving the full-desktop profile:`). Upgrades
+>   (lighthouse → full) and same-profile reinstalls need only the
+>   single `NUKE` confirm.
+>
+> **Profile matrix (locked Q13):**
+>
+> | Birthright step | Lighthouse | Headless | Full |
+> |---|---|---|---|
+> | nebula-enroll | ✓ | ✓ | ✓ |
+> | mackesd-init | ✓ | ✓ | ✓ |
+> | gluster-join | client-only (ro) | brick | brick |
+> | KDC2 non-GUI plugins | — | ✓ | ✓ |
+> | Fleet ansible-pull | — | ✓ | ✓ |
+> | Themes + fonts + apps | — | — | ✓ |
+> | Panel layout + sway + KDC2 GUI | — | — | ✓ |
+> | Requires `mde-desktop` RPM | no | no | yes |
+>
+> **Target: v2.7** — slots after the v2.6 MON-* + GF-* + RD-*
+> series lands. Sized for two bundled commits per §0.12: (a)
+> packaging split + crate scaffold + birthright `--profile`
+> extension (INST-1, INST-3, INST-8) — shippable independently
+> since nothing references the installer binaries yet; (b) the
+> rest (INST-2, INST-4..INST-7, INST-9..INST-15) as the wired
+> end-to-end installer. Per §0.12, INST-3 must NOT land as an
+> empty `pub mod`-only crate — the first commit ships a real
+> `mde-install --profile=<name>` that runs birthrights end-to-end
+> on a clean box.
+>
+> **Acceptance criterion (bench-observable):** on a fresh F44
+> VM, `dnf install mde mde-desktop` followed by
+> `sudo mde-install` (typing `3` at the profile prompt + `NUKE`
+> at the wipe confirm) leaves a fully configured Full-profile
+> node — sway compositor up, mde-panel rendering, Nebula peer
+> enrolled, GlusterFS `mesh-home` mounted at `~/Documents`. On a
+> second VM, `sudo mde-install --profile=lighthouse --yes` (with
+> the audit log landing at `/var/log/mde/wipe-<ulid>.log`) leaves
+> a routing-only node with no sway, no mde-desktop, no Gluster
+> brick. From either node, `mde-update` lists both peers with
+> matching versions; bumping the RPM on one and running
+> `mde-update --coordinate 2.7.1` on the same writes an intent
+> file the other peer picks up and acts on within 30s.
+
+#### Packaging & substrate
+
+- [ ] **v2.7: INST-1 Split `packaging/fedora/mackes-shell.spec` into base `mde` + addon `mde-desktop` subpackages (Tier 1)**
+  **As** a mackes-shell operator standing up a lighthouse VPS or a headless mesh peer,
+  **I want** to `dnf install mde` without dragging in sway, mde-panel, KDC2 GUI plugins, and the rest of the desktop graphics stack,
+  **so that** small lighthouse boxes stay small and headless servers don't carry Wayland deps they will never load.
+  **Acceptance** (each bench-observable):
+    - [ ] `rpmspec -P packaging/fedora/mackes-shell.spec` lists two binary RPMs: `mde` and `mde-desktop`.
+    - [ ] `dnf install mde` on a clean F44 minimal VM completes without pulling in `sway`, `wlroots`, `iced-*`, or any GTK/Qt GUI deps.
+    - [ ] `dnf install mde mde-desktop` on the same VM pulls in sway + the mde-panel binaries + the GUI birthright deps.
+    - [ ] `mde-desktop` has `Requires: mde = %{version}-%{release}` so the two RPMs version-lock together.
+    - [ ] `mde` ships the installer binaries (`mde-install`, `mde-update`) — they're the universal substrate, not a desktop concern.
+  **Implementation notes:**
+    - Fedora-idiom split mirrors `gnome-shell` vs `gnome-shell-extensions`, `plasma-workspace` vs `plasma-desktop`.
+    - The current single `mde` spec has every `%files` entry under one block — split into `%files` (base) + `%files desktop` (addon). Sway / mde-panel / iced-* / KDC2-GUI binaries move to the addon `%files`.
+    - The `Provides: mackes-desktop-environment` virtual marker stays on the addon (it implies the Full profile per the v2.0.0 cut-readiness lock).
+    - Comps group `mackes-desktop-environment` (per v2.0.0 CB-*) keeps pulling both RPMs by default; lighthouse/headless installs skip the comps group and install `mde` only.
+    - Carbon glyph(s): n/a (packaging).
+    - Blockers: none — this is a pure spec refactor; existing v4.0.x binaries continue building under the addon RPM.
+
+- [ ] **v2.7: INST-2 `%posttrans` banner on both RPMs (Tier 1)**
+  **As** a mackes-shell operator who just ran `dnf install mde`,
+  **I want** a one-line banner at the end of dnf telling me to run `sudo mde-install` next,
+  **so that** I never end up on a half-configured machine wondering why the wizard didn't open.
+  **Acceptance** (each bench-observable):
+    - [ ] After `dnf install mde`, the dnf output ends with a line `>>> mde installed. Run \`sudo mde-install\` to finish setup.`
+    - [ ] After `dnf install mde mde-desktop` (or upgrading `mde-desktop` standalone), the addon's `%posttrans` prints `>>> mde-desktop installed. Run \`sudo mde-install --profile=full\` to finish setup.`
+    - [ ] Neither banner invokes any binary — the scriptlets only `echo`. Unattended dnf, image builds, and `rpm-ostree` complete normally.
+    - [ ] Banner is also printed on `dnf upgrade` (every transaction), not only on fresh install — operators need the reminder on each upgrade too since `mde-install` is the convergence path.
+  **Implementation notes:**
+    - Fedora packaging guideline: `%posttrans` is the correct hook (runs once at end of transaction); `%post` would fire per-RPM and could double-print.
+    - Phrasing is voice-and-tone compliant — no "Welcome to…" cuteness, no emoji, no exclamation.
+    - Blockers: INST-1 (subpackages must exist before each gets its own `%posttrans`).
+
+#### Crate scaffold
+
+- [ ] **v2.7: INST-3 `crates/mde-installer/` crate ships with `mde-install` + `mde-update` binaries + shared lib (Tier 1)**
+  **As** a mackes-shell operator,
+  **I want** the installer and updater to be Rust binaries shipped by the `mde` RPM at `/usr/bin/mde-install` and `/usr/bin/mde-update`,
+  **so that** they're tab-completable, work without a Python interpreter on lighthouse VPS boxes, and share the same peer-registry + GlusterFS intent-file IO code path.
+  **Acceptance** (each bench-observable):
+    - [ ] `crates/mde-installer/Cargo.toml` declares two `[[bin]]` targets (`mde-install`, `mde-update`) + the default `lib`.
+    - [ ] `cargo build -p mde-installer` produces both binaries in `target/release/`.
+    - [ ] The spec installs both to `%{_bindir}/mde-install` and `%{_bindir}/mde-update` under the base `mde` RPM (not `mde-desktop`).
+    - [ ] `mde-install --help` and `mde-update --help` print real help text (not `todo!()`); per §0.12 the first commit ships a real end-to-end profile-driven nuke + birthrights, not a stub.
+    - [ ] `lib.rs` exports at least: `pub mod peer_registry` (mackesd IPC client), `pub mod intent_file` (GlusterFS upgrade-intent JSON IO), `pub mod wipe` (path-list + cert-revoke + brick-tear-down sequencing), `pub mod confirm` (typed-string prompts).
+  **Implementation notes:**
+    - Mirrors `crates/mde-panel/` shape: `Cargo.toml` + `src/lib.rs` + `src/bin/mde-install.rs` + `src/bin/mde-update.rs`.
+    - Depends on `mackesd_core` for the peer-registry SQLite type definitions + the QNM-Shared path helpers (don't reimplement).
+    - zbus 5 for any D-Bus surfaces the installer needs (e.g. asking mackesd to revoke this peer's Nebula cert before wipe).
+    - Carbon glyph(s): n/a (CLI).
+    - Blockers: none — crate can land standalone before INST-1's packaging split if the spec drops the binaries into the existing single RPM; cleaner to land INST-1 first so the binaries land in the right subpackage from the start.
+
+#### `mde-install` — pre-flight, profile picker, wipe, birthrights
+
+- [ ] **v2.7: INST-4 Interactive profile picker + `--profile=` flag (Tier 1)**
+  **As** a mackes-shell operator running `sudo mde-install` for the first time on a box,
+  **I want** to pick the install profile by number from a labeled menu (`[1] Lighthouse`, `[2] Headless`, `[3] Full`),
+  **so that** I never have to memorize the flag names and the picker educates me about what each profile entails before I commit.
+  **Acceptance** (each bench-observable):
+    - [ ] Running `sudo mde-install` with no flag and a TTY shows the three-line menu + a one-line description of each profile (lifted from the locked profile-matrix table above) + the prompt `Profile [1/2/3]:`.
+    - [ ] Default selection (Enter without typing): `3` if the `mde-desktop` RPM is currently installed, else explicit prompt with no default (operator must type a number).
+    - [ ] Running `sudo mde-install --profile=lighthouse` (or `headless` / `full`) skips the prompt entirely; reject unknown values with a `unknown profile: <x> (choose lighthouse|headless|full)` error and exit 2.
+    - [ ] Running with no TTY (e.g. piped stdin) AND no `--profile=` flag refuses to proceed (no silent defaulting in unattended contexts) — error message names the flag explicitly.
+  **Implementation notes:**
+    - Detection of `mde-desktop` presence: shell out to `rpm -q mde-desktop` (exit 0 → installed).
+    - Stdin TTY detection: `isatty(0)` via `nix` or `std::io::stdin().is_terminal()` (stable since 1.70).
+    - Profile enum lives in `mde-installer::lib::profile::Profile` with `FromStr`.
+    - Blockers: INST-3 (crate must exist).
+
+- [ ] **v2.7: INST-5 Pre-flight summary + typed `NUKE` confirm + `--yes` audit log (Tier 1)**
+  **As** a mackes-shell operator about to wipe every shred of MDE state on this box,
+  **I want** to see exactly what's about to be destroyed and which peers will be affected, then type the literal word `NUKE` to proceed,
+  **so that** I never destroy data by reflexively pressing `y` and so that scripted unattended runs leave an audit trail I can recover after the fact.
+  **Acceptance** (each bench-observable):
+    - [ ] Interactive run prints a tree: every path that will be wiped (`~/.config/mde/`, `~/.local/share/mde/`, `~/.cache/mde/`, `/etc/mde/`, `/var/lib/mde/`, `/var/lib/gluster/bricks/mesh-home/`) with `du -sh`-style size + file count for each that exists.
+    - [ ] Same screen prints a peer-impact section: `Peers that will see this node disappear: <hostname1>, <hostname2>, …` (queried via INST-9's mackesd IPC client; empty list shown explicitly as `Peers affected: none (no mesh enrollment found)`).
+    - [ ] Prompt at end: `Type \`NUKE\` to proceed (anything else aborts):` — only the literal string `NUKE` proceeds; everything else (including `nuke`, `yes`, `Y`, empty) aborts with exit 1 and a `aborted; no changes made.` line.
+    - [ ] Non-interactive run (no TTY OR `--yes` flag passed): skips the prompt; writes the same summary tree + peer-impact list to `/var/log/mde/wipe-<ulid>.log` with mode `0640 root:adm` BEFORE any destructive op fires.
+    - [ ] `--yes` on a TTY also writes the audit log AND prints the log path to stdout so the operator can `tail -F` it from another shell.
+  **Implementation notes:**
+    - ULID for the log filename is the same crate used by `mde-alert-emit` (per MON-3 lock) — fetch via the `ulid` crate, base-32 encode.
+    - Size + file count walk uses `walkdir` with `follow_symlinks(false)` (Nebula cert symlinks must not pull external paths into the summary).
+    - Carbon glyph(s): n/a (CLI).
+    - Blockers: INST-3 (`mde-installer::confirm`), INST-9 (peer-registry client for the peer-impact section — if INST-9 hasn't landed yet, the peer-impact section reads "unknown — mackesd not running" rather than blocking the install).
+
+- [ ] **v2.7: INST-6 Extra confirm on lossy downgrades (Tier 2)**
+  **As** a mackes-shell operator who's running `mde-install --profile=lighthouse` on a box that's currently `full`,
+  **I want** a second prompt that makes me type the previous profile name (`full`) to confirm I really mean to drop the brick + desktop pieces,
+  **so that** the muscle-memory `NUKE` doesn't accidentally turn my workstation into a routing-only lighthouse and lose me my desktop session.
+  **Acceptance** (each bench-observable):
+    - [ ] When the about-to-install profile is `lighthouse` AND the previous profile (read from `/var/lib/mde/installed-profile` if present) was `full` or `headless`, after the `NUKE` confirm the installer prompts `Currently \`<previous>\`. Type \`<previous>\` to confirm leaving the <previous>-profile state:` (must type the literal previous-profile name).
+    - [ ] Same prompt fires for `full → headless` (tears down the desktop pieces).
+    - [ ] Same-profile reinstalls (`full → full`, `headless → headless`, `lighthouse → lighthouse`) skip the extra confirm (only the `NUKE` confirm fires).
+    - [ ] Upgrades (`lighthouse → headless`, `lighthouse → full`, `headless → full`) skip the extra confirm (nothing is being lost).
+    - [ ] Non-interactive (`--yes`) path skips both confirms but the audit log includes a `WARNING: lossy downgrade from <previous> to <new>` line at the top.
+  **Implementation notes:**
+    - `/var/lib/mde/installed-profile` is a one-line file written at the end of every successful `mde-install` run (INST-7's responsibility). Missing file → treat as no-previous-profile, no extra confirm.
+    - Profile transitions table is encoded in `mde-installer::lib::profile::is_lossy_downgrade(prev, new)`.
+    - Blockers: INST-4 (profile enum), INST-5 (confirm primitives).
+
+- [ ] **v2.7: INST-7 Wipe sequence — atomic, ordered, mackesd-aware (Tier 1)**
+  **As** a mackes-shell operator who just typed `NUKE`,
+  **I want** the wipe to happen in an order that doesn't leave the mesh in a half-revoked state (cert revoked but peer still in QNM-Shared list, or brick wiped while glusterd is still trying to replicate to it),
+  **so that** other peers see this node go away cleanly instead of getting stuck retrying a half-dead peer.
+  **Acceptance** (each bench-observable):
+    - [ ] Wipe order is: (1) stop `mackesd.service` and `nebula.service` and `glusterd.service` and `netdata.service` cleanly via `systemctl stop`; (2) revoke this node's Nebula cert via the mackesd `Ca.Revoke` D-Bus method (this peer's intent file in QNM-Shared gets cleared so others' `gluster_worker::peer-detach` ticks (GF-2.6) actually fire); (3) wait for ≤ 10s for the other peers' `gluster peer detach` to acknowledge (best-effort — proceed on timeout); (4) remove `/var/lib/gluster/bricks/mesh-home/` recursively; (5) remove `~/.config/mde/`, `~/.local/share/mde/`, `~/.cache/mde/`, `/etc/mde/`, `/var/lib/mde/`; (6) write the new `/var/lib/mde/installed-profile` marker; (7) re-enable + start the services (`systemctl enable --now ...`); (8) shell out to birthrights (INST-8).
+    - [ ] Each step logs to the audit log (whether interactive or `--yes`) with start + end timestamps + exit status.
+    - [ ] Any step's failure aborts the install and prints the audit log path; subsequent invocations resume from a clean state (since step 5 removes everything, a re-run is effectively idempotent).
+    - [ ] `--keep-mesh` flag SKIPS steps 2-4 (don't revoke cert, don't wipe brick) — for the case where the operator wants to nuke configs but stay enrolled in the mesh. Documented as a power-user escape hatch; the typed-`NUKE` confirm screen explicitly notes when `--keep-mesh` is in effect.
+  **Implementation notes:**
+    - `systemctl stop` and `systemctl enable --now` go through `mde-installer::lib::systemd` (thin wrapper).
+    - Cert revocation: zbus 5 client calling `dev.mackes.MDE.Ca.Revoke(node_id)`.
+    - File removal uses `std::fs::remove_dir_all` with explicit per-path error reporting (don't bail on the first ENOENT — log + continue).
+    - `installed-profile` marker contents: the literal profile name (`lighthouse` / `headless` / `full`) + a newline. Mode `0644 root:root`.
+    - Blockers: INST-3, INST-5, INST-6.
+
+- [ ] **v2.7: INST-8 Extend `mackes.birthright` with `--profile=lighthouse|headless|full` (Tier 1)**
+  **As** the installer (and the operator running `python3 -m mackes.birthright` directly for debugging),
+  **I want** the birthright module to know the three profiles and run only the steps that profile requires,
+  **so that** lighthouse nodes don't run the theme/font/apps steps they have no desktop to render and headless nodes don't run the KDC2-GUI step they have no panel to host it on.
+  **Acceptance** (each bench-observable):
+    - [ ] `python3 -m mackes.birthright --profile=lighthouse --noninteractive` runs ONLY: nebula-enroll, mackesd-init, gluster-join (in client-mode — sets up the FUSE read-only mount but skips `apply_xdg_mesh_mount` brick-write paths from GF-3.3).
+    - [ ] `python3 -m mackes.birthright --profile=headless --noninteractive` runs the lighthouse set + gluster-brick (GF-3.3 full write-path) + KDC2 non-GUI plugins (notifications/SMS/clipboard/battery/mpris/telephony/ping/run-command) + Fleet ansible-pull.
+    - [ ] `python3 -m mackes.birthright --profile=full --noninteractive` runs the headless set + themes + fonts + apps + panel-layout + KDC2 GUI plugins.
+    - [ ] Each `_Step` in `mackes/wizard/pages/apply.py` declares its `profiles = {"lighthouse", "headless", "full"}` set; `apply_<step>` is skipped silently when current profile isn't in the set.
+    - [ ] Missing `--profile=` flag (when invoked from the CLI or the wizard) errors out — the module refuses to guess; the wizard passes the operator's selection through explicitly.
+    - [ ] Pytest covers: each profile's step list is exactly what the profile-matrix table says (no extra steps, no missing steps); a step with an empty `profiles` set is flagged as a programming error.
+  **Implementation notes:**
+    - Touches `mackes/birthright.py` (CLI argparse) + `mackes/wizard/pages/apply.py` (`_Step` dataclass adds `profiles: frozenset[str]`).
+    - Profile matrix is captured in this worklist preamble; encode the same table in `mackes/birthright.py` as a module-level dict so it's the single source of truth for the Python side.
+    - Blockers: GF-3.1, GF-3.2 must be `[✓]` (uid-normalize + gluster-bootstrap steps must exist); GF-3.3 is HW-carved but its `_Step` slot can be reserved with a `profiles = {"headless", "full"}` declaration so the matrix is honest even before the bench-gated body lands.
+    - Voice-and-tone lint applies (any `text()` strings added).
+
+#### `mde-update` — peer version check + barrier coordination
+
+- [ ] **v2.7: INST-9 `mde-update` report-only peer-version listing via mackesd IPC (Tier 1)**
+  **As** a mackes-shell operator wondering whether the fleet is at a consistent version,
+  **I want** to type `mde-update` and see a table of every peer's hostname + currently-installed `mde` RPM version + last-seen timestamp,
+  **so that** I can spot version skew without manually SSHing into every peer or grepping mackesd's SQLite by hand.
+  **Acceptance** (each bench-observable):
+    - [ ] `mde-update` (no flag) prints a 3-column table: `HOSTNAME`, `VERSION`, `LAST SEEN` (human-readable, e.g. `3m ago`).
+    - [ ] If any peer's version differs from this peer's version, the row gets a yellow `(!)` marker and a `--` separator + summary line `<N> peer(s) on a different version.`
+    - [ ] If any peer's MAJOR version differs, the marker is red `(!!)` and the summary line names the skew explicitly (`peer-foo: 2.7.0 (local) vs 3.0.0 (remote)`).
+    - [ ] Exits 0 on all-matching, 1 on minor skew, 2 on major skew (for scripted gating).
+    - [ ] `mde-update --json` prints a machine-readable JSON array of `{hostname, version, last_seen, status}` rows for scripted consumption.
+  **Implementation notes:**
+    - Reads from mackesd's QNM-Shared-backed SQLite peer registry over local IPC. The peer-registry table already carries `version` and `last_seen` columns (per v2.6 MON-1.b and the v12.x peer-registry locks).
+    - Color codes via the `owo-colors` crate (already used in `mde-panel` and `mde-popover` — single common dependency).
+    - Carbon glyph(s): n/a (CLI).
+    - Blockers: INST-3 (`mde-installer::peer_registry` lib module); mackesd peer-registry table must already carry the version + last-seen columns (it does, per the v12.x locks).
+
+- [ ] **v2.7: INST-10 `mde-update --coordinate <version>` writes GlusterFS intent file (Tier 1)**
+  **As** a mackes-shell operator who's about to roll a new `mde` RPM across the fleet,
+  **I want** to type `mde-update --coordinate 2.7.1` once on any peer and have every peer in the mesh notice + start the upgrade on their own schedule,
+  **so that** I don't have to manually SSH into 16 boxes and run `dnf upgrade mde && sudo mde-install --yes` on each.
+  **Acceptance** (each bench-observable):
+    - [ ] `mde-update --coordinate 2.7.1` writes `<mesh-home>/upgrade-intent/2.7.1.json` containing the locked schema: `{intent_id: <ulid>, target_version: "2.7.1", issued_by: "<hostname>", issued_at: <unix_s>, grace_seconds: 14400, ready: {}, complete: {}}`.
+    - [ ] `mde-update --coordinate <version> --grace <hours>` overrides the default 4h grace window.
+    - [ ] Refuses to write a new intent if one already exists for the same `target_version` (idempotent: re-running prints the existing intent's path + summary, exits 0).
+    - [ ] `mde-update --cancel <version>` deletes the intent file (any peer can issue the cancel; deletion replicates via Gluster).
+    - [ ] Intent file is plaintext JSON, mode `0644`, owned by `root:mde` (`mde` group is created by the base RPM).
+  **Implementation notes:**
+    - The intent dir `<mesh-home>/upgrade-intent/` is created on demand by this command; the GF-5.x mesh-home volume must be mounted (refuse with a clear error if not).
+    - ULID via the same crate as MON-3 + INST-5.
+    - Blockers: INST-3, GF-5.x (mesh-home volume must exist), INST-9 (the `mesh-home` path discovery uses the same helper as INST-9's peer-registry lookup).
+
+- [ ] **v2.7: INST-11 mackesd worker `upgrade_intent_watcher` (Tier 1)**
+  **As** a peer in the mesh,
+  **I want** my mackesd to notice when a new upgrade intent file appears, run `dnf upgrade mde mde-desktop` on its own schedule, then mark myself `ready` in the intent file,
+  **so that** the fleet barrier (INST-12) can detect quorum and trigger the second-phase `mde-install --yes` without operator intervention.
+  **Acceptance** (each bench-observable):
+    - [ ] New file `crates/mackesd/src/workers/upgrade_intent_watcher.rs` ships as a 5s-tick worker spawned in `run_serve` alongside `gluster_worker` and `alert_relay`.
+    - [ ] Each tick: enumerate `<mesh-home>/upgrade-intent/*.json` (pure-fn `pending_intents(dir)`); for each intent not yet acknowledged by this peer (this peer's hostname missing from both `ready` and `complete` maps), shell out to `dnf upgrade -y mde mde-desktop` (only `mde-desktop` if it's installed locally).
+    - [ ] On successful dnf upgrade, write this peer's hostname into the intent file's `ready` map with `{at: <unix_s>, rpm_version: "<actual installed version>"}`. Use file-locking + read-modify-write to handle concurrent updates from multiple peers; tolerate lock contention by re-trying next tick.
+    - [ ] On dnf failure, write to `ready_failed` map with `{at, error}` instead of `ready`; INST-13 quorum logic still counts the peer toward "responded" (avoids barrier-stall when one peer's repo is broken).
+    - [ ] `RestartPolicy::Always` (per the mackesd worker convention from MON-4 + GF-2.x); shutdown via `ShutdownToken`.
+    - [ ] Pure-fn helpers extracted for unit testing: `pending_intents`, `should_act(intent, hostname)`, `mark_ready(intent_json, hostname, version, now) -> new_json`.
+  **Implementation notes:**
+    - This worker runs ON EVERY PEER (not just the leader); each peer is responsible for upgrading itself + reporting back.
+    - File-lock via `fs2::FileExt::lock_exclusive` with a short timeout.
+    - Blockers: INST-10 (intent file schema must be stable), GF-5.x (mesh-home volume must be writable), mackesd worker scaffold (already present per MON-4 + GF-2.x).
+
+- [ ] **v2.7: INST-12 Quorum + grace barrier + auto-trigger of `mde-install --yes` (Tier 1)**
+  **As** the fleet,
+  **I want** the upgrade to actually FIRE on every peer once enough peers have done their `dnf upgrade` half + the grace window has passed,
+  **so that** the new `mde` version is actually running on every peer that was online during the window without me having to manually trigger anything.
+  **Acceptance** (each bench-observable):
+    - [ ] `upgrade_intent_watcher`'s tick checks, for each pending intent: `len(ready) + len(ready_failed) >= max(1, peer_count - 1)` AND `now - issued_at >= grace_seconds`. If both true AND this peer's hostname is in `ready` AND not in `complete`, shell out to `mde-install --yes --profile=<current installed-profile>` to apply the new bits, then on success add this peer's hostname to `complete` with `{at: <unix_s>}`.
+    - [ ] Stragglers (peers that come online AFTER the barrier already fired): their next tick sees `complete` non-empty for the intent, also runs `mde-install --yes`, then adds to `complete`. Self-heals without operator intervention.
+    - [ ] The `--keep-mesh` flag is NOT used here (the auto-trigger is a clean nuke; the new bits get a fresh state, matching the always-nuke lock).
+    - [ ] `peer_count` is read from mackesd's peer registry at the start of each barrier check (not cached — handles peers being added/removed mid-upgrade).
+    - [ ] Pure-fn helpers: `barrier_should_fire(intent, peer_count, now)`, `peers_still_pending(intent, all_peers, now)`.
+  **Implementation notes:**
+    - The auto-triggered `mde-install --yes` writes its audit log to `/var/log/mde/wipe-<ulid>.log` per INST-5; the log line includes `triggered_by: upgrade-intent <intent_id>` so the post-hoc trail names the cause.
+    - Blockers: INST-7 (`mde-install --yes` must work end-to-end), INST-11 (intent-watcher worker must exist).
+
+- [ ] **v2.7: INST-13 Leader-elected intent-file cleanup tick (Tier 2)**
+  **As** the fleet,
+  **I want** intent files for completed upgrades to disappear from `<mesh-home>/upgrade-intent/` on their own once every reachable peer has marked `complete`,
+  **so that** the dir doesn't accumulate historical intent files forever and `mde-update --coordinate <same-version>` works again after a rollback-then-redo cycle.
+  **Acceptance** (each bench-observable):
+    - [ ] `upgrade_intent_watcher` includes a final per-tick step gated on `check_leader(&store, &node_id)` (same leader-election mechanism as MON-1.b's aggregator).
+    - [ ] When leader: enumerate all intent files; for each, if `len(complete) >= len(all_peers) - len(unreachable_peers)` AND `now - issued_at >= grace_seconds + 24h`, delete the file. The +24h grace-after-grace handles stragglers coming online late.
+    - [ ] Cancelled intents (`mde-update --cancel`) get deleted immediately by the cancel command itself, not by this tick.
+    - [ ] Pure-fn helper: `intents_to_clean(intents, all_peers, unreachable, now)` returns the list of paths-to-delete.
+  **Implementation notes:**
+    - Single-leader cleanup avoids the race where every peer races to delete the file at the same time (and one peer's deletion replicates to others as a Gluster conflict).
+    - Blockers: INST-12, MON-1.b's leader-check pattern (already specified).
+
+#### Post-install verification + docs
+
+- [ ] **v2.7: INST-14 Post-install smoke check (Tier 1)**
+  **As** the installer (the last step before exit 0),
+  **I want** to verify that the profile I claimed to install is actually running (services up, peers reachable, brick mounted where applicable),
+  **so that** I never report success on a half-broken install that won't actually let the operator do anything productive when they next log in.
+  **Acceptance** (each bench-observable):
+    - [ ] At the end of `mde-install`, before printing the success banner, run `mde-installer::smoke::run(profile)` which checks: (a) `mackesd.service` is `active`; (b) `nebula.service` is `active` (all profiles) + a peer is reachable on the overlay (skip if first-ever enrollment with no peers); (c) for `headless` + `full`: `glusterd.service` is `active` + `gluster volume info mesh-home` returns `Type: Replicate`; (d) for `full`: `sway` is the current `XDG_SESSION_DESKTOP` or the operator is told to log out + back in to start the new session.
+    - [ ] Any failed check prints `(!) check failed: <name> — <details>` and exits 3; success prints `>>> mde-install complete: profile=<X>, services=<N>/<N> up.`
+    - [ ] `--skip-smoke` flag bypasses the check (for image builds where some services intentionally aren't started yet).
+  **Implementation notes:**
+    - Each check is a pure-fn `Check` returning `Outcome::{Ok, Skip(reason), Fail(reason)}` so they're trivially unit-testable.
+    - Carbon glyph(s): n/a (CLI).
+    - Blockers: INST-7 (the wipe-then-birthright flow that this verifies the end of).
+
+- [ ] **v2.7: INST-15 Operator docs + design lock + voice-and-tone (Tier 2)**
+  **As** a mackes-shell operator first encountering `mde-install` and `mde-update`,
+  **I want** a one-page reference in `docs/help/` that shows the three profiles, the three confirms (`NUKE` + lossy-downgrade + `--yes` audit log), and the `mde-update --coordinate` cycle end-to-end,
+  **so that** I don't have to read the worklist preamble or the Rust source to understand what these commands do.
+  **Acceptance** (each bench-observable):
+    - [ ] `docs/help/installer.md` ships with: profile picker walk-through, full vs headless vs lighthouse matrix (copied from the preamble), the typed-`NUKE` rationale, the `--yes` audit-log path, the `mde-update` table + `--coordinate` cycle, the quorum + grace fallback semantics, the lossy-downgrade extra confirm.
+    - [ ] `docs/design/v2.7-mde-installer.md` ships with the 15 locks captured verbatim from the preamble (canonical design-doc copy; the preamble can shorten once the design doc lands).
+    - [ ] `install-helpers/lint-voice.sh` passes on every new `text(...)` / `println!(...)` / `eprintln!(...)` user-visible string added by the INST-* commits — banner text, prompts, error messages, audit-log headers all in scope.
+    - [ ] CHANGELOG entry for v2.7 calls out the installer + profiles as the headline feature.
+  **Implementation notes:**
+    - Help doc is markdown; renders inline in the Workbench help viewer (per the v2.0.0 docs/help/ rendering path).
+    - Blockers: every other INST-* item — the docs land in the same commit as the last wired piece.
 
 ### v2.0.0 monolithic cut (shipped 2026-05-20)
 
