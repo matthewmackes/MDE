@@ -90,7 +90,37 @@ impl WizardApp {
     fn update(&mut self, msg: Message) -> Task<Message> {
         match msg {
             Message::NavNext => {
+                // NF-14.4 — when leaving Apply for the first time,
+                // shell out to `mackesd enroll --token` if the
+                // operator supplied a v2.5 join token. The spawn
+                // is detached so the wizard doesn't freeze waiting
+                // for the lighthouse to sign; the Preview page
+                // (NF-7.3) sees the resulting Nebula state on its
+                // probe + diagnostics-timer gate.
+                let leaving_apply = self.page == WizardPage::Apply;
                 if let Some(next) = self.page.next() {
+                    if leaving_apply {
+                        if let Some(argv) =
+                            pages::apply::build_enroll_argv(&self.state.mesh_passcode)
+                        {
+                            if let Err(e) = std::process::Command::new(&argv[0])
+                                .args(&argv[1..])
+                                .spawn()
+                            {
+                                info!(
+                                    "wizard: failed to spawn `{}`: {} \
+                                     (Preview will show empty roster)",
+                                    argv.join(" "),
+                                    e,
+                                );
+                            } else {
+                                info!(
+                                    "wizard: spawned `{}` (Preview will pick up state)",
+                                    argv.join(" "),
+                                );
+                            }
+                        }
+                    }
                     self.page = next;
                     // NF-7.3 — on first landing on Preview, kick
                     // off a probe + start the diagnostics timer.
