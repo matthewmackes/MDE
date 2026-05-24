@@ -1978,6 +1978,42 @@ fn run_serve(
             }
         }
 
+        // NF-3.6.c (v2.5) — auto-signer worker. Polls QNM-Shared
+        // for pending-enroll CSRs every 30 s + auto-signs each
+        // one via nebula_enroll::sign_pending_csr. Runs on every
+        // node — on peer-role boxes (no active CA), sign_pending_csr
+        // returns SignFailed and the worker logs at debug + moves
+        // on. On lighthouse-role boxes with an active CA, this
+        // closes the manual `mackesd ca sign-csr` operator step
+        // for the common case. Spawned outside the nebula-supervisor
+        // Ok arm so the watcher runs even if the supervisor's
+        // SQLite open failed (the watcher opens its own per-tick
+        // connection).
+        let csr_watcher_mesh_id = std::env::var("MDE_MESH_ID")
+            .unwrap_or_else(|_| format!("mesh-{node_id}"));
+        let csr_watcher_lighthouse_addr = {
+            let host = std::fs::read_to_string("/etc/hostname")
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| node_id.clone());
+            format!("{host}:4242")
+        };
+        sup.spawn(Spawn::new(
+            mackesd_core::workers::nebula_csr_watcher::NebulaCsrWatcher::new(
+                qnm_root.clone(),
+                db_path.clone(),
+                csr_watcher_mesh_id,
+                node_id.clone(),
+                csr_watcher_lighthouse_addr,
+            ),
+            RestartPolicy::OnFailure,
+        ));
+        worker_names
+            .lock()
+            .expect("worker_names mutex")
+            .push("nebula_csr_watcher".into());
+
         // v4.0.1 AF-NET-2 (2026-05-23) — mesh-latency sniffer.
         // Pings every enrolled non-local peer every 30 s and
         // writes the result to ~/.cache/mde/mesh-latency.json.

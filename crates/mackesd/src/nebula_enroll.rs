@@ -524,7 +524,7 @@ impl std::error::Error for SignCsrError {}
 ///
 /// Per [`SignCsrError`].
 #[allow(clippy::too_many_arguments)]
-pub fn sign_pending_csr<B: crate::ca::NebulaCertBackend>(
+pub fn sign_pending_csr<B: crate::ca::NebulaCertBackend + ?Sized>(
     backend: &B,
     conn: &rusqlite::Connection,
     qnm_root: &Path,

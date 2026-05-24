@@ -97,6 +97,12 @@ pub mod mesh_router;
 // role-marker management + bundle-watch + systemctl
 // reload).
 pub mod nebula_supervisor;
+// NF-3.6.c (v2.5) — Auto-signer worker. Polls QNM-Shared for
+// pending-enroll CSRs + calls nebula_enroll::sign_pending_csr
+// on each new one, replacing the manual `mackesd ca sign-csr`
+// step for the common case (single-lighthouse mesh with an
+// active CA).
+pub mod nebula_csr_watcher;
 pub mod metrics_flush;
 pub mod nats;
 pub mod notification_relay;

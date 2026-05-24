@@ -54,7 +54,7 @@ pub struct SignedPeer {
 ///   `nebula-cert` failures.
 /// - [`CaError::Io`] on file IO failures.
 #[allow(clippy::too_many_arguments)]
-pub fn sign_peer_cert<B: NebulaCertBackend>(
+pub fn sign_peer_cert<B: NebulaCertBackend + ?Sized>(
     backend: &B,
     conn: &Connection,
     mesh_id: &str,
