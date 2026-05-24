@@ -1,5 +1,19 @@
 # Phase 12 — Connectivity scope & intent (locked 2026-05-19)
 
+> **SUPERSEDED 2026-05-23 by `v2.5-nebula-fabric.md`** for
+> everything below the `mackesd_core` library facade. The
+> Tailscale + Headscale + self-hosted DERP architecture this
+> document codified is retired; Nebula replaces all three. The
+> 25-question audience / SLO locks (Q1–Q5 audience, Q7–Q8
+> latency, Q16 throughput, Q22 roaming, etc.) remain in force —
+> Nebula has to clear the same bar. The transport-mechanism
+> locks (Q6 self-hosted DERP, Q10 TCP/443 implementation) are
+> retired in favor of the v2.5 design lock.
+>
+> Read this doc for the user-felt SLOs that still apply. Read
+> `v2.5-nebula-fabric.md` for the fabric implementation that
+> meets them.
+
 Companion document to `PROJECT_WORKLIST.md § Phase 12.14–12.23`.
 Captures the 25-question survey the user ran on 2026-05-19 to lock
 the scope, goals, and intent of the Mesh networking platform's

@@ -21,6 +21,15 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      bench_fleet_url:
+        description: >
+          URL or path to the NF-9.x bench fleet topology JSON (see
+          docs/help/bench-acceptance.md). Required for the
+          `acceptance` job; ignored by the default push/PR jobs.
+        required: false
+        default: ""
 
 jobs:
   python:
@@ -195,3 +204,51 @@ jobs:
           sleep 0.5
           install-helpers/bench-panel.sh
           kill $BENCH_XVFB_PID 2>/dev/null || true
+
+  acceptance:
+    # NF-9.x — v2.5 Nebula-fabric bench acceptance gate.
+    #
+    # This job is intentionally skipped on every push + pull_request
+    # event. The six bench scenarios (NF-9.1..NF-9.6 in
+    # docs/PROJECT_WORKLIST.md) require a live Nebula fleet stood up
+    # by the operator, described by a JSON topology file as
+    # documented in docs/help/bench-acceptance.md.
+    #
+    # To run the gate, invoke the workflow with
+    #   gh workflow run ci.yml -f bench_fleet_url=<url-or-path>
+    # The runner expects that URL to resolve to a fleet topology
+    # JSON on the runner's filesystem; the harness reads it via the
+    # MDE_NEBULA_BENCH_FLEET env var.
+    #
+    # NF-20.4: the legacy CI test stage had `tailscaled` and
+    # `headscale` services in its docker-compose; both were removed
+    # ahead of the v2.5 cut. This job replaces them — there is no
+    # docker-compose stack at all; the harness ssh's into hosts the
+    # operator provisioned.
+    name: acceptance (NF-9.x bench fleet)
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.bench_fleet_url != ''
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:44
+    steps:
+      - name: Install runtime + test deps
+        run: |
+          dnf install -y --setopt=install_weak_deps=False \
+            git openssh-clients \
+            python3 python3-pip python3-pytest
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Mark workspace safe for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Run bench-acceptance harness
+        env:
+          # The harness expects MDE_NEBULA_BENCH_FLEET to point at a
+          # local JSON file. The workflow input is recorded verbatim
+          # — wire it up to whatever fetch/secret-store mechanism
+          # the bench operator uses before invoking the workflow.
+          MDE_NEBULA_BENCH_FLEET: ${{ github.event.inputs.bench_fleet_url }}
+        run: |
+          python3 -m pytest tests/acceptance/test_nebula_fabric.py -v --tb=short

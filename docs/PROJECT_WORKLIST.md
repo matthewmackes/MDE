@@ -102,6 +102,778 @@ locked work appears under **Active** with `[ ] Open`.
 > Net: v2.0.0 is feature-complete in source. The only work that
 > can move it forward today is bench validation (HW-*) or
 > starting on v2.1 scope.
+>
+> **2026-05-23 amendment — v2.5 Nebula-fabric rebuild locked.**
+> The mesh fabric below `mackesd_core` is being rebuilt around
+> Nebula (5-Q survey 2026-05-23,
+> `docs/design/v2.5-nebula-fabric.md`). Headscale + Tailscale +
+> `derper` retire entirely; Nebula's lighthouse pattern subsumes
+> control plane + relay; CA lives on the leader; TCP/443 covert
+> path wraps Nebula UDP via a new `mackes-nebula-https-tunnel`
+> crate. Greenfield only — no users, no migration code. The
+> v2.5 workstream lives in the next section. Phase 12.16 / 12.17
+> / 12.18 entries below carry in-place retraction notes
+> pointing to the NF-N.M sub-tasks that replace them.
+
+### v2.5: Nebula fabric rebuild (locked 2026-05-23)
+
+> **Design lock:** `docs/design/v2.5-nebula-fabric.md`.
+> **5-Q survey locks:** (1) full replacement — Headscale +
+> Tailscale + `derper` removed, Nebula is the only mesh fabric;
+> (2) every Host-role peer runs `nebula-lighthouse.service`,
+> reusing `leader.rs` election; (3) dedicated CA on the leader,
+> sealed under `/var/lib/mackesd/nebula-ca/`, epoch-bumped on
+> failover; (4) covert TCP/443 path = Nebula-over-rustls in a
+> new `mackes-nebula-https-tunnel` crate (one fabric, no
+> parallel transport); (5) greenfield only — no users to
+> migrate, no compat shims.
+>
+> **Supersedes** the Tailscale/Headscale/DERP locks in
+> `v12.0-enterprise-mesh.md` and `v12-connectivity-scope.md`
+> for everything below the `mackesd_core` library facade
+> (Layer 7). Mesh state model (7 buckets), deployment lifecycle
+> FSM, leader election, reconciliation engine, telemetry ingest,
+> and the panel surface are unchanged. Only Layer 0 (fabric) +
+> the new `ca/` module under Layer 4 + the new `nebula_ca` SQL
+> table are net-new code.
+>
+> **Retractions** that this section formally retires (each item
+> below carries an in-place retraction note in its original
+> Phase 12 location):
+>
+> * **12.16** self-hosted DERP relay — `mde-derper.service` +
+>   `tailscale-derp` dep deleted. Lighthouse subsumes relay.
+> * **12.17** ICE/STUN augmentation — `crates/mackesd/src/stun.rs`
+>   deleted. Nebula's hole-punching is protocol-level.
+> * **12.18** HTTPS-tunnel fallback — `https_fallback.rs` policy
+>   layer migrates into `mackes-nebula-https-tunnel::activation`;
+>   the wire-protocol layer becomes new code, no longer a
+>   separate fallback path.
+> * **mesh_vpn.py** Tailscale OAuth bootstrap + Headscale shim
+>   deleted; `mesh_derp.py` deleted; `mesh_nebula.py` is the
+>   thin replacement.
+> * **`TransportKind::DerpRelay`** variant + DERP-related tests
+>   retired from `crates/mackes-transport/`.
+>
+> **Workstream layout** — fabric (NF-1..NF-9, ~55 tasks) +
+> desktop surface (NF-10..NF-18, ~38 tasks) + cross-cutting
+> (NF-19..NF-20, ~11 tasks):
+>
+> **Fabric foundation (NF-1..NF-9, ~55):**
+> - **NF-1.x** — `mackes-nebula-https-tunnel` crate (Q4)
+> - **NF-2.x** — `mackesd::ca` module + SQL table (Q3)
+> - **NF-3.x** — `nebula_supervisor` worker + systemd units (Q1, Q2)
+> - **NF-4.x** — `mackes-transport` rename + variant retirements
+> - **NF-5.x** — Python helper rewrite + deletions
+> - **NF-6.x** — Packaging hardcut (RPM spec, dependency swap)
+> - **NF-7.x** — Wizard rebuild — primary mesh-init + enroll flows
+> - **NF-8.x** — Connectivity-pass updates (12.14–12.23 follow-throughs)
+> - **NF-9.x** — Acceptance gates (6 bench scenarios per design lock)
+>
+> **Desktop surface (NF-10..NF-18, ~38):**
+> - **NF-10.x** — Panel + status applet integration
+> - **NF-11.x** — Peer card + topology UI updates
+> - **NF-12.x** — File manager + GVFS + `mesh://` URI handler
+> - **NF-13.x** — Service publishing over Nebula overlay (SSH, NATS,
+>   mesh-FS, mesh-media, sync, WoL, audio/video)
+> - **NF-14.x** — Wizard expansion + legacy wizard-page retirement
+> - **NF-15.x** — Help docs rewrite + test rewrite
+> - **NF-16.x** — Notification surface (lighthouse / CA / fallback / expiry)
+> - **NF-17.x** — Firewall + D-Bus surface adjustments
+> - **NF-18.x** — Backup, recovery, admin runbook
+>
+> **Cross-cutting (NF-19..NF-20, ~11):**
+> - **NF-19.x** — KDC2 cross-cutting amendments (variant renames)
+> - **NF-20.x** — CHANGELOG / version bump / CI matrix / voice lint /
+>   pre-commit guard / greenfield acceptance gate
+>
+> **Total:** ~104 sub-tasks. **Definition of Done** per §0.8 +
+> §0.12 — every sub-task ships fully reachable from a runtime
+> entry point; no stubs, no helper-only commits, no "phase B
+> wires it later" splits.
+
+#### NF-1.x — `mackes-nebula-https-tunnel` crate (Q4 covert)
+
+- [ ] **NF-1.1: Crate scaffold** — Create
+  `crates/mackes-nebula-https-tunnel/` with `Cargo.toml`,
+  `src/lib.rs`, workspace registration in root `Cargo.toml`.
+  Dependencies: `rustls 0.23`, `tokio`, `tokio-rustls`,
+  `bytes`. Per §0.12, this lands together with NF-1.2/1.3/1.4
+  so the crate is reachable from `mackesd` at commit time —
+  not a "scaffold only" commit.
+- [ ] **NF-1.2: TLS 1.3 listener + dialer** — `pub async fn
+  listen(addr: SocketAddr, server_cert: &Path, server_key:
+  &Path) -> Result<TunnelListener>` and `pub async fn dial(addr:
+  SocketAddr, sni: &str, ca_bundle: &Path) -> Result<TunnelStream>`.
+  ALPN advertises `h2,http/1.1` so passive observers see what
+  looks like an HTTP/2 long-poll session. rustls config pins
+  TLS 1.3 only.
+- [ ] **NF-1.3: Framing layer (`framing.rs`)** — 4-byte
+  big-endian length prefix, max frame size 1408 bytes (Nebula's
+  default MTU). `encode_frame(payload: &[u8], out: &mut
+  BytesMut)`, `decode_frame(buf: &mut BytesMut) ->
+  Option<Bytes>`. Pure functions, comprehensive unit tests:
+  short read, oversized frame, zero-length frame, multi-frame
+  buffer, partial frame across multiple reads.
+- [ ] **NF-1.4: Activation state machine (`activation.rs`)** —
+  Port `crates/mackesd/src/https_fallback.rs`'s
+  `HttpsFallbackState` + `FailureWindow` into this crate.
+  Same locks: 3 consecutive direct-UDP + lighthouse-relay
+  failures within a 30 s window. Same 20-unit-test surface.
+  `https_fallback.rs` removal lands in NF-4.5.
+- [ ] **NF-1.5: Server-side demux** — Lighthouse process
+  accepts both `:4242/udp` (native Nebula) and `:443/tcp`
+  (TLS-wrapped). Frame demux happens *before* the Nebula crypto
+  layer sees the packet — the inner Nebula stack runs
+  unmodified, the tunnel adapter just unwraps frames and feeds
+  bytes to a Unix domain socket the Nebula process is also
+  listening on. Validated by NF-9.4 acceptance scenario.
+- [ ] **NF-1.6: Throughput floor test** — bench test that
+  pushes 100 MB through a localhost tunnel, asserts >= 5 Mbps
+  on x86_64 Fedora 44 CI. Sets the Q10 covert-path floor.
+
+#### NF-2.x — `mackesd::ca` module + SQL table (Q3 PKI)
+
+- [ ] **NF-2.1: SQL migration `m0011_nebula_ca.sql`** —
+  Tables: `nebula_ca` (mesh_id, epoch, ca_cert_pem, created_at,
+  retired_at), `nebula_peer_certs` (node_id, epoch, cert_pem,
+  overlay_ip, created_at, expires_at, revoked_at).
+  PK: `(mesh_id, epoch)` and `(node_id, epoch)`. Migration
+  shipped per the additive-only policy locked at 12.2.4.
+- [ ] **NF-2.2: `ca/mint.rs::mint_ca()`** — Generate a fresh
+  Curve25519 CA keypair via `nebula-cert ca` (subprocess to the
+  Fedora `nebula` package's CLI — keeps the crypto under
+  upstream audit). Self-sign with mesh-id + epoch=0. Seal the
+  private key at `/var/lib/mackesd/nebula-ca/ca.key` (mode 0600,
+  root:root). Write public cert at `ca.crt` (mode 0644).
+  Insert row into `nebula_ca` SQL table. 6 unit tests: round-trip
+  via tempdir, sealed-mode bits, SQL row presence, idempotency
+  on re-mint, epoch=0 invariant, error on missing nebula-cert
+  binary.
+- [ ] **NF-2.3: `ca/sign.rs::sign_peer_cert()`** — Verify the
+  Ed25519-signed `EnrollmentRequest` (existing
+  `mackesd_core::identity`), allocate an overlay IP from the
+  mesh CIDR (`10.42.0.0/16` default) avoiding collisions via
+  `nebula_peer_certs` table query, build a peer cert with
+  `groups=[role:host|peer]` + `name=<node_id>`, sign via
+  `nebula-cert sign` subprocess against the sealed CA key,
+  insert row into `nebula_peer_certs`. Return the signed cert
+  bytes for the caller to drop into the QNM bundle.
+- [ ] **NF-2.4: `ca/seal.rs`** — On-disk seal/unseal helpers.
+  Strictly mode-0600 enforcement on read (Errors:
+  `Error::InsecurePermissions` if the file is group/world
+  readable). Owner-check: read only succeeds if the file is
+  owned by the running uid. 4 unit tests cover permission
+  errors and owner mismatch.
+- [ ] **NF-2.5: `ca/epoch.rs::bump_epoch()` + rotation on
+  promotion** — Called from `leader.rs` when this node wins
+  the lease and the previous leader's last-heartbeat is older
+  than the lease TTL. Atomic SQL: `UPDATE nebula_ca SET
+  retired_at = now() WHERE retired_at IS NULL`; insert new
+  row at `epoch = max_epoch + 1` with a freshly minted CA;
+  re-sign every active peer cert under the new epoch; emit a
+  hash-chained lifecycle event so the audit chain captures
+  the rotation.
+- [ ] **NF-2.6: `mackesd ca {mint, rotate, list, dump-ca}` CLI
+  subcommands** — Operator surface. `dump-ca` writes the public
+  CA cert to stdout for manual peer bootstrap (the wizard
+  also calls this path internally).
+- [ ] **NF-2.7: Bundle writer** — `mackesd_core::enrollment`
+  extends `EnrollmentResponse` with a `nebula_bundle: NebulaBundle`
+  field (CA cert, signed peer cert, signed peer key, overlay IP,
+  lighthouse roster, mesh CIDR). Written atomically to
+  `~/QNM-Shared/<peer>/mackesd/nebula-bundle.json` next to the
+  existing `heartbeat.json`.
+
+#### NF-3.x — `nebula_supervisor` worker + systemd units (Q1+Q2)
+
+- [ ] **NF-3.1: `nebula.service` systemd unit** —
+  `data/systemd/nebula.service`. `ExecStart=/usr/sbin/nebula
+  -config /etc/nebula/config.yaml`. Capabilities:
+  `CAP_NET_ADMIN`, `CAP_NET_BIND_SERVICE`. Lockdown:
+  `ProtectSystem=strict`, `ProtectHome=true`,
+  `NoNewPrivileges`. Resource caps: CPUQuota=200%,
+  MemoryHigh=128M, MemoryMax=256M (Nebula is much lighter than
+  tailscaled). `Restart=on-failure`, `RestartSec=5`.
+- [ ] **NF-3.2: `nebula-lighthouse.service` systemd unit** —
+  Same binary, separate unit. Gating:
+  `ConditionPathExists=/var/lib/mackesd/nebula/role.host`.
+  `BindsTo=nebula.service` so demotion-induced lighthouse stop
+  cascades cleanly. Resource caps: CPUQuota=300%,
+  MemoryHigh=256M, MemoryMax=512M (higher for the relay role).
+- [ ] **NF-3.3: `mackes-nebula-https-tunnel.service`** — Wraps
+  the NF-1 binary. `BindsTo=nebula.service`. Cert-renewal hook
+  reads from the same `/etc/letsencrypt/live/<host>/` directory
+  the lighthouse uses. Reload on cert change via
+  `Restart=on-failure` + 90-day cert-expiry buffer documented
+  in the unit's `[Service]` comments.
+- [ ] **NF-3.4: `nebula_supervisor` worker (Rust)** —
+  `crates/mackesd/src/workers/nebula_supervisor.rs`. Watches
+  the leader-election lease; on win, writes `role.host` marker
+  + starts the lighthouse unit via the system D-Bus surface;
+  on loss, removes marker + stops the unit. Watches
+  `~/QNM-Shared/<self>/mackesd/nebula-bundle.json` for updates
+  and reloads `nebula.service` when the bundle changes. Reaches
+  runtime via `bin/mackesd.rs::run_serve` spawn (per §0.12
+  runtime-reachability gate).
+- [ ] **NF-3.5: Config-file writer** —
+  `nebula_supervisor::materialize_config(bundle, role)` writes
+  `/etc/nebula/{config.yaml, ca.crt, host.crt, host.key}` atomically
+  (temp + fsync + rename). YAML includes:
+  `lighthouse.hosts` from bundle roster, `static_host_map`
+  seeded from LAN-discovery RTT cache (12.14 lives on as the
+  feeder), `listen.port: 4242`, `tun.dev: nebula1`.
+- [ ] **NF-3.6: D-Bus surface for `mded enroll`** —
+  `dev.mackes.MDE.Nebula.{Enroll, Status, RegenCerts}` methods.
+  Polkit policy gates Enroll behind the existing
+  `dev.mackes.mded.admin` action ID. Status returns
+  `(state: str, lighthouse_count: u32, peer_count: u32,
+  active_transport: str)` — feeds the panel without shelling
+  out.
+
+#### NF-4.x — `mackes-transport` rename + variant retirements
+
+- [ ] **NF-4.1: `TransportKind` enum rename** —
+  `DirectUdp` → `NebulaDirect`, `DerpRelay` →
+  `NebulaLighthouseRelay`, `Https443` → `NebulaHttps443`.
+  `KdcTls` unchanged. Update `as_str()`, `Display`, `all()`,
+  the iteration-order preference table, every match arm, and
+  every test fixture that pins a stringified variant.
+- [ ] **NF-4.2: `EdgeKind` enum mirror update** — Same renames
+  in `mackesd_core::topology::EdgeKind`. Pin the
+  `From<TransportKind> for EdgeKind` conversion lock-step.
+- [ ] **NF-4.3: `policy.toml` schema bump** —
+  `crates/mackesd/src/transport/policy.rs` parses the new
+  variant tokens. Add a one-shot migration: any pre-v2.5
+  `policy.toml` on disk gets rewritten with the new tokens on
+  first boot via `mackesd_core::transport::policy::migrate_tokens()`.
+  Greenfield lock (Q5) means we don't strictly need this, but
+  the policy file may be hand-edited so the migrator is cheap
+  insurance.
+- [ ] **NF-4.4: Remove `mackes-transport` DERP integration tests** —
+  Tests that build a real Tailscale DERP client (under the
+  `docker-tests` feature) get deleted. Replaced by NF-9.x
+  Nebula bench scenarios.
+- [ ] **NF-4.5: Delete `crates/mackesd/src/https_fallback.rs` +
+  `crates/mackesd/src/stun.rs`** — Functionality migrated to
+  NF-1.4 (`activation.rs`) and absorbed by Nebula's
+  protocol-level rendezvous respectively. Drop the 13 STUN
+  tests + 20 https-fallback tests in the same commit.
+
+#### NF-5.x — Python helper rewrite + deletions
+
+- [ ] **NF-5.1: Delete `mackes/mesh_vpn.py`** — 410 LOC of
+  Tailscale OAuth + Headscale CLI shim retires. The
+  `mackes.mackesd_bridge` already routes panel reads through
+  `mackesd_core` so no UI code is touched by this deletion.
+  Audit-trail: existing `[!]` `v3.0.3 12.17/12.18` worklist
+  entries get a closing retraction note.
+- [ ] **NF-5.2: Delete `mackes/mesh_derp.py`** — DERP-specific
+  helpers, all callers retire alongside the systemd unit drop.
+- [ ] **NF-5.3: Add `mackes/mesh_nebula.py`** — Thin wrapper
+  around `/usr/bin/nebula` for read-only status queries
+  (`peer list`, `tunnel info`). NO privileged operations —
+  enrollment, cert rotation, and lighthouse promotion all
+  route through `mded`'s D-Bus surface (NF-3.6).
+  ~80 LOC target.
+- [ ] **NF-5.4: Rewrite `mackes/mesh_services.py` Network group** —
+  Drop entries: `tailscaled`, `headscale`, `mde-derper`.
+  Add entries: `nebula`, `nebula-lighthouse`,
+  `mackes-nebula-https-tunnel`. The 4-entry curated set lock
+  becomes a 3-entry set (Q-MX-style lock bump captured in
+  the design doc).
+- [ ] **NF-5.5: `mackes/workbench/network/mesh_vpn.py` deletion** —
+  The panel page already reads through `mackesd_core`;
+  deletion is a no-op for the UI. Touch any breadcrumb that
+  still says "Tailscale" → "Nebula".
+- [ ] **NF-5.6: `mackes/birthright.py` cleanup** —
+  Drop `tailscale` / `headscale` from the legacy-package
+  audit lists; add `nebula` to the required-package list
+  alongside `mackesd`. Update the wireguard probe (already
+  refactored at line ~3786 per a prior bundle) to a Nebula
+  probe (`/usr/sbin/nebula -version`).
+
+#### NF-6.x — Packaging hardcut (RPM spec)
+
+- [ ] **NF-6.1: `packaging/fedora/mackes-shell.spec` dependency
+  swap** — Drop `Requires: tailscale`, `Requires: headscale`,
+  `Requires: tailscale-derp`. Add `Requires: nebula >= 1.9.0`
+  (Fedora ships 1.9.4 as of F44). Verify package availability
+  on F42/F43/F44 via `dnf repoquery` in CI.
+- [ ] **NF-6.2: `%files` list update** — Add
+  `/usr/lib/systemd/system/nebula.service`,
+  `/usr/lib/systemd/system/nebula-lighthouse.service`,
+  `/usr/lib/systemd/system/mackes-nebula-https-tunnel.service`,
+  `%dir /etc/nebula/ (0755 root:root)`,
+  `%dir /var/lib/mackesd/nebula-ca/ (0700 root:root)`.
+  Drop `/usr/lib/systemd/system/mde-derper.service`,
+  `%dir /etc/headscale/`, and the example DERP map.
+- [ ] **NF-6.3: `%post` scriptlet** — `systemctl daemon-reload`
+  is enough; the units don't auto-enable (gating-based
+  activation via `nebula_supervisor`). Drop the headscale +
+  derper `%post` lines.
+- [ ] **NF-6.4: SRPM build smoke** — `make rpm` exits 0 on a
+  clean tree. Per CLAUDE.md §0.6, never `--short-circuit`.
+
+#### NF-7.x — Wizard rebuild (mesh-init + enroll)
+
+- [ ] **NF-7.1: Replace `mackes/wizard/pages/mesh_setup.py`** —
+  Pre-v2.5 page walks the operator through Tailscale OAuth.
+  Post-v2.5 page calls `mded.Nebula.Enroll` over D-Bus with
+  either (a) "Start a new mesh" → triggers `mackesd ca mint` +
+  prints the join token, or (b) "Join existing mesh" →
+  prompts for the join token, calls Enroll.
+- [ ] **NF-7.2: Join-token format** — `mesh:<mesh_id>@<lighthouse_ip>:<lighthouse_port>#<bearer>`.
+  Compact (≤120 chars), copy-pasteable, QR-code-friendly for
+  the next-generation kiosk wizard. Bearer is the existing
+  64-byte token from `mackesd_core::enrollment::build_identity()`,
+  base32-encoded for typeability.
+- [ ] **NF-7.3: Wizard preview page** — After successful
+  enrollment, show the overlay IP, the lighthouse roster, and
+  a live `mded.Nebula.Status` poll. If a peer doesn't show up
+  within 30 s, surface the diagnostics banner per the Q11 lock.
+- [ ] **NF-7.4: First-boot vs reconfigure paths** — First-boot
+  takes the wizard. Reconfigure (`mde-workbench` → Mesh
+  panel → "Reset and rejoin") routes through the same wizard
+  pages but skips the welcome step.
+
+#### NF-8.x — Connectivity-pass updates (12.14–12.23 follow-throughs)
+
+- [ ] **NF-8.1: 12.14 LAN auto-detection adapts to Nebula** —
+  `lan_discovery::Registry` snapshot now feeds Nebula's
+  `static_host_map` via `nebula_supervisor::materialize_config`.
+  When a peer's mDNS-discovered LAN IP changes, the supervisor
+  regenerates `config.yaml` and signals Nebula with `SIGHUP`.
+  The 14 LAN-discovery unit tests stay (functionality is
+  unchanged); the integration with Nebula is the new code.
+- [ ] **NF-8.2: 12.15 IPv6-first** — Was descoped under v12.
+  Stays descoped under v2.5. No work.
+- [ ] **NF-8.3: 12.16 DERP relay → Nebula lighthouse relay** —
+  Retract the existing `[✓] 12.16` entry with a pointer to
+  NF-3.2. The `mde-derper.service` unit + `tailscale-derp`
+  dep + the example DERP map all delete in NF-6.2.
+- [ ] **NF-8.4: 12.17 STUN augmentation retired** — Retract
+  the `[!] 12.17` entry with a pointer to Nebula's
+  protocol-level hole-punching. Delete `crates/mackesd/src/
+  stun.rs` per NF-4.5.
+- [ ] **NF-8.5: 12.18 HTTPS-tunnel → NF-1.x** — Retract the
+  `[!] 12.18` entry with a pointer to the NF-1.x workstream.
+  `https_fallback.rs` activation logic migrates to
+  `mackes-nebula-https-tunnel::activation`.
+- [ ] **NF-8.6: 12.19 multi-path** — Predicate keeps its
+  meaning; selection now happens between
+  `NebulaDirect` and `NebulaLighthouseRelay` rather than
+  WireGuard and DERP. Update the variant names in the tests;
+  predicate code is unchanged.
+- [ ] **NF-8.7: 12.20 roaming-aware migration** — `LinkWatchWorker`
+  callback hits `nebula_supervisor` instead of the deleted
+  Tailscale-restart path. Sub-5 s reconnect target (down from
+  the original under-10 s) per the design lock.
+- [ ] **NF-8.8: 12.21 eager bootstrap** — Predicate keeps its
+  meaning; instead of "pre-warm a WireGuard session" the
+  action is "pre-resolve the peer's overlay IP via the
+  lighthouse static_host_map". Same `should_eager_bootstrap`
+  function; new action thread.
+- [ ] **NF-8.9: 12.22 throughput-aware path selection** — Pure
+  ranker stays. Same 4-quadrant truth table.
+- [ ] **NF-8.10: 12.23 LAN multicast** — Stays. Multicast
+  service-type token unchanged; firewall guard unchanged.
+
+#### NF-9.x — Acceptance gates (bench scenarios)
+
+Per CLAUDE.md §0.8 + the v2.5 design lock, the cut is not
+`[✓]` until all six bench scenarios pass on the 6-peer test
+fleet over a 7-day window:
+
+- [ ] **NF-9.1: `mackesd mesh init` smoke** — Fresh host, fresh
+  CA, lighthouse comes up, join token printed.
+- [ ] **NF-9.2: Two-peer enroll + ping** — Second host enrolls
+  with token from NF-9.1, both peers see each other on overlay
+  within 30 s, ICMP ping under 5 ms on LAN.
+- [ ] **NF-9.3: LAN cable replug** — Reconnect under 5 s,
+  panel's transition indicator fires.
+- [ ] **NF-9.4: UDP egress block** — `iptables -A OUTPUT -p udp
+  -j DROP` on one host; traffic transparently fails over to
+  the TCP/443 path within 30 s; panel shows
+  `HealthDegraded(NebulaHttps443)`.
+- [ ] **NF-9.5: Third-host Host-role promotion** — `mackesd
+  promote <id>` adds the new lighthouse to every peer's
+  `lighthouse.hosts` roster within 10 s; demote removes within
+  5 s.
+- [ ] **NF-9.6: Leader kill + CA epoch bump** — `systemctl
+  stop mackesd` on the leader, new Host wins the lease within
+  the lease-TTL window, CA epoch bumps, every peer gets fresh
+  cert bundle, mesh continues operating with no operator
+  action.
+
+#### NF-10.x — Panel + status applet integration (desktop surface)
+
+The mesh fabric is only useful if its state is legible at the
+desktop chrome level. NF-1..NF-9 build the engine; NF-10
+surfaces it on the panel.
+
+- [ ] **NF-10.1: `mesh-status` applet reads `mded.Nebula.Status`** —
+  `crates/mde-applets/mesh-status/src/lib.rs` polls
+  `dev.mackes.MDE.Nebula.Status` over D-Bus every 2 s. Glyph
+  reflects: green = direct UDP healthy, amber = lighthouse
+  relay active, red = TCP/443 fallback active, grey = offline.
+  Hover tooltip: peer count + active-lighthouse count + active
+  transport name. Click → opens the Mesh workbench panel
+  pre-focused on the topology tab.
+- [ ] **NF-10.2: `status-cluster` summary bit** —
+  `crates/mde-applets/status-cluster/src/lib.rs` adds a
+  one-character fabric-health bit to the cluster (alongside
+  Wi-Fi, battery, etc.). Same color table as NF-10.1. The
+  status-cluster doesn't get its own tooltip — clicking
+  drills into the mesh-status applet.
+- [ ] **NF-10.3: `network` applet Wi-Fi → Nebula reconnect
+  surfacing** — When `LinkWatchWorker` (NF-8.7) fires a
+  CameUp transition, the network applet renders a 5-second
+  "Reconnecting mesh…" toast inline with the Wi-Fi indicator.
+  No separate notification — keeps the visual budget tight.
+- [ ] **NF-10.4: Lighthouse-role badge on the active peer's
+  panel** — When this peer is acting as a lighthouse, the
+  mesh-status applet adds a small inset glyph (a lighthouse
+  pictogram) over the base health glyph. Surfaces the
+  promotion + demotion events visually without requiring the
+  operator to open the workbench.
+- [ ] **NF-10.5: Panel-integration tests** —
+  `crates/mde-applets/mesh-status/tests/integration.rs`
+  spawns a mock D-Bus surface returning canned `Status`
+  responses, asserts the glyph/tooltip transitions across
+  all four health states. Per §0.12, this lands with
+  NF-10.1 in the same commit so the applet ships reachable.
+
+#### NF-11.x — Peer card + topology UI updates
+
+- [ ] **NF-11.1: `mde-peer-card` Nebula overlay surface** —
+  `crates/mde-peer-card/src/sections.rs` adds a "Nebula"
+  section showing: overlay IP, cert fingerprint (truncated
+  to 8 chars), cert expiry date, lighthouse role
+  (Host / Peer), CA epoch this cert was signed under.
+  Replaces any existing Tailscale-IP rendering in the
+  card. Section is collapsible; collapses by default unless
+  the peer is unhealthy.
+- [ ] **NF-11.2: `mesh_topology` lighthouse-distinct
+  rendering** — `crates/mde-workbench/src/panels/mesh_topology.rs`
+  reads `lighthouse_roster()` from `mackesd_core::topology`
+  and renders lighthouse nodes with a distinct shape (a
+  diamond instead of a circle) and a halo to convey
+  rendezvous-server role. Non-lighthouse Host-role peers
+  get a half-halo. Plain Peer-role nodes stay circular.
+- [ ] **NF-11.3: `mesh_control` CA-epoch indicator + rotate
+  action** — `crates/mde-workbench/src/panels/mesh_control.rs`
+  adds a status row "CA epoch: N (last rotated YYYY-MM-DD)"
+  + a "Rotate CA now" admin button. Button calls
+  `mded.Nebula.RegenCerts` via D-Bus, displays a
+  confirmation modal first ("This will re-sign all peer
+  certs and trigger a brief reconnect window. Continue?").
+- [ ] **NF-11.4: `mesh_history` ca + cert events** —
+  `crates/mde-workbench/src/panels/mesh_history.rs` reads
+  the hash-chained event log, filters for
+  `nebula_ca_rotated`, `nebula_peer_cert_issued`,
+  `nebula_lighthouse_promoted`, `nebula_lighthouse_demoted`
+  event kinds and renders them with the same chronological
+  styling as the existing lifecycle events.
+- [ ] **NF-11.5: Topology renderer test fixtures** —
+  `tests/test_mesh_topology_render.py` replaces every
+  Tailscale-IP fixture with a Nebula overlay-IP fixture
+  (`10.42.0.x/16`). The renderer test asserts the new
+  lighthouse-diamond + halo + role pictogram are drawn
+  correctly. Old fixtures retired.
+
+#### NF-12.x — File manager + GVFS + mesh:// URI
+
+- [ ] **NF-12.1: `mackes-gvfsd-mesh` routes via overlay IPs** —
+  `bin/mackes-gvfsd-mesh` resolves `mesh://<node-id>/<path>`
+  by querying `mded.Nebula.Status.peers[<node-id>].overlay_ip`
+  and opening an SSHFS mount against that IP. Replaces any
+  fallback to Tailscale-issued IPs.
+- [ ] **NF-12.2: `bin/mackes-mesh-open` URI handler** — Same
+  resolution path as NF-12.1, but for `xdg-open`-style URI
+  launches. Failure modes: unknown node ID → desktop
+  notification ("Peer not in mesh"); peer offline → falls
+  back to "queue for delivery" if the path resolves to a
+  QNM-Shared location, otherwise toast "Peer is offline,
+  try again when it comes back."
+- [ ] **NF-12.3: `mde-files send_to.rs` peer enumeration** —
+  `crates/mde-files/src/send_to.rs` reads the peer roster
+  from `mded.Nebula.Status` and renders one menu item per
+  online peer. Offline peers grey out with a tooltip ("Peer
+  is offline"). Send action routes via overlay IP, falls
+  back to QNM-Shared queue if direct path fails.
+- [ ] **NF-12.4: QNM-Shared FUSE Nebula validation** —
+  `mackes/mesh_fs_fuse.py` validates that every peer
+  directory under `~/QNM-Shared/` corresponds to a
+  known-good Nebula peer cert. Stale directories (peer
+  decommissioned, cert revoked) get a `.stale` suffix and
+  surface in the panel's notification stream.
+
+#### NF-13.x — Service publishing over Nebula overlay
+
+Every service the platform exposes peer-to-peer must bind to
+the Nebula overlay interface (`nebula1`), not the host's
+public IP. This locks the trust boundary at the fabric.
+
+- [ ] **NF-13.1: `mesh_ssh.py` SSH bind to overlay** —
+  `mackes/mesh_ssh.py` writes `/etc/ssh/sshd_config.d/
+  mackes-mesh.conf` with `ListenAddress 10.42.0.X` (where
+  X is this peer's allocated overlay IP, read from
+  `/etc/nebula/host.crt`). Reload sshd on overlay-IP
+  change (rare — only on re-enrollment under a new CA
+  epoch). Drops any Tailscale-IP binding.
+- [ ] **NF-13.2: `mesh_nats.py` NATS broker overlay bind** —
+  Same model. NATS `listen` directive in
+  `/etc/nats/mesh.conf` pins to the overlay IP. Client
+  configs (every peer's `~/.config/mackes/nats-client.json`)
+  point at the lighthouse roster from `mackesd_core::topology`,
+  not a static Tailscale name.
+- [ ] **NF-13.3: `mesh_fs.py` / `mesh_fs_fuse.py` overlay
+  routing** — SSHFS mounts resolve `~/QNM-Shared/<peer>/`
+  by overlay IP, not Tailscale magic-DNS name.
+- [ ] **NF-13.4: `mesh_media.py` media discovery overlay** —
+  Media library service binds discovery probes
+  (`_mackes-media._tcp.local.`) to the overlay interface;
+  cross-LAN media browse routes through the lighthouse
+  relay when the peer isn't on the same broadcast domain.
+- [ ] **NF-13.5: `mesh_sync.py` rsync over overlay** —
+  rsync wrapper uses `<overlay-ip>:<path>` rather than the
+  Tailscale magic-DNS name. Bandwidth cap settings
+  (existing) unchanged.
+- [ ] **NF-13.6: `mesh_wol.py` WoL via lighthouse relay** —
+  Wake-on-LAN payload (magic packet) routes via the
+  lighthouse when the target peer is offline + on a
+  different LAN segment. The lighthouse de-encapsulates
+  the WoL frame and re-broadcasts it on the target peer's
+  LAN via `static_host_map` cached MAC address. New
+  capability — WoL across LANs didn't work pre-Nebula.
+- [ ] **NF-13.7: Audio/video transport overlay adaptation** —
+  Per `docs/design/audio-video-compliance.md`, the
+  low-latency audio + screencast streams (Opus + AV1) bind
+  to the overlay interface. The throughput target
+  (≥30 Mbps for 1080p60 screencast) gates on direct-UDP
+  Nebula; lighthouse-relay degrades to 480p, TCP/443
+  degrades to audio-only.
+
+#### NF-14.x — Wizard expansion + legacy wizard pages retire
+
+- [ ] **NF-14.1: Delete `mackes/wizard/headscale_setup.py`** —
+  Headscale bootstrap page retires. The wizard's first-boot
+  flow routes through NF-7.1's new `mesh_setup.py`.
+- [ ] **NF-14.2: Update `mackes/wizard/pages/mesh_passcode.py`** —
+  Passcode input UX validates the new join-token format
+  from NF-7.2 (`mesh:<mesh_id>@<lighthouse_ip>:<port>#<bearer>`).
+  Old 16-char Tailscale passcode flow retired. QR-code scan
+  alternative input lands in NF-14.2.a (deferred to v2.5.1).
+- [ ] **NF-14.3: Update `mackes/wizard/pages/network.py`** —
+  Pre-flight check verifies Nebula UDP/4242 and TCP/443
+  are unblocked egress on this peer. Failure surfaces an
+  actionable "Open these ports in your firewall" page with
+  a one-click `firewalld` rule for the common Fedora setup.
+- [ ] **NF-14.4: `mackes/wizard/pages/apply.py` Nebula
+  integration** — Apply phase calls
+  `mded.Nebula.Enroll(token)` over D-Bus and polls
+  `mded.Nebula.Status` until the new peer appears in the
+  roster. Timeout of 60 s with a retry button.
+- [ ] **NF-14.5: Rust wizard mirror (`crates/mde-wizard/`)** —
+  Mirror NF-14.2/14.3/14.4 in the Iced wizard surface so
+  the Wayland-only v3.x cut isn't blocked on the Python
+  wizard.
+
+#### NF-15.x — Help docs + test rewrite
+
+- [ ] **NF-15.1: `docs/help/mesh-nebula.md` (new)** — Net-new
+  help doc covering: what Nebula is, how lighthouses work,
+  how to mint a mesh, how to invite a peer, how to inspect
+  cert state, how to rotate the CA. Replaces
+  `docs/help/mesh-vpn.md` as the primary mesh entry point.
+- [ ] **NF-15.2: Retire `docs/help/mesh-vpn.md`** — Convert
+  to a one-line redirect to `mesh-nebula.md`, or delete
+  outright. Greenfield lock means no existing docs links
+  break.
+- [ ] **NF-15.3: Update `docs/help/mesh-admin.md`** —
+  Operator playbook covering: CA mint / rotate / dump,
+  peer cert sign / revoke, lighthouse promote / demote,
+  emergency recovery (CA loss → fresh mesh-init, no
+  recovery from cert loss).
+- [ ] **NF-15.4: Update `docs/help/mesh-ops.md`** —
+  Bench-ops runbook: how to verify lighthouse health, how
+  to read the panel's degraded states, how to capture
+  Nebula's debug logs (`journalctl -u nebula.service -f`),
+  how to test the TCP/443 fallback path.
+- [ ] **NF-15.5: Rename `tests/test_mesh_vpn.py` →
+  `tests/test_mesh_nebula.py`** — Rewrite every test that
+  shells out to `tailscale status` to shell out to
+  `nebula -test config` instead. Drop the Headscale-CLI
+  mock entirely.
+- [ ] **NF-15.6: Update `tests/test_mesh_services.py`** —
+  Curated service set goes from `tailscaled / headscale /
+  caddy / mackesd` (4 entries) to `nebula /
+  nebula-lighthouse / mackes-nebula-https-tunnel /
+  mackesd` (4 entries). Test fixtures updated lock-step.
+- [ ] **NF-15.7: Update `tests/test_mesh_metrics.py`** —
+  Metric labels for transports change from `direct_udp /
+  derp_relay / https443 / kdc_tls` to `nebula_direct /
+  nebula_lighthouse_relay / nebula_https443 / kdc_tls`.
+  Prometheus exposition fixtures updated.
+- [ ] **NF-15.8: Update `docs/help/cli-reference.md`** —
+  Add `mackesd ca {mint, rotate, list, dump-ca}`,
+  `mackesd nebula {peer-list, status, regen-certs}`
+  subcommands. Drop `mded tailscale {up, down, status}`
+  references entirely.
+- [ ] **NF-15.9: Audit `docs/EPIC-production-ready-mackes.md`** —
+  ~17 mentions of tailscale/headscale per the original
+  grep. Each becomes a Nebula equivalent or gets retired.
+- [ ] **NF-15.10: Update `docs/help/troubleshooting.md`** —
+  Replace Tailscale-OAuth-stuck section with
+  Nebula-cert-expiry-recovery section. New section for
+  TCP/443 fallback diagnostics.
+- [ ] **NF-15.11: Update `docs/help/headless.md`** — Headless
+  enrollment via `mackesd enroll --token <…>` replaces the
+  Tailscale auth-key flow.
+
+#### NF-16.x — Notification surface
+
+Lifecycle events that previously surfaced as "Tailscale
+disconnected" toasts get a dedicated Nebula vocabulary.
+
+- [ ] **NF-16.1: Lighthouse promotion / demotion notification** —
+  `mackes/mesh_notifications.py::emit_lighthouse_event()`.
+  Promotion: subtle informational toast ("This peer is now
+  serving as a lighthouse for the mesh.") Demotion: same
+  weight, opposite copy.
+- [ ] **NF-16.2: CA rotation notification** — Bumped CA
+  epoch on the leader triggers an info toast per-peer:
+  "Mesh CA rotated. Your peer cert was re-issued."
+  Failure: error toast pointing to the recovery doc
+  (NF-15.3).
+- [ ] **NF-16.3: TCP/443 fallback notification** —
+  Transition into `Active` state on the
+  `HttpsFallbackState` machine emits a "Mesh failed over
+  to TCP/443 (firewall mode)" toast. Transition back to
+  `Inactive` emits an "all clear" toast. Honors Q12 lock:
+  this is a transition-only event, not a persistent banner.
+- [ ] **NF-16.4: Peer-cert-expiry early-warning** — 7 days
+  before any peer's Nebula cert expires, notify the
+  leader's operator. 24 hours before, escalate to a
+  persistent banner.
+
+#### NF-17.x — Firewall + D-Bus surface adjustments
+
+- [ ] **NF-17.1: `firewall.py` Nebula preset** —
+  `mackes/workbench/network/firewall.py` adds a one-click
+  preset: "Allow Nebula" → opens UDP/4242 inbound and
+  outbound + TCP/443 outbound. Retires the Tailscale
+  preset (UDP/41641).
+- [ ] **NF-17.2: `dev.mackes.MDE.Fleet` peer enumeration** —
+  Fleet D-Bus service backs `ListPeers()` with
+  `mded.Nebula.Status.peers` instead of `tailscale status
+  --json`. Schema unchanged (consumers don't notice).
+- [ ] **NF-17.3: `dev.mackes.MDE.Connect` overlay routing** —
+  `Connect.SendFile(node_id, path)` resolves to overlay
+  IP via Nebula peer roster. Tailscale-IP code path
+  deleted.
+- [ ] **NF-17.4: `dev.mackes.MDE.Settings` CA-epoch toggle** —
+  New setting: "Notify on CA rotation" (default on). Read
+  by `mesh_notifications.py` to gate the NF-16.2 toast.
+- [ ] **NF-17.5: `remote_desktop.py` RDP over overlay** —
+  RDP listener binds to overlay IP, not host public IP.
+  RDP client list reads from Nebula peer roster.
+
+#### NF-18.x — Backup, recovery, admin runbook
+
+- [ ] **NF-18.1: `mackesd ca export / import` CLI** — Export
+  the sealed CA private key + every peer cert into a
+  passphrase-encrypted bundle. Import reverses. Used for
+  leader-hardware-failure recovery before NF-2.5's
+  failover path lands. Encrypted with libsodium
+  `secretstream`; passphrase entered interactively.
+- [ ] **NF-18.2: `nebula_peer_certs` roster export** —
+  `mackesd nebula export-roster > roster.json`. JSON
+  schema: per-peer node_id + overlay_ip + cert_pem +
+  cert_expiry + groups. Useful for off-cluster audit + a
+  human-readable backup record.
+- [ ] **NF-18.3: Operator recovery runbook** —
+  `docs/help/mesh-recovery.md`. Step-by-step: full-mesh
+  loss recovery (mint new CA, re-enroll every peer);
+  single-peer loss (decommission + re-enroll); leader
+  loss (failover via NF-2.5, manual override via
+  `mackesd take-leadership`).
+- [ ] **NF-18.4: Automated CA backup to QNM-Shared** —
+  `nebula_supervisor` writes an encrypted CA bundle to
+  `~/QNM-Shared/<leader-id>/mackesd/ca-backup.enc` every
+  24 hours. Per-peer mackesd processes verify their copy
+  is current via the existing heartbeat watcher. Backup
+  passphrase derived from the mesh-id + a per-mesh
+  operator-supplied secret (entered once at mesh-init).
+
+#### NF-19.x — KDC2 cross-cutting amendments
+
+- [ ] **NF-19.1: Amend KDC2-1.2 entry** — The shipped
+  `Transport` trait + `TransportKind` enum at line 8507
+  refers to variant names `TailscaleDirectUdp`,
+  `TailscaleDerpRelay`, `Https443Tunnel`. Append an
+  in-place note: NF-4.1 renames these to `NebulaDirect`,
+  `NebulaLighthouseRelay`, `NebulaHttps443`. Trait shape
+  is unchanged; KDC2 callers update at the same commit.
+- [ ] **NF-19.2: Amend KDC2-4.4 entry** — `[ ]` Open
+  KDC2-4.4 at line 8930 references "Tailscale impl" for
+  the TLS-bytes path. Replace with `NebulaHttps443` impl
+  (NF-1.x ships it; the blocker resolves when NF-1.5 lands
+  the server-side demux + a `MeshTransport::dial`
+  surface).
+- [ ] **NF-19.3: KDC2 mesh-shunt overlay routing** —
+  `crates/mackesd/src/transport/mesh_shunt.rs` resolves
+  phone peers to overlay IPs (KDC clients running on
+  phones will join the same Nebula mesh as a special
+  `groups=[role:phone]` cert under KDC2-4.x). No code
+  change in this task — only an updated design note
+  pinning the integration point so KDC2 doesn't
+  accidentally re-introduce a separate transport.
+
+#### NF-20.x — Cross-cutting prep + release gates
+
+- [ ] **NF-20.1: CHANGELOG.md draft** — Top-of-file
+  `## 2.5.0 — Nebula fabric rebuild (YYYY-MM-DD)` entry
+  drafted at v2.5 cut prep time. User-visible bullets:
+  faster first-packet rendezvous (< 1 s), built-in
+  TCP/443 covert path, no SaaS dependency, simpler mesh
+  setup wizard (one passcode, no OAuth).
+- [ ] **NF-20.2: Version bump prep** — `mackes/__init__.py`,
+  `pyproject.toml`, `setup.py`,
+  `packaging/fedora/mackes-shell.spec` versions bump to
+  2.5.0 at cut time per §0.6 step 1. NOT done in advance
+  of cut.
+- [ ] **NF-20.3: Greenfield acceptance gate** — Per Q5
+  lock, v2.5 cut explicitly does NOT exercise any
+  migration path. The cut gate verifies: a fresh Fedora
+  44 VM with `dnf install mde-2.5.0-1.fc44.x86_64.rpm`
+  + first-boot wizard → working 2-peer mesh in under 10
+  minutes total operator time. No Tailscale residue
+  anywhere on the system (verified by
+  `rpm -q tailscale headscale tailscale-derp` returning
+  "not installed").
+- [ ] **NF-20.4: CI matrix update** — Drop
+  `tailscaled` + `headscale` from CI's
+  `docker-compose.test.yml`. Add `nebula` 1.9.4 +
+  `nebula-cert` to the test-runner container. Integration
+  test that spins up 3 Nebula nodes + verifies the NF-9.x
+  bench scenarios runs on every PR touching
+  `crates/mackesd/`, `crates/mackes-transport/`, or
+  `crates/mackes-nebula-https-tunnel/`.
+- [ ] **NF-20.5: Voice-and-tone lint update** — Per
+  CLAUDE.md §0.7's `install-helpers/lint-voice.sh`, add
+  forbidden strings: "Tailscale", "Headscale", "DERP"
+  (case-insensitive) — any user-visible string mentioning
+  these is a v2.5-cut regression. Lint runs on
+  `crates/mde-*/src/`, `mackes/workbench/`,
+  `mackes/wizard/`, `data/applications/*.desktop`.
+- [ ] **NF-20.6: Pre-commit gate updates** — Add a
+  workspace-wide `grep -RIn 'tailscale\|headscale\|derper'
+  --include='*.{rs,py}' crates/ mackes/ tests/` check to
+  the pre-commit pipeline post-NF-5.x land. Allow-list
+  the audit retraction notes in `docs/PROJECT_WORKLIST.md`
+  and the legacy v12 design docs.
 
 ### v2.0.0 monolithic cut (shipped 2026-05-20)
 
@@ -3070,21 +3842,31 @@ through them in priority order.
   if MDE ever ships under a non-sway compositor, the portal
   path lands then.
 - [✓] **v4.0.1: 12.17 STUN ≤1.5s acceptance criterion
-  (v12-connectivity-scope.md Q8) — shipped 2026-05-23** —
-  amended the `[!] Blocked` v3.0.3 12.17 entry above with a
-  new "v4.0.1 amendment" paragraph requiring STUN p99 ≤ 1.5 s
-  on the symmetric-NAT bench peer + a hard timeout so the
-  impl can't ship with unbounded blocking. The future v4.1+
-  unblocking commit will satisfy this gate before flipping
-  the entry to `[✓]`.
+  (v12-connectivity-scope.md Q8) — shipped 2026-05-23, then
+  RETRACTED 2026-05-23 by v2.5 Nebula-fabric lock.** The
+  acceptance gate is moot: Nebula's hole-punching is
+  protocol-level and the STUN module deletes in NF-4.5.
+  Original entry: amended the `[!] Blocked` v3.0.3 12.17 entry
+  above with a new "v4.0.1 amendment" paragraph requiring STUN
+  p99 ≤ 1.5 s on the symmetric-NAT bench peer + a hard timeout
+  so the impl can't ship with unbounded blocking. The future
+  v4.1+ unblocking commit was to satisfy this gate before
+  flipping the entry to `[✓]` — no longer applies.
 - [✓] **v4.0.1: 12.18 HTTPS-fallback TLS + DPI acceptance
-  (v12-connectivity-scope.md Q10) — shipped 2026-05-23** —
-  amended the `[!] Blocked` v3.0.3 12.18 entry above with a
-  new "v4.0.1 amendment" paragraph requiring real TLS
-  handshake + realistic SNI + Let's Encrypt-signed cert chain
-  validated against system trust store + survival against
-  DPI on a packet-inspecting bench firewall. The future v4.1+
-  unblocking commit will satisfy this gate before flipping.
+  (v12-connectivity-scope.md Q10) — shipped 2026-05-23,
+  REROUTED 2026-05-23 to NF-1.x by the v2.5 Nebula-fabric
+  lock.** The Q10 covert-path acceptance gate (real TLS
+  handshake, realistic SNI, Let's Encrypt cert chain, DPI
+  survival) transfers verbatim to the NF-1.x acceptance gate
+  (NF-9.4) — same lock, new implementation surface
+  (`mackes-nebula-https-tunnel` wraps Nebula's UDP frames
+  rather than carrying a separate WireGuard-replacement
+  protocol). Original entry: amended the `[!] Blocked` v3.0.3
+  12.18 entry above with a new "v4.0.1 amendment" paragraph
+  requiring real TLS handshake + realistic SNI + Let's
+  Encrypt-signed cert chain validated against system trust
+  store + survival against DPI on a packet-inspecting bench
+  firewall.
 - [✓] **v4.0.1: Geologica font audit + IBM Plex Mono spec
   Recommends + Geologica bundle (shipped 2026-05-23)** —
   full close in two passes the same day:
@@ -6694,7 +7476,15 @@ Locked 25-Q survey 2026-05-19 in
   neither → neither wins. Phase 12.22 throughput-aware override
   can still demote IPv6 if it's saturated. 1 test covers the
   full 4-quadrant table.
-- [✓] **12.16 Self-hosted DERP relay, default-on** — shipped
+- [✓] **12.16 Self-hosted DERP relay, default-on** —
+  **RETRACTED 2026-05-23 by v2.5 Nebula-fabric lock.** The
+  derper unit + `tailscale-derp` Fedora dep + the example DERP
+  map all delete in NF-6.2 / NF-3.2 / NF-8.3. Nebula's
+  lighthouse pattern subsumes the relay role (every Host-role
+  peer is a lighthouse, no separate DERP daemon). The 2026-05-19
+  shipped artifacts below are obsolete at the v2.5 cut — they
+  stay in the worklist for audit-trail continuity only.
+  Original entry: shipped
   2026-05-19. New systemd unit `data/systemd/mde-derper.service`
   runs upstream Tailscale `derper` (`tailscale-derp` Fedora
   package) under the dedicated `mde-derper` system user. Unit is
@@ -6711,19 +7501,20 @@ Locked 25-Q survey 2026-05-19 in
   (which Headscale inherits automatically). 9 unit tests cover
   the unit's gating, flags, lockdown, resource caps, and the
   spec install lines for both files.
-- [✓] **v3.0.3: 12.17 ICE/STUN augmentation (shipped
-  2026-05-20 + wired into run_serve 2026-05-22, verified
-  2026-05-23)** — Worklist text was stale: the
-  `StunGatherWorker` is registered in
-  `crates/mackesd/src/bin/mackesd.rs::run_serve` (line ~1377)
-  with `Arc::clone(&router_state)` so reflexive candidates
-  land on every tracked peer's PeerPath.candidates. 30 s
-  cadence; per-server probe timeout 1.4 s; default server
-  pool is Google's public STUN cluster (IP-pinned). The
-  "BLOCKED on TransportRegistry" framing was the audit's
-  premature flip — the registry now ships a real
-  Https443Transport entry (see 12.18 below) so STUN can be
-  closed end-to-end. Original notes preserved:
+- [✓] **v3.0.3: 12.17 ICE/STUN augmentation — shipped
+  2026-05-20, wired into run_serve 2026-05-22, then RETIRED
+  2026-05-23 by v2.5 Nebula-fabric lock.** Origin/main
+  shipped + verified the STUN wiring (StunGatherWorker
+  registered in `crates/mackesd/src/bin/mackesd.rs::run_serve`
+  line ~1377 with `Arc::clone(&router_state)`, 30 s cadence,
+  per-server probe timeout 1.4 s, IP-pinned Google STUN
+  cluster). The v2.5 lock then retires this entire surface:
+  Nebula's UDP hole-punching is protocol-level so
+  `crates/mackesd/src/stun.rs` + its 13 unit tests delete in
+  NF-4.5 and `StunGatherWorker` is removed from `run_serve`.
+  The work shipped and worked; it now retires because the
+  underlying fabric no longer needs it. Original notes
+  preserved below for audit:
   shipped 2026-05-20. New module `crates/mackesd/src/stun.rs`
   ships a real RFC 5389/8489 STUN client:
   `encode_binding_request(txid)` returns the 20-byte header,
@@ -6738,18 +7529,31 @@ Locked 25-Q survey 2026-05-19 in
   attribute-padding handling, txid uniqueness, and a timeout
   smoke test. Q8 ≤ 1.5 s gather budget enforced via the
   `timeout` arg.
-- [✓] **v3.0.3: 12.18 HTTPS-tunneled fallback (shipped
-  2026-05-20 + wired into run_serve 2026-05-22, verified
-  2026-05-23)** — `crates/mackesd/src/bin/mackesd.rs::
-  run_serve` (line ~1361) builds an
+- [✓] **v3.0.3: 12.18 HTTPS-tunneled fallback — shipped
+  2026-05-20, wired into run_serve 2026-05-22, then
+  REROUTED 2026-05-23 by v2.5 Nebula-fabric lock to
+  NF-1.x.** Origin/main shipped + verified the
+  Https443Transport wiring (`crates/mackesd/src/bin/
+  mackesd.rs::run_serve` line ~1361 builds an
   `Arc<dyn Transport>` from `Https443Transport::new()` and
-  inserts it as the only element of `router_registry`, so
-  the mesh-router actually dispatches through TLS when
-  `HttpsFallbackState::Active` fires. The transport
-  gracefully reports `Misconfigured(no_fallback_host)`
-  until `MDE_HTTPS_FALLBACK_HOST` is set, so daemons
-  without the env var still boot clean. Original notes
-  preserved:
+  inserts it as the sole element of `router_registry`, so
+  the mesh-router dispatches through TLS when
+  `HttpsFallbackState::Active` fires; gracefully reports
+  `Misconfigured(no_fallback_host)` until
+  `MDE_HTTPS_FALLBACK_HOST` is set so daemons without the
+  env var still boot clean). The v2.5 lock retains the Q10
+  covert-transport design requirement but reroutes the
+  implementation: activation state machine + 20 unit tests
+  in `crates/mackesd/src/https_fallback.rs` migrate to
+  `crates/mackes-nebula-https-tunnel/src/activation.rs`
+  (NF-1.4); the wire-protocol layer (rustls TLS 1.3 over
+  TCP/443, 4-byte length-prefixed framing,
+  byte-indistinguishable from HTTP/2 long-poll) is net-new
+  code under NF-1.2 + NF-1.3. No parallel transport
+  survives — Nebula is the only fabric and the TCP/443
+  path wraps its UDP frames. The shipped Https443Transport
+  is removed from `run_serve` in NF-4.5 alongside its
+  module. Original entry below preserved for audit only:
   Original: shipped
   2026-05-20. New module `crates/mackesd/src/https_fallback.rs`
   ships the activation-policy state machine:
@@ -8221,6 +9025,13 @@ Closes the router gap explicitly deferred at
   variants: `TailscaleDirectUdp`, `TailscaleDerpRelay`,
   `Https443Tunnel`, `KdcTls`. Add 8 unit tests for enum
   exhaustiveness + serde round-trip.
+  **Amendment 2026-05-23 (v2.5 Nebula lock):** the variant
+  names above are the pre-Nebula snapshot. NF-4.1 renames
+  them to `NebulaDirect`, `NebulaLighthouseRelay`,
+  `NebulaHttps443` (KdcTls is unchanged). The trait shape +
+  unit-test count are unchanged; only the variant tokens move.
+  KDC2 callers and the policy-TOML parser update in the same
+  commit as NF-4.1.
 - [✓] **KDC2-1.3: `PeerPath`, `MessageClass`, `SwitchReason`** —
   `struct PeerPath { peer_id, primary, fallback,
   last_switch_at, last_switch_reason, health_score,
@@ -8649,17 +9460,26 @@ re-relay) into one.
   `phones.json`, call `mde_kdc_proto::discovery::inject_synthetic`
   so the local discovery stream sees the phone as a peer. Phone
   appears in `ListDevices` D-Bus output. 5 unit tests.
-- [ ] **KDC2-4.4: TLS channel uses `mesh-transport` Tailscale impl
-  when remote is mesh-shunted** — [Hardware Testing epic /
-  blocked on no concrete `Tailscale` Transport impl.]
-  When `KdcHost::open()` is called for a synthetic phone, route
-  the TLS bytes through the Tailscale `Transport` (not direct
-  LAN). Today the only concrete `Transport` is `KdcTls`; a
-  `Tailscale` impl doesn't exist yet (mackes-transport defines
-  the `DerpRelay`/`Https443` variants in `TransportKind` but no
-  wired backend). Sign-off depends on the Tailscale impl
-  landing first — does not gate the v3.0 cut per the operator's
-  hardware-testing carve-out.
+- [ ] **KDC2-4.4: TLS channel uses `mesh-transport` Nebula impl
+  when remote is mesh-shunted (amended 2026-05-23 by v2.5
+  Nebula lock — RETARGETED from Tailscale to Nebula).**
+  When `KdcHost::open()` is called for a synthetic phone,
+  route the TLS bytes through the `NebulaLighthouseRelay` or
+  `NebulaHttps443` Transport (per `MessageClass` policy).
+  The blocker resolves when NF-1.5 lands the
+  `mackes-nebula-https-tunnel` server-side demux + a
+  `MeshTransport::dial(node_id) -> AsyncRead+AsyncWrite`
+  surface that KDC2-4.4 wraps with its TLS layer. NF-19.2
+  tracks the cross-cutting amendment. Does not gate the v3.0
+  cut per the operator's hardware-testing carve-out; lands
+  with v2.5 once NF-1.x is green.
+  **Original 2026-05-22 text** (Tailscale-pinned, retained
+  for audit): "TLS channel uses `mesh-transport` Tailscale
+  impl when remote is mesh-shunted. Blocked on no concrete
+  `Tailscale` Transport impl. Today the only concrete
+  `Transport` is `KdcTls`; a `Tailscale` impl doesn't exist
+  yet (mackes-transport defines the `DerpRelay`/`Https443`
+  variants in `TransportKind` but no wired backend)."
 - [✓] **KDC2-4.5: `PathSwitch` log distinguishes direct-LAN vs
   mesh-shunt phone reach** — Extend `SwitchReason` with
   `MeshShuntActivated` + `DirectLanRecovered` variants so the
