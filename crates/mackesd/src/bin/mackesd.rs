@@ -2349,6 +2349,53 @@ fn run_serve(
             }
         }
 
+        // MON-1.b (v2.6) — Netdata aggregator-IP publisher.
+        // Pairs with `apply_netdata_monitor`'s baseline
+        // /etc/netdata/netdata.conf: when this peer wins
+        // leader-election it publishes its overlay IP to
+        // QNM-Shared so every other peer picks the same
+        // aggregator; on demote it stops publishing and the
+        // freshest pointer wins. Every tick re-reads the
+        // freshest pointer + rewrites the local netdata.conf
+        // `[stream]` block + reloads netdata when the
+        // aggregator IP changes. Fail-soft per the v2.6
+        // design lock: missing aggregator strips the
+        // `[stream]` block so netdata stays local-only with
+        // the 7-day dbengine retention. API key defaults to
+        // `mesh-${MDE_MESH_ID}-netdata` so every peer in the
+        // same mesh shares the value automatically without
+        // an extra wizard step (operators can override via
+        // MDE_NETDATA_API_KEY if they want a custom value).
+        match mackesd_core::store::open(&db_path) {
+            Ok(conn) => {
+                let netdata_store = Arc::new(tokio::sync::Mutex::new(conn));
+                let mesh_id_for_netdata = std::env::var("MDE_MESH_ID")
+                    .unwrap_or_else(|_| format!("mesh-{node_id}"));
+                let api_key = std::env::var("MDE_NETDATA_API_KEY")
+                    .unwrap_or_else(|_| format!("{mesh_id_for_netdata}-netdata"));
+                sup.spawn(Spawn::new(
+                    mackesd_core::workers::netdata_aggregator::NetdataAggregator::new(
+                        netdata_store,
+                        node_id.clone(),
+                        qnm_root.clone(),
+                        api_key,
+                    ),
+                    RestartPolicy::Always,
+                ));
+                worker_names
+                    .lock()
+                    .expect("worker_names mutex")
+                    .push("netdata_aggregator".into());
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    db_path = %db_path.display(),
+                    "netdata_aggregator: sqlite open failed; worker skipped"
+                );
+            }
+        }
+
         // NF-1.5 (v2.5) — TCP/443 covert listener. Binds the
         // TLS 1.3 listener on :443 (default; env-overrideable),
         // spawns the per-stream demux pump per accepted peer

@@ -97,6 +97,82 @@ cut): a fresh Fedora 44 VM with `dnf install mde-4.0-1.fc44
 mesh in under 10 minutes total operator time. `rpm -q tailscale
 headscale tailscale-derp` returns "not installed".
 
+## Unreleased — MON-1.b: Netdata aggregator-IP publisher worker
+
+Closes MON-1.b from the v2.6 monitoring epic. Pairs with
+the MON-1.a `apply_netdata_monitor` birthright step that
+landed the baseline `/etc/netdata/netdata.conf` writer; now
+the `[stream]` block follows the live leader-elected
+aggregator IP without operator intervention.
+
+Re-audit 2026-05-24 caught the original `[HW carve-out]`
+classification as overly broad: the worker + atomic-write
+paths + reload-call wiring are all observable without a
+live multi-peer fleet; only the bench-gate observation
+(`netdatacli aclk-state` reports `parent` role + child-
+count = peers−1) needs HW, and that's gate-7 verification
+not implementation.
+
+**New `crates/mackesd/src/workers/netdata_aggregator.rs`:**
+
+- `NetdataAggregator` struct with 5s tick cadence + the
+  same role-host-marker leader-detection pattern as
+  `nebula_supervisor` (single promote/demote action lifts
+  both subsystems).
+- Each tick: (a) when leader, atomic-writes a serde-JSON
+  `AggregatorPointer { node_id, overlay_ip, epoch_s }` to
+  `<qnm_root>/<self>/mackesd/netdata-aggregator.json`; (b)
+  always scans `<qnm_root>/*/mackesd/netdata-aggregator
+  .json`, picks the freshest pointer (ties broken
+  lexicographically on `node_id` for cross-peer
+  determinism), mirrors the chosen IP to
+  `/var/lib/mackesd/netdata/aggregator-ip`; (c) when the
+  aggregator IP changes, rewrites `/etc/netdata/netdata.
+  conf`'s `[stream]` block + `systemctl reload-or-restart
+  netdata.service`.
+- Self-aware: when this peer IS the aggregator, the
+  `[stream]` block is stripped (parent doesn't stream to
+  itself).
+- Fail-soft per v2.6 design lock: missing aggregator strips
+  the `[stream]` block entirely so netdata falls back to
+  local-only with the 7-day dbengine retention from
+  `apply_netdata_monitor`.
+- Pure-fn helpers exposed for tests: `read_overlay_ip`,
+  `self_pointer_path`, `write_pointer`,
+  `scan_aggregator_pointers`, `latest_aggregator`,
+  `apply_aggregator_ip`, `build_stream_block`,
+  `rewrite_stream_block`. 23 unit tests cover overlay-IP
+  read (newline-strip / IPv6 / empty-error / missing-error),
+  pointer roundtrip, scan missing-root + unparseable-skip,
+  freshest-pick + tie-break + empty, apply
+  unchanged/updated/cleared/both-absent, stream-block
+  build none/some, stream rewrite
+  append/replace/strip/empty-in/empty-out/section-order,
+  pointer-path layout.
+- API key derives from `MDE_MESH_ID` (env-overrideable via
+  `MDE_NETDATA_API_KEY`) so every peer in the same mesh
+  shares the same Netdata stream-handshake secret
+  automatically.
+
+**Wiring:**
+
+- `crates/mackesd/src/workers/mod.rs` — `pub mod
+  netdata_aggregator;` declaration.
+- `crates/mackesd/src/bin/mackesd.rs` — spawned in
+  `run_serve` between `gluster_worker` and
+  `nebula_https_listener` with `RestartPolicy::Always`.
+  Opens its own SQLite handle so the leader-check (when
+  `crate::leader` exposes an async-services entry point)
+  doesn't contend with the supervisor's mutex.
+
+Together with [[MON-1.a]] and [[MON-2]] this closes the
+end-to-end "alerts fire on every peer + stream to the
+leader-elected aggregator" loop for v2.6. The parent-side
+stream.conf api-key registration (needed for the actual
+multi-peer streaming handshake) is a follow-up tracked as
+MON-1.c — when it ships, the bench gate from MON-1.b's
+acceptance criteria becomes verifiable on hardware.
+
 ## Unreleased — MON-2: Netdata health.d alert definitions
 
 Closes MON-2 from the v2.6 monitoring epic. Five

@@ -130,6 +130,20 @@ pub mod gluster_worker;
 // Deduplicates via the deterministic-ULID `id` field so
 // idempotent re-emissions don't re-toast.
 pub mod alert_relay;
+// MON-1.b (v2.6) — Netdata aggregator-IP publisher. On
+// every tick (a) checks leader-state via the role-host
+// marker; if leader, publishes a JSON pointer
+// {node_id, overlay_ip, epoch_s} under
+// `<qnm_root>/<self>/mackesd/netdata-aggregator.json`. (b)
+// always scans `<qnm_root>/*/mackesd/netdata-aggregator
+// .json`, picks the freshest pointer + mirrors the IP to
+// `/var/lib/mackesd/netdata/aggregator-ip` + rewrites
+// `/etc/netdata/netdata.conf`'s `[stream]` block + reloads
+// netdata. Fail-soft per the v2.6 MON-1 design lock —
+// missing/unreachable aggregator strips the `[stream]`
+// block so netdata falls back to local-only with the 7-day
+// dbengine retention `apply_netdata_monitor` locked.
+pub mod netdata_aggregator;
 pub mod metrics_flush;
 pub mod nats;
 pub mod notification_relay;
