@@ -11,6 +11,12 @@
 #![warn(missing_docs)]
 
 pub mod audit;
+// v2.5 NF-2 (locked 2026-05-23) — Nebula CA mint / sign / epoch /
+// bundle. Pure subprocess to `/usr/bin/nebula-cert` for the
+// crypto; runtime reachability via the `mackesd ca {mint,
+// rotate, list, dump-ca}` CLI subcommands (NF-2.6) and (post
+// NF-3) the supervisor's bundle watcher.
+pub mod ca;
 // v2.0.0 Phase 12.1.2 — fleet deploy layer reservation. When Phase G
 // submodules (push, rollback, ansible_pull orchestration) actually
 // ship with real code, `pub mod deploy;` + `crates/mackesd/src/deploy/`

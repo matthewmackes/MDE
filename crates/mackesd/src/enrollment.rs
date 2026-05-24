@@ -127,6 +127,43 @@ pub enum ReenrollOutcome {
     UnknownNode,
 }
 
+/// v2.5 NF-2.7 — the leader's reply to an enrollment request.
+///
+/// On a successful enrollment the leader produces this struct,
+/// then writes it as JSON to
+/// `~/QNM-Shared/<peer>/mackesd/nebula-bundle.json` via the
+/// `ca::bundle::write_bundle` helper. The joining peer's
+/// supervisor (NF-3) reads the same file to materialize its
+/// `/etc/nebula/{config.yaml, ca.crt, host.crt, host.key}` tree.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EnrollmentResponse {
+    /// Stable node id the leader assigned (mirrors `nodes.node_id`).
+    pub node_id: String,
+    /// Per-peer Nebula bundle — CA cert, peer cert + key, overlay
+    /// IP, mesh CIDR, lighthouse roster.
+    pub nebula_bundle: crate::ca::NebulaBundle,
+}
+
+impl EnrollmentResponse {
+    /// Write `self` to `~/QNM-Shared/<peer>/mackesd/nebula-bundle.json`
+    /// (resolved via [`crate::ca::bundle::bundle_path`]) atomically.
+    /// The destination directory is created if absent and the file
+    /// lands at mode `0600` so the peer key never becomes world
+    /// readable on the QNM-Shared root.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::ca::CaError`] on any seal-time failure.
+    pub fn write_bundle(
+        &self,
+        qnm_shared_root: &std::path::Path,
+        peer_name: &str,
+    ) -> Result<(), crate::ca::CaError> {
+        let path = crate::ca::bundle_path(qnm_shared_root, peer_name);
+        crate::ca::write_bundle(&path, &self.nebula_bundle)
+    }
+}
+
 fn hex_bytes(bytes: &[u8]) -> String {
     let mut out = String::with_capacity(bytes.len() * 2);
     for b in bytes {
@@ -280,5 +317,47 @@ mod tests {
         let pc = "Abc-123_XYZabc01";
         let req = build_request(&id, pc, "anvil").unwrap();
         assert_eq!(req.passcode, pc);
+    }
+
+    #[test]
+    fn enrollment_response_round_trips_through_json() {
+        let bundle = crate::ca::NebulaBundle::new(
+            "CA-PEM".into(),
+            "PEER-PEM".into(),
+            "PEER-KEY".into(),
+            "10.42.0.5".into(),
+            "10.42.0.0/16".into(),
+            vec!["198.51.100.1:4242".into()],
+        );
+        let resp = EnrollmentResponse {
+            node_id: "peer:anvil".into(),
+            nebula_bundle: bundle,
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        let back: EnrollmentResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, resp);
+    }
+
+    #[test]
+    fn enrollment_response_write_bundle_lands_under_qnm_shared() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let resp = EnrollmentResponse {
+            node_id: "peer:anvil".into(),
+            nebula_bundle: crate::ca::NebulaBundle::new(
+                "CA".into(),
+                "PEER".into(),
+                "KEY".into(),
+                "10.42.0.5".into(),
+                "10.42.0.0/16".into(),
+                vec![],
+            ),
+        };
+        resp.write_bundle(dir.path(), "peer:anvil").expect("write");
+        let path = dir
+            .path()
+            .join("peer:anvil")
+            .join("mackesd")
+            .join("nebula-bundle.json");
+        assert!(path.exists(), "bundle path must exist on disk");
     }
 }

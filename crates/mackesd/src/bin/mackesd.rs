@@ -301,6 +301,50 @@ enum Cmd {
         #[arg(long)]
         dry_run: bool,
     },
+
+    /// v2.5 NF-2.6 — Nebula CA operator surface. Subcommands:
+    /// `mint`, `rotate`, `list`, `dump-ca`.
+    Ca {
+        #[command(subcommand)]
+        cmd: CaCmd,
+    },
+}
+
+/// Subcommands for `mackesd ca`. v2.5 NF-2.6.
+#[derive(Subcommand)]
+enum CaCmd {
+    /// Mint the initial Nebula CA at epoch 0. Idempotent — a
+    /// second invocation against an already-minted mesh prints
+    /// the existing artifacts and exits 0.
+    Mint {
+        /// Mesh identifier (free-form; lives in `nebula_ca.mesh_id`).
+        #[arg(long)]
+        mesh_id: String,
+    },
+    /// Rotate the CA on leader-failover. Bumps the epoch counter,
+    /// retires every prior row in `nebula_ca`, mints a fresh
+    /// CA keypair, and re-signs every active peer cert under the
+    /// new epoch. Emits a hash-chained `Lifecycle` audit event.
+    Rotate {
+        /// Mesh identifier (must already have a row in `nebula_ca`).
+        #[arg(long)]
+        mesh_id: String,
+    },
+    /// List every row in `nebula_ca` (active + retired). `--json`
+    /// emits a JSON array; otherwise prints a human-readable
+    /// table.
+    List {
+        /// Emit JSON instead of a table.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Dump the active CA cert PEM to stdout. The peer-side
+    /// bootstrap wizard reads this for the manual-enroll path.
+    DumpCa {
+        /// Mesh identifier whose active CA to dump.
+        #[arg(long)]
+        mesh_id: String,
+    },
 }
 
 /// Subcommands for `mackesd ansible-history`. CB-1.5.c
@@ -1003,6 +1047,102 @@ fn main() -> anyhow::Result<()> {
                     }
                 }
             }
+        }
+        Cmd::Ca { cmd } => {
+            // v2.5 NF-2.6 — Nebula CA operator surface. Every
+            // arm opens the store + dispatches to the matching
+            // `mackesd_core::ca` helper.
+            run_ca_cmd(cmd, &db_path)?;
+        }
+    }
+    Ok(())
+}
+
+/// Dispatch the `mackesd ca` subcommand. Pulled out so the
+/// match-arm in `main` stays a one-liner per command and the
+/// open-store logic doesn't repeat across the four variants.
+fn run_ca_cmd(cmd: CaCmd, db_path: &std::path::Path) -> anyhow::Result<()> {
+    match cmd {
+        CaCmd::Mint { mesh_id } => {
+            let conn = mackesd_core::store::open(db_path)
+                .with_context(|| format!("opening store at {}", db_path.display()))?;
+            let art = mackesd_core::ca::mint_ca(&conn, &mesh_id)
+                .with_context(|| format!("mint_ca({mesh_id})"))?;
+            let report = serde_json::json!({
+                "mint":         mesh_id,
+                "epoch":        art.epoch,
+                "ca_crt_path":  art.ca_crt_path.display().to_string(),
+                "ca_key_path":  art.ca_key_path.display().to_string(),
+            });
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        }
+        CaCmd::Rotate { mesh_id } => {
+            let mut conn = mackesd_core::store::open(db_path)
+                .with_context(|| format!("opening store at {}", db_path.display()))?;
+            let bump = mackesd_core::ca::bump_epoch(&mut conn, &mesh_id)
+                .with_context(|| format!("bump_epoch({mesh_id})"))?;
+            let report = serde_json::json!({
+                "rotate":         mesh_id,
+                "new_epoch":      bump.new_epoch,
+                "peers_resigned": bump.peers_resigned,
+            });
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        }
+        CaCmd::List { json } => {
+            let conn = mackesd_core::store::open(db_path)
+                .with_context(|| format!("opening store at {}", db_path.display()))?;
+            let mut stmt = conn.prepare(
+                "SELECT mesh_id, epoch, created_at, retired_at FROM nebula_ca \
+                 ORDER BY mesh_id ASC, epoch ASC",
+            )?;
+            let rows = stmt.query_map([], |r| {
+                let mesh_id: String = r.get(0)?;
+                let epoch: i64 = r.get(1)?;
+                let created_at: i64 = r.get(2)?;
+                let retired_at: Option<i64> = r.get(3)?;
+                Ok(serde_json::json!({
+                    "mesh_id":     mesh_id,
+                    "epoch":       epoch,
+                    "created_at":  created_at,
+                    "retired_at":  retired_at,
+                    "active":      retired_at.is_none(),
+                }))
+            })?;
+            let rows: Vec<serde_json::Value> = rows.collect::<rusqlite::Result<_>>()?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&rows)?);
+            } else if rows.is_empty() {
+                println!("(no nebula_ca rows — run `mackesd ca mint` first)");
+            } else {
+                println!(
+                    "{:<24} {:<6} {:<14} {:<14}",
+                    "mesh_id", "epoch", "created_at", "retired_at"
+                );
+                for r in &rows {
+                    let mesh = r.get("mesh_id").and_then(|v| v.as_str()).unwrap_or("?");
+                    let epoch = r.get("epoch").and_then(|v| v.as_i64()).unwrap_or(0);
+                    let created = r.get("created_at").and_then(|v| v.as_i64()).unwrap_or(0);
+                    let retired = r
+                        .get("retired_at")
+                        .and_then(|v| v.as_i64())
+                        .map_or_else(|| "active".to_owned(), |t| t.to_string());
+                    println!("{mesh:<24} {epoch:<6} {created:<14} {retired:<14}");
+                }
+            }
+        }
+        CaCmd::DumpCa { mesh_id } => {
+            let conn = mackesd_core::store::open(db_path)
+                .with_context(|| format!("opening store at {}", db_path.display()))?;
+            let pem: String = conn
+                .query_row(
+                    "SELECT ca_cert_pem FROM nebula_ca \
+                     WHERE mesh_id = ?1 AND retired_at IS NULL \
+                     ORDER BY epoch DESC LIMIT 1",
+                    [&mesh_id],
+                    |r| r.get(0),
+                )
+                .with_context(|| format!("no active CA row for {mesh_id}"))?;
+            print!("{pem}");
         }
     }
     Ok(())

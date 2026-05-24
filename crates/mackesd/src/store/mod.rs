@@ -32,6 +32,13 @@ const MIGRATIONS: &[Migration] = &[
         version: 2,
         sql: include_str!("../../migrations/0002_settings_session.sql"),
     },
+    // v2.5 NF-2.1 (locked 2026-05-23) — adds the `nebula_ca` and
+    // `nebula_peer_certs` tables the Nebula fabric rebuild needs.
+    // Strictly additive: every Phase 12 + v2.0.0 table is untouched.
+    Migration {
+        version: 11,
+        sql: include_str!("../../migrations/m0011_nebula_ca.sql"),
+    },
 ];
 
 /// Open the store at `path`, creating its parent directory if needed

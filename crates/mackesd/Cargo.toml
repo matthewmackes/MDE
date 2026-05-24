@@ -176,10 +176,17 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring"], optional = true }
 rustls-native-certs = { version = "0.8", optional = true }
 
+# v2.5 NF-2 (locked 2026-05-23) — tempdir for the Nebula CA's
+# subprocess scratch space (mint + sign + rotate). Promoted from
+# [dev-dependencies] so the library path can hold the
+# `nebula-cert ca` output in a tempdir before sealing to
+# `/var/lib/mackesd/nebula-ca/`. Library code under
+# `crates/mackesd/src/ca/` consumes this.
+tempfile = "3"
+
 [dev-dependencies]
 # Deterministic snapshot diffs for library-contract tests (12.11.5).
 insta    = { version = "1", features = ["json", "redactions"] }
-tempfile = "3"
 # Phase 12.18 D.2 — self-signed certs for the Https443 loopback
 # integration test. Same version mde-kdc uses for the KDC TLS
 # bench harness.
