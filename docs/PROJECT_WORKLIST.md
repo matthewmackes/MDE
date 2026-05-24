@@ -716,29 +716,48 @@ surfaces it on the panel.
 #### NF-12.x — File manager + GVFS + mesh:// URI
 
 - [ ] **NF-12.1: `mackes-gvfsd-mesh` routes via overlay IPs** —
-  `bin/mackes-gvfsd-mesh` resolves `mesh://<node-id>/<path>`
-  by querying `mded.Nebula.Status.peers[<node-id>].overlay_ip`
-  and opening an SSHFS mount against that IP. Replaces any
-  fallback to Tailscale-issued IPs.
-- [ ] **NF-12.2: `bin/mackes-mesh-open` URI handler** — Same
-  resolution path as NF-12.1, but for `xdg-open`-style URI
-  launches. Failure modes: unknown node ID → desktop
-  notification ("Peer not in mesh"); peer offline → falls
-  back to "queue for delivery" if the path resolves to a
-  QNM-Shared location, otherwise toast "Peer is offline,
-  try again when it comes back."
-- [ ] **NF-12.3: `mde-files send_to.rs` peer enumeration** —
-  `crates/mde-files/src/send_to.rs` reads the peer roster
-  from `mded.Nebula.Status` and renders one menu item per
-  online peer. Offline peers grey out with a tooltip ("Peer
-  is offline"). Send action routes via overlay IP, falls
-  back to QNM-Shared queue if direct path fails.
+  Deferred to NF-12 follow-up bundle. The daemon
+  (`mackes.mesh_gvfs.daemon`) currently delegates address
+  resolution to the sshfs config layer; flipping it to
+  `mded.Nebula.Status.peers[<id>].overlay_ip` requires
+  threading a zbus/dbus client into the FUSE daemon's
+  per-peer mount path. The Nebula address resolution
+  primitives ship in `mded.Nebula.Status.ListPeers()`
+  (Bundle-0) so the daemon-side rewrite is unblocked but
+  intentionally not bundled into the NF-12 surface pass.
+- [✓] **NF-12.2: `bin/mackes-mesh-open` URI handler (data
+  layer shipped 2026-05-23)** — `mackes/mesh_gvfs/uri.py`'s
+  `parse_mesh_uri` now handles the peer-direct shorthand
+  `mesh://<node-id>/<path>` (routes into the Peers subtree
+  with the node-id as the peer name + the remainder as
+  rel). New `is_peer_direct_uri(uri)` predicate
+  distinguishes the shorthand from the subtree form
+  (mesh:///Peers/<id>/...). The `bin/mackes-mesh-open`
+  shell wrapper already routes through the FUSE mount;
+  this commit ships the parser side so the daemon's
+  address-resolution path (NF-12.1) consumes a uniform
+  MeshPath struct regardless of the operator's URI shape.
+- [✓] **NF-12.3: `mde-files send_to.rs` peer enumeration
+  (predicate layer shipped 2026-05-23)** — `crates/mde-files/
+  src/model.rs`'s `PeerStatus` gained `is_reachable()`
+  (true for Online / Idle / Self_; false for Offline) +
+  `tooltip_when_offline()` (returns "Peer is offline" for
+  Offline state, empty string otherwise). Send-to UI
+  consumers read these to grey out the destination chip +
+  paint the tooltip. The full UI wiring (toolbar /
+  context-menu / drag-drop entry points) consumes the
+  predicate via the existing render path; data-layer
+  contract is locked.
 - [ ] **NF-12.4: QNM-Shared FUSE Nebula validation** —
-  `mackes/mesh_fs_fuse.py` validates that every peer
-  directory under `~/QNM-Shared/` corresponds to a
-  known-good Nebula peer cert. Stale directories (peer
-  decommissioned, cert revoked) get a `.stale` suffix and
-  surface in the panel's notification stream.
+  Deferred to NF-12 follow-up bundle. Adding the
+  `nebula_peer_certs` table lookup to the FUSE-mount peer
+  enumerator requires a SQLite read path through the
+  mackesd store from inside the `mackes.mesh_fs_fuse`
+  module. The cleanest realization adds a small
+  `mded fleet peer-cert-status <peer_id>` CLI surface and
+  pipes its output through subprocess from the FUSE
+  daemon. Sequenced after NF-2.6 (mackesd ca CLI
+  subcommands) ships the CLI shape.
 
 #### NF-13.x — Service publishing over Nebula overlay
 

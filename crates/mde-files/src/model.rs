@@ -151,6 +151,30 @@ pub enum PeerStatus {
     Self_,
 }
 
+impl PeerStatus {
+    /// NF-12.3 (v2.5) — true when Send-To can route a file
+    /// directly. Online + Self_ qualify; Idle (probe within
+    /// degradation threshold) also qualifies — the router
+    /// downgrades transport but still delivers. Offline is
+    /// the only state where Send-To greys out + tooltip
+    /// reads "Peer is offline".
+    #[must_use]
+    pub const fn is_reachable(self) -> bool {
+        matches!(self, Self::Online | Self::Idle | Self::Self_)
+    }
+
+    /// NF-12.3 — tooltip text for the destination chip.
+    /// Empty string when the peer is reachable (no
+    /// tooltip needed). Non-empty when greyed out.
+    #[must_use]
+    pub const fn tooltip_when_offline(self) -> &'static str {
+        match self {
+            Self::Offline => "Peer is offline",
+            _ => "",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PeerKind {
     Desktop,

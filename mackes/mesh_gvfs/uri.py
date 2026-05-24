@@ -71,7 +71,29 @@ def parse_mesh_uri(uri: str) -> MeshPath:
         return MeshPath(kind="Notifications", peer=parts[1], rel="/".join(parts[2:]))
     if head in ("Object Store", "ObjectStore") and len(parts) >= 2:
         return MeshPath(kind="ObjectStore", bucket=parts[1], rel="/".join(parts[2:]))
-    return MeshPath()
+    # NF-12.2 (v2.5) — peer-direct shorthand. When the first
+    # component isn't one of the known subtree tokens, treat
+    # it as a node-id and route into the Peers subtree. This
+    # is the operator-facing `mesh://<node-id>/<path>` form
+    # the Nebula-overlay URI handler resolves via
+    # mded.Nebula.Status.peers[<node-id>].overlay_ip.
+    return MeshPath(kind="Peers", peer=head, rel="/".join(parts[1:]))
 
 
-__all__ = ["MeshPath", "parse_mesh_uri", "MOUNT_POINT"]
+def is_peer_direct_uri(uri: str) -> bool:
+    """NF-12.2 — true when `uri` is the peer-direct shorthand
+    (mesh://<node-id>/<path>) rather than the subtree form
+    (mesh:///Peers/<node-id>/...).
+    """
+    parsed = parse_mesh_uri(uri)
+    if parsed.kind != "Peers" or not parsed.peer:
+        return False
+    # Subtree form starts with 'Peers/' explicitly; shorthand
+    # doesn't. We detect by checking the raw URI.
+    body = uri[len("mesh://"):] if uri.startswith("mesh://") else uri
+    body = body.lstrip("/")
+    head = body.split("/", 1)[0]
+    return head not in ("Peers", "Clipboard", "Notifications", "Object Store", "ObjectStore")
+
+
+__all__ = ["MeshPath", "parse_mesh_uri", "MOUNT_POINT", "is_peer_direct_uri"]
