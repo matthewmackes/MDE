@@ -37,7 +37,9 @@ use std::path::PathBuf;
 pub use mde_drawer::{DRAWER_WIDTH_PX, SLIDE_DURATION_MS};
 
 pub use enrich::{Enrichment, EnrichmentCacheKey};
-pub use mde_mesh_types::{BatterySnapshot, ConnectFacts, PairingState, PeerKind};
+pub use mde_mesh_types::{
+    BatterySnapshot, ConnectFacts, NebulaFacts, NebulaRole, PairingState, PeerKind,
+};
 pub use probe::{NatClass, PeerProbe};
 
 /// One peer's complete card data — the probe (always present) +
@@ -62,6 +64,13 @@ pub struct PeerCardData {
     /// (KDC2-5.4) reads it via [`ConnectFacts::
     /// shows_phone_sections`].
     pub connect: Option<ConnectFacts>,
+    /// NF-11.1 (v2.5) — Nebula overlay facts. `None` until
+    /// the peer is signed under the active CA epoch. The
+    /// daemon-API layer fills it from
+    /// `dev.mackes.MDE.Nebula.Status.ListPeers()`; the
+    /// Nebula section (collapsed by default unless the peer
+    /// is unhealthy) reads it from here.
+    pub nebula: Option<NebulaFacts>,
 }
 
 impl PeerCardData {
@@ -74,7 +83,36 @@ impl PeerCardData {
             probe,
             enrichment: Enrichment::hwdb_only(),
             connect: None,
+            nebula: None,
         }
+    }
+
+    /// NF-11.1 (v2.5) — attach Nebula overlay facts to the
+    /// card. Builder so consumers can chain construction:
+    ///
+    /// ```ignore
+    /// let card = PeerCardData::hwdb_only(probe)
+    ///     .with_connect(facts)
+    ///     .with_nebula(Some(nebula));
+    /// ```
+    ///
+    /// Pass `None` to clear (mostly useful in tests).
+    #[must_use]
+    pub fn with_nebula(mut self, nebula: Option<NebulaFacts>) -> Self {
+        self.nebula = nebula;
+        self
+    }
+
+    /// True when the Nebula section should render. Today
+    /// = "we have facts for this peer." Future: gate on
+    /// peer-unhealthy when the cert is expired or the
+    /// overlay-IP path is failing (per the v2.5 NF-11.1
+    /// "collapsed by default unless the peer is unhealthy"
+    /// rule — the consumer makes the collapsed-vs-expanded
+    /// call from the per-peer health state).
+    #[must_use]
+    pub fn shows_nebula_section(&self) -> bool {
+        self.nebula.is_some()
     }
 
     /// Attach KDC connect facts to the card (KDC2-5.3). Builder

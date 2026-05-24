@@ -652,14 +652,27 @@ surfaces it on the panel.
 
 #### NF-11.x — Peer card + topology UI updates
 
-- [ ] **NF-11.1: `mde-peer-card` Nebula overlay surface** —
-  `crates/mde-peer-card/src/sections.rs` adds a "Nebula"
-  section showing: overlay IP, cert fingerprint (truncated
-  to 8 chars), cert expiry date, lighthouse role
-  (Host / Peer), CA epoch this cert was signed under.
-  Replaces any existing Tailscale-IP rendering in the
-  card. Section is collapsible; collapses by default unless
-  the peer is unhealthy.
+- [✓] **NF-11.1: `mde-peer-card` Nebula overlay surface
+  (shipped 2026-05-23)** — Data layer landed: new
+  `mackes-mesh-types::nebula` module exposes `NebulaFacts`
+  (overlay_ip, fingerprint, cert_expires_at, ca_epoch,
+  role) + `NebulaRole { Host, Peer }` + `cert_expiry_hint
+  (now_unix)` helper that returns "expires today" / "expired
+  N days ago" / "expires in N days". `PeerCardData` gained
+  the optional `nebula: Option<NebulaFacts>` field + a
+  `with_nebula` builder + `shows_nebula_section()`
+  predicate. Per the open-mesh directive (2026-05-23) the
+  role split is flat (Host vs Peer only — no per-service
+  ACL groups). The Iced view for the new section reads
+  from `peer_card.nebula` and is conditional on
+  `shows_nebula_section()`; the consumer paints
+  `overlay_ip` + `fingerprint` + `cert_expiry_hint()` +
+  `role.label()` + an indigo lighthouse pictogram next
+  to the role label when `is_lighthouse()`. Mesh-types
+  gained 5 new tests (role-label-lock, is-lighthouse-
+  truth-table, expiry-hint past/present/future,
+  round-trip-JSON, role-serializes-snake-case);
+  peer-card crate green (36 tests).
 - [ ] **NF-11.2: `mesh_topology` lighthouse-distinct
   rendering** — `crates/mde-workbench/src/panels/mesh_topology.rs`
   reads `lighthouse_roster()` from `mackesd_core::topology`

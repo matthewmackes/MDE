@@ -16,9 +16,12 @@
 #![forbid(unsafe_code)]
 
 pub mod connect;
+// NF-11.1 (v2.5) — Nebula facts surface for the peer card.
+pub mod nebula;
 pub mod peer_probe;
 
 pub use connect::{BatterySnapshot, ConnectFacts, PairingState, PeerKind};
+pub use nebula::{NebulaFacts, NebulaRole};
 pub use peer_probe::{BusTopology, Descriptors, KernelDriver, NatClass, PeerProbe, PowerThermal};
 
 use serde::{Deserialize, Serialize};
