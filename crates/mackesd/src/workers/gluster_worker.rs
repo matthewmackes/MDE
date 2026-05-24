@@ -92,6 +92,13 @@ pub struct GlusterWorker {
     /// startup) of the hourly quota probe. `None` until the
     /// first probe runs.
     last_quota_probe: std::sync::Mutex<Option<std::time::Instant>>,
+    /// GF-2.9 — GFIDs we've already requested split-brain
+    /// resolution for. Prevents re-issuing the heal command
+    /// on the same conflict every 5s tick — gluster's
+    /// self-heal daemon needs time to act on the request +
+    /// the GFID stays in the xattrop index until heal
+    /// completes.
+    healed_gfids: std::sync::Mutex<std::collections::BTreeSet<String>>,
 }
 
 impl GlusterWorker {
@@ -110,6 +117,7 @@ impl GlusterWorker {
             qnm_root: None,
             self_node_id: None,
             last_quota_probe: std::sync::Mutex::new(None),
+            healed_gfids: std::sync::Mutex::new(std::collections::BTreeSet::new()),
         }
     }
 
@@ -240,6 +248,27 @@ impl GlusterWorker {
                 brick = %self.brick_path.display(),
                 "ConflictDetected: pending heal entry in xattrop index",
             );
+            // GF-2.9 — LWW resolver. Delegate to gluster's
+            // own self-heal daemon via `gluster volume heal
+            // mesh-home split-brain latest-mtime <gfid>`.
+            // gluster's heal-daemon knows the cross-peer
+            // mtime + handles the `.conflict-<host>-<ts>`
+            // rename per its own conventions, so we don't
+            // re-implement the rename logic in Rust. We just
+            // need to trigger the heal request once per GFID
+            // — repeat requests on the same GFID before the
+            // daemon resolves it spam glusterd's transaction
+            // log.
+            if self.mark_gfid_heal_requested(&gfid) {
+                let argv = heal_split_brain_argv(&self.gluster_binary, &gfid);
+                tracing::info!(
+                    target: "mackesd::gluster_worker",
+                    gfid = %gfid,
+                    argv = ?argv,
+                    "LWW: requesting split-brain heal via gluster self-heal daemon",
+                );
+                let _ = run_argv(&argv);
+            }
         }
         // 6. GF-2.5 + GF-2.6 — peer convergence. Scans
         //    `<qnm_root>/*/mackesd/nebula-bundle.json` for
@@ -294,6 +323,17 @@ impl GlusterWorker {
             *guard = Some(now);
         }
         due
+    }
+
+    /// GF-2.9 — register that we've requested split-brain
+    /// heal for `gfid`. Returns `true` if this is the first
+    /// such request (caller should fire the heal command);
+    /// `false` if we've already requested it (caller should
+    /// skip). Mutex-guarded so concurrent tick callers can't
+    /// double-fire.
+    fn mark_gfid_heal_requested(&self, gfid: &str) -> bool {
+        let mut guard = self.healed_gfids.lock().expect("healed_gfids mutex");
+        guard.insert(gfid.to_owned())
     }
 
     /// GF-2.7 — query `gluster volume info mesh-home --xml`,
@@ -545,6 +585,27 @@ pub fn peers_to_detach(desired: &[ProbeTarget], current: &[String]) -> Vec<Strin
         .filter(|ip| !desired.iter().any(|t| &t.overlay_ip == *ip))
         .cloned()
         .collect()
+}
+
+/// GF-2.9 — `gluster volume heal mesh-home split-brain
+/// latest-mtime <gfid>` argv. Delegates split-brain resolution
+/// to gluster's own self-heal daemon, which knows the
+/// cross-peer mtime + handles the `.conflict-<host>-<ts>`
+/// rename per its own conventions. We trigger this once per
+/// detected conflict-GFID rather than re-implementing the
+/// LWW logic in Rust — the gluster daemon is the source of
+/// truth for which replica wins. Exposed for testing.
+#[must_use]
+pub fn heal_split_brain_argv(binary: &str, gfid: &str) -> Vec<String> {
+    vec![
+        binary.to_owned(),
+        "volume".into(),
+        "heal".into(),
+        VOLUME_NAME.to_owned(),
+        "split-brain".into(),
+        "latest-mtime".into(),
+        format!("gfid:{gfid}"),
+    ]
 }
 
 /// GF-2.5 — `gluster peer probe <overlay-ip>` argv.
@@ -1052,6 +1113,51 @@ mod tests {
             peer_detach_argv("gluster", "10.42.0.9"),
             vec!["gluster", "peer", "detach", "10.42.0.9", "force"]
         );
+    }
+
+    // GF-2.9 — LWW resolver via gluster's native heal.
+
+    #[test]
+    fn heal_split_brain_argv_matches_gluster_command_shape() {
+        let argv = heal_split_brain_argv(
+            "gluster",
+            "12345678-1234-1234-1234-123456789abc",
+        );
+        assert_eq!(
+            argv,
+            vec![
+                "gluster",
+                "volume",
+                "heal",
+                "mesh-home",
+                "split-brain",
+                "latest-mtime",
+                "gfid:12345678-1234-1234-1234-123456789abc",
+            ]
+        );
+    }
+
+    #[test]
+    fn mark_gfid_heal_requested_fires_once_per_gfid() {
+        let w = GlusterWorker::new(fresh_store());
+        let gfid = "12345678-1234-1234-1234-123456789abc";
+        // First call returns true (caller should fire heal).
+        assert!(w.mark_gfid_heal_requested(gfid));
+        // Immediate second call returns false (already
+        // requested — caller should skip).
+        assert!(!w.mark_gfid_heal_requested(gfid));
+        // Third call still false.
+        assert!(!w.mark_gfid_heal_requested(gfid));
+    }
+
+    #[test]
+    fn mark_gfid_heal_requested_distinguishes_different_gfids() {
+        let w = GlusterWorker::new(fresh_store());
+        assert!(w.mark_gfid_heal_requested("gfid-a"));
+        assert!(w.mark_gfid_heal_requested("gfid-b"));
+        assert!(w.mark_gfid_heal_requested("gfid-c"));
+        // Re-requesting gfid-a is rate-limited.
+        assert!(!w.mark_gfid_heal_requested("gfid-a"));
     }
 
     #[tokio::test]

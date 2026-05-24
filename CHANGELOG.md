@@ -97,6 +97,51 @@ cut): a fresh Fedora 44 VM with `dnf install mde-4.0-1.fc44
 mesh in under 10 minutes total operator time. `rpm -q tailscale
 headscale tailscale-derp` returns "not installed".
 
+## Unreleased — GF-2.9: gluster_worker delegates split-brain resolution
+
+Closes the GF-2.x cluster (modulo the GF-2.2 D-Bus surface).
+Instead of reimplementing the LWW mtime-comparison +
+`.conflict-<host>-<ts>` rename in Rust, the worker now
+delegates each detected split-brain GFID to gluster's own
+self-heal daemon via:
+
+```
+gluster volume heal mesh-home split-brain latest-mtime gfid:<uuid>
+```
+
+The gluster daemon already knows the cross-peer mtime +
+handles the rename per its own conventions (which DOES
+produce `.conflict-<host>-<ts>` siblings on identical-mtime
+ties — same operator-facing behavior the worklist sketched).
+
+Three new pieces:
+
+1. `heal_split_brain_argv(binary, gfid)` — pure-fn argv
+   builder for the heal command.
+2. `mark_gfid_heal_requested(gfid)` — Mutex-guarded
+   `BTreeSet` insert that returns `true` only on first
+   request. Prevents the 5s tick from re-spamming
+   glusterd's transaction log on the same conflict before
+   the heal daemon clears it.
+3. Tick step 5 (the existing conflict-detector loop) gates
+   each `run_argv(&heal_argv)` call behind
+   `mark_gfid_heal_requested`.
+
+3 new unit tests (32 gluster_worker tests total):
+- heal_split_brain_argv command shape matches
+- mark_gfid_heal_requested fires once per GFID then gates
+- multiple distinct GFIDs each fire independently
+
+The deviation from the worklist body (delegate vs
+reimplement) is documented in the source-block comment per
+§0.12 best-choice authorization — re-implementing the LWW
+logic would have meant maintaining a parallel implementation
+of glusterd's own resolution algorithm.
+
+`HealCompleted` D-Bus signal emission defers to GF-2.2; the
+tracing info-log at heal-request carries the payload until
+that ships.
+
 ## Unreleased — GF-2.5 + GF-2.6: gluster_worker peer convergence (polling)
 
 Adds the sixth tick step to `gluster_worker::tick_once`:
