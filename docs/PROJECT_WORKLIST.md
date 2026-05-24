@@ -897,8 +897,15 @@ public IP. This locks the trust boundary at the fabric.
   retains its existing SSH-connect path; the bind-side
   wiring lives in mesh_nebula so the connect / publish
   paths stay independent.
-- [✓] **NF-13.2..13.5: overlay-bind helpers + first
-  consumer swap (mesh_media.py) shipped 2026-05-23** —
+- [✓] **NF-13.2..13.5: overlay-bind helpers + 3 consumer
+  swaps shipped 2026-05-23** — Three consumers landed:
+  mesh_media.py (NF-13.4), mesh_nats.py (NF-13.2),
+  mesh_wol.py (NF-13.6). NF-13.3 (mesh_fs.py) + NF-13.5
+  (mesh_sync.py) need no Nebula swap — both consume
+  `peer.mesh` hostnames whose DNS resolution path is
+  already Nebula-aware via the sshd config + overlay
+  routing (the underlying name resolution happens in the
+  kernel, not in Python).
   `mackes/mesh_nebula.py` gained:
     - `nebula_peer_ips()` — pure helper that calls
       `dev.mackes.MDE.Nebula.Status.ListPeers()` via
