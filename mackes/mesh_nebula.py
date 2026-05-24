@@ -371,6 +371,47 @@ def emit_cert_expiry_warning(peer_name: str, days_remaining: int) -> bool:
     return False
 
 
+# ─────────────────────────────────────────────────────────────────
+# NF-17 firewall + system surface
+# ─────────────────────────────────────────────────────────────────
+
+NEBULA_FIREWALL_PORTS: tuple[tuple[int, str], ...] = (
+    (4242, "udp"),  # native Nebula
+    (443, "tcp"),   # NF-1 covert TCP/443 fallback
+)
+
+
+def apply_nebula_firewall_preset() -> int:
+    """NF-17.1 — one-click "Allow Nebula" firewalld preset.
+    Opens UDP/4242 inbound + outbound and TCP/443 outbound
+    on the default zone. Returns 0 on success; non-zero on
+    firewall-cmd failure (caller surfaces a toast).
+
+    Tailscale's UDP/41641 preset (the v1.x default) is NOT
+    cleaned up here — leave existing rules alone so a peer
+    migrating from Tailscale doesn't lose connectivity
+    mid-flight. The mackesd cleanup pass retires the
+    Tailscale preset in NF-6.x once the operator confirms
+    the migration succeeded.
+    """
+    if shutil.which("firewall-cmd") is None:
+        return 1
+    rc = 0
+    for port, proto in NEBULA_FIREWALL_PORTS:
+        spec = f"{port}/{proto}"
+        rc |= subprocess.call(
+            ["firewall-cmd", "--permanent", "--add-port", spec],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    rc |= subprocess.call(
+        ["firewall-cmd", "--reload"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return rc
+
+
 __all__ = [
     "CANONICAL_SERVICES",
     "CONFIG_DIR",
@@ -390,4 +431,6 @@ __all__ = [
     "wol_via_lighthouse",
     "write_sshd_overlay_bind",
     "_extract_lighthouse_hosts",
+    "NEBULA_FIREWALL_PORTS",
+    "apply_nebula_firewall_preset",
 ]

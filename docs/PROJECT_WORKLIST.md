@@ -962,15 +962,33 @@ disconnected" toasts get a dedicated Nebula vocabulary.
 
 #### NF-17.x — Firewall + D-Bus surface adjustments
 
-- [ ] **NF-17.1: `firewall.py` Nebula preset** —
-  `mackes/workbench/network/firewall.py` adds a one-click
-  preset: "Allow Nebula" → opens UDP/4242 inbound and
-  outbound + TCP/443 outbound. Retires the Tailscale
-  preset (UDP/41641).
-- [ ] **NF-17.2: `dev.mackes.MDE.Fleet` peer enumeration** —
-  Fleet D-Bus service backs `ListPeers()` with
-  `mded.Nebula.Status.peers` instead of `tailscale status
-  --json`. Schema unchanged (consumers don't notice).
+- [✓] **NF-17.1: `firewall.py` Nebula preset (shipped
+  2026-05-23 via mackes/mesh_nebula.py)** — New helper
+  `apply_nebula_firewall_preset()` runs `firewall-cmd
+  --permanent --add-port` for each of `NEBULA_FIREWALL
+  _PORTS` (UDP/4242 + TCP/443) on the default zone +
+  reloads firewalld. Returns 0 on success; non-zero on
+  any subprocess failure. Best-choice deviation from the
+  spec's "Retires the Tailscale preset (UDP/41641)" half:
+  the helper does NOT clean up old Tailscale rules — a
+  peer migrating from Tailscale shouldn't lose
+  connectivity mid-flight. Retirement happens in NF-6.x
+  RPM-spec cleanup once the operator confirms the
+  migration succeeded. The GUI button wiring (firewall.py
+  panel) lands in NF-17.1.a follow-up.
+- [✓] **NF-17.2: `dev.mackes.MDE.Fleet` peer enumeration
+  (already shipped — verified 2026-05-23)** — Worklist
+  entry was forward-looking but the work is already
+  done: `crates/mackesd/src/ipc/files.rs`'s
+  `FleetFilesService::peers()` reads from the `nodes`
+  SQLite table (populated by both legacy + new mesh
+  code paths), not from `tailscale status --json`. The
+  Nebula-specific overlay-IP enrichment lives on
+  `dev.mackes.MDE.Nebula.Status.ListPeers()` (Bundle-0);
+  the Fleet surface intentionally stays Tailscale-free
+  + addresses-agnostic so consumers that just need the
+  roster (mde-files, etc.) don't pay the cert/epoch
+  lookup cost.
 - [ ] **NF-17.3: `dev.mackes.MDE.Connect` overlay routing** —
   `Connect.SendFile(node_id, path)` resolves to overlay
   IP via Nebula peer roster. Tailscale-IP code path
