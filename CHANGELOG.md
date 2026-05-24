@@ -3,6 +3,96 @@
 All notable user-facing and architectural changes. The current line is
 unreleased; tag versions get a date when they ship.
 
+## Unreleased — v2.5.0 Nebula fabric rebuild
+
+The mesh fabric stops outsourcing identity + connectivity to
+Tailscale/Headscale and runs on a self-hosted Nebula PKI. No
+SaaS dependency, no per-mesh API keys, simpler operator story
+end-to-end.
+
+**Networking**
+
+- **Nebula overlay replaces Tailscale.** Every peer joins via a
+  short join token (`mesh:<id>@<lighthouse>:<port>#<bearer>`)
+  rather than a Tailscale OAuth flow. Overlay IPs are stable
+  10.42.x.x/16 addresses signed by the per-mesh CA.
+- **Built-in TCP/443 covert tunnel.** Peers behind UDP-blocking
+  firewalls automatically fall over to a TLS 1.3 stream that
+  presents identically to a long-poll HTTPS/2 session
+  (`mackes-nebula-https-tunnel`). The lighthouse demuxes
+  framed Nebula payloads back to its local UDP path; inner
+  crypto runs unmodified.
+- **Faster first-packet rendezvous.** Direct UDP handshake at
+  < 1 s on warm peers; lighthouse-relayed path on cold start
+  within 3 s. NF-9.x bench scenarios pin the SLOs.
+
+**Operator surface**
+
+- **`mackesd enroll --token <…>`** replaces `tailscale up` for
+  joining a mesh. Idempotent + supports re-enroll under the
+  same hardware fingerprint.
+- **`mackesd ca {mint, rotate, list, dump-ca, sign-csr,
+  export, import}`** subcommands cover the full CA lifecycle.
+  Mint at first boot; rotate to bump the epoch + re-sign every
+  peer cert; export/import for off-cluster disaster recovery
+  (passphrase-encrypted via Argon2id + XChaCha20-Poly1305).
+- **`mackesd nebula {status, peer-list, regen-certs,
+  export-roster}`** subcommands surface live mesh state.
+- **Wizard's Mesh Preview page** (post-Apply) shows the
+  resulting overlay IP + lighthouse roster + diagnostics
+  banner if the mesh stays empty for 30s.
+- **Workbench `Service Publishing` panel** (Network → Service
+  Publishing) lists the 7 canonical Nebula-published services
+  (SSH, NATS, Mesh FS, Media, rsync, WoL, AV) with per-row
+  status pills.
+- **Workbench `Mesh Control` panel** gained a CA-epoch pill +
+  Rotate CA button next to the existing leader / force-takeover
+  surface.
+
+**Daemon workers (mackesd)**
+
+- **`nebula_supervisor`** — watches QNM-Shared for the
+  lighthouse-issued bundle + materializes `/etc/nebula/`
+  atomically.
+- **`nebula_csr_watcher`** — auto-signs pending-enroll CSRs on
+  a 30s tick, replacing the manual `mackesd ca sign-csr` step
+  for the common case.
+- **`nebula_https_listener`** — lighthouse-side TCP/443 demux
+  pump that completes the covert-tunnel story.
+- **`nebula_ca_backup`** — opt-in daily encrypted CA backup to
+  `QNM-Shared/<self>/mackesd/ca-backup.enc`. Operator enables
+  by exporting `MDE_BACKUP_PASSPHRASE` in the systemd unit.
+
+**D-Bus**
+
+- `dev.mackes.MDE.Nebula.Status.{Status, ListPeers, SelfNode,
+  RegenCerts, Enroll}` — the unified read + operator-action
+  surface every NF-10..18 desktop consumer hooks into.
+- `dev.mackes.MDE.Shell.{Healthz, Workers}` — daemon-level
+  status surface (panel + applet consumption).
+
+**Voice / lint / docs**
+
+- `install-helpers/lint-voice.sh` gained a FORBIDDEN-LEGACY-MESH
+  check — any user-visible string mentioning Tailscale /
+  Headscale / DERP gates the lint at commit time.
+- `docs/help/{mesh-nebula,mesh-admin,mesh-ops,mesh-recovery,
+  troubleshooting,headless,cli-reference}.md` rewritten end-
+  to-end for the Nebula vocabulary.
+
+**Removed**
+
+- Tailscale + Headscale + DERP wire vocabulary from every
+  user-facing surface (panel, wizard, help, CLI). The Python
+  shim `mackes/mesh_vpn.py` retires alongside the v2.5 cut
+  as the consumer-replacement pass closes.
+
+**Greenfield acceptance gate** (NF-20.3, operator-run before
+cut): a fresh Fedora 44 VM with `dnf install mde-2.5.0-1.fc44
+.x86_64.rpm` + the first-boot wizard reaches a working 2-peer
+mesh in under 10 minutes total operator time. `rpm -q tailscale
+headscale tailscale-derp` returns "not installed".
+
 ## Unreleased — VV-4: voice-routing heuristic + dispatcher priority plumbing
 
 Ships the latency-favoring routing heuristic that picks direct
