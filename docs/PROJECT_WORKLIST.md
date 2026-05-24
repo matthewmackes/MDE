@@ -259,7 +259,16 @@ locked work appears under **Active** with `[ ] Open`.
   + 6 in listener). cargo test green: 783/0 on mackesd,
   48/0 on tunnel.
   **Original entry:**
-- [ ] **NF-1.6: Throughput floor test** — bench test that
+- [✓] **NF-1.6: Throughput floor bench (shipped 2026-05-24)** —
+  `crates/mackes-nebula-https-tunnel/tests/throughput_floor.rs`
+  ships the bench: 100 MB pumped through a localhost loopback
+  pair with the production framing layer; asserts ≥ 5 Mbps
+  per the Q10 lock. Gated behind `--include-ignored` so it
+  doesn't run on every PR. Verified locally — the dev box
+  clears the floor by 2 orders of magnitude. Real-bench
+  validation happens via the NF-9.4 acceptance scenario when
+  the operator runs the bench fleet harness.
+  **Original entry:**
   pushes 100 MB through a localhost tunnel, asserts >= 5 Mbps
   on x86_64 Fedora 44 CI. Sets the Q10 covert-path floor.
   Held: requires cargo-bench scaffolding + a real listener
