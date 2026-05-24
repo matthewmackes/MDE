@@ -97,6 +97,53 @@ cut): a fresh Fedora 44 VM with `dnf install mde-4.0-1.fc44
 mesh in under 10 minutes total operator time. `rpm -q tailscale
 headscale tailscale-derp` returns "not installed".
 
+## Unreleased — GF-2.1 + GF-2.3 + GF-2.4: gluster_worker ships + bootstraps mesh-home
+
+New `mackesd_core::workers::gluster_worker::GlusterWorker`
+mirrors the `nebula_supervisor` shape: tokio task, 5s tick,
+owned `Arc<Mutex<rusqlite::Connection>>` store handle,
+`ShutdownToken` `select!` for prompt SIGTERM exit.
+
+Each tick:
+
+1. **Probe.** Shell-checks whether `gluster` is on PATH;
+   silent no-op when the v5.0.0 substrate isn't installed.
+2. **Wait for Nebula enrollment.** Reads the GF-1.3.a
+   overlay-ip publish file; silent skip when missing.
+3. **Genesis path (GF-2.4).** Runs `gluster volume info
+   mesh-home`; on "does not exist" stderr, runs `gluster
+   volume create mesh-home replica 1 transport tcp
+   <overlay-ip>:<brick-path> force` per design doc § 3.4.
+   Idempotent — once the volume exists every tick is a
+   no-op for this step.
+
+Spawned in `run_serve()` (GF-2.3) just after the
+`nebula_ca_backup` spawn site; opens its own SQLite handle
+so the future GF-2.7 quota probe + GF-2.8 conflict detector
+can audit-log without lock contention. `RestartPolicy::Always`
+since the tick is passive — any crash is a fault we want
+auto-recovered.
+
+Pure-fn helpers (`bootstrap_argv`, `binary_on_path`,
+`volume_exists`) extracted for testing without a live
+glusterd. 10 unit tests cover:
+
+- worker name stability
+- no-op when gluster binary absent
+- skip-bootstrap when overlay-ip file missing
+- attempts-bootstrap when overlay-ip present + volume
+  missing (negative probe via /bin/false)
+- bootstrap_argv command shape matches design doc § 3.4
+- bootstrap_argv honors alternate binary + paths
+- PATH probe finds `true`
+- PATH probe rejects nonexistent absolute path
+- PATH probe rejects nonexistent relative name
+- worker exits on shutdown token
+
+Subsequent GF-2.x items (peer-probe on enrollment + detach
+on revocation + hourly quota probe + conflict
+detector/resolver) layer onto the same tick.
+
 ## Unreleased — worklist hygiene: tag HW-carve-out items
 
 Re-tag `GF-11.3` (3-peer split-brain bench test), `GF-15.2`

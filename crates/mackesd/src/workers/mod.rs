@@ -114,6 +114,14 @@ pub mod nebula_https_listener;
 // Opt-in: requires MDE_BACKUP_PASSPHRASE env var; silently
 // skips when unset.
 pub mod nebula_ca_backup;
+// GF-2.1 + GF-2.3 + GF-2.4 (v5.0.0) — gluster fleet
+// supervisor. 5s tick: probes glusterd state, bootstraps the
+// `mesh-home` volume on first run when no peer in the
+// Nebula has it. Silent no-op when the `gluster` CLI isn't
+// installed (operator hasn't opted into v5.0.0 yet) and when
+// the GF-1.3.a overlay-ip publish file is missing (peer
+// hasn't completed Nebula enrollment).
+pub mod gluster_worker;
 pub mod metrics_flush;
 pub mod nats;
 pub mod notification_relay;

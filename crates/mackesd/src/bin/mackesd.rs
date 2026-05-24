@@ -2297,6 +2297,39 @@ fn run_serve(
             }
         }
 
+        // GF-2.1 + GF-2.3 + GF-2.4 (v5.0.0) — gluster fleet
+        // supervisor. Spawned unconditionally; the worker
+        // silently no-ops when the `gluster` CLI isn't on
+        // PATH (operator hasn't enabled the v5.0.0 substrate)
+        // OR when the GF-1.3.a overlay-ip publish file is
+        // missing (peer hasn't completed Nebula enrollment).
+        // Once both are in place, the first tick bootstraps
+        // the mesh-home volume per the design-doc § 3.4
+        // genesis path. Opens its own SQLite handle so the
+        // future GF-2.7 quota probe + GF-2.8 conflict detector
+        // can audit-log findings without contending with the
+        // backup worker's lock.
+        match mackesd_core::store::open(&db_path) {
+            Ok(conn) => {
+                let gluster_store = Arc::new(tokio::sync::Mutex::new(conn));
+                sup.spawn(Spawn::new(
+                    mackesd_core::workers::gluster_worker::GlusterWorker::new(gluster_store),
+                    RestartPolicy::Always,
+                ));
+                worker_names
+                    .lock()
+                    .expect("worker_names mutex")
+                    .push("gluster_worker".into());
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    db_path = %db_path.display(),
+                    "gluster_worker: sqlite open failed; worker skipped"
+                );
+            }
+        }
+
         // NF-1.5 (v2.5) — TCP/443 covert listener. Binds the
         // TLS 1.3 listener on :443 (default; env-overrideable),
         // spawns the per-stream demux pump per accepted peer
