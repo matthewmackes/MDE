@@ -3,7 +3,11 @@
 All notable user-facing and architectural changes. The current line is
 unreleased; tag versions get a date when they ship.
 
-## Unreleased — v2.5.0 Nebula fabric rebuild
+## Unreleased — v4.0 Nebula fabric rebuild
+
+(Operator-locked 2026-05-24: v4.0 is the target release for
+all features not yet released. Previously this section was
+labeled "v2.5.0"; consolidated into v4.0 per the scope-shift.)
 
 The mesh fabric stops outsourcing identity + connectivity to
 Tailscale/Headscale and runs on a self-hosted Nebula PKI. No
@@ -88,7 +92,7 @@ end-to-end.
   as the consumer-replacement pass closes.
 
 **Greenfield acceptance gate** (NF-20.3, operator-run before
-cut): a fresh Fedora 44 VM with `dnf install mde-2.5.0-1.fc44
+cut): a fresh Fedora 44 VM with `dnf install mde-4.0-1.fc44
 .x86_64.rpm` + the first-boot wizard reaches a working 2-peer
 mesh in under 10 minutes total operator time. `rpm -q tailscale
 headscale tailscale-derp` returns "not installed".

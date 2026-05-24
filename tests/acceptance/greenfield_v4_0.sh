@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# NF-20.3 — v2.5 greenfield acceptance gate.
+# NF-20.3 — v4.0 greenfield acceptance gate.
 #
-# Operator-run BEFORE `cut release 2.5.0`. On a fresh Fedora 44
+# Operator-run BEFORE `cut release 4.0`. On a fresh Fedora 44
 # VM (bare-metal or qemu — never on a live host), this script
 # walks the locked acceptance checklist:
 #
@@ -64,7 +64,7 @@ remote() {
 
 # ---- Gate 0: prerequisites --------------------------------
 
-info "Greenfield acceptance gate — v2.5 cut sign-off"
+info "Greenfield acceptance gate — v4.0 cut sign-off"
 info "Lighthouse: ${MDE_BENCH_LIGHTHOUSE:-<unset>}"
 info "Peer:       ${MDE_BENCH_PEER:-<unset>}"
 info "Budget:     ${WALL_CLOCK_BUDGET_S} s (10 min)"
@@ -74,13 +74,13 @@ if [ -z "${MDE_BENCH_LIGHTHOUSE:-}" ] || [ -z "${MDE_BENCH_PEER:-}" ]; then
     exit 1
 fi
 if [ -z "${MDE_BENCH_RPM_URL:-}" ]; then
-    fail "Set MDE_BENCH_RPM_URL to the mde-2.5.0 RPM URL (or local file://)"
+    fail "Set MDE_BENCH_RPM_URL to the mde-4.0 RPM URL (or local file://)"
     exit 1
 fi
 
 # ---- Gate 1: RPM installs cleanly on lighthouse ------------
 
-info "Gate 1/5 — install mde-2.5.0 RPM on lighthouse"
+info "Gate 1/5 — install mde-4.0 RPM on lighthouse"
 if remote "$MDE_BENCH_LIGHTHOUSE" "sudo dnf install -y '${MDE_BENCH_RPM_URL}'"; then
     pass "Lighthouse RPM install"
 else
@@ -91,7 +91,7 @@ fi
 
 info "Gate 2/5 — lighthouse mints CA + opens for enroll"
 if remote "$MDE_BENCH_LIGHTHOUSE" \
-    "sudo mackesd ca mint --mesh-id 'bench-v2.5' && \
+    "sudo mackesd ca mint --mesh-id 'bench-v4.0' && \
      sudo systemctl enable --now mackesd.service && \
      sleep 5 && \
      sudo mackesd healthz | grep -q '\"ok\":true'"; then
@@ -157,11 +157,11 @@ fi
 
 if [ "$FAIL_COUNT" -eq 0 ]; then
     printf '\n%s═══ GREENFIELD ACCEPTANCE: PASS ═══%s\n' "$GRN" "$RST"
-    printf 'v2.5 cut is greenlit. Proceed with `cut release 2.5.0`.\n'
+    printf 'v4.0 cut is greenlit. Proceed with `cut release 4.0`.\n'
     exit 0
 else
     printf '\n%s═══ GREENFIELD ACCEPTANCE: FAIL (%d gate%s) ═══%s\n' \
         "$RED" "$FAIL_COUNT" "$([ $FAIL_COUNT -eq 1 ] || echo s)" "$RST" >&2
-    printf 'v2.5 cut is BLOCKED until the failed gates above pass.\n' >&2
+    printf 'v4.0 cut is BLOCKED until the failed gates above pass.\n' >&2
     exit 1
 fi

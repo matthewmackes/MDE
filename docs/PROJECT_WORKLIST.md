@@ -1584,11 +1584,13 @@ disconnected" toasts get a dedicated Nebula vocabulary.
   TCP/443 covert path, no SaaS dependency, simpler mesh
   setup wizard (one passcode, no OAuth).
 - [!] **NF-20.2: Version bump prep (BLOCKED on cut-time per
-  §0.6 step 1, 2026-05-24)** — Original entry explicitly
-  says "NOT done in advance of cut." The four-file bump
-  (mackes/__init__.py, pyproject.toml, setup.py,
-  packaging/fedora/mackes-shell.spec) fires when the
-  operator types `cut release 2.5.0`. Closes at cut time.
+  §0.6 step 1; retargeted to v4.0 per operator scope-shift
+  2026-05-24)** — Original entry explicitly says "NOT done
+  in advance of cut." The four-file bump (mackes/__init__.py,
+  pyproject.toml, setup.py, packaging/fedora/mackes-shell.spec)
+  fires when the operator types `cut release 4.0` (was
+  scheduled as `cut release 2.5.0` before the v4.0
+  consolidation). Closes at cut time.
   **Original entry:**
   `pyproject.toml`, `setup.py`,
   `packaging/fedora/mackes-shell.spec` versions bump to
@@ -1926,12 +1928,15 @@ neither defect was caught at release time.
   + retained the existing `Application`-trait surface tests
   by importing `iced_layershell::Application as _` into the
   test module. `cargo test -p mde-panel --lib`: 181/0/0.
-- [!] **v3.0.2: cut release tag (BLOCKED on operator action,
-  2026-05-24)** — The `cut release X.Y.Z` shorthand is
-  operator-typed per .claude/CLAUDE.md §0.6. The runtime
-  surface (mackesd workers + RPM spec) is feature-complete for
-  cut; the actual cut fires when the operator decides + types
-  the shorthand. Closes the moment the operator runs it.
+- [!] **v4.0: cut release tag (retargeted from v3.0.2 per
+  operator scope-shift 2026-05-24 — "v4.0 is now the target
+  release for all features not yet released")** — Original
+  target was v3.0.2; the unreleased v2.5 Nebula + v4.1 VV
+  workstreams now consolidate into a single v4.0 cut. The
+  `cut release 4.0.<next>` shorthand fires the operator-
+  typed §0.6 flow; runtime surface is feature-complete for
+  cut (mackesd workers + RPM spec + greenfield harness all
+  ship), so the cut closes the moment the operator types it.
   **Original entry:**
   Run `cut release 3.0.2` per `.claude/CLAUDE.md` §0.6
   shorthand. Will bump `mackes/__init__.py`,
@@ -4896,7 +4901,7 @@ offline-delivery), Vitelity outage drill, single-peer
 `voice_public` deploy. *(The 4-way ConfBridge drill moves to
 the v4.2.0 epic with the rest of the PBX feature set.)*
 
-- [✓] **v4.1.0: VV-1 per-host Kamailio daemon (Tier 1 platform)** *(shipped 2026-05-24, runtime-reachable via the `mackesd voice render-config` ExecStartPre hook → `mde_voice_config::generate()`)*
+- [✓] **v4.0: VV-1 per-host Kamailio daemon (Tier 1 platform)** *(shipped 2026-05-24, runtime-reachable via the `mackesd voice render-config` ExecStartPre hook → `mde_voice_config::generate()`)*
 
   **As** the operator,
   **I want** every MDE peer to run its own Kamailio 5.8 instance
@@ -4928,7 +4933,7 @@ the v4.2.0 epic with the rest of the PBX feature set.)*
     `mkdir -p` scriptlets.
   - Carbon glyph for the panel tray entry: `phone`.
 
-- [✓] **v4.1.0: VV-1.5 per-host RTPengine daemon (Tier 1 platform)** *(shipped 2026-05-24 with VV-1 — same render-config hook generates `rtpengine.conf`; same systemd-managed dirs pattern)*
+- [✓] **v4.0: VV-1.5 per-host RTPengine daemon (Tier 1 platform)** *(shipped 2026-05-24 with VV-1 — same render-config hook generates `rtpengine.conf`; same systemd-managed dirs pattern)*
 
   **As** the operator,
   **I want** every MDE peer to run its own RTPengine instance
@@ -4961,9 +4966,9 @@ the v4.2.0 epic with the rest of the PBX feature set.)*
   - User-space relay only — no kernel module — until VV-15's
     hardware perf bench (deferred to v4.1.x).
 
-- [✓] **v4.1.0: VV-2 config generator crate `mde-voice-config` (Tier 1 platform)** *(shipped 2026-05-24 — `VoiceDesired` carries peers + Vitelity sub-account; `generate()` emits real `dispatcher.list` rows + real `uacreg.list` rows + outbound-CID comment; 24 unit tests + 6 insta snapshot fixtures; `mackesd voice render-config` reads operator-visible JSON from `/var/lib/mackesd/voice-desired.json` (or `--desired-json PATH` override) and falls back to `boot_default` when the file is absent; `voice_config` worker seeds the JSON on first boot + triggers `systemctl try-reload-or-restart kamailio-mde rtpengine-mde` on every mtime advance — 6 worker tests cover the seed-then-idle-then-reload cycle. **Deferred to a follow-up:** the policy lifecycle that writes `voice-desired.json` from approved `voice_mesh` / `voice_public` revisions in the store — see VV-2.a below)*
+- [✓] **v4.0: VV-2 config generator crate `mde-voice-config` (Tier 1 platform)** *(shipped 2026-05-24 — `VoiceDesired` carries peers + Vitelity sub-account; `generate()` emits real `dispatcher.list` rows + real `uacreg.list` rows + outbound-CID comment; 24 unit tests + 6 insta snapshot fixtures; `mackesd voice render-config` reads operator-visible JSON from `/var/lib/mackesd/voice-desired.json` (or `--desired-json PATH` override) and falls back to `boot_default` when the file is absent; `voice_config` worker seeds the JSON on first boot + triggers `systemctl try-reload-or-restart kamailio-mde rtpengine-mde` on every mtime advance — 6 worker tests cover the seed-then-idle-then-reload cycle. **Deferred to a follow-up:** the policy lifecycle that writes `voice-desired.json` from approved `voice_mesh` / `voice_public` revisions in the store — see VV-2.a below)*
 
-- [ ] **v4.1.0: VV-2.a policy-lifecycle writer for `voice-desired.json` (Tier 1 platform — VV-2 follow-up)**
+- [ ] **v4.0: VV-2.a policy-lifecycle writer for `voice-desired.json` (Tier 1 platform — VV-2 follow-up)**
 
   **As** the operator,
   **I want** approved `Policy::VoiceMesh` + `Policy::VoicePublic`
@@ -5034,7 +5039,7 @@ the v4.2.0 epic with the rest of the PBX feature set.)*
     consumes; `dispatcher.list` + `uacreg.list` are the two
     text databases Kamailio reloads without a daemon restart.
 
-- [✓] **v4.1.0: VV-3 policy kinds `voice_mesh` + `voice_public` (Tier 1 platform)** *(shipped 2026-05-24 — `Policy::VoiceMesh { id, extension, node_id, display_name }` + `Policy::VoicePublic { id, peer_node_id, vitelity_username, vitelity_password, outbound_cid }` variants added to the existing `policy::Policy` enum; `pair_conflict()` extended to catch the "extension 1003 collision" rule + the "two Vitelity sub-accounts for the same peer" rule; 8 new tests covering valid/duplicate/conflict cases + JSON round-trip with the `kind: voice_mesh` / `kind: voice_public` serde discriminator. **Note on acceptance phrasing:** the original acceptance listed `crates/mackesd/src/policy/types.rs`, `schemas/policy/voice_mesh.json`, and `policy_dispatch::dispatch()` — none of those structures exist in the codebase today. The shipped pattern matches what's actually present (single `policy::mod.rs` with the `Policy` enum + `detect_conflicts()` validator); JSON schemas are not used anywhere in the workspace — serde's `#[serde(tag = "kind")]` discriminator + the conflict detector is the validation surface.)*
+- [✓] **v4.0: VV-3 policy kinds `voice_mesh` + `voice_public` (Tier 1 platform)** *(shipped 2026-05-24 — `Policy::VoiceMesh { id, extension, node_id, display_name }` + `Policy::VoicePublic { id, peer_node_id, vitelity_username, vitelity_password, outbound_cid }` variants added to the existing `policy::Policy` enum; `pair_conflict()` extended to catch the "extension 1003 collision" rule + the "two Vitelity sub-accounts for the same peer" rule; 8 new tests covering valid/duplicate/conflict cases + JSON round-trip with the `kind: voice_mesh` / `kind: voice_public` serde discriminator. **Note on acceptance phrasing:** the original acceptance listed `crates/mackesd/src/policy/types.rs`, `schemas/policy/voice_mesh.json`, and `policy_dispatch::dispatch()` — none of those structures exist in the codebase today. The shipped pattern matches what's actually present (single `policy::mod.rs` with the `Policy` enum + `detect_conflicts()` validator); JSON schemas are not used anywhere in the workspace — serde's `#[serde(tag = "kind")]` discriminator + the conflict detector is the validation surface.)*
 
   **As** the operator,
   **I want** two distinct JSON-schema-validated policy kinds
@@ -5064,7 +5069,7 @@ the v4.2.0 epic with the rest of the PBX feature set.)*
     `docs/design/v12.0-enterprise-mesh-dev.md § Example —
     a hypothetical allow_east_west policy`.
 
-- [✓] **v4.1.0: VV-4 mesh routing + transit (Tier 1 platform)** *(shipped 2026-05-24 — pure-fn `mackesd_core::voice::best_path(target_node_id, &[Candidate]) -> Path` ships in `crates/mackesd/src/voice.rs` with 18 unit tests covering the design-doc §6.3 heuristic (filter RTT > 80, loss > 5; score = `loss_pct.mul_add(10.0, rtt_ms)`; transit-relay fallback to lowest-score reachable peer; `Path::Direct` / `Path::Transit` discriminant); `PeerEntry.priority: u8` plumbed through `mde-voice-config` so generated `dispatcher.list` rows carry the heuristic's choice in the priority column. **3-peer integration drill from the acceptance is HW-bench-blocked** — needs three live Nebula peers + iptables drop to exercise the transit path; ported to the Hardware Testing epic. The pure-fn surface is fully testable + tested in CI without that fixture.)*
+- [✓] **v4.0: VV-4 mesh routing + transit (Tier 1 platform)** *(shipped 2026-05-24 — pure-fn `mackesd_core::voice::best_path(target_node_id, &[Candidate]) -> Path` ships in `crates/mackesd/src/voice.rs` with 18 unit tests covering the design-doc §6.3 heuristic (filter RTT > 80, loss > 5; score = `loss_pct.mul_add(10.0, rtt_ms)`; transit-relay fallback to lowest-score reachable peer; `Path::Direct` / `Path::Transit` discriminant); `PeerEntry.priority: u8` plumbed through `mde-voice-config` so generated `dispatcher.list` rows carry the heuristic's choice in the priority column. **3-peer integration drill from the acceptance is HW-bench-blocked** — needs three live Nebula peers + iptables drop to exercise the transit path; ported to the Hardware Testing epic. The pure-fn surface is fully testable + tested in CI without that fixture.)*
 
   **As** the operator,
   **I want** the Kamailio cfg generated by VV-2 to consult
@@ -5100,7 +5105,7 @@ the v4.2.0 epic with the rest of the PBX feature set.)*
     Kamailio-idiomatic approach. Net result: same operator
     semantics, simpler dialog accounting, no CDR doubling.
 
-- [ ] **v4.1.0: VV-5 PJSIP FFI crate `mde-voice-pjsip-sys` (Tier 1 platform)**
+- [ ] **v4.0: VV-5 PJSIP FFI crate `mde-voice-pjsip-sys` (Tier 1 platform)**
 
   **As** a developer of the embedded client,
   **I want** `bindgen`-generated Rust bindings to system
@@ -5125,7 +5130,7 @@ the v4.2.0 epic with the rest of the PBX feature set.)*
     explicitly accepted as a future-phase concern (see design
     doc §13 risk table).
 
-- [ ] **v4.1.0: VV-6 safe Rust wrapper `mde-voice-client` (Tier 1 platform)**
+- [ ] **v4.0: VV-6 safe Rust wrapper `mde-voice-client` (Tier 1 platform)**
 
   **As** the embedded client author,
   **I want** an async-friendly safe wrapper over the FFI
@@ -5144,7 +5149,7 @@ the v4.2.0 epic with the rest of the PBX feature set.)*
     `docker compose`-spawned Kamailio + RTPengine fixture.
   - [ ] `cargo clippy -- -D warnings` is clean.
 
-- [ ] **v4.1.0: VV-7a Workbench Voice — backend management surface (Tier 1 chrome)**
+- [ ] **v4.0: VV-7a Workbench Voice — backend management surface (Tier 1 chrome)**
 
   *(Scope split locked 2026-05-24: the original VV-7 covered
   both backend administration AND the call/video client; per
@@ -5200,7 +5205,7 @@ the v4.2.0 epic with the rest of the PBX feature set.)*
     Phase-12 lifecycle; the panel never writes Kamailio cfg
     directly.
 
-- [ ] **v4.1.0: VV-7b Voice/Video Client — slide-from-bottom HUD (Tier 1 chrome)**
+- [ ] **v4.0: VV-7b Voice/Video Client — slide-from-bottom HUD (Tier 1 chrome)**
 
   *(New task — split from original VV-7 on 2026-05-24 per
   operator directive "the slide-in interface is for the client
@@ -5264,7 +5269,7 @@ the v4.2.0 epic with the rest of the PBX feature set.)*
     `microphone`, `microphone--off`, `video`, `video--off`,
     `pause`, `chevron--down`.
 
-- [ ] **v4.1.0: VV-8 PipeWire capture / playback + portal camera (Tier 1 chrome)**
+- [ ] **v4.0: VV-8 PipeWire capture / playback + portal camera (Tier 1 chrome)**
 
   **As** the operator,
   **I want** the embedded client to capture audio from the
@@ -5287,7 +5292,7 @@ the v4.2.0 epic with the rest of the PBX feature set.)*
   - [ ] Headphone-hotplug test: call active, plug headphones
     → audio reroutes within 2 s with no call drop.
 
-- [ ] **v4.1.0: VV-9 presence subscription mesh (Tier 1 platform)**
+- [ ] **v4.0: VV-9 presence subscription mesh (Tier 1 platform)**
 
   **As** the operator,
   **I want** every peer's embedded PJSIP client to PUBLISH
@@ -5311,7 +5316,7 @@ the v4.2.0 epic with the rest of the PBX feature set.)*
     chip wired to a new `mackesd_core::voice::presence()`
     read.
 
-- [ ] **v4.1.0: VV-10 SIP MESSAGE chat + local SQLite history (Tier 2 chrome)**
+- [ ] **v4.0: VV-10 SIP MESSAGE chat + local SQLite history (Tier 2 chrome)**
 
   **As** the operator,
   **I want** to send text chat to any peer via SIP MESSAGE
@@ -5341,7 +5346,7 @@ Voice PBX epic on 2026-05-24 — see the next section. Both
 require a media-server pick that's deliberately deferred so
 v4.1.0 can ship Kamailio + RTPengine + 1:1 calls cleanly.)*
 
-- [ ] **v4.1.0: VV-13 Vitelity sub-account + DID configuration UI (Tier 1 chrome)**
+- [ ] **v4.0: VV-13 Vitelity sub-account + DID configuration UI (Tier 1 chrome)**
 
   **As** the operator,
   **I want** a Workbench Voice → Vitelity panel where I enter
@@ -5371,7 +5376,7 @@ v4.1.0 can ship Kamailio + RTPengine + 1:1 calls cleanly.)*
   - [ ] All changes go through the existing pending-changes
     inbox before applying.
 
-- [ ] **v4.1.0: VV-14 Vitelity REGISTER + inbound / outbound routes (Tier 1 platform)**
+- [ ] **v4.0: VV-14 Vitelity REGISTER + inbound / outbound routes (Tier 1 platform)**
 
   **As** the operator,
   **I want** each peer's Kamailio to maintain an outbound TLS
@@ -5409,7 +5414,7 @@ v4.1.0 can ship Kamailio + RTPengine + 1:1 calls cleanly.)*
     state to VV-7a's Backend panel + the status-cluster
     chip.
 
-- [ ] **v4.1.0: VV-15 acceptance drill harness + 16-peer Docker fixture (Tier 2 testing)**
+- [ ] **v4.0: VV-15 acceptance drill harness + 16-peer Docker fixture (Tier 2 testing)**
 
   **As** the maintainer,
   **I want** a `make voice-acceptance` target that spins up a
@@ -5453,7 +5458,7 @@ picks that media server and adds the features back.
 3. **Recording storage policy** — local per-peer disk only, or
    mesh-fs replicated.
 
-- [!] **v4.2.0: VV-PBX-1 pick + integrate media server (Tier 1 platform)**
+- [!] **v4.0: VV-PBX-1 pick + integrate media server (Tier 1 platform)**
 
   **As** the maintainer,
   **I want** a single locked pick for the v4.2.0 media server +
@@ -5473,7 +5478,7 @@ picks that media server and adds the features back.
   - [ ] Smoke test: a single peer reaches a conference room
     via the media server's loopback endpoint.
 
-- [!] **v4.2.0: VV-PBX-2 conference rooms + recording (Tier 2 chrome)**
+- [!] **v4.0: VV-PBX-2 conference rooms + recording (Tier 2 chrome)**
 
   *(Moved from v4.1.0 VV-11 on 2026-05-24.)*
 
@@ -5498,7 +5503,7 @@ picks that media server and adds the features back.
   - [ ] Conference mode added to the VV-7b slide-up modal —
     the sixth render mode the original VV-7b design listed.
 
-- [!] **v4.2.0: VV-PBX-3 voicemail per peer (Tier 2 chrome)**
+- [!] **v4.0: VV-PBX-3 voicemail per peer (Tier 2 chrome)**
 
   *(Moved from v4.1.0 VV-12 on 2026-05-24.)*
 
@@ -5518,7 +5523,7 @@ picks that media server and adds the features back.
   - [ ] Greeting recorder works from the panel — records via
     the same PipeWire capture path as the embedded client.
 
-- [!] **v4.2.0: VV-PBX-4 music-on-hold + intercom / page (Tier 2 chrome)**
+- [!] **v4.0: VV-PBX-4 music-on-hold + intercom / page (Tier 2 chrome)**
 
   **As** the operator,
   **I want** caller-on-hold music + `Page()`-equivalent
@@ -5535,7 +5540,7 @@ picks that media server and adds the features back.
   - [ ] Workbench Voice → Page panel: peer multi-select +
     Page button; their HUD auto-answers speaker-only.
 
-- [!] **v4.2.0: VV-PBX-5 ring groups + IVR + group chat (Tier 2 chrome)**
+- [!] **v4.0: VV-PBX-5 ring groups + IVR + group chat (Tier 2 chrome)**
 
   **As** the operator,
   **I want** the per-DID `ring-group` / `ivr` modes that VV-13
@@ -11127,12 +11132,13 @@ Removes the platform's last Qt surface. Adds explicit
   matrices + non-empty copy + the actionable-phrase lock.
   Iced widget integration into the wizard navigation lives in
   the same crate's main.rs message router as a follow-up.
-- [!] **KDC2-6.8: CHANGELOG v2.1.0 + version bump (BLOCKED on
-  cut-time per §0.6, 2026-05-24)** — Operator-typed at
-  `cut release 2.1.0` time. The CHANGELOG draft for v2.1.0
-  KDC2 work needs writing alongside the cut — same pattern as
-  NF-20.1 + NF-20.2 for v2.5. Stays blocked until the
-  operator schedules the v2.1.0 cut window.
+- [!] **KDC2-6.8: CHANGELOG + version bump (BLOCKED on
+  cut-time; retargeted to v4.0 per operator scope-shift
+  2026-05-24)** — KDC2 work consolidates into the v4.0 cut
+  alongside Nebula + VV. The CHANGELOG entry for KDC2
+  features folds into the v4.0 Unreleased section in
+  CHANGELOG.md. Operator-typed at `cut release 4.0` time
+  per §0.6. Stays blocked until cut.
   **Original entry:**
   CHANGELOG entry with a Breaking Changes subsection calling
   out the pair-migration hardcut + the `kdeconnect-cli`
