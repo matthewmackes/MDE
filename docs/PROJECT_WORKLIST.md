@@ -4460,6 +4460,415 @@ Every actionable item lifted from `docs/design/` + the still-open
 items from the prior worklist. Grouped by area for readability;
 all are equally tracked.
 
+### v4.1.0 Voice & Video epic (locked 2026-05-23)
+
+**Plan source:** `docs/design/v4.1-voice-video.md` (full
+architecture + 2-question lock survey 2026-05-23). Brings real-
+time voice + video + presence + chat + PSTN to the mesh.
+Architecture: per-host Asterisk 21 (`asterisk-mde.service`) +
+embedded PJSIP client (new `crates/mde-voice-*` crates) + per-
+peer Vitelity SIP-trunk integration + mesh transit-routing
+(B2BUA bridge through best-path peer). Two new policy kinds
+(`voice_mesh`, `voice_public`) drop into the existing Phase-12
+draft → validated → approved → applied → verified lifecycle —
+the "dual plan" the operator asked for is literal: two JSON
+schemas, two review queues, one lifecycle. Target release:
+**v4.1.0** (rides whatever the next operator-authorized cut
+becomes; per the standing "no new RPM until directed"
+constraint, work lands on `main` first via the parity-overlay
+machinery).
+
+**Scope locks (2-question survey 2026-05-23):**
+
+1. Embedded SIP/video stack: **PJSIP (libpjproject) via Rust
+   FFI** — same protocol surface as chan_pjsip on the host
+   side; one library covers SIP + SRTP + video + SIMPLE
+   presence + MESSAGE.
+2. Vitelity trunk topology: **per-peer sub-accounts** — every
+   peer is its own PSTN edge, owns its DIDs, owns its CID,
+   survives any other peer's outage. Trades a higher
+   Vitelity bill for full mesh-style resilience.
+
+**Acceptance (epic-level, 9 concrete drills — see design doc
+§12 for the full list).** Two-peer mesh call, three-peer
+transit call, PSTN outbound, PSTN inbound, presence
+propagation, chat persistence, 4-way ConfBridge with
+recording, Vitelity outage drill (mesh unaffected), single-
+peer `voice_public` deploy without rewriting other peers'
+configs.
+
+- [ ] **v4.1.0: VV-1 per-host Asterisk daemon (Tier 1 platform)**
+
+  **As** the operator,
+  **I want** every MDE peer to run its own Asterisk 21 instance
+  bound to `lo` + the WireGuard mesh interface as
+  `asterisk-mde.service`,
+  **so that** voice / video / presence / chat / voicemail are
+  available locally without depending on a centralized PBX, and
+  the call signaling never touches a public interface.
+
+  **Acceptance** (each bench-observable):
+  - [ ] `dnf install` of the v4.1.0 RPM pulls in `asterisk`
+    21.x from F44.
+  - [ ] `systemctl status asterisk-mde.service` shows `active
+    (running)` after first boot.
+  - [ ] `ss -tlnp | grep asterisk` shows listeners on `127.0.0.1`
+    + `wg-mesh-<peer-ip>` ONLY — no public-interface bind.
+  - [ ] Runs as a dedicated `_asterisk_mde` UID; data root at
+    `/var/lib/asterisk-mde/`; does not clobber a pre-existing
+    upstream `asterisk.service` install.
+
+  **Implementation notes:**
+  - New systemd unit: `data/systemd/asterisk-mde.service`.
+  - Spec changes: `packaging/fedora/mackes-shell.spec` adds
+    `Requires: asterisk >= 21.0` and the `useradd` /
+    `mkdir -p` scriptlets.
+  - Carbon glyph for the panel tray entry: `phone`.
+
+- [ ] **v4.1.0: VV-2 config generator crate `mde-voice-config` (Tier 1 platform)**
+
+  **As** the operator,
+  **I want** `mackesd` to generate `pjsip.conf`,
+  `extensions.conf`, `confbridge.conf`, `voicemail.conf`, and
+  `musiconhold.conf` from the desired voice policies as a pure
+  function (input → file set, no I/O),
+  **so that** every Asterisk config is reproducible, snapshot-
+  testable, and never operator-hand-edited.
+
+  **Acceptance:**
+  - [ ] New crate `crates/mde-voice-config/` with a public
+    `generate(desired: &VoiceDesired) -> ConfigSet` fn.
+  - [ ] Golden-fixture tests under
+    `crates/mde-voice-config/tests/fixtures/` — 3 canonical
+    desired-configs produce expected `.conf` output via
+    `insta` snapshot diffs.
+  - [ ] Wired into `mackesd::workers::` as a new
+    `voice_config_writer` worker (mirrors the existing
+    `media_sync.rs` pattern); writes are atomic (`write` + `rename`).
+  - [ ] On apply, `asterisk-mde reload` runs and the
+    reconciler reads back `ENDPOINT_REGISTERED` events to
+    flip Applied → Verified.
+
+  **Implementation notes:**
+  - Pure-function contract per
+    `docs/design/v12.0-enterprise-mesh-dev.md § How the
+    reconciler dispatches`.
+  - Generator owns extension-number assignment (lexicographic
+    `node_id` → `1NNN`); operator can override via the
+    `voice_mesh` policy.
+
+- [ ] **v4.1.0: VV-3 policy kinds `voice_mesh` + `voice_public` (Tier 1 platform)**
+
+  **As** the operator,
+  **I want** two distinct JSON-schema-validated policy kinds
+  driving the voice stack — `voice_mesh` for the in-mesh
+  topology and `voice_public` (per-peer) for each peer's
+  Vitelity edge,
+  **so that** I can change a DID rule without re-broadcasting
+  a mesh-topology change, and each policy goes through its own
+  draft → approved → applied lifecycle queue.
+
+  **Acceptance:**
+  - [ ] `crates/mackesd/src/policy/types.rs` gains
+    `Policy::VoiceMesh { … }` + `Policy::VoicePublic { … }`
+    variants.
+  - [ ] Schemas at `crates/mackesd/schemas/policy/voice_mesh.json`
+    + `voice_public.json`; well-formed accepts + malformed
+    rejects covered in `tests/policy/voice_*_schema.rs`.
+  - [ ] Dispatcher arms in `policy_dispatch::dispatch()`
+    accumulate Asterisk config-fragment intent into
+    `ReconcileContext` — no direct I/O.
+  - [ ] Conflict tests pass: a `voice_mesh` revision that
+    reassigns extension `1003` to two peers raises
+    `PolicyConflict` at validate-time.
+
+  **Implementation notes:**
+  - Pattern lifted from
+    `docs/design/v12.0-enterprise-mesh-dev.md § Example —
+    a hypothetical allow_east_west policy`.
+
+- [ ] **v4.1.0: VV-4 mesh dialplan + transit routing (Tier 1 platform)**
+
+  **As** the operator,
+  **I want** the dialplan generated by VV-2 to consult
+  `mackesd_core::voice::best_path()` on every dial, route
+  reachable peers direct over WireGuard, and B2BUA-bridge
+  through a chosen transit peer when direct reach is blocked,
+  **so that** any peer in the mesh can call any other peer
+  even when their networks can't see each other.
+
+  **Acceptance:**
+  - [ ] New `mackesd_core::voice::best_path(target: NodeId) ->
+    Path` returning `Path::Direct(via)` or
+    `Path::Transit(via_node)`; rejects candidates with
+    RTT > 80 ms OR loss > 5%.
+  - [ ] AGI helper `/usr/libexec/mde-voice/mesh_lookup.py`
+    (or a Rust binary if FFI proves cleaner) called from the
+    generated `[mde-mesh]` context.
+  - [ ] Three-peer integration test: with `iptables -A INPUT
+    -i wg-mesh -s <peer-C-wg-ip> -j DROP` on peer A, dialing
+    `1003` from A succeeds via B2BUA on peer B; one direct
+    leg A→B, one direct leg B→C, audio bidirectional.
+
+  **Implementation notes:**
+  - Voice-router heuristic favors latency over throughput —
+    intentionally diverges from connectivity-layer Q23
+    (throughput-wins). Voice flows are bounded by 24 kbps
+    Opus / 600 kbps VP8, so RTT dominates the quality
+    function.
+
+- [ ] **v4.1.0: VV-5 PJSIP FFI crate `mde-voice-pjsip-sys` (Tier 1 platform)**
+
+  **As** a developer of the embedded client,
+  **I want** `bindgen`-generated Rust bindings to system
+  `pjproject-devel` packaged as a standalone `-sys` crate,
+  **so that** higher-level crates link against PJSIP without
+  every consumer reinventing the FFI surface.
+
+  **Acceptance:**
+  - [ ] Crate `crates/mde-voice-pjsip-sys/` builds against
+    Fedora's `pjproject-devel` package.
+  - [ ] `cargo doc --no-deps` produces a non-empty doc tree
+    covering `pjsua2`, `pjsip`, `pjmedia`, `pjsip-ua`.
+  - [ ] `build.rs` honors `PJPROJECT_LIB_DIR` /
+    `PJPROJECT_INCLUDE_DIR` env vars for non-system builds
+    (CI / Nix users).
+  - [ ] One smoke-test in `tests/init_pj.rs` calls
+    `pjsua_create` + `pjsua_destroy` cleanly.
+
+  **Implementation notes:**
+  - No vendoring; we depend on system PJSIP via the spec's
+    `BuildRequires: pjproject-devel`. Cross-compile pain is
+    explicitly accepted as a future-phase concern (see design
+    doc §13 risk table).
+
+- [ ] **v4.1.0: VV-6 safe Rust wrapper `mde-voice-client` (Tier 1 platform)**
+
+  **As** the embedded client author,
+  **I want** an async-friendly safe wrapper over the FFI
+  exposing `Call`, `Registration`, `Presence`,
+  `MessageSession`, `MediaSink`, `MediaSource`,
+  **so that** the Iced surface can drive SIP operations
+  without unsafe blocks and without blocking the event loop.
+
+  **Acceptance:**
+  - [ ] Crate `crates/mde-voice-client/` — every PJSIP
+    callback posts a `VoiceEvent` into a `tokio::sync::mpsc`.
+  - [ ] Loopback test in `tests/loopback.rs`: two `Account`
+    instances on the same process register to the local
+    Asterisk, place a call, exchange a 1 s sine wave,
+    teardown. Runs in CI against a `docker compose`-spawned
+    Asterisk fixture.
+  - [ ] `cargo clippy -- -D warnings` is clean.
+
+- [ ] **v4.1.0: VV-7 Workbench Voice surface `mde-voice` (Tier 1 chrome)**
+
+  **As** the operator,
+  **I want** a "Voice" group in the Workbench sidebar with
+  panels for Dial, Contacts, Rooms, Voicemail, History, Chat,
+  Vitelity, and Settings,
+  **so that** I drive every voice / video feature from the
+  same chrome I already use for everything else — no separate
+  softphone app to launch.
+
+  **Acceptance:**
+  - [ ] Iced application crate `crates/mde-voice/` follows
+    the `mde-workbench` patternfly layout (breadcrumb +
+    `_page_title` + `_page_subtitle` + `_section_title`).
+  - [ ] Sidebar nav adds a "Voice" group with the Carbon
+    `phone` glyph; sub-items use Carbon `phone-incoming`,
+    `user--multiple`, `chat`, `voicemail` (or closest
+    equivalent in the locked Carbon set per the icon lock).
+  - [ ] Dial panel: numeric pad + recent-calls list rendered
+    from CDR; clicking a recent-call entry re-dials.
+  - [ ] Contacts panel: peer list with presence dots
+    (`available` / `on-call` / `away` / `dnd` / `offline`).
+  - [ ] Click-to-call from Contacts: opens a call window
+    (separate Iced window via `iced::window::open`).
+
+  **Implementation notes:**
+  - Carbon glyphs per the 2026-05-23 iconography lock —
+    bake the SVGs into `assets/icons/carbon/` and wire via
+    `mde_theme::ResolvedIcon::svg_bytes()`.
+
+- [ ] **v4.1.0: VV-8 PipeWire capture / playback + portal camera (Tier 1 chrome)**
+
+  **As** the operator,
+  **I want** the embedded client to capture audio from the
+  PipeWire default source, play to the default sink, and
+  capture video via the XDG `org.freedesktop.portal.Camera`
+  portal,
+  **so that** voice / video respect wireplumber's routing,
+  follow headphone hotplug, and ask for camera permission
+  through the standard Wayland portal.
+
+  **Acceptance:**
+  - [ ] Audio plumbing reuses the v1.1.0 compliance path
+    (`docs/design/audio-video-compliance.md`); volume probe
+    follows the same `pactl @DEFAULT_SINK@` contract.
+  - [ ] Camera capture falls back to `/dev/video0` via
+    `v4l2-rs` when the portal is unreachable (headless or
+    `xdg-desktop-portal-wlr` missing); a non-blocking
+    status-cluster chip surfaces the fallback per Q12 of
+    v12-connectivity-scope.
+  - [ ] Headphone-hotplug test: call active, plug headphones
+    → audio reroutes within 2 s with no call drop.
+
+- [ ] **v4.1.0: VV-9 presence subscription mesh (Tier 1 platform)**
+
+  **As** the operator,
+  **I want** every peer to PJSIP SUBSCRIBE to every other
+  peer's `mde-local` endpoint and publish `available` /
+  `on-call` / `away` / `dnd` / `offline`,
+  **so that** the Peer Card + Workbench Contacts panel always
+  reflect who's reachable for a call without polling.
+
+  **Acceptance:**
+  - [ ] Endpoint config generated by VV-2 includes the SIMPLE
+    presence module + subscription rules for every other peer.
+  - [ ] 16-peer mesh simulator (Docker-compose fixture) shows
+    240 active SUBSCRIBE dialogs (16×15); presence-state
+    changes propagate within 5 s.
+  - [ ] `away` triggers off the existing sway idle-timer
+    integration (no new idle daemon).
+  - [ ] Peer Card (`crates/mde-peer-card/`) gains a presence
+    chip wired to a new `mackesd_core::voice::presence()`
+    read.
+
+- [ ] **v4.1.0: VV-10 SIP MESSAGE chat + local SQLite history (Tier 2 chrome)**
+
+  **As** the operator,
+  **I want** to send text chat to any peer via SIP MESSAGE
+  with conversation history persisted locally at
+  `~/.local/share/mde/voice/chat.sqlite`,
+  **so that** I have a low-friction text channel for "are you
+  there?" / "ringing in 30 s" without spinning up a separate
+  chat app.
+
+  **Acceptance:**
+  - [ ] Per-peer 1:1 chat round-trips within 1 s on a LAN-
+    direct pair.
+  - [ ] History survives reboot; pagination on long threads.
+  - [ ] Group chat via `[mde-room-NNN]` ConfBridge MESSAGE-
+    only attendees (no audio leg).
+  - [ ] Voice + chat coexist in the same call window — the
+    Iced surface stacks the chat pane next to the video.
+
+- [ ] **v4.1.0: VV-11 ConfBridge rooms + recording (Tier 2 chrome)**
+
+  **As** the operator,
+  **I want** named conference rooms (`*81 all-hands`, `*82
+  huddle-1`, …) with attendee list, mute / unmute, and
+  recording-to-WAV,
+  **so that** 3+ peers can talk together without each pair
+  setting up its own call, and I have an audio record of the
+  all-hands.
+
+  **Acceptance:**
+  - [ ] Workbench Voice → Rooms panel lists rooms defined in
+    `voice_mesh`; click to join.
+  - [ ] 4-peer ConfBridge stays bidirectional for 5 min;
+    recording lands at `~/.local/share/mde/voice/recordings/
+    <room>-<ISO8601>.wav`.
+  - [ ] Per-attendee mute / unmute from the attendee list.
+  - [ ] Configurable PIN per room; PIN entry IVR prompt on
+    join.
+
+- [ ] **v4.1.0: VV-12 voicemail per peer (Tier 2 chrome)**
+
+  **As** the operator,
+  **I want** a per-peer voicemail box reachable by callers when
+  I don't answer, with playback / delete / mark-read from the
+  Workbench Voicemail panel,
+  **so that** missed calls don't go silently away — including
+  inbound PSTN calls hitting a peer that's `offline`.
+
+  **Acceptance:**
+  - [ ] Asterisk `app_voicemail` configured per peer via VV-2;
+    mailbox `1NNN@mde-default`.
+  - [ ] Workbench Voicemail panel lists messages with sender,
+    timestamp, duration, listened/unread flag.
+  - [ ] Greeting recorder works from the panel — records via
+    the same PipeWire capture path as the embedded client.
+
+- [ ] **v4.1.0: VV-13 Vitelity sub-account + DID configuration UI (Tier 1 chrome)**
+
+  **As** the operator,
+  **I want** a Workbench Voice → Vitelity panel where I enter
+  per-peer Vitelity credentials, list owned DIDs, set per-DID
+  inbound rules, define outbound digit-pattern rules with CID
+  selection, and watch live REGISTER status,
+  **so that** every peer connects to Vitelity Communications
+  for public-network access — the literal "interface that
+  connects every peer to Vitelity to finish the loop."
+
+  **Acceptance:**
+  - [ ] Account section: username + password + outbound proxy
+    URL fields; save submits a draft `voice_public` policy
+    revision (no direct `.conf` edits).
+  - [ ] DIDs section: paste-or-fetch DID list; per-DID rule
+    dropdown (ring-self / ring-extn / ring-group / voicemail
+    / confbridge / ivr — ivr disabled until v4.2).
+  - [ ] Outbound rules section: digit-pattern table with live
+    rewrite tester ("dial 915551234567 → trunk dials
+    +15551234567").
+  - [ ] CID section: fetches verified DIDs from Vitelity's
+    REST API (`https://api.vitelity.net/api.php`) with a
+    5-min TTL cache; the CID picker rejects unverified DIDs.
+  - [ ] Status section: REGISTER state, last-register
+    timestamp, in-flight calls, monthly minutes used (from
+    the same REST API).
+  - [ ] All changes go through the existing pending-changes
+    inbox before applying.
+
+- [ ] **v4.1.0: VV-14 Vitelity REGISTER + inbound / outbound dialplan (Tier 1 platform)**
+
+  **As** the operator,
+  **I want** each peer's Asterisk to maintain an outbound TLS
+  REGISTER session to `out.vitelity.net:5061` using the
+  credentials from the VV-13 panel, route inbound INVITEs per
+  the per-DID rule, and route outbound `9NXX…` dials through
+  the trunk with the operator-selected CID,
+  **so that** PSTN calls work end-to-end with no other
+  configuration.
+
+  **Acceptance:**
+  - [ ] PSTN outbound drill: peer A dials `915551234567`; the
+    called PSTN endpoint shows A's verified Vitelity CID;
+    audio bidirectional PCMU.
+  - [ ] PSTN inbound drill: caller dials A's owned DID; A's
+    embedded client rings within 3 s; audio bidirectional
+    with PCMU↔Opus transcode at the trunk boundary.
+  - [ ] Vitelity outage drill: `iptables -A OUTPUT -d
+    out.vitelity.net -j DROP` on peer A; A's
+    `voice_public` flips to `Unavailable` within 60 s; no
+    PSTN traffic spills to any other path; mesh calls
+    continue unaffected; REGISTER retries on 5 s → 5 min
+    exponential backoff (matches v12 Q13).
+  - [ ] Outbound never falls through to a non-Vitelity path —
+    if the trunk is down, the call fails with a clear
+    "PSTN unavailable" announcement.
+
+- [ ] **v4.1.0: VV-15 acceptance drill harness + 16-peer Docker fixture (Tier 2 testing)**
+
+  **As** the maintainer,
+  **I want** a `make voice-acceptance` target that spins up a
+  16-peer Docker-compose mesh (each container running
+  `asterisk-mde` + a headless `mde-voice-client` test driver)
+  and runs the 9 acceptance drills from design doc §12,
+  **so that** every PR touching `crates/mde-voice*` /
+  `mde-voice-config` / `policy/voice_*` proves no regression
+  against the locked acceptance set.
+
+  **Acceptance:**
+  - [ ] `make voice-acceptance` exits 0 on a freshly-cloned
+    tree on a developer host.
+  - [ ] All 9 drills (mesh call, transit call, PSTN out,
+    PSTN in, presence, chat, ConfBridge with recording,
+    Vitelity outage, single-peer policy deploy) pass.
+  - [ ] CI gate: `.github/workflows/ci.yml` adds a
+    `voice-acceptance` job gated on changed paths.
+
 ### Peer Connection Card (new — mesh-peer hero modal, locked 2026-05-21)
 
 **Plan source:** session `claude/device-connection-modal-JQaDB`,
