@@ -97,6 +97,35 @@ cut): a fresh Fedora 44 VM with `dnf install mde-4.0-1.fc44
 mesh in under 10 minutes total operator time. `rpm -q tailscale
 headscale tailscale-derp` returns "not installed".
 
+## Unreleased — GF-2.8: gluster_worker conflict detector
+
+Extends `gluster_worker::tick_once` with a fifth step that
+walks the brick's `.glusterfs/indices/xattrop/` directory.
+Each entry there is a GFID symlink representing a file with
+a pending heal / split-brain op (glusterd's bookkeeping for
+the self-heal daemon).
+
+Pure-fn `pending_conflict_gfids(xattrop_dir) -> Vec<String>`
+enumerates the directory + filters out glusterd's own
+`xattrop` / `xattrop-*` placeholder markers; each remaining
+entry surfaces as a `ConflictDetected` tracing warn event so
+the operator sees split-brain state without manually running
+`gluster volume heal info`.
+
+Silent no-op when the brick dir is missing (mackesd running
+on a non-storage box).
+
+4 new unit tests cover missing-dir / empty-healthy-brick /
+3-GFID-enumeration / placeholder-marker-filter. 19/19
+gluster_worker tests pass.
+
+The `{path, peers}` structured payload the worklist body
+sketched needs `gluster volume heal info` parsing for the
+per-peer attribution — that lands with the GF-2.2 D-Bus
+service when the payload is actually consumed structurally;
+the current tracing event carries the GFID + brick path
+which is operator-actionable today.
+
 ## Unreleased — GF-2.7: gluster_worker hourly quota probe + cap
 
 Extends `gluster_worker::tick_once` with a once-per-hour

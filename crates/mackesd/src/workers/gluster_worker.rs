@@ -198,6 +198,26 @@ impl GlusterWorker {
         if self.quota_probe_due() {
             self.run_quota_probe();
         }
+        // 5. GF-2.8 — conflict detector. Walks the brick's
+        //    `.glusterfs/indices/xattrop/` directory; every
+        //    entry there is a GFID symlink for a file with a
+        //    pending heal / split-brain op. We surface each
+        //    pending GFID as a `ConflictDetected` tracing
+        //    event so the operator (or the future GF-2.2
+        //    D-Bus signal subscriber) sees the split-brain
+        //    state without having to shell `gluster volume
+        //    heal info` themselves. Best-effort: the brick
+        //    dir may be missing (operator runs mackesd on a
+        //    non-storage box) — silent skip.
+        let xattrop_dir = self.brick_path.join(".glusterfs/indices/xattrop");
+        for gfid in pending_conflict_gfids(&xattrop_dir) {
+            tracing::warn!(
+                target: "mackesd::gluster_worker",
+                gfid = %gfid,
+                brick = %self.brick_path.display(),
+                "ConflictDetected: pending heal entry in xattrop index",
+            );
+        }
     }
 
     /// GF-2.7 — `true` when QUOTA_PROBE_INTERVAL has elapsed
@@ -339,6 +359,42 @@ pub fn min_brick_free_bytes(xml: &str) -> Option<u64> {
         rest = &after_open[close..];
     }
     min
+}
+
+/// GF-2.8 — list every entry in the brick's
+/// `.glusterfs/indices/xattrop/` directory. Each entry there
+/// is a GFID symlink representing a file with a pending heal
+/// or split-brain op (glusterd's own bookkeeping for the
+/// self-heal daemon). The detector surfaces each GFID as a
+/// `ConflictDetected` tracing event so the operator (or the
+/// future D-Bus signal subscriber from GF-2.2) sees split-
+/// brain state without manually running `gluster volume heal
+/// info`.
+///
+/// Returns the GFID list (one per pending entry); empty when
+/// the brick is healthy OR when the dir doesn't exist
+/// (operator runs mackesd on a non-storage box). The "xattrop"
+/// pseudo-entry (an empty marker the brick maintains) is
+/// filtered out.
+#[must_use]
+pub fn pending_conflict_gfids(xattrop_dir: &std::path::Path) -> Vec<String> {
+    let entries = match std::fs::read_dir(xattrop_dir) {
+        Ok(e) => e,
+        Err(_) => return Vec::new(),
+    };
+    let mut out = Vec::new();
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(name_str) = name.to_str() else { continue };
+        // glusterd maintains a placeholder file literally named
+        // "xattrop" in the directory; it's not a conflict marker.
+        if name_str == "xattrop" || name_str.starts_with("xattrop-") {
+            continue;
+        }
+        out.push(name_str.to_owned());
+    }
+    out.sort();
+    out
 }
 
 /// GF-2.7 — `gluster volume quota mesh-home limit-usage / <bytes>`
@@ -588,6 +644,65 @@ mod tests {
                 "800000000000",
             ]
         );
+    }
+
+    // GF-2.8 — conflict detector helpers.
+
+    #[test]
+    fn pending_conflict_gfids_returns_empty_for_missing_dir() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let missing = tmp.path().join("does-not-exist");
+        assert_eq!(pending_conflict_gfids(&missing), Vec::<String>::new());
+    }
+
+    #[test]
+    fn pending_conflict_gfids_returns_empty_for_healthy_brick() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir_all(tmp.path()).expect("mkdir");
+        // Empty directory → no conflicts.
+        assert_eq!(pending_conflict_gfids(tmp.path()), Vec::<String>::new());
+    }
+
+    #[test]
+    fn pending_conflict_gfids_lists_every_gfid_entry() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        // glusterd populates the dir with empty files named
+        // after the GFID of each pending-heal entry. We just
+        // need to enumerate them; we don't care about content.
+        for gfid in [
+            "12345678-1234-1234-1234-123456789abc",
+            "deadbeef-dead-beef-dead-beefdeadbeef",
+            "00000000-0000-0000-0000-000000000001",
+        ] {
+            std::fs::write(tmp.path().join(gfid), b"").expect("touch");
+        }
+        let mut got = pending_conflict_gfids(tmp.path());
+        got.sort();
+        let mut want = vec![
+            "00000000-0000-0000-0000-000000000001".to_string(),
+            "12345678-1234-1234-1234-123456789abc".to_string(),
+            "deadbeef-dead-beef-dead-beefdeadbeef".to_string(),
+        ];
+        want.sort();
+        assert_eq!(got, want);
+    }
+
+    #[test]
+    fn pending_conflict_gfids_filters_glusterd_placeholder_marker() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        // glusterd maintains a literal "xattrop" placeholder
+        // file — NOT a real conflict — plus any
+        // "xattrop-<suffix>" variants. Both must be filtered
+        // out so we don't surface phantom conflicts.
+        std::fs::write(tmp.path().join("xattrop"), b"").expect("touch placeholder");
+        std::fs::write(tmp.path().join("xattrop-changelog-1"), b"").expect("touch variant");
+        std::fs::write(
+            tmp.path().join("00000000-0000-0000-0000-000000000001"),
+            b"",
+        )
+        .expect("touch real");
+        let got = pending_conflict_gfids(tmp.path());
+        assert_eq!(got, vec!["00000000-0000-0000-0000-000000000001".to_string()]);
     }
 
     #[test]
