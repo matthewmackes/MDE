@@ -31,6 +31,11 @@ pub mod leader;
 pub mod legacy_inventory;
 pub mod logging;
 pub mod metrics;
+// NF-18.2 (v2.5) — typed export of the live nebula_peer_certs
+// table, joined with nodes.role for the groups column. Pure-fn
+// SQL projection; consumed by the `mackesd nebula export-roster`
+// CLI + by the NF-18.4 automated backup worker (planned).
+pub mod nebula_roster;
 pub mod passcode;
 // PC-3 (2026-05-21) — peer-join handler: writes probe.json +
 // spawns mde-peer-card on mesh peer-join events. Event-source

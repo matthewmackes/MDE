@@ -309,6 +309,14 @@ enum Cmd {
         #[command(subcommand)]
         sub: CaCmd,
     },
+
+    /// NF-18.x (v2.5) — Nebula peer + roster operations.
+    /// Operator-facing reads against the live nebula_peer_certs
+    /// + nodes tables.
+    Nebula {
+        #[command(subcommand)]
+        sub: NebulaCmd,
+    },
 }
 
 /// NF-2.6 — `mackesd ca <sub>` subcommands.
@@ -347,6 +355,17 @@ enum CaCmd {
         #[arg(long, value_name = "MESH_ID")]
         mesh_id: Option<String>,
     },
+}
+
+/// NF-18.x — `mackesd nebula <sub>` subcommands.
+#[derive(Subcommand)]
+enum NebulaCmd {
+    /// NF-18.2 — emit a JSON array of every active peer cert
+    /// (one row per active row in nebula_peer_certs, joined
+    /// with the nodes table for the role field). Useful for
+    /// off-cluster audit and as a human-readable backup record
+    /// that complements the encrypted `ca export` bundle.
+    ExportRoster,
 }
 
 /// Subcommands for `mackesd ansible-history`. CB-1.5.c
@@ -933,6 +952,23 @@ fn main() -> anyhow::Result<()> {
                             return Err(anyhow::anyhow!("dump-ca: {e}"));
                         }
                     }
+                }
+            }
+        }
+        Cmd::Nebula { sub } => {
+            // NF-18.x — mackesd nebula <sub> operator surface.
+            let conn = mackesd_core::store::open(&db_path)?;
+            match sub {
+                NebulaCmd::ExportRoster => {
+                    // NF-18.2 — JSON array of (node_id, name,
+                    // overlay_ip, cert_pem, epoch, created_at,
+                    // expires_at, groups). `groups` is sourced
+                    // from nodes.role since the Nebula cert
+                    // groups are encoded in the cert PEM body
+                    // and we want a flat queryable shape.
+                    let rows = mackesd_core::nebula_roster::export_roster(&conn)
+                        .map_err(|e| anyhow::anyhow!("export-roster: {e}"))?;
+                    println!("{}", serde_json::to_string_pretty(&rows)?);
                 }
             }
         }
