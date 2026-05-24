@@ -765,13 +765,21 @@ Every service the platform exposes peer-to-peer must bind to
 the Nebula overlay interface (`nebula1`), not the host's
 public IP. This locks the trust boundary at the fabric.
 
-- [ ] **NF-13.1: `mesh_ssh.py` SSH bind to overlay** —
-  `mackes/mesh_ssh.py` writes `/etc/ssh/sshd_config.d/
-  mackes-mesh.conf` with `ListenAddress 10.42.0.X` (where
-  X is this peer's allocated overlay IP, read from
-  `/etc/nebula/host.crt`). Reload sshd on overlay-IP
-  change (rare — only on re-enrollment under a new CA
-  epoch). Drops any Tailscale-IP binding.
+- [✓] **NF-13.1: `mesh_ssh.py` SSH bind to overlay (shipped
+  2026-05-23 via mackes/mesh_nebula.py)** — New module
+  `mackes/mesh_nebula.py` hosts the Python-side Nebula
+  helpers. `write_sshd_overlay_bind(overlay_ip)` writes
+  `/etc/ssh/sshd_config.d/mackes-mesh.conf` atomically
+  (temp + rename) with the `ListenAddress` directive +
+  the open-mesh banner; `reload_sshd()` calls
+  `systemctl reload sshd` as a best-effort follow-up.
+  `current_overlay_ip()` reads the overlay IP from
+  `/etc/nebula/host.crt` via `nebula-cert print`. The
+  supervisor calls these on every overlay-IP change (rare
+  — only on re-enrollment under a new CA epoch). Mesh_ssh
+  retains its existing SSH-connect path; the bind-side
+  wiring lives in mesh_nebula so the connect / publish
+  paths stay independent.
 - [ ] **NF-13.2: `mesh_nats.py` NATS broker overlay bind** —
   Same model. NATS `listen` directive in
   `/etc/nats/mesh.conf` pins to the overlay IP. Client
@@ -790,20 +798,50 @@ public IP. This locks the trust boundary at the fabric.
   rsync wrapper uses `<overlay-ip>:<path>` rather than the
   Tailscale magic-DNS name. Bandwidth cap settings
   (existing) unchanged.
-- [ ] **NF-13.6: `mesh_wol.py` WoL via lighthouse relay** —
-  Wake-on-LAN payload (magic packet) routes via the
-  lighthouse when the target peer is offline + on a
-  different LAN segment. The lighthouse de-encapsulates
-  the WoL frame and re-broadcasts it on the target peer's
-  LAN via `static_host_map` cached MAC address. New
-  capability — WoL across LANs didn't work pre-Nebula.
+- [✓] **NF-13.6: WoL via lighthouse relay (helper shipped
+  2026-05-23 in mackes/mesh_nebula.py)** —
+  `wol_via_lighthouse(target_mac, lighthouse_ip=None)`
+  shells out to `wakeonlan -i <lighthouse> <mac>`; the
+  lighthouse-side relay de-encapsulates the magic packet
+  and re-broadcasts on the target's LAN via the
+  static_host_map cached MAC. Returns 2 when no
+  lighthouse can be reached (no IPs in
+  `lighthouse_addresses()` + no override), 3 when
+  `wakeonlan` isn't installed, else the wakeonlan exit
+  code. Net-new capability — pre-Nebula WoL only worked
+  within a single broadcast domain. The mesh_wol.py
+  consumer side wires through to this helper via
+  `from mackes.mesh_nebula import wol_via_lighthouse` on
+  cross-LAN targets.
 - [ ] **NF-13.7: Audio/video transport overlay adaptation** —
   Per `docs/design/audio-video-compliance.md`, the
   low-latency audio + screencast streams (Opus + AV1) bind
   to the overlay interface. The throughput target
   (≥30 Mbps for 1080p60 screencast) gates on direct-UDP
   Nebula; lighthouse-relay degrades to 480p, TCP/443
-  degrades to audio-only.
+  degrades to audio-only. Deferred to a NF-13 follow-up
+  bundle alongside 13.2/13.3/13.4/13.5.
+
+- [ ] **NF-13.8: Service Publishing Workbench panel
+  (extensive GUI, added 2026-05-23 per operator directive)** —
+  New Workbench panel `service_publishing.rs` under the
+  Fleet nav group: lists every canonical service in
+  `mackes.mesh_nebula.CANONICAL_SERVICES` (7 entries: SSH /
+  NATS / Mesh FS / Media / rsync / WoL / AV) with per-row:
+  status pill (bound to overlay / not yet enrolled), port
+  + protocol, "Open service detail" affordance, and an
+  Advanced subsection showing the raw sshd_config /
+  nats.conf / mesh.conf snippet the supervisor would
+  generate. Reads via subprocess
+  `python3 -c 'from mackes.mesh_nebula import
+  published_services_summary; …'` (mirrors the
+  remote_desktop / mesh_services pattern in the same nav
+  group). Today the underlying data layer
+  `published_services_summary()` ships green in
+  mackes/mesh_nebula.py; the Iced panel + nav
+  registration land in the NF-13.8.a follow-up bundle
+  alongside NF-11.3 (mesh_control RegenCerts button) so
+  both DBus-consuming panels ship together.
 
 #### NF-14.x — Wizard expansion + legacy wizard pages retire
 
