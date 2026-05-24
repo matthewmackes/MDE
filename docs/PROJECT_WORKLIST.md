@@ -1790,6 +1790,44 @@ disconnected" toasts get a dedicated Nebula vocabulary.
 - [✓] **RD-4: Auth wiring — reuse Nebula's X.509 PKI as wayvnc's TLS identity** *(shipped 2026-05-24 — operator-locked via in-session AskUserQuestion 2026-05-24: the original Ed25519 sketch turned out to be incompatible with wayvnc 0.9.1's actual auth surface (wayvnc speaks TLS via libtls, not Ed25519 RFB). Pivoted per operator pick to "Nebula X.509 TLS": `apply_remote_desktop` now writes `/etc/wayvnc/config` pointing `private_key_file=/etc/nebula/host.key` + `certificate_file=/etc/nebula/host.crt` + `enable_pam=false`. The `mde-wayvnc@.service` unit gains `ConditionPathExists=/etc/nebula/host.crt` + `host.key` checks (so the unit cleanly fails before any peer enrolls), drops the `--unauthenticated` flag, and references `/etc/wayvnc/config` via `--config=`. Trust chain = the mesh's existing Nebula trust chain; an unenrolled host on the overlay can't present a Nebula-CA-signed cert + so can't complete the wayvnc TLS handshake. Revocation runs via `mackesd ca revoke <node-id>` — the revoked peer's cert stops validating on the next CA-epoch roll. Design doc § 3.3 + the user help doc both rewritten to lock the Nebula-TLS path instead of the (incompatible-with-upstream) Ed25519 sketch. No parallel key tree. 275/0 pytest + ruff + module-import smoke clean.)*
 - [✓] **RD-5: Help doc + capability list update** *(shipped 2026-05-24 — new `docs/help/remote-desktop.md` operator-facing primer covering all three remote-desktop daemons each peer ships (wayvnc + xrdp + Guacamole), the per-protocol auth model, the Nebula-overlay-only bind, and 3 common questions; mesh-services.md gets a "See also" cross-link pointing to it; the v2.6 CHANGELOG header was already added by the RD-1+2+3 commit so no further append needed. The worklist's pre-supposed cleanup targets — `mesh-services.md`'s "X11-only caveat for VNC", `mesh-ssh.md`'s cross-link, `MACKES_SHELL_SPEC.md` §0's capability list — turned out not to exist (grep confirms no VNC mentions in any of those files); per the iteration-skill standing-authorization #4 the literal targets were re-interpreted as "deliver an operator-facing help doc that closes the remote-desktop documentation gap end-to-end." voice-and-tone lint clean (the 2 surviving hits are pre-existing in unrelated `crates/mde-workbench/src/panels/home.rs` operator-side WIP, not introduced by this commit).)*
 
+### OV-1..OV-11: v2.6 — Workbench Overview tab rewrite (shipped 2026-05-24)
+
+> **Shipped 2026-05-24** via a Plan + /iteration session against the
+> capability list locked earlier the same day. Re-cast the Workbench
+> Dashboard landing as a true Overview that mirrors every cross-host
+> mesh capability with live status pills + jump-to-configure buttons.
+> CHANGELOG entry: `## Unreleased — OV-1..OV-11: Workbench Overview tab
+> + live capability statuses`.
+
+- [✓] **OV-1: Capability types** *(shipped 2026-05-24 — `CapabilityId`, `CapabilityStatus`, `CapabilityRow`, `ProbeOutcome`, `DbusEvent` enums + `.icon()` / `.color()` / `.label()` helpers in `crates/mde-workbench/src/panels/home.rs`. Status colors match the `mesh_topology` palette (green/yellow/gray/red). 9 unit tests cover the type semantics.)*
+- [✓] **OV-2: Group::Dashboard label → "Overview"** *(shipped 2026-05-24 — one-line rename in `crates/mde-workbench/src/model.rs` + matching test fix in `crates/mde-workbench/src/patternfly.rs`. Slug + variant stay stable so `mde --focus dashboard[.home]` deep-links keep working.)*
+- [✓] **OV-3: HomeSnapshot extension** *(shipped 2026-05-24 — added `capabilities: Vec<CapabilityRow>` + `mackesd_reachable: bool`. Split `load()` into `load_sync()` (filesystem only) + `load_capabilities()` (async fan-out). `Refresh` message preserves previously-loaded capabilities so the hero stat grid refreshes without blanking the list.)*
+- [✓] **OV-4: 8 probe functions** *(shipped 2026-05-24 — `probe_nebula` / `probe_peers` (delegates to `mesh_topology::fetch_peers`) / `probe_systemd_unit` / `probe_vnc` (handles x11vnc + wayvnc, flags Wayland-failed x11vnc per RD-1..RD-5) / `probe_mesh_services` (iterates `MESH_UNITS`) / `probe_fleet_revision` / `probe_notifications` / `probe_mackesd_alive`. All fire in parallel via `tokio::join!`. Parse-only unit tests cover the dbus-send + systemctl output parsers.)*
+- [✓] **OV-5: 11 build_*_row functions** *(shipped 2026-05-24 — fixed order: Mesh, Peers, Files, SSH, RDP, VNC, Services, Phone, Voice, Fleet, Notifications. 3 hardcoded `ComingSoon` rows (Files v5.0.0, Phone v2.1, Voice v4.1.0) with `jump: None` render the disabled "Coming soon" button. Per-capability icon picked from `mde_theme::Icon`. Tests assert row count + ID order + jump-target correctness.)*
+- [✓] **OV-6: view() rewrite** *(shipped 2026-05-24 — preserves hero identity strip + 4-card stat grid above; new section ("What this Mackes mesh can do for you" with muted subtitle) + scrollable capability list below. mackesd-down banner renders only when the last probe couldn't reach `dev.mackes.MDE.Shell`. Refresh button right-aligned with the section title. Cards: `palette.raised` background, 1px `palette.border`, 8.0 rounded corners, 16px padding, 8px row gap. Per-row layout: icon + name/description column + status pill (top row); sub-status text + Configure button (bottom row).)*
+- [✓] **OV-7: Nebula D-Bus signals on mackesd** *(shipped 2026-05-24 — `PeerStateChanged(node_id, reachable)`, `TransportChanged(active_transport)`, `EnrollmentCompleted(node_id)` declared on `dev.mackes.MDE.Nebula.Status`. `EnrollmentCompleted` emits from `Enroll(token)` on success via `#[zbus(signal_emitter)]` parameter. Existing `enroll_with_token` integration extracted into testable `enroll_inner` core. 12 ipc::nebula tests pass.)*
+- [✓] **OV-8: home::dbus_subscription** *(shipped 2026-05-24 — Iced `Subscription` built on `iced::stream::channel(32, …)` opens a session zbus connection, adds match rules for the 3 Nebula signals + Fleet `RevisionApplied`, demuxes incoming messages into `Message::Home(DbusEvent(…))`. Reconnects on stream drop with 5 s backoff. systemd1 per-unit `PropertiesChanged` is OV-8.a follow-up.)*
+- [✓] **OV-9: app.rs subscription wired** *(shipped 2026-05-24 — `Subscription::batch([PendingFocus poll, home_panel::dbus_subscription()])`. `home::update()` handles `DbusEvent` by re-firing `load_capabilities()`. 609 mde-workbench lib tests green.)*
+- [✓] **OV-10: Refresh button + disabled "Coming soon" helper** *(shipped 2026-05-24 — right-aligned Refresh button at the top of the capability list fires `RefreshClicked` → full `load_capabilities()` re-run; serves as the fallback when the D-Bus subscription is dropped or mackesd is unreachable. Disabled "Coming soon" button uses muted text color + same chrome as the active Configure button so the affordance reads as intentional rather than broken.)*
+- [✓] **OV-11: CHANGELOG + worklist sync** *(shipped 2026-05-24 — `## Unreleased — OV-1..OV-11: Workbench Overview tab + live capability statuses` section in `CHANGELOG.md`. This worklist section.)*
+
+#### OV-7..OV-8 follow-ups (deferred, not blocking v2.6)
+
+- [ ] **OV-7.a: v2.6 — PeerStateChanged emission from reconcile worker.** **As** a mesh operator, **I want** the Overview's Peer Reachability row to flip from green to yellow within 5 s when any peer goes offline, **so that** I notice mesh outages without polling. **Acceptance:** `systemctl stop mackesd` on one peer flips the Peer Reachability row's sub-status on another peer to "N-1 of N peers online" within 5 s of the next reconcile tick. **Implementation notes:** find the `nodes` table mutation paths in the reconcile worker; plumb a `SignalEmitter` handle (or a channel that the IPC layer drains and re-emits) so `PeerStateChanged(node_id, reachable)` fires whenever a node's `health` column flips. Icon: `Icon::Peer` (no chrome change needed).
+- [ ] **OV-7.b: v2.6 — TransportChanged emission from mesh_router.** **As** a mesh operator, **I want** the Mesh Network row's "Connected via …" sub-status to update the moment the active transport rotates, **so that** I can see a fallback path engaging without hitting Refresh. **Acceptance:** forcing a transport rotation via the existing mesh_router test harness fires `TransportChanged(active_transport)` exactly once. **Implementation notes:** find `runtime_state.active_transport` writes in `crates/mackesd/src/workers/mesh_router.rs`; plumb the same emitter-or-channel pattern as OV-7.a.
+- [ ] **OV-7.c: v2.6 — EnrollmentCompleted from leader on remote-peer enrollment.** **As** a peer that just enrolled a new neighbor, **I want** every other peer to learn about the new node immediately, **so that** the Overview reflects the wider mesh without per-peer polling. **Acceptance:** signing a new peer cert on the leader fires `EnrollmentCompleted(node_id)` from the leader's process (not just from the local-peer `Enroll(token)` D-Bus method). **Implementation notes:** hook into `ca::sign_peer_cert()` success path; emit through the same NebulaStatusService instance.
+- [ ] **OV-8.a: v2.6 — systemd1 per-unit PropertiesChanged subscription.** **As** an operator, **I want** the SSH / RDP / VNC / Mesh Services rows to flip from green to yellow within 1 s of `systemctl stop <unit>`, **so that** I see local-daemon failures without hitting Refresh. **Acceptance:** `systemctl stop sshd` flips the SSH row to "Setup needed" within 1 s, no manual refresh. **Implementation notes:** subscribe to `org.freedesktop.systemd1.Manager.Subscribe()` first, then `PropertiesChanged` on each unit's object path (`/org/freedesktop/systemd1/unit/sshd_2eservice` and friends — escape-encoded per systemd1 conventions). Lives in `home::dbus_subscription`'s `run_subscription` loop alongside the existing Nebula+Fleet rules.
+
+### Phase 0 rescue findings (audit 2026-05-24)
+
+> **Audit:** 4 dead modules confirmed at the 2026-05-24 /iteration
+> Phase 0 sweep; pre-existing tech-debt, not caused by the OV epic.
+> The Phase 0 mockup audit also re-confirmed [[project_v4_0_0_integration_sweep]]'s known
+> Phase G-blocked mde-files DemoBackend, already tracked elsewhere.
+
+- [ ] **DEAD-1: v4.0 — Retire `mackesd::workers::metrics_flush` OR wire it into `run_serve()`.** **As** a mackesd maintainer, **I want** every declared worker module to be either spawned or deleted, **so that** the runtime-integration audit (CLAUDE.md §0.8 gate 7) stays clean. **Acceptance:** `grep -rln metrics_flush crates/` either returns ≥ 2 files (declaration + at least one spawn site) OR returns zero. `cargo test -p mackesd --features async-services` still green. **Implementation notes:** declared in `crates/mackesd/src/workers/mod.rs:147` but zero references elsewhere in the workspace. Pick spawn-or-delete; document the call in the commit body.
+- [ ] **DEAD-2: v4.0 — Retire wizard `pages::{mesh_passcode, network, re_pair}` OR replace `main.rs`'s inline body helpers with them.** **As** a wizard maintainer, **I want** the page widgets to live in one place (the `pages::*` modules OR the inline `*_body()` helpers in `main.rs`), **so that** a screenshot regression doesn't need fixing in two files. **Acceptance:** the wizard's mesh-passcode / network / re-pair pages render identically before and after the cleanup; either (a) `crates/mde-wizard/src/main.rs` calls `pages::mesh_passcode::body()` / `pages::network::body()` / `pages::re_pair::body()` and the inline helpers are gone, or (b) the orphan `pub mod` declarations + module files are gone and `main.rs` keeps its inline helpers. **Implementation notes:** three page module files exist under `crates/mde-wizard/src/pages/` but `main.rs` renders the matching pages via local helpers instead of using the module-defined widgets. Pick (a) if the modules carry richer logic worth lifting; (b) if the inline path is simpler.
+
 ### MON-1..MON-5: v2.6 — Mesh monitoring & alerting (Netdata + MDE notification routing, locked 2026-05-24)
 
 > **Gap:** the mesh has no built-in observability. The operator
@@ -2352,6 +2390,243 @@ disconnected" toasts get a dedicated Nebula vocabulary.
   **Implementation notes:**
     - Help doc is markdown; renders inline in the Workbench help viewer (per the v2.0.0 docs/help/ rendering path).
     - Blockers: every other INST-* item — the docs land in the same commit as the last wired piece.
+
+### DM-1..DM-8: v2.7 — greetd + regreet display manager (replaces LightDM, locked 2026-05-24 via 10-Q survey)
+
+> **Gap:** LightDM ships a graphically dated GTK3 greeter that
+> doesn't match the rest of MDE's chrome (Geologica + Plex Mono +
+> Carbon + Indigo `#5b6af5` on charcoal `#1d1d1f`). Worse, the v2.7
+> installer/troubleshooting investigation on 2026-05-24 surfaced
+> that the existing LightDM → `mde-session` chain is brittle on its
+> own (the sway-config seeding gap that caused "logging into MDE
+> opens stock sway"); swapping the greeter to something Wayland-
+> native + actively maintained reduces the surface that has to keep
+> working across MDE releases.
+>
+> **Lock (operator picked 2026-05-24 via in-session 10-Q survey):**
+>
+> - **DM choice: `greetd` (daemon) + `regreet` (Rust+GTK4
+>   greeter) + `cage` (one-window wlroots compositor host)** (Q3
+>   ruled out SDDM because it would undo the v2.0.0 Qt-removal
+>   lock; ruled out custom `mde-greeter` for v2.7 because the
+>   pre-auth code path needs a dedicated security audit pass +
+>   bench cycle ahead of brand-native chrome).
+> - **RPM placement: base `mde`** (Q1). The greeter is a
+>   system-level surface, not a desktop opt-in. Headless boxes
+>   don't ship `mde-desktop` but the greeter binaries ride with
+>   the base RPM either way; on a true headless / lighthouse
+>   profile, `apply_display_manager()` either skips wiring it (if
+>   no graphical target is the systemd default) or sets it as a
+>   safety-net path.
+> - **LightDM transition: birthright-flip** (Q2). RPM upgrade
+>   does NOT touch LightDM (no `Conflicts:`, no `Obsoletes:`).
+>   The `apply_display_manager()` birthright step is what flips
+>   `systemctl disable lightdm.service` + `systemctl enable
+>   greetd.service` + `systemctl set-default graphical.target`.
+>   LightDM stays installed for rollback; operator removes it
+>   later via `dnf remove lightdm` once greetd is verified.
+> - **Compositor host: `cage`** (Q3). `cage -s -- regreet`. Cage
+>   is a kiosk-locked wlroots mini-compositor — no keybindings,
+>   no workspaces, no escape paths pre-auth. ~200 KB dep; the
+>   standard greetd host per the upstream docs.
+> - **Auto-login policy: always prompt** (Q4). No `initial_session`
+>   block in `/etc/greetd/config.toml`. Every boot stops at the
+>   greeter. Consistent with the v12.x self-hosted + INST-5
+>   typed-`NUKE` paranoia line.
+> - **Session picker: MDE only** (Q5). Greeter enumerates
+>   `/usr/share/wayland-sessions/` but filters to `mde.desktop`
+>   only. If GNOME / Plasma / plain-sway are installed alongside,
+>   they're invisible from the greeter. Power users edit the
+>   greetd config directly if they need a non-MDE session.
+> - **Username entry: typed every time** (Q6). Two fields —
+>   username + password. Greeter does NOT enumerate `/etc/passwd`;
+>   no user-list info-leak to anyone at the screen. Friction
+>   accepted as the cost of the privacy posture.
+> - **Power controls: all three visible** (Q7). Bottom-right
+>   cluster: shutdown, restart, suspend. PolicyKit's stock
+>   `org.freedesktop.login1.power-off` already permits inactive
+>   sessions on Fedora — no extra rules file needed (verify on
+>   the bench).
+> - **Pre-auth mesh chip: visible with peer count** (Q8).
+>   Bottom-left chip: `Mesh: ✓ <N> peers` (green) / `Mesh: ?`
+>   (yellow, enrolling / probing) / `Mesh: offline` (red).
+>   Reads mackesd's peer registry over local IPC; no network call
+>   from the greeter itself. Refresh cadence: poll every 5s
+>   (matches the `gluster_worker` + `upgrade_intent_watcher` 5s
+>   tick convention).
+> - **Theme source: shared with the panel** (Q9). Install
+>   `data/css/tokens.css` to `/usr/share/mde/theme/tokens.css`;
+>   ship a derived `data/css/greeter.css` at
+>   `/usr/share/mde/theme/greeter.css` that `@import`s the shared
+>   tokens. A single change to Indigo / Geologica / Plex Mono
+>   ripples to greeter + panel + Workbench automatically.
+> - **Background: solid charcoal `#1d1d1f`** (Q10). Flat panel-
+>   token color; no gradients, no per-preset images. Highest
+>   brand consistency at lowest cost; matches Apple System
+>   Settings minimalism per [[project_ux_polish_locks]].
+>
+> **Known implementation tension (raised by Q3 + Q8 interaction):**
+> cage is single-window by design, but the mesh-status chip is a
+> second surface alongside regreet. Three viable paths, ranked:
+> (a) patch regreet upstream to add a config-driven "info-chip"
+> template that calls an external command for the body
+> (cleanest; pull-request acceptance is upstream's call); (b)
+> ship our own greeter-side script that pre-computes the chip
+> text and pipes it into regreet's existing message slot
+> (degrades to a static line per session — no live refresh);
+> (c) swap the host from cage to a kiosk-stripped sway config
+> that can run two layer-shell surfaces (regreet + mde-mesh-chip
+> as separate clients). DM-7 ships path (b) first as the
+> minimum-viable; path (a) lands as a v2.8 follow-up if the
+> upstream PR is rejected, switching to path (c).
+>
+> **Target: v2.7** — same train as INST-*. The two epics share
+> the `apply_display_manager()` birthright entry-point + the
+> shared-theme-tokens install path, so they're naturally siblings.
+> Sized for one bundled commit per §0.12 (DM-1..DM-8 together).
+> Per §0.12, no "scaffold greetd config but don't actually swap
+> the DM" — the birthright step flips the systemd default in the
+> same commit that lands the configs, or the whole epic stays
+> `[ ] Open`.
+>
+> **Acceptance criterion (bench-observable):** on a fresh F44 VM
+> after `dnf install mde mde-desktop` + `sudo mde-install
+> --profile=full`, rebooting lands at a charcoal greeter showing
+> the MDE wordmark, username + password fields, the mesh chip
+> (initially `Mesh: offline` until enrollment completes, then
+> `Mesh: ✓ 0 peers` for a single-peer mesh), and the three
+> power-control glyphs bottom-right. Typing valid credentials
+> drops into the MDE session; `systemctl status lightdm`
+> reports `inactive (dead)`; `systemctl status greetd` reports
+> `active (running)`. Holding the system power button (or
+> clicking the greeter's restart glyph) cycles cleanly without
+> needing to log in.
+
+#### Substrate (RPM deps + system configs)
+
+- [ ] **v2.7: DM-1 Add `greetd`, `regreet`, `cage` to the base `mde` RPM (Tier 1)**
+  **As** a mackes-shell operator,
+  **I want** the three new display-manager packages to land automatically when I `dnf install mde`,
+  **so that** I don't have to manually track + install them and the greeter is wired up out of the box.
+  **Acceptance** (each bench-observable):
+    - [ ] `packaging/fedora/mackes-shell.spec`'s base `mde` `Requires:` block gains three lines: `Requires: greetd`, `Requires: regreet`, `Requires: cage`. (No version pins — F44's stock versions of all three are sufficient as of 2026-05-24.)
+    - [ ] `rpmspec -P` is clean.
+    - [ ] `dnf install mde` on a clean F44 VM pulls all three.
+    - [ ] LightDM stays `Requires: lightdm` for now (rollback path); a `# TODO: drop after greetd verified on bench (HW-*)` comment marks the line so a future cut can clean it up.
+  **Implementation notes:**
+    - F44 ships all three packages in `fedora` + `updates`; no Copr / RPM-Fusion dependency.
+    - Sister INST-1 epic introduces the base-vs-addon spec split; if INST-1 hasn't landed yet, the three deps go in the existing single `mde` spec and migrate to the base subpackage when INST-1 ships.
+    - Blockers: none — pure spec edit.
+
+- [ ] **v2.7: DM-2 Ship `/etc/greetd/config.toml` from `data/greetd/config.toml` (Tier 1)**
+  **As** greetd at boot,
+  **I want** a config that auto-spawns `cage -s -- regreet` on vt 1, with no `initial_session` block (no auto-login),
+  **so that** every boot lands at the regreet password prompt without operator intervention.
+  **Acceptance** (each bench-observable):
+    - [ ] New file `data/greetd/config.toml` ships with: `[terminal] vt = 1`, `[default_session] command = "cage -s -- regreet"`, `user = "greeter"` (the system user greetd installs), and a leading comment block citing DM-2 + the no-auto-login lock.
+    - [ ] Spec installs to `%{_sysconfdir}/greetd/config.toml` as `%config(noreplace)` so operator edits survive `dnf upgrade`.
+    - [ ] `greetd` user + group are created idempotently in `%pre` (or already created by the `greetd` RPM — verify).
+    - [ ] Booting the test VM lands at the regreet prompt within ~5s of vt 1 coming up.
+  **Implementation notes:**
+    - `cage -s` enables "scaling" (let regreet pick its own size); without it cage may letterbox.
+    - The `greeter` system user is normally created by the `greetd` RPM's own `%pre`; verify on the bench + drop the `%pre` lines from this spec if redundant.
+    - Blockers: DM-1.
+
+- [ ] **v2.7: DM-3 Ship `regreet.toml` + `regreet.css` from `data/regreet/` (Tier 1)**
+  **As** the operator,
+  **I want** the regreet UI to honor every UX lock from the 10-Q survey: type-username-every-time, MDE-only session picker, three power controls visible, charcoal background, last-user NOT remembered,
+  **so that** the greeter behavior matches the locked design without per-deploy customization.
+  **Acceptance** (each bench-observable):
+    - [ ] `data/regreet/regreet.toml` ships with: `[appearance] background = "/usr/share/mde/theme/greeter-bg.png"` OR `[background] color = "#1d1d1f"` per regreet's actual config schema (research the right field at implementation time — regreet 0.x has evolved its config); `[appearance] greeting_msg = "Mackes Desktop Environment"`; `[appearance] sessions_dir = "/usr/share/wayland-sessions"`; `[appearance] session_filter = ["mde.desktop"]` (or equivalent); `[buttons] shutdown = true`, `reboot = true`, `suspend = true`.
+    - [ ] `[appearance] remember_user = false`, `[appearance] remember_session = false` (or whatever regreet's keys are) — operator types username + picks session every time.
+    - [ ] Spec installs to `%{_sysconfdir}/regreet/regreet.toml` as `%config(noreplace)`.
+    - [ ] First boot lands at: charcoal background, "Mackes Desktop Environment" header, empty username field, password field, three power glyphs bottom-right, MDE-only entry in the session picker.
+    - [ ] Failed login does NOT auto-fill the username on the next attempt (verifies `remember_user = false` actually took effect).
+  **Implementation notes:**
+    - regreet's config schema may not expose every lock directly (e.g. session-list-filter might need a wrapper script that copies only the MDE entry into a private sessions dir); the task body identifies the lock semantics, the implementer wires whatever config keys realize them.
+    - If regreet upstream doesn't support a hard MDE-only session-list, the fallback is a wrapper: install a private `/var/lib/mde/wayland-sessions/` containing only `mde.desktop`, point regreet at that dir via `sessions_dir`. Document the choice in-source.
+    - Voice-and-tone lint applies to any user-visible string we author (header text, button labels if we override the defaults).
+    - Blockers: DM-1.
+
+- [ ] **v2.7: DM-4 Ship `/etc/pam.d/greetd` policy (Tier 1)**
+  **As** PAM,
+  **I want** an explicit policy for the `greetd` service (rather than inheriting some inherited `system-auth` chain that might not match what LightDM's stack assumes),
+  **so that** login behavior is auditable + greetd-specific (loosening one thing doesn't loosen the same thing for `sshd` / `sudo`).
+  **Acceptance** (each bench-observable):
+    - [ ] New file `data/pam.d/greetd` ships with a minimal policy: `auth include system-auth`, `account include system-auth`, `password include system-auth`, `session include system-auth`, plus `session optional pam_keyring.so auto_start` if the operator's keyring is to unlock at login (carries forward LightDM's de-facto behavior).
+    - [ ] Spec installs to `%{_sysconfdir}/pam.d/greetd` as `%config(noreplace)`.
+    - [ ] On the bench: login succeeds; subsequent user-keyring autounlock fires (no keyring agent comes up under MDE, so this reduces to "PAM session chain ran without error").
+    - [ ] No regression on the `auth` chain for `sshd`, `sudo`, `login` (smoke-test all three after install).
+  **Implementation notes:**
+    - F44's `greetd` RPM may already ship a `/etc/pam.d/greetd` from upstream; verify before adding the MDE one. If upstream ships a sane default, this task becomes "verify and document" rather than "ship and own."
+    - Blockers: DM-1.
+
+#### Birthright (Python)
+
+- [ ] **v2.7: DM-5 `apply_display_manager()` in `mackes/birthright.py` (Tier 1)**
+  **As** the installer (and the wizard's apply rail),
+  **I want** a birthright step that idempotently swaps the systemd display-manager default from LightDM to greetd,
+  **so that** the operator running `sudo mde-install` (or stepping through the wizard) lands at the right DM without manual `systemctl` calls.
+  **Acceptance** (each bench-observable):
+    - [ ] New `apply_display_manager(preset)` function in `mackes/birthright.py` runs (via `admin_session.run()`): `systemctl disable lightdm.service` (only if the unit exists + is enabled), `systemctl stop lightdm.service` (only if active), `systemctl enable greetd.service`, `systemctl start greetd.service` (only on a TTY install — on an active graphical session this would log out the operator mid-install; defer the `start` until next boot in that case), `systemctl set-default graphical.target`.
+    - [ ] Idempotent: re-running is a no-op (each `systemctl` call gated on the current state check).
+    - [ ] Refuses to run on profile `lighthouse` (lighthouse has no graphical target by definition); silently no-ops with a log line.
+    - [ ] Registered as `_Step("Display manager", lambda: apply_display_manager(merged))` in `mackes/wizard/pages/apply.py`, slot between "LightDM greeter" (which becomes a no-op now that LightDM is being disabled — see implementation note below) and "Fonts".
+    - [ ] Old `apply_lightdm` step either retires (preferred — voice-and-tone lint should catch the stale reference) or becomes a one-line `# retired by DM-5 — kept as wizard-slot anchor` shim. Document the choice in-source.
+    - [ ] 8+ pytest tests cover: lightdm-installed-and-active path, lightdm-not-installed path, greetd-already-enabled (re-run is no-op), profile=lighthouse skip, profile=headless skip (also no graphical target), active-graphical-session defers `systemctl start greetd`, `systemctl` failure surfaces, set-default fails (rare).
+  **Implementation notes:**
+    - This step is what makes the DM swap actually happen — without it, DM-1..DM-4 are dead packages on disk. Per §0.12, DM-1..DM-5 must ship in the same commit.
+    - Routes through `mackes.admin_session.AdminSession` (project §3 code-style lock).
+    - Profile-aware: `profiles = {"full"}` (lighthouse + headless skip; only full needs a DM at all).
+    - ruff F401/F541/F811/F841 + voice-and-tone lint must pass.
+    - Blockers: DM-1..DM-4 (must ship together).
+
+#### Theme + mesh-chip + docs
+
+- [ ] **v2.7: DM-6 Shared theme tokens install at `/usr/share/mde/theme/` (Tier 1)**
+  **As** the greeter (regreet CSS) and the panel (mde-panel CSS) and the Workbench (mde-workbench CSS),
+  **I want** all three to read the same source-of-truth for Indigo `#5b6af5`, Geologica, Plex Mono, charcoal `#1d1d1f`,
+  **so that** a single token change ripples everywhere without me having to hand-sync three files.
+  **Acceptance** (each bench-observable):
+    - [ ] Spec installs `data/css/tokens.css` to `%{_datadir}/mde/theme/tokens.css`.
+    - [ ] New file `data/css/greeter.css` ships that `@import url("file:///usr/share/mde/theme/tokens.css");` first, then overrides only the regreet-specific selectors (the password field, the buttons, the header). Installs to `%{_datadir}/mde/theme/greeter.css`.
+    - [ ] regreet's config (DM-3) points `[appearance] style = "/usr/share/mde/theme/greeter.css"`.
+    - [ ] Changing a single hex in `data/css/tokens.css` + reinstalling the RPM changes both the panel + the greeter on next boot.
+    - [ ] Symlinks NOT used (RPM verification fails on broken symlinks); the import is a runtime CSS `@import`.
+  **Implementation notes:**
+    - The panel's existing CSS path (per `data/css/carbon-layout.css`) gets the same `@import` so panel + greeter share one tokens source going forward.
+    - If a future cut wants generated-at-build-time per Q9 option 3, that's a refactor that doesn't break this lock (same install path, different generator).
+    - Blockers: DM-1.
+
+- [ ] **v2.7: DM-7 Pre-auth mesh-status chip (Tier 2)**
+  **As** a mackes-shell operator at the greeter screen,
+  **I want** a small bottom-left chip showing whether this peer is enrolled + how many other peers are reachable (`Mesh: ✓ 3 peers`, `Mesh: ?`, `Mesh: offline`),
+  **so that** I can diagnose "can't log in because mesh-home isn't mounted" before I waste time typing my password.
+  **Acceptance** (each bench-observable):
+    - [ ] Chip text refreshes every 5s (matches mackesd worker tick cadence).
+    - [ ] Three states: green `Mesh: ✓ <N> peers` when ≥ 1 reachable + nebula handshake is current; yellow `Mesh: ?` when enrolling / probing / nebula up but no peers responding yet; red `Mesh: offline` when nebula.service is inactive OR no overlay IP.
+    - [ ] Text color matches Carbon health tokens (`#42be65` green, `#f1c21b` yellow, `#fa4d56` red), inherited via the shared `tokens.css`.
+    - [ ] Reads mackesd's peer registry over local IPC (zbus 5 client calling the v12.x `dev.mackes.MDE.Mesh.Status` interface) — NO direct network call from the greeter.
+    - [ ] When mackesd is down (the chip-data source is itself broken), the chip reads `Mesh: ?` rather than crashing or hiding.
+    - [ ] Implementation path resolved per the "Known implementation tension" preamble — first commit ships path (b) (static-per-session message slot in regreet, refreshed only when the greeter restarts); path (a) (upstream regreet info-chip template) or path (c) (swap host to kiosk-stripped sway) lands as a v2.8 follow-up if path (b) proves too limiting.
+  **Implementation notes:**
+    - The chip is a stretch goal — DM-1..DM-6 ship the DM swap; DM-7 ships the chip atop it. If the regreet integration proves harder than expected, ship DM-1..DM-6 + push DM-7 to v2.8 rather than block the LightDM retirement.
+    - Carbon glyph: none (text-only chip per locks); future polish could add a `chip--small` glyph if needed.
+    - Tier 2 marker reflects the stretch-goal status — DM-7 doesn't gate the v2.7 cut.
+    - Blockers: DM-1..DM-6.
+
+- [ ] **v2.7: DM-8 Docs + voice-tone + CHANGELOG (Tier 2)**
+  **As** a mackes-shell operator first encountering the new greeter,
+  **I want** a one-page reference in `docs/help/` that shows the new login flow, the mesh chip's three states, the power-control behavior, and how to roll back to LightDM if needed,
+  **so that** I don't have to read the worklist preamble or the spec to understand what changed.
+  **Acceptance** (each bench-observable):
+    - [ ] `docs/help/display-manager.md` ships covering: the 10 design locks in operator-readable language, the LightDM rollback path (`sudo systemctl disable greetd.service && sudo systemctl enable lightdm.service && sudo systemctl restart display-manager.service`), the mesh-chip troubleshooting table, the `sudo journalctl -u greetd.service` line for debugging a failed login.
+    - [ ] `docs/design/v2.7-display-manager.md` ships with the 10 locks captured verbatim from the preamble (canonical design-doc copy).
+    - [ ] `install-helpers/lint-voice.sh` passes on every user-visible string added by the DM-* commits (the regreet TOML's `greeting_msg`, the mesh chip's three state strings, any error messages).
+    - [ ] CHANGELOG entry for v2.7 calls out the LightDM → greetd swap as a headline operator-visible change.
+  **Implementation notes:**
+    - Help doc renders inline in the Workbench help viewer (per the v2.0.0 docs/help/ rendering path).
+    - Blockers: every other DM-* item — docs land in the same commit as the last wired piece (or in a docs-only follow-up if DM-7 slips to v2.8).
 
 ### v2.0.0 monolithic cut (shipped 2026-05-20)
 
