@@ -642,10 +642,22 @@ _NOAUTH_EXT_URL  = (
 
 
 def apply_remote_desktop(_preset: Preset) -> List[str]:
-    """Install xrdp + x11vnc + guacd + tomcat + Guacamole web app.
+    """Install xrdp + wayvnc + guacd + tomcat + Guacamole web app.
 
     Locks the noauth design path (Q3 v1.2.0): no Guacamole login screen,
     mesh-firewall trust only. Connections are populated by mackes-remote-sync.
+
+    RD-2 + RD-3 (v2.6, 2026-05-24): `x11vnc` swap to `wayvnc`. The
+    v2.0.0 Wayland-only switch (sway as session host) broke x11vnc's
+    `:0`-display-mirroring assumption — wayvnc is sway-native via the
+    wlroots screencopy protocol. Per
+    `docs/design/v2.6-wayland-vnc.md` § 3.2, wayvnc binds to the
+    Nebula overlay IP (read from `/var/lib/mackesd/nebula/overlay-ip`
+    by GF-1.3.a) so port 5900 is never exposed on the underlay.
+    Ed25519 per-peer auth (RD-4) is the follow-up; for now wayvnc
+    runs with `--unauthenticated` and trusts the Nebula overlay
+    boundary alone — auth-parity with the previous x11vnc `-nopw`
+    config.
     """
     actions: List[str] = []
     if shutil.which("dnf") is None:
@@ -653,7 +665,7 @@ def apply_remote_desktop(_preset: Preset) -> List[str]:
         return actions
 
     # ---- 1. Install Fedora packages ----------------------------------
-    fedora_pkgs = ["xrdp", "xrdp-selinux", "x11vnc", "guacd", "tomcat", "curl"]
+    fedora_pkgs = ["xrdp", "xrdp-selinux", "wayvnc", "guacd", "tomcat", "curl"]
     missing = [p for p in fedora_pkgs if _run(["rpm", "-q", p])[0] != 0]
     if missing:
         actions.append(f"remote-desktop: installing {', '.join(missing)} via dnf")
@@ -724,28 +736,47 @@ def apply_remote_desktop(_preset: Preset) -> List[str]:
                     '</user-mapping>\n')
     _write_root_file(_GUAC_ETC / "noauth-config.xml", seed_xml)
 
-    # ---- 5. systemd services + x11vnc@:0 template --------------------
-    actions.append("remote-desktop: writing x11vnc@.service template")
-    x11vnc_unit = (
+    # ---- 5. systemd services + mde-wayvnc.service --------------------
+    # RD-3 (v2.6): wayvnc replaces the x11vnc@.service template.
+    # wayvnc must attach to a live Wayland compositor (sway) so it
+    # runs in the operator's user session via `loginctl
+    # user-status`. The system unit below is a oneshot wrapper that
+    # `runuser`s into the primary uid-1000 user (GF-3.1 makes that
+    # pin authoritative) and binds to the Nebula overlay IP from
+    # the GF-1.3.a publish file.
+    actions.append("remote-desktop: writing mde-wayvnc.service unit")
+    wayvnc_unit = (
         "[Unit]\n"
-        "Description=x11vnc mirror of X display %i (mesh-only bind)\n"
-        "After=display-manager.service\n"
-        "Wants=display-manager.service\n"
+        "Description=Mackes Wayland VNC server (sway compositor, "
+        "Nebula-overlay bind)\n"
+        "ConditionPathExists=/var/lib/mackesd/nebula/overlay-ip\n"
+        "After=mackesd.service display-manager.service\n"
+        "Wants=mackesd.service\n"
         "\n"
         "[Service]\n"
-        # Bind to the mesh IP only — falls back to localhost if mesh not up.
-        # The active display owner (DISPLAY :0) is read via X11 cookie.
-        "ExecStart=/usr/bin/x11vnc -display %i -auth guess -forever "
-        "-shared -rfbport 5900 -noxdamage -nopw "
-        "-listen ${MESH_BIND:-127.0.0.1}\n"
-        "Environment=MESH_BIND=127.0.0.1\n"
+        "Type=simple\n"
+        "# Run as the operator's primary uid-1000 user so the\n"
+        "# wlroots screencopy protocol attaches to their sway\n"
+        "# compositor session. GF-3.1's birthright step pins\n"
+        "# the primary account to uid:gid 1000:1000.\n"
+        "User=%i\n"
+        "Group=%i\n"
+        "Environment=XDG_RUNTIME_DIR=/run/user/1000\n"
+        "Environment=WAYLAND_DISPLAY=wayland-1\n"
+        "# Read the overlay IP from the GF-1.3.a publish file +\n"
+        "# pass it to wayvnc as the listen address. Without this,\n"
+        "# wayvnc would bind on the underlay — explicit\n"
+        "# EADDRNOTAVAIL fail-fast is preferable.\n"
+        "ExecStart=/bin/sh -c '/usr/bin/wayvnc "
+        "$(cat /var/lib/mackesd/nebula/overlay-ip) 5900 "
+        "--unauthenticated'\n"
         "Restart=on-failure\n"
         "RestartSec=5\n"
         "\n"
         "[Install]\n"
         "WantedBy=graphical.target\n"
     )
-    _write_root_file(Path("/etc/systemd/system/x11vnc@.service"), x11vnc_unit)
+    _write_root_file(Path("/etc/systemd/system/mde-wayvnc@.service"), wayvnc_unit)
 
     # mackes-remote-sync.service — regenerate Guacamole config every 30s
     sync_unit = (
@@ -778,15 +809,39 @@ def apply_remote_desktop(_preset: Preset) -> List[str]:
         _run_root(["firewall-cmd", "--reload"])
 
     # ---- 7. Enable + start ------------------------------------------
-    actions.append("remote-desktop: enabling + starting daemons")
-    for unit in ("xrdp.service", "xrdp-sesman.service",
-                 "x11vnc@:0.service", "guacd.service",
-                 "tomcat.service", "mackes-remote-sync.service"):
+    # RD-3 (v2.6): mde-wayvnc@<primary-user>.service replaces the
+    # x11vnc@:0.service enable. The instance arg is the primary
+    # login account (resolved from $SUDO_USER / $USER, falling back
+    # to the heuristic "first uid >= 1000 in /etc/passwd"). The
+    # operator can also enable additional instances post-install
+    # if their fleet hosts multi-user sessions.
+    primary_user = (
+        os.environ.get("SUDO_USER")
+        or os.environ.get("USER")
+        or os.environ.get("LOGNAME")
+        or "mackes"
+    )
+    actions.append(f"remote-desktop: enabling + starting daemons (wayvnc user={primary_user})")
+    standard_units = (
+        "xrdp.service", "xrdp-sesman.service",
+        f"mde-wayvnc@{primary_user}.service",
+        "guacd.service",
+        "tomcat.service", "mackes-remote-sync.service",
+    )
+    for unit in standard_units:
         rc, _ = _run_root(["systemctl", "enable", "--now", unit], timeout=60)
         if rc == 0:
             actions.append(f"  {unit}: enabled + started")
         else:
             actions.append(f"  {unit}: enable failed (rc={rc})")
+    # Belt-and-suspenders: if the legacy x11vnc@:0.service is still
+    # around from a pre-v2.6 install, disable it so the operator
+    # doesn't see two VNC servers fight over port 5900.
+    legacy_unit = "/etc/systemd/system/x11vnc@.service"
+    if Path(legacy_unit).exists():
+        actions.append("remote-desktop: disabling legacy x11vnc@:0.service (pre-v2.6 install)")
+        _run_root(["systemctl", "disable", "--now", "x11vnc@:0.service"], timeout=30)
+        _run_root(["rm", "-f", legacy_unit])
 
     actions.append(
         "remote-desktop: ready — open https://media.mesh/desktop/ "

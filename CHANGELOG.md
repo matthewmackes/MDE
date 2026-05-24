@@ -97,6 +97,43 @@ cut): a fresh Fedora 44 VM with `dnf install mde-4.0-1.fc44
 mesh in under 10 minutes total operator time. `rpm -q tailscale
 headscale tailscale-derp` returns "not installed".
 
+## Unreleased — RD-1 + RD-2 + RD-3: v2.6 Wayland VNC swap (wayvnc)
+
+The v2.0.0 hard-switch to sway (Wayland-only) broke x11vnc's
+`:0`-display-mirroring assumption — on a Wayland-only host
+there's no `:0` and x11vnc's unit silently fails to bind.
+This commit closes the gap end-to-end:
+
+- **RD-1: design lock doc** at
+  `docs/design/v2.6-wayland-vnc.md` — captures the 5-Q lock
+  (wayvnc beats gnome-remote-desktop on closure size + sway-
+  native compositor support), the Nebula-overlay bind
+  boundary, the Ed25519 auth model (RD-4 follow-up), the
+  worklist cross-ref, and the v2.5 → v2.6 migration path.
+- **RD-2: RPM spec swap** — `Requires: x11vnc` →
+  `Requires: wayvnc` in `packaging/fedora/mackes-shell.spec`.
+  Closure goes from ~30 GNOME packages (the
+  gnome-remote-desktop alternative) to ~200 KB.
+- **RD-3: birthright rewrite** — `apply_remote_desktop`
+  retires the `x11vnc@.service` template, ships
+  `mde-wayvnc@.service` (templated system unit, instance
+  name = primary user, runs as uid-1000, binds to the
+  Nebula overlay IP from `/var/lib/mackesd/nebula/overlay-ip`
+  per GF-1.3.a). Enable list flips to
+  `mde-wayvnc@<primary-user>.service`; pre-v2.6 installs
+  get their legacy `x11vnc@:0.service` disabled +
+  unit-file removed during birthright so two VNC servers
+  don't fight over port 5900.
+
+RD-4 (Ed25519 per-peer auth) is the immediate follow-up;
+the current wayvnc setup runs `--unauthenticated` which is
+auth-parity with the previous x11vnc `-nopw` config — the
+Nebula overlay is the trust boundary. RD-5 (docs + capability
+list refresh) lands separately.
+
+275/0 pytest + ruff lint clean + module-import smoke for
+birthright + `rpmspec -P` clean.
+
 ## Unreleased — NF-5.1 + NF-15.5: retire mesh_vpn.py core + its test file
 
 Third commit of the wholesale Python-tree retire (after

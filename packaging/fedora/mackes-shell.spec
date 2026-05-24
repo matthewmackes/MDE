@@ -123,13 +123,21 @@ Requires:       plymouth-scripts
 # Flatpak — birthright wizard adds the Flathub remote per-user
 Recommends:     flatpak
 
-# Remote desktop birthright (v1.2.0) — every node serves xrdp + x11vnc and
-# runs a local Tomcat-hosted Guacamole web app behind the Caddy gateway.
-# The web .war is fetched from the Apache archive during the wizard's
-# Remote desktop step (not vendored to keep the RPM size sane).
+# Remote desktop birthright (v1.2.0, RD-2 swap 2026-05-24) —
+# every node serves xrdp + wayvnc and runs a local
+# Tomcat-hosted Guacamole web app behind the Caddy gateway.
+# The web .war is fetched from the Apache archive during the
+# wizard's Remote desktop step (not vendored to keep the RPM
+# size sane).
+#
+# RD-2 (v2.6) — `x11vnc` swap to `wayvnc`. The v2.0.0 hard-
+# switch to sway (Wayland-only) broke x11vnc's `:0`-display-
+# mirroring assumption — see `docs/design/v2.6-wayland-vnc.md`
+# for the 5-Q decision rationale (wayvnc is sway-native via
+# wlroots screencopy, ~200 KB closure, no GNOME drag).
 Requires:       xrdp
 Requires:       xrdp-selinux
-Requires:       x11vnc
+Requires:       wayvnc
 Requires:       guacd
 Requires:       tomcat
 Requires:       curl
