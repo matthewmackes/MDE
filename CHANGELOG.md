@@ -97,6 +97,37 @@ cut): a fresh Fedora 44 VM with `dnf install mde-4.0-1.fc44
 mesh in under 10 minutes total operator time. `rpm -q tailscale
 headscale tailscale-derp` returns "not installed".
 
+## Unreleased — v5.0.0 GlusterFS mesh-home + KDC2 file-transfer removal (placeholder)
+
+**SemVer-major bump.** v5.0.0's headline is `mesh-home`: a
+replicated GlusterFS volume mounted in-place over every
+peer's `~/Documents`, `~/Pictures`, `~/Music`, `~/Videos`,
+and `~/Downloads`, with the bytes moving over the Nebula
+overlay. The major bump is required because KDC2's
+file-transfer affordance is removed entirely in v5.0.0 —
+paired phones drop files into
+`~/Documents/From-<phone-name>/` and the mesh handles
+replication from there. There is no v4.x-compatible file
+fall-back; phones lose their existing share-sheet
+destination.
+
+Locked 2026-05-24 via 25-Q survey
+(`docs/design/v5.0.0-gluster-mesh-home.md`). User-facing
+primer at `docs/help/mesh-storage.md`. Worklist tracker at
+`docs/PROJECT_WORKLIST.md` § "GF-1..GF-15".
+
+Substrate shipped so far:
+- RPM pulls in `glusterfs-server` + `glusterfs-fuse`;
+  `%post` enables `glusterd.service`. The Nebula-overlay
+  bind drop-in (GF-1.3), the `gluster_worker` daemon
+  (GF-2.x), the birthright pipeline integration (GF-3.x),
+  and the FUSE mount unit (GF-4.x) are still ahead.
+
+The actual v5.0.0 RPM cut requires the full GF-1..GF-15
+sweep to land. This section is a placeholder so the cut-
+release flow has a target heading from day one; each
+landed GF-N task appends its own bullet here.
+
 ## Unreleased — GF-10.1: docs/help/mesh-storage.md user-facing primer
 
 New help page covering the v5.0.0 `mesh-home` model from the
