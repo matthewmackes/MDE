@@ -284,6 +284,18 @@ enum Cmd {
         node_id: Option<String>,
     },
 
+    /// NF-2.6 (v2.5) — Nebula CA operator surface.
+    /// `mackesd ca mint --mesh <id>` materialises the mesh CA
+    /// (idempotent against the same mesh-id). `mackesd ca
+    /// rotate --mesh <id>` runs an NF-2.5 epoch bump.
+    /// `mackesd ca list --mesh <id>` walks the `nebula_ca`
+    /// table for the named mesh. `mackesd ca dump-ca --mesh
+    /// <id>` writes the active public CA cert to stdout.
+    Ca {
+        #[command(subcommand)]
+        cmd: CaCmd,
+    },
+
     /// PC-3.a — trigger the `peer-joined` handler for a given
     /// peer-id.
     ///
@@ -300,6 +312,58 @@ enum Cmd {
         /// Don't spawn the modal — print the would-be action.
         #[arg(long)]
         dry_run: bool,
+    },
+}
+
+/// Subcommands for `mackesd ca`. NF-2.6 (v2.5).
+#[derive(Subcommand)]
+enum CaCmd {
+    /// Mint the mesh CA. Idempotent — if a non-retired row
+    /// exists for `--mesh`, prints the existing PEM rather
+    /// than rotating. Use `rotate` to advance the epoch.
+    Mint {
+        /// Mesh identifier (matches `nebula_ca.mesh_id`).
+        #[arg(long)]
+        mesh: String,
+        /// Emit `{outcome, epoch}` as JSON instead of a
+        /// human-readable summary.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Rotate the CA — retire the active epoch, mint a fresh
+    /// one, re-sign every active peer cert under the new
+    /// epoch. Emits a hash-chained lifecycle event recording
+    /// the rotation.
+    Rotate {
+        /// Mesh identifier.
+        #[arg(long)]
+        mesh: String,
+        /// Override the per-peer cert dir (default
+        /// `/etc/nebula/peers/`).
+        #[arg(long)]
+        peer_cert_dir: Option<PathBuf>,
+        /// Emit `{rotated, new_epoch, resigned_count}` as
+        /// JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// List every CA row for `--mesh` (newest epoch first).
+    List {
+        /// Mesh identifier.
+        #[arg(long)]
+        mesh: String,
+        /// Emit a JSON array of `{epoch, retired_at,
+        /// created_at}` rows.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Print the active CA's public cert PEM to stdout. Used
+    /// by the wizard's first-peer bootstrap when copying the
+    /// chain by hand.
+    DumpCa {
+        /// Mesh identifier.
+        #[arg(long)]
+        mesh: String,
     },
 }
 
@@ -768,6 +832,12 @@ fn main() -> anyhow::Result<()> {
             // Boots the tokio runtime, registers the worker pool +
             // the existing reconcile worker, blocks on SIGTERM.
             run_serve(qnm_root, node_id, db_path)?;
+        }
+        Cmd::Ca { cmd } => {
+            // NF-2.6 (v2.5) — Nebula CA operator surface.
+            let mut conn = mackesd_core::store::open(&db_path)
+                .with_context(|| format!("opening store at {}", db_path.display()))?;
+            run_ca(&mut conn, cmd)?;
         }
         Cmd::PeerCard { peer, dry_run } => {
             // PC-3.a — operator-driven trigger for the peer-card
@@ -1278,6 +1348,190 @@ fn print_revisions_table(rows: &[serde_json::Value]) {
     }
 }
 
+/// NF-2.6 — execute one `mackesd ca <sub>` invocation. Pulled
+/// out of `main` so each sub-arm stays readable and so the
+/// helper-stays-thin pattern matches the rest of this binary.
+fn run_ca(conn: &mut rusqlite::Connection, cmd: CaCmd) -> anyhow::Result<()> {
+    use mackesd_core::ca;
+    match cmd {
+        CaCmd::Mint { mesh, json } => {
+            let outcome = ca::mint::mint_ca(&ca::SubprocessBackend, conn, &mesh, None, None)
+                .with_context(|| format!("minting CA for mesh {mesh}"))?;
+            match outcome {
+                ca::mint::MintOutcome::Created { cert_pem } => {
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::json!({
+                                "outcome": "created",
+                                "mesh_id": mesh,
+                                "epoch":   0,
+                                "cert_pem": cert_pem,
+                            })
+                        );
+                    } else {
+                        println!("CA minted for mesh {mesh} at epoch 0");
+                    }
+                }
+                ca::mint::MintOutcome::AlreadyMinted { epoch, cert_pem } => {
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::json!({
+                                "outcome": "already_minted",
+                                "mesh_id": mesh,
+                                "epoch":   epoch,
+                                "cert_pem": cert_pem,
+                            })
+                        );
+                    } else {
+                        println!("CA already minted for mesh {mesh} at epoch {epoch}");
+                    }
+                }
+            }
+        }
+        CaCmd::Rotate {
+            mesh,
+            peer_cert_dir,
+            json,
+        } => {
+            let dir =
+                peer_cert_dir.unwrap_or_else(|| PathBuf::from("/etc/nebula/peers"));
+            let outcome = ca::epoch::bump_epoch(
+                &ca::SubprocessBackend,
+                conn,
+                &mesh,
+                None,
+                None,
+                &dir,
+                ca::epoch::DEFAULT_FALLBACK_LIFETIME_DAYS,
+            )
+            .with_context(|| format!("rotating CA for mesh {mesh}"))?;
+            match outcome {
+                ca::epoch::BumpOutcome::Rotated {
+                    prior_epoch,
+                    new_epoch,
+                    resigned_count,
+                    ..
+                } => {
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::json!({
+                                "rotated":        true,
+                                "mesh_id":        mesh,
+                                "prior_epoch":    prior_epoch,
+                                "new_epoch":      new_epoch,
+                                "resigned_count": resigned_count,
+                            })
+                        );
+                    } else {
+                        println!(
+                            "CA rotated for mesh {mesh}: epoch {prior_epoch} → {new_epoch} ({resigned_count} peer certs re-issued)"
+                        );
+                    }
+                }
+                ca::epoch::BumpOutcome::NoActiveCa => {
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::json!({
+                                "rotated": false,
+                                "reason":  "no active CA",
+                            })
+                        );
+                    } else {
+                        eprintln!(
+                            "mackesd ca rotate: no active CA for mesh {mesh} — run `mackesd ca mint --mesh {mesh}` first"
+                        );
+                        std::process::exit(2);
+                    }
+                }
+            }
+        }
+        CaCmd::List { mesh, json } => {
+            let rows = list_ca_rows(conn, &mesh)?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&rows)?);
+            } else if rows.is_empty() {
+                println!("(no CA rows for mesh {mesh})");
+            } else {
+                println!(
+                    "{:<6} {:<10} {:<12} {:<12}",
+                    "EPOCH", "STATE", "CREATED_AT", "RETIRED_AT"
+                );
+                for r in &rows {
+                    let epoch =
+                        r.get("epoch").and_then(|v| v.as_i64()).unwrap_or(0);
+                    let state = if r.get("retired_at").is_some_and(|v| !v.is_null()) {
+                        "retired"
+                    } else {
+                        "active"
+                    };
+                    let created = r
+                        .get("created_at")
+                        .and_then(|v| v.as_i64())
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "-".into());
+                    let retired = r
+                        .get("retired_at")
+                        .and_then(|v| v.as_i64())
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "-".into());
+                    println!("{epoch:<6} {state:<10} {created:<12} {retired:<12}");
+                }
+            }
+        }
+        CaCmd::DumpCa { mesh } => {
+            let active = ca::mint::current_ca(conn, &mesh)
+                .with_context(|| format!("loading active CA for mesh {mesh}"))?;
+            match active {
+                Some((_, pem)) => {
+                    print!("{pem}");
+                    if !pem.ends_with('\n') {
+                        println!();
+                    }
+                }
+                None => {
+                    eprintln!("mackesd ca dump-ca: no active CA for mesh {mesh}");
+                    std::process::exit(2);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Read every `nebula_ca` row for `mesh_id`, newest epoch
+/// first. Pure SQL read — no IO outside the connection.
+fn list_ca_rows(
+    conn: &rusqlite::Connection,
+    mesh_id: &str,
+) -> anyhow::Result<Vec<serde_json::Value>> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT epoch, created_at, retired_at \
+             FROM nebula_ca WHERE mesh_id = ?1 \
+             ORDER BY epoch DESC",
+        )
+        .context("preparing nebula_ca query")?;
+    let rows = stmt
+        .query_map([mesh_id], |r| {
+            let epoch: i64 = r.get(0)?;
+            let created_at: i64 = r.get(1)?;
+            let retired_at: Option<i64> = r.get(2)?;
+            Ok(serde_json::json!({
+                "epoch":      epoch,
+                "created_at": created_at,
+                "retired_at": retired_at,
+            }))
+        })
+        .context("executing nebula_ca query")?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .context("materializing nebula_ca rows")?;
+    Ok(rows)
+}
+
 /// `mackesd serve` runtime. Pulls in tokio + the async supervisor
 /// only when the `async-services` feature is active so the default
 /// build stays sync.
@@ -1510,6 +1764,55 @@ fn run_serve(
                     error = %e,
                     db_path = %db_path.display(),
                     "Fleet.Files dbus: sqlite open failed; service skipped"
+                );
+            }
+        }
+
+        // v2.5 NF-3.6 (2026-05-23) — register the
+        // dev.mackes.MDE.Nebula session-bus surface. Methods:
+        // Enroll, Status, RegenCerts (panel-driven, no
+        // shell-out). Same graceful-degrade pattern as
+        // Fleet.Files above: on registration failure log a
+        // warning + continue (the panel falls back to the
+        // CLI). The connection is leaked so its tokio tasks
+        // outlive run_serve.
+        match mackesd_core::store::open(&db_path) {
+            Ok(conn) => {
+                let store = Arc::new(tokio::sync::Mutex::new(conn));
+                let bundle_path = qnm_root
+                    .join(&node_id)
+                    .join("mackesd")
+                    .join(mackesd_core::ca::bundle::BUNDLE_FILENAME);
+                let mesh_id = std::env::var("MDE_MESH_ID")
+                    .unwrap_or_else(|_| format!("mesh-{node_id}"));
+                let svc = mackesd_core::ipc::nebula::NebulaService::new(
+                    store,
+                    node_id.clone(),
+                    mesh_id,
+                    bundle_path,
+                );
+                match mackesd_core::ipc::nebula::register_nebula(svc).await {
+                    Ok(conn) => {
+                        Box::leak(Box::new(conn));
+                        tracing::info!(
+                            "Nebula dbus surface registered at {}",
+                            mackesd_core::ipc::nebula::NEBULA_OBJECT_PATH
+                        );
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            error = %e,
+                            "Nebula dbus registration failed; \
+                             panel will fall back to `mackesd ca …` CLI"
+                        );
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    db_path = %db_path.display(),
+                    "Nebula dbus: sqlite open failed; service skipped"
                 );
             }
         }

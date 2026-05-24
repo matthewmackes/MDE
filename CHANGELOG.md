@@ -3,6 +3,44 @@
 All notable user-facing and architectural changes. The current line is
 unreleased; tag versions get a date when they ship.
 
+## Unreleased
+
+### v2.5 Nebula fabric — CA epoch rotation + operator surfaces (2026-05-24)
+
+* **CA epoch rotation lands (NF-2.5).** A new leader taking the
+  mesh lease no longer keeps the prior leader's CA in place. The
+  new `mackesd_core::ca::epoch::bump_epoch()` retires the active
+  CA (`UPDATE nebula_ca SET retired_at = unixepoch()`), mints a
+  fresh CA at `epoch = prior + 1`, and re-signs every active
+  (non-revoked) peer cert under the new CA — preserving each
+  peer's overlay-IP and expiry. Each rotation writes a
+  hash-chained Lifecycle event so `mackesd audit-verify` picks
+  up the change. Wired into the Nebula supervisor: the worker
+  now polls the leader lockfile each 5 s tick and triggers
+  rotation on a strict lease-epoch advance while this peer
+  holds the lease. The legacy marker-poll stub
+  (`check_leader`) is retired — the supervisor is now driven
+  directly by `crate::leader::read_current_lease()`.
+
+* **`mackesd ca` operator CLI (NF-2.6).** Four new subcommands:
+  `mackesd ca mint --mesh <id>` (idempotent), `mackesd ca
+  rotate --mesh <id>` (NF-2.5 epoch bump), `mackesd ca list
+  --mesh <id>` (every CA row newest-first), and `mackesd ca
+  dump-ca --mesh <id>` (active public CA cert to stdout for
+  manual peer bootstrap). `--json` flag on mint/rotate/list
+  for machine-readable output.
+
+* **`dev.mackes.MDE.Nebula` D-Bus surface (NF-3.6).** Three
+  methods on the session bus that the panel + wizard call
+  instead of shelling out: `Enroll(passcode, name)` returns a
+  signed enrollment-request JSON; `Status()` returns
+  `{state, mesh_id, active_epoch, lighthouse_count,
+  peer_count, active_transport}`; `RegenCerts()` triggers an
+  NF-2.5 rotation and reports the outcome. Registered at
+  `/dev/mackes/MDE/Nebula`. Polkit gating tracked separately
+  as NF-3.6.a (the action ID doesn't exist yet — the surface
+  is reachable today on the per-user session bus).
+
 ## 4.0.0 — runtime integration sweep: everything actually works now (2026-05-22)
 
 The headline change: MDE's v3 line shipped most features as

@@ -36,6 +36,7 @@
 //! depend on the binary being installed.
 
 pub mod bundle;
+pub mod epoch;
 pub mod mint;
 pub mod seal;
 pub mod sign;

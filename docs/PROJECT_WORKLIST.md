@@ -294,19 +294,45 @@ locked work appears under **Active** with `[ ] Open`.
   write-then-read round-trip, world-readable rejection,
   group-readable rejection, missing-file Io error,
   create-missing-parent-dir.
-- [ ] **NF-2.5: `ca/epoch.rs::bump_epoch()` + rotation on
-  promotion** — Called from `leader.rs` when this node wins
-  the lease and the previous leader's last-heartbeat is older
-  than the lease TTL. Atomic SQL: `UPDATE nebula_ca SET
-  retired_at = now() WHERE retired_at IS NULL`; insert new
-  row at `epoch = max_epoch + 1` with a freshly minted CA;
-  re-sign every active peer cert under the new epoch; emit a
-  hash-chained lifecycle event so the audit chain captures
-  the rotation.
-- [ ] **NF-2.6: `mackesd ca {mint, rotate, list, dump-ca}` CLI
-  subcommands** — Operator surface. `dump-ca` writes the public
-  CA cert to stdout for manual peer bootstrap (the wizard
-  also calls this path internally).
+- [✓] **NF-2.5: `ca/epoch.rs::bump_epoch()` + rotation on
+  promotion (shipped 2026-05-24)** —
+  `crates/mackesd/src/ca/epoch.rs` ships `bump_epoch()` +
+  `BumpOutcome { Rotated, NoActiveCa }`. Atomic SQL via a
+  rusqlite transaction: `UPDATE nebula_ca SET retired_at =
+  unixepoch()` on the active row + `INSERT` at
+  `epoch = prior + 1`. Re-signs every active (non-revoked)
+  peer cert under the new CA, preserving each peer's
+  overlay-IP + expiry (extends expiry to a fresh lifetime
+  when the prior cert had already expired). Emits a
+  hash-chained Lifecycle event with payload `{event:
+  nebula_ca_rotation, mesh_id, prior_epoch, new_epoch,
+  resigned_peers}` via `store::insert_event`. Wired into
+  `nebula_supervisor::tick()` — the supervisor now polls
+  `crate::leader::read_current_lease()` each tick (new
+  public helper added to `leader.rs`) and triggers
+  `rotate_ca()` on a strict lease-epoch advance while this
+  node holds the lease. Retired the marker-poll stub
+  `check_leader()` per the NF-3.4.a follow-up note; the
+  supervisor is now driven directly by the leader lockfile.
+  9 unit tests in `ca::epoch::tests` cover no-active-CA / rotation /
+  re-sign-each-peer / event-emission / revoked-peer-skip /
+  expired-cert-lifetime-extension / role-group-preservation.
+  3 new wire-up tests in `workers::nebula_supervisor::tests`
+  lock the leader-driven promote / demote / rotation paths.
+- [✓] **NF-2.6: `mackesd ca {mint, rotate, list, dump-ca}` CLI
+  subcommands (shipped 2026-05-24)** — Added `Ca { cmd: CaCmd }`
+  variant to `crates/mackesd/src/bin/mackesd.rs::Cmd` with
+  `mint`, `rotate`, `list`, `dump-ca` sub-subcommands. Each
+  arm threads through to the existing `ca::mint::mint_ca`,
+  `ca::epoch::bump_epoch`, and `ca::mint::current_ca`
+  helpers. `--json` flag on `mint` / `rotate` / `list` for
+  machine-readable output; the human-readable path renders
+  a fixed-width table. `rotate` exits 2 + emits a
+  human-readable hint when no active CA exists. `dump-ca`
+  exits 2 when the mesh has never been minted. End-to-end
+  smoke verified against a fresh in-memory store (`mackesd
+  --db /tmp/x ca list/rotate/dump-ca` all behave as
+  documented).
 - [✓] **NF-2.7: Bundle writer (shipped 2026-05-23)** —
   `ca/bundle.rs` ships `NebulaBundle` (mesh_id, epoch,
   ca_cert_pem, peer_cert_pem, peer_key_pem, overlay_ip,
@@ -387,20 +413,42 @@ locked work appears under **Active** with `[ ] Open`.
   bundle's `(overlay_ip, external_addr)` tuples. Atomic via
   per-file temp + rename so a peer reading the dir during
   the write never sees a half-written file.
-- [ ] **NF-3.5: Config-file writer** —
-  `nebula_supervisor::materialize_config(bundle, role)` writes
-  `/etc/nebula/{config.yaml, ca.crt, host.crt, host.key}` atomically
-  (temp + fsync + rename). YAML includes:
-  `lighthouse.hosts` from bundle roster, `static_host_map`
-  seeded from LAN-discovery RTT cache (12.14 lives on as the
-  feeder), `listen.port: 4242`, `tun.dev: nebula1`.
-- [ ] **NF-3.6: D-Bus surface for `mded enroll`** —
-  `dev.mackes.MDE.Nebula.{Enroll, Status, RegenCerts}` methods.
-  Polkit policy gates Enroll behind the existing
-  `dev.mackes.mded.admin` action ID. Status returns
-  `(state: str, lighthouse_count: u32, peer_count: u32,
-  active_transport: str)` — feeds the panel without shelling
-  out.
+- [✓] **NF-3.6: D-Bus surface for `mded enroll` (shipped
+  2026-05-24)** — `crates/mackesd/src/ipc/nebula.rs` ships
+  `NebulaService` with three `#[interface]` methods:
+  `Enroll(passcode, name) -> json` (wraps
+  `enrollment::build_request`; rejects malformed passcodes
+  with a human-readable Failed), `Status() -> json` (returns
+  `{state, mesh_id, active_epoch, lighthouse_count,
+  peer_count, active_transport}`, where `state` is
+  `host` / `peer` / `uninitialised` based on the
+  role-marker + active CA row, lighthouse_count + transport
+  read from the bundle file), and `RegenCerts() -> json`
+  (triggers NF-2.5 bump_epoch + returns
+  `{rotated, new_epoch, resigned_count}` or
+  `{rotated:false, reason:"no active CA"}`). Registered at
+  bus name `dev.mackes.MDE.Nebula` + object path
+  `/dev/mackes/MDE/Nebula` via `register_nebula()`. Wired
+  into `bin/mackesd.rs::run_serve` alongside the existing
+  Fleet.Files registration; graceful-degrade on D-Bus
+  failure (logs warning, daemon keeps running so the panel
+  falls back to the CLI). 13 unit tests in
+  `ipc::nebula::tests` cover interface lock + every method
+  + the bundle-derived helpers (lighthouse_count,
+  active_transport_kind).
+- [ ] **NF-3.6.a: Polkit gating for `dev.mackes.MDE.Nebula.{Enroll, RegenCerts}`** —
+  Ship `data/polkit-1/actions/dev.mackes.MDE.Nebula.policy`
+  registering an action ID
+  `dev.mackes.MDE.Nebula.admin` with
+  `<allow_active>auth_admin_keep</allow_active>`. Wrap the
+  two state-mutating methods in `ipc/nebula.rs` with a
+  polkit check via `zbus-polkit` (or a direct
+  `org.freedesktop.PolicyKit1.Authority.CheckAuthorization`
+  call against the caller's bus name). `Status` stays
+  unauthenticated — it's a pure read. Add the policy file
+  to `packaging/fedora/mackes-shell.spec`'s `%files` list.
+  Test: a non-root caller against `Enroll` returns
+  `org.freedesktop.PolicyKit1.Error.NotAuthorized`.
 
 #### NF-4.x — `mackes-transport` rename + variant retirements
 

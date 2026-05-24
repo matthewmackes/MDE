@@ -29,6 +29,7 @@
 
 pub mod files;
 pub mod fleet;
+pub mod nebula;
 pub mod notifications;
 pub mod session;
 pub mod settings;

@@ -191,6 +191,28 @@ pub fn force_take(lock_path: &Path, node_id: &str) -> std::io::Result<Lease> {
     Ok(next)
 }
 
+/// Read the current lease from `lock_path` without acquiring
+/// or modifying it. Returns `Ok(None)` when the file doesn't
+/// exist yet (no peer has ever taken the lease) or when the
+/// existing content is malformed. Used by the Nebula
+/// supervisor (NF-3.4) to detect leader-epoch transitions on
+/// every tick so it can drive promote / demote without
+/// fighting the acquire-loop for the lock.
+///
+/// # Errors
+///
+/// Returns `std::io::Error` only when the file exists but
+/// can't be opened for read (permission denied, etc.). A
+/// missing file is reported as `Ok(None)`, not an error.
+pub fn read_current_lease(lock_path: &Path) -> std::io::Result<Option<Lease>> {
+    let mut file = match OpenOptions::new().read(true).open(lock_path) {
+        Ok(f) => f,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    read_lease(&mut file)
+}
+
 fn read_lease(file: &mut File) -> std::io::Result<Option<Lease>> {
     file.seek(SeekFrom::Start(0))?;
     let mut text = String::new();
