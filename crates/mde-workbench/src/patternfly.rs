@@ -108,7 +108,7 @@ mod tests {
         let crumbs = breadcrumb(View::Group(Group::Dashboard));
         assert_eq!(crumbs.len(), 2);
         assert_eq!(crumbs[0].label, "Workbench");
-        assert_eq!(crumbs[1].label, "Dashboard");
+        assert_eq!(crumbs[1].label, "Overview");
         assert_eq!(crumbs[1].slug, "dashboard");
     }
 

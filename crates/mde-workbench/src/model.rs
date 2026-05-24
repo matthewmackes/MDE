@@ -48,7 +48,7 @@ impl Group {
     #[must_use]
     pub const fn label(self) -> &'static str {
         match self {
-            Self::Dashboard => "Dashboard",
+            Self::Dashboard => "Overview",
             Self::Apps => "Apps",
             Self::Devices => "Devices",
             Self::Fleet => "Fleet",
