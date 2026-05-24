@@ -297,7 +297,7 @@ mod tests {
 
     #[test]
     fn all_down_yields_none() {
-        let mut s = all_carrier(TransportKind::DirectUdp);
+        let mut s = all_carrier(TransportKind::NebulaDirect);
         s.health = HealthState::Down;
         let r = score(&[s], MessageClass::Control, &Policy::default());
         assert!(r.is_none());
@@ -305,23 +305,23 @@ mod tests {
 
     #[test]
     fn single_healthy_candidate_is_primary_with_no_fallback() {
-        let s = all_carrier(TransportKind::DirectUdp);
+        let s = all_carrier(TransportKind::NebulaDirect);
         let r = score(&[s], MessageClass::Control, &Policy::default()).unwrap();
-        assert_eq!(r.primary, TransportKind::DirectUdp);
+        assert_eq!(r.primary, TransportKind::NebulaDirect);
         assert_eq!(r.fallback, None);
     }
 
     #[test]
     fn prefers_direct_udp_when_all_healthy_for_clipboard() {
         let samples = vec![
-            all_carrier(TransportKind::DerpRelay),
-            all_carrier(TransportKind::Https443),
-            all_carrier(TransportKind::DirectUdp),
+            all_carrier(TransportKind::NebulaLighthouseRelay),
+            all_carrier(TransportKind::NebulaHttps443),
+            all_carrier(TransportKind::NebulaDirect),
             all_carrier(TransportKind::KdcTls),
         ];
         let r = score(&samples, MessageClass::Clipboard, &Policy::default()).unwrap();
         // DirectUdp wins the preference order.
-        assert_eq!(r.primary, TransportKind::DirectUdp);
+        assert_eq!(r.primary, TransportKind::NebulaDirect);
         // Fallback should be KdcTls (next-best per TransportKind::all() rank).
         assert_eq!(r.fallback, Some(TransportKind::KdcTls));
     }
@@ -331,7 +331,7 @@ mod tests {
         // DERP is small_only — must not be picked for FileBulk
         // even if it's the "best" by rank.
         let samples = vec![
-            small_only(TransportKind::DerpRelay),
+            small_only(TransportKind::NebulaLighthouseRelay),
             all_carrier(TransportKind::KdcTls),
         ];
         let r = score(&samples, MessageClass::FileBulk, &Policy::default()).unwrap();
@@ -341,19 +341,19 @@ mod tests {
 
     #[test]
     fn degraded_health_loses_to_healthy() {
-        let mut udp = all_carrier(TransportKind::DirectUdp);
+        let mut udp = all_carrier(TransportKind::NebulaDirect);
         udp.health = HealthState::Degraded;
         let kdc = all_carrier(TransportKind::KdcTls);
         let r = score(&[udp, kdc], MessageClass::Control, &Policy::default()).unwrap();
         // KdcTls wins because Degraded UDP gets a +0.5 penalty
         // that exceeds the preference-order gap.
         assert_eq!(r.primary, TransportKind::KdcTls);
-        assert_eq!(r.fallback, Some(TransportKind::DirectUdp));
+        assert_eq!(r.fallback, Some(TransportKind::NebulaDirect));
     }
 
     #[test]
     fn flap_penalty_pushes_recently_failed_transport_back() {
-        let mut udp = all_carrier(TransportKind::DirectUdp);
+        let mut udp = all_carrier(TransportKind::NebulaDirect);
         udp.recent_failures = 4;
         let kdc = all_carrier(TransportKind::KdcTls);
         let r = score(&[udp, kdc], MessageClass::Control, &Policy::default()).unwrap();
@@ -364,15 +364,15 @@ mod tests {
     #[test]
     fn pinned_primary_wins_over_scoring() {
         let mut policy = Policy::default();
-        policy.pinned_primary = vec![TransportKind::Https443];
+        policy.pinned_primary = vec![TransportKind::NebulaHttps443];
         let samples = vec![
-            all_carrier(TransportKind::DirectUdp),
-            all_carrier(TransportKind::Https443),
+            all_carrier(TransportKind::NebulaDirect),
+            all_carrier(TransportKind::NebulaHttps443),
         ];
         let r = score(&samples, MessageClass::Control, &policy).unwrap();
-        assert_eq!(r.primary, TransportKind::Https443);
+        assert_eq!(r.primary, TransportKind::NebulaHttps443);
         assert_eq!(r.reason, SwitchReason::Policy);
-        assert_eq!(r.fallback, Some(TransportKind::DirectUdp));
+        assert_eq!(r.fallback, Some(TransportKind::NebulaDirect));
     }
 
     #[test]
@@ -380,19 +380,19 @@ mod tests {
         // Pinned kind isn't available (no sample). Pinning silently
         // disables; pure scoring takes over.
         let mut policy = Policy::default();
-        policy.pinned_primary = vec![TransportKind::Https443];
-        let samples = vec![all_carrier(TransportKind::DirectUdp)];
+        policy.pinned_primary = vec![TransportKind::NebulaHttps443];
+        let samples = vec![all_carrier(TransportKind::NebulaDirect)];
         let r = score(&samples, MessageClass::Control, &policy).unwrap();
-        assert_eq!(r.primary, TransportKind::DirectUdp);
+        assert_eq!(r.primary, TransportKind::NebulaDirect);
         assert_eq!(r.reason, SwitchReason::Initial);
     }
 
     #[test]
     fn denylist_removes_a_candidate() {
         let mut policy = Policy::default();
-        policy.denylist = vec![TransportKind::DirectUdp];
+        policy.denylist = vec![TransportKind::NebulaDirect];
         let samples = vec![
-            all_carrier(TransportKind::DirectUdp),
+            all_carrier(TransportKind::NebulaDirect),
             all_carrier(TransportKind::KdcTls),
         ];
         let r = score(&samples, MessageClass::Control, &policy).unwrap();
@@ -403,7 +403,7 @@ mod tests {
     fn denylist_can_eliminate_all_candidates() {
         let mut policy = Policy::default();
         policy.denylist = TransportKind::all().to_vec();
-        let samples = vec![all_carrier(TransportKind::DirectUdp)];
+        let samples = vec![all_carrier(TransportKind::NebulaDirect)];
         let r = score(&samples, MessageClass::Control, &policy);
         assert!(r.is_none());
     }
@@ -414,13 +414,13 @@ mod tests {
         // baseline). Order should still come out DirectUdp >
         // KdcTls > DERP > HTTPS at equal-health.
         let samples = vec![
-            all_carrier(TransportKind::DirectUdp),
+            all_carrier(TransportKind::NebulaDirect),
             all_carrier(TransportKind::KdcTls),
-            all_carrier(TransportKind::DerpRelay),
-            all_carrier(TransportKind::Https443),
+            all_carrier(TransportKind::NebulaLighthouseRelay),
+            all_carrier(TransportKind::NebulaHttps443),
         ];
         let r = score(&samples, MessageClass::Notification, &Policy::default()).unwrap();
-        assert_eq!(r.primary, TransportKind::DirectUdp);
+        assert_eq!(r.primary, TransportKind::NebulaDirect);
         assert_eq!(r.fallback, Some(TransportKind::KdcTls));
     }
 
@@ -439,13 +439,13 @@ mod tests {
             denylist: vec![],
         };
         let samples = vec![
-            all_carrier(TransportKind::Https443),
-            all_carrier(TransportKind::DerpRelay),
+            all_carrier(TransportKind::NebulaHttps443),
+            all_carrier(TransportKind::NebulaLighthouseRelay),
             all_carrier(TransportKind::KdcTls),
-            all_carrier(TransportKind::DirectUdp),
+            all_carrier(TransportKind::NebulaDirect),
         ];
         let r = score(&samples, MessageClass::Control, &policy).unwrap();
-        assert_eq!(r.primary, TransportKind::DirectUdp);
+        assert_eq!(r.primary, TransportKind::NebulaDirect);
         assert_eq!(r.fallback, Some(TransportKind::KdcTls));
     }
 }

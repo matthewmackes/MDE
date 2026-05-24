@@ -452,27 +452,51 @@ locked work appears under **Active** with `[ ] Open`.
 
 #### NF-4.x — `mackes-transport` rename + variant retirements
 
-- [ ] **NF-4.1: `TransportKind` enum rename** —
+- [✓] **NF-4.1: `TransportKind` enum rename (shipped 2026-05-24)** —
   `DirectUdp` → `NebulaDirect`, `DerpRelay` →
   `NebulaLighthouseRelay`, `Https443` → `NebulaHttps443`.
-  `KdcTls` unchanged. Update `as_str()`, `Display`, `all()`,
-  the iteration-order preference table, every match arm, and
-  every test fixture that pins a stringified variant.
-- [ ] **NF-4.2: `EdgeKind` enum mirror update** — Same renames
-  in `mackesd_core::topology::EdgeKind`. Pin the
-  `From<TransportKind> for EdgeKind` conversion lock-step.
-- [ ] **NF-4.3: `policy.toml` schema bump** —
-  `crates/mackesd/src/transport/policy.rs` parses the new
-  variant tokens. Add a one-shot migration: any pre-v2.5
-  `policy.toml` on disk gets rewritten with the new tokens on
-  first boot via `mackesd_core::transport::policy::migrate_tokens()`.
-  Greenfield lock (Q5) means we don't strictly need this, but
-  the policy file may be hand-edited so the migrator is cheap
-  insurance.
-- [ ] **NF-4.4: Remove `mackes-transport` DERP integration tests** —
-  Tests that build a real Tailscale DERP client (under the
-  `docker-tests` feature) get deleted. Replaced by NF-9.x
-  Nebula bench scenarios.
+  `KdcTls` unchanged. `as_str` tokens follow:
+  `direct_udp` → `nebula_direct`,
+  `derp_relay` → `nebula_lighthouse_relay`,
+  `https443` → `nebula_https443`. Preference order in `all()`
+  unchanged in spirit (`NebulaDirect > KdcTls >
+  NebulaLighthouseRelay > NebulaHttps443`). 180 references
+  across 19 files updated; serde-token-stability tests in
+  `mackes-transport::lib.rs` + audit-token tests in
+  `peer_path.rs` re-pinned to the new spellings.
+- [✓] **NF-4.2: `EdgeKind` enum mirror update (shipped 2026-05-24)** —
+  Same three renames in `mackesd_core::topology::EdgeKind`.
+  The `From<TransportKind> for EdgeKind` conversion is now
+  1:1 against the v2.5 spellings. The
+  `transport_kind_into_edge_kind_is_total_and_token_aligned`
+  cross-enum lock test still passes — both enums emit the
+  same serde token for each variant.
+- [✓] **NF-4.3: `policy.toml` schema bump (shipped 2026-05-24)** —
+  `mackesd_core::transport::policy::parse_transport_kinds`
+  accepts both v2.5 and v2.x token spellings (the legacy
+  tokens parse to the same `TransportKind::Nebula*` variant).
+  New `migrate_tokens(body) -> (String, bool)` rewrites the
+  three legacy quoted-literal forms in a raw TOML body;
+  `load_with_paths` runs the migrator on the operator
+  override file (`~/.config/mde/connect/policy.toml`) and
+  persists the migrated text back to disk on first boot
+  (read-only filesystem failure is logged + tolerated so
+  parsing still succeeds against the in-memory body). 4 new
+  parser tests + 3 migrator tests cover round-trip /
+  comment-preservation / no-op-on-clean-body.
+- [✓] **NF-4.4: Remove `mackes-transport` DERP integration tests
+  (shipped 2026-05-24)** — Deleted
+  `crates/mackesd/tests/integration_testcontainers.rs` (the
+  Headscale+Tailscale happy-path E2E suite, 512 LOC), retired
+  the `docker-tests` cargo feature, and dropped the
+  `testcontainers = "0.25"` optional dependency. The unit
+  tests in `mackes-transport::peer_path` /
+  `::scorer` that exercise the renamed
+  `NebulaLighthouseRelay` variant remain — they test routing
+  decisions, not Tailscale itself, so the coverage is
+  carried forward under the new variant name. NF-9.x Nebula
+  bench scenarios will rebuild the live-process integration
+  coverage against a local Nebula stack.
 - [ ] **NF-4.5: Delete `crates/mackesd/src/https_fallback.rs` +
   `crates/mackesd/src/stun.rs`** — Functionality migrated to
   NF-1.4 (`activation.rs`) and absorbed by Nebula's

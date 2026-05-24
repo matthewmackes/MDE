@@ -46,16 +46,30 @@ pub use transport_capabilities::{EncryptionKind, TransportCapabilities};
 /// and the router agree on which transport carries which edge. The
 /// `From<TransportKind> for EdgeKind` conversion lives in
 /// `mackesd::topology` to keep this crate dependency-free.
+///
+/// v2.5 (NF-4.1, 2026-05-24) — renamed from the Tailscale-era
+/// `{DirectUdp, DerpRelay, Https443}` to Nebula-rooted
+/// `{NebulaDirect, NebulaLighthouseRelay, NebulaHttps443}`.
+/// `KdcTls` is unchanged. The `as_str` tokens follow the same
+/// rename (`direct_udp` → `nebula_direct`, etc.) — audit-log
+/// readers + policy.toml files written against the v2.x tokens
+/// are migrated by `mackesd_core::transport::policy::migrate_tokens`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TransportKind {
-    /// Best-case: direct UDP between two peers' WireGuard sockets
-    /// (matches `EdgeKind::DirectUdp`).
-    DirectUdp,
-    /// Tailscale DERP relay fallback (matches `EdgeKind::DerpRelay`).
-    DerpRelay,
-    /// HTTPS-tunneled TCP/443 (matches `EdgeKind::Https443`).
-    Https443,
+    /// Best-case: direct UDP between two peers' Nebula tun
+    /// sockets after the lighthouse-assisted hole-punch
+    /// (matches `EdgeKind::NebulaDirect`).
+    NebulaDirect,
+    /// Lighthouse-relayed path — the host-role peer carries
+    /// traffic for two peers that can't hole-punch each other
+    /// (matches `EdgeKind::NebulaLighthouseRelay`). Subsumes
+    /// the prior Tailscale DERP fallback.
+    NebulaLighthouseRelay,
+    /// Covert TCP/443 path — Nebula UDP wrapped in TLS through
+    /// `mackes-nebula-https-tunnel` (matches
+    /// `EdgeKind::NebulaHttps443`).
+    NebulaHttps443,
     /// KDE Connect wire over TLS (matches `EdgeKind::KdcTls`, lands
     /// with the KDC2 work). Used for phone↔peer and peer↔peer-via-
     /// KDC links once mesh-shunt (KDC2-4) wires phones up to the
@@ -68,19 +82,19 @@ impl TransportKind {
     /// as a tiebreaker when two transports report identical health
     /// + capabilities. Lower-latency transports come first.
     ///
-    /// This order is locked by the v12 throughput-first routing
-    /// survey (`project_v12_connectivity_scope.md`): DirectUdp >
-    /// KdcTls > DerpRelay > Https443. KdcTls outranks DerpRelay
+    /// Locked by v12 throughput-first routing + the v2.5 Nebula
+    /// rebuild: `NebulaDirect > KdcTls > NebulaLighthouseRelay >
+    /// NebulaHttps443`. KdcTls outranks the lighthouse relay
     /// because the KDC handshake reuses a long-lived TLS session
-    /// (~0 RTT for steady-state messages), where DERP requires a
-    /// fresh client every minute.
+    /// (~0 RTT for steady-state messages), where the lighthouse
+    /// relay adds the host-peer's RTT on every packet.
     #[must_use]
     pub const fn all() -> [TransportKind; 4] {
         [
-            TransportKind::DirectUdp,
+            TransportKind::NebulaDirect,
             TransportKind::KdcTls,
-            TransportKind::DerpRelay,
-            TransportKind::Https443,
+            TransportKind::NebulaLighthouseRelay,
+            TransportKind::NebulaHttps443,
         ]
     }
 
@@ -88,20 +102,12 @@ impl TransportKind {
     /// entries. Matches the `serde` snake_case rendering so a
     /// machine reading audit JSON sees the same token in both
     /// places.
-    ///
-    /// Note: serde's `snake_case` rule only splits at letter-case
-    /// transitions, NOT before digit groups — so `Https443`
-    /// becomes `https443`, not `https_443`. `EdgeKind::Https443`
-    /// already serializes that way in production audit chains
-    /// (mackesd::topology unit test locks the token); the
-    /// `Display` and `as_str` outputs must stay aligned to avoid
-    /// silent token drift between the two enums.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
-            TransportKind::DirectUdp => "direct_udp",
-            TransportKind::DerpRelay => "derp_relay",
-            TransportKind::Https443 => "https443",
+            TransportKind::NebulaDirect => "nebula_direct",
+            TransportKind::NebulaLighthouseRelay => "nebula_lighthouse_relay",
+            TransportKind::NebulaHttps443 => "nebula_https443",
             TransportKind::KdcTls => "kdc_tls",
         }
     }
@@ -367,31 +373,31 @@ mod tests {
     use super::*;
 
     #[test]
-    fn transport_kind_preference_order_locks_v12_routing() {
+    fn transport_kind_preference_order_locks_v2_5_routing() {
         let order = TransportKind::all();
-        assert_eq!(order[0], TransportKind::DirectUdp);
+        assert_eq!(order[0], TransportKind::NebulaDirect);
         assert_eq!(order[1], TransportKind::KdcTls);
-        assert_eq!(order[2], TransportKind::DerpRelay);
-        assert_eq!(order[3], TransportKind::Https443);
+        assert_eq!(order[2], TransportKind::NebulaLighthouseRelay);
+        assert_eq!(order[3], TransportKind::NebulaHttps443);
     }
 
     #[test]
     fn transport_kind_serializes_snake_case() {
         assert_eq!(
-            serde_json::to_string(&TransportKind::DirectUdp).unwrap(),
-            r#""direct_udp""#,
+            serde_json::to_string(&TransportKind::NebulaDirect).unwrap(),
+            r#""nebula_direct""#,
         );
         assert_eq!(
             serde_json::to_string(&TransportKind::KdcTls).unwrap(),
             r#""kdc_tls""#,
         );
         assert_eq!(
-            serde_json::to_string(&TransportKind::DerpRelay).unwrap(),
-            r#""derp_relay""#,
+            serde_json::to_string(&TransportKind::NebulaLighthouseRelay).unwrap(),
+            r#""nebula_lighthouse_relay""#,
         );
         assert_eq!(
-            serde_json::to_string(&TransportKind::Https443).unwrap(),
-            r#""https443""#,
+            serde_json::to_string(&TransportKind::NebulaHttps443).unwrap(),
+            r#""nebula_https443""#,
         );
     }
 

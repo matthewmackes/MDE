@@ -13,8 +13,10 @@
 [weights]
 # Per-message-class scoring weights consumed by the mesh-router.
 # Lower weights amplify the TransportKind preference order
-# (DirectUdp > KdcTls > DerpRelay > Https443); higher weights
-# flatten it. 0.7 is the v2.1 baseline.
+# (NebulaDirect > KdcTls > NebulaLighthouseRelay > NebulaHttps443);
+# higher weights flatten it. 0.7 is the v2.1 baseline; the v2.5
+# Nebula rebuild (NF-4.1) renamed the kind tokens but kept the
+# weighting schema unchanged.
 latency      = 0.7   # Clipboard / Control
 throughput   = 0.7   # FileBulk
 reliability  = 0.7   # Notification

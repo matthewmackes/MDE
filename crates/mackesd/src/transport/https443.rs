@@ -289,7 +289,7 @@ impl Connection for Https443Connection {
 #[async_trait]
 impl Transport for Https443Transport {
     fn kind(&self) -> TransportKind {
-        TransportKind::Https443
+        TransportKind::NebulaHttps443
     }
 
     fn capabilities(&self) -> Capabilities {
@@ -402,7 +402,7 @@ mod tests {
         // pollute the test runtime's env / fail on missing
         // trust store.
         let t = Https443Transport::with_config_and_tls(None, None);
-        assert_eq!(t.kind(), TransportKind::Https443);
+        assert_eq!(t.kind(), TransportKind::NebulaHttps443);
     }
 
     #[test]

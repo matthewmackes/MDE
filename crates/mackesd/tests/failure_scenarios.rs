@@ -55,7 +55,7 @@ fn edge(a: &str, b: &str) -> Edge {
     Edge {
         a: lo.to_owned(),
         b: hi.to_owned(),
-        kind: EdgeKind::DirectUdp,
+        kind: EdgeKind::NebulaDirect,
     }
 }
 

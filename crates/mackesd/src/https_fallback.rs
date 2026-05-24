@@ -526,7 +526,7 @@ mod tests {
 
     #[test]
     fn observe_peer_advances_window_then_activates() {
-        let mut peer = MtPath::initial("alice".into(), TransportKind::DirectUdp);
+        let mut peer = MtPath::initial("alice".into(), TransportKind::NebulaDirect);
         let bad = TransitionInput::Probe(ProbePairOutcome::BothUdpFailed);
         // Two failures: still Inactive, counter = 2.
         assert_eq!(observe_peer(&mut peer, bad), HttpsFallbackState::Inactive);
@@ -548,7 +548,7 @@ mod tests {
 
     #[test]
     fn observe_peer_resets_on_recovery() {
-        let mut peer = MtPath::initial("alice".into(), TransportKind::DirectUdp);
+        let mut peer = MtPath::initial("alice".into(), TransportKind::NebulaDirect);
         let bad = TransitionInput::Probe(ProbePairOutcome::BothUdpFailed);
         let good = TransitionInput::Probe(ProbePairOutcome::AnyUdpSucceeded);
         observe_peer(&mut peer, bad);
@@ -561,7 +561,7 @@ mod tests {
 
     #[test]
     fn observe_peer_walks_activation_to_active() {
-        let mut peer = MtPath::initial("alice".into(), TransportKind::DirectUdp);
+        let mut peer = MtPath::initial("alice".into(), TransportKind::NebulaDirect);
         let bad = TransitionInput::Probe(ProbePairOutcome::BothUdpFailed);
         observe_peer(&mut peer, bad);
         observe_peer(&mut peer, bad);

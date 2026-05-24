@@ -197,8 +197,37 @@ pub fn load_with_paths(system: &Path, user: &Path) -> Result<LoadedPolicy, Polic
         .map(|raw| toml::from_str::<PolicyFile>(&raw).map_err(PolicyError::InvalidToml))
         .transpose()?
         .unwrap_or_default();
-    let user_file = read_optional(user)?
-        .map(|raw| toml::from_str::<PolicyFile>(&raw).map_err(PolicyError::InvalidToml))
+    // NF-4.3 — migrate legacy tokens in the user override (the
+    // operator-editable file) on first read. The system default
+    // ships with v2.5 tokens already so it's a no-op there. We
+    // run the migrator before TOML parsing because legacy tokens
+    // parse cleanly today; running after parse would require
+    // re-encoding the file, which loses comments + ordering. The
+    // on-disk rewrite happens here rather than at parse-time so
+    // a read-only filesystem doesn't break parsing.
+    let user_raw = read_optional(user)?;
+    if let Some(raw) = &user_raw {
+        let (migrated, changed) = migrate_tokens(raw);
+        if changed {
+            if let Err(e) = std::fs::write(user, &migrated) {
+                tracing::warn!(
+                    path = %user.display(),
+                    error = %e,
+                    "policy.toml token migration: write failed; parse continues against in-memory body"
+                );
+            } else {
+                tracing::info!(
+                    path = %user.display(),
+                    "policy.toml token migration: rewrote legacy tokens (direct_udp/derp_relay/https443 → nebula_*)"
+                );
+            }
+        }
+    }
+    let user_file = user_raw
+        .map(|raw| {
+            let (migrated, _) = migrate_tokens(&raw);
+            toml::from_str::<PolicyFile>(&migrated).map_err(PolicyError::InvalidToml)
+        })
         .transpose()?
         .unwrap_or_default();
     merge(system_file, user_file).into_loaded()
@@ -283,15 +312,56 @@ fn parse_transport_kinds(names: Vec<String>) -> Result<Vec<TransportKind>, Polic
     let mut out = Vec::with_capacity(names.len());
     for name in names {
         let kind = match name.as_str() {
-            "direct_udp" => TransportKind::DirectUdp,
-            "derp_relay" => TransportKind::DerpRelay,
-            "https443" => TransportKind::Https443,
+            // v2.5 NF-4.1 (current) tokens.
+            "nebula_direct" => TransportKind::NebulaDirect,
+            "nebula_lighthouse_relay" => TransportKind::NebulaLighthouseRelay,
+            "nebula_https443" => TransportKind::NebulaHttps443,
             "kdc_tls" => TransportKind::KdcTls,
+            // NF-4.3 — pre-v2.5 (Tailscale-era) tokens auto-migrate
+            // so hand-edited policy.toml files keep parsing.
+            // `migrate_tokens()` below rewrites them on disk on
+            // first boot so the legacy spelling disappears at the
+            // next save.
+            "direct_udp" => TransportKind::NebulaDirect,
+            "derp_relay" => TransportKind::NebulaLighthouseRelay,
+            "https443" => TransportKind::NebulaHttps443,
             other => return Err(PolicyError::UnknownTransportKind(other.to_string())),
         };
         out.push(kind);
     }
     Ok(out)
+}
+
+/// NF-4.3 — one-shot token migrator. Walks the raw TOML body
+/// and replaces any pre-v2.5 transport-kind token (`direct_udp`,
+/// `derp_relay`, `https443`) with its v2.5 spelling
+/// (`nebula_direct`, `nebula_lighthouse_relay`,
+/// `nebula_https443`). Leaves every other token, comment, and
+/// whitespace untouched. Returns `(migrated_body, changed)` —
+/// callers persist the migrated body when `changed` is true.
+///
+/// Whole-token only — matches the `"foo"` / `'foo'` string-
+/// literal forms TOML accepts inside arrays; comments
+/// mentioning the legacy tokens are preserved verbatim.
+#[must_use]
+pub fn migrate_tokens(body: &str) -> (String, bool) {
+    let pairs = [
+        ("\"direct_udp\"", "\"nebula_direct\""),
+        ("'direct_udp'", "'nebula_direct'"),
+        ("\"derp_relay\"", "\"nebula_lighthouse_relay\""),
+        ("'derp_relay'", "'nebula_lighthouse_relay'"),
+        ("\"https443\"", "\"nebula_https443\""),
+        ("'https443'", "'nebula_https443'"),
+    ];
+    let mut out = body.to_string();
+    let mut changed = false;
+    for (old, new) in pairs {
+        if out.contains(old) {
+            out = out.replace(old, new);
+            changed = true;
+        }
+    }
+    (out, changed)
 }
 
 #[cfg(test)]
@@ -332,13 +402,66 @@ mod tests {
     }
 
     #[test]
-    fn pinned_primary_parses_known_kinds() {
-        let raw = r#"pinned_primary = ["direct_udp", "kdc_tls"]"#;
+    fn pinned_primary_parses_v2_5_tokens() {
+        let raw = r#"pinned_primary = ["nebula_direct", "kdc_tls"]"#;
         let p = parse_policy(raw).unwrap();
         assert_eq!(
             p.scorer.pinned_primary,
-            vec![TransportKind::DirectUdp, TransportKind::KdcTls],
+            vec![TransportKind::NebulaDirect, TransportKind::KdcTls],
         );
+    }
+
+    #[test]
+    fn pinned_primary_accepts_legacy_v2x_tokens() {
+        // NF-4.3 — operator policy.toml files hand-edited under the
+        // v2.x scheme (Tailscale-era) keep parsing. Migrator
+        // rewrites them on disk on next save.
+        let raw = r#"pinned_primary = ["direct_udp", "derp_relay", "https443"]"#;
+        let p = parse_policy(raw).unwrap();
+        assert_eq!(
+            p.scorer.pinned_primary,
+            vec![
+                TransportKind::NebulaDirect,
+                TransportKind::NebulaLighthouseRelay,
+                TransportKind::NebulaHttps443,
+            ],
+        );
+    }
+
+    #[test]
+    fn migrate_tokens_rewrites_every_legacy_form() {
+        let raw = r#"
+            pinned_primary = ["direct_udp", 'derp_relay']
+            denylist       = ["https443"]
+        "#;
+        let (out, changed) = migrate_tokens(raw);
+        assert!(changed);
+        assert!(out.contains("\"nebula_direct\""));
+        assert!(out.contains("'nebula_lighthouse_relay'"));
+        assert!(out.contains("\"nebula_https443\""));
+        // Legacy spellings are fully gone.
+        assert!(!out.contains("\"direct_udp\""));
+        assert!(!out.contains("'derp_relay'"));
+        assert!(!out.contains("\"https443\""));
+    }
+
+    #[test]
+    fn migrate_tokens_no_op_on_v2_5_body() {
+        let raw = r#"pinned_primary = ["nebula_direct", "kdc_tls"]"#;
+        let (out, changed) = migrate_tokens(raw);
+        assert!(!changed);
+        assert_eq!(out, raw);
+    }
+
+    #[test]
+    fn migrate_tokens_preserves_comments_mentioning_legacy_names() {
+        // A comment that mentions `# direct_udp was the v2.x name`
+        // must not be rewritten — the migrator only touches
+        // string-literal tokens (quoted with " or ').
+        let raw = "# direct_udp was the v2.x name for nebula_direct\nflap_penalty = 0.25\n";
+        let (out, changed) = migrate_tokens(raw);
+        assert!(!changed);
+        assert_eq!(out, raw);
     }
 
     #[test]

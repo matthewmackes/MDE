@@ -185,7 +185,7 @@ mod tests {
                 .map(|(a, b)| Edge {
                     a: a.to_owned(),
                     b: b.to_owned(),
-                    kind: EdgeKind::DirectUdp,
+                    kind: EdgeKind::NebulaDirect,
                 })
                 .collect(),
             extra: extra
@@ -193,7 +193,7 @@ mod tests {
                 .map(|(a, b)| Edge {
                     a: a.to_owned(),
                     b: b.to_owned(),
-                    kind: EdgeKind::DirectUdp,
+                    kind: EdgeKind::NebulaDirect,
                 })
                 .collect(),
             healthy: BTreeSet::new(),

@@ -369,7 +369,7 @@ pub fn read_all_observed_edges(qnm_root: &Path) -> TopologySnapshot {
             edges.insert(Edge {
                 a,
                 b,
-                kind: EdgeKind::DirectUdp,
+                kind: EdgeKind::NebulaDirect,
             });
         }
     }

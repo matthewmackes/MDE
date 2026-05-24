@@ -110,9 +110,9 @@ mod tests {
     fn switch_constructor_records_every_field() {
         let e = PathSwitchEvent::switch(
             "peer-A".into(),
-            Some(TransportKind::DirectUdp),
+            Some(TransportKind::NebulaDirect),
             TransportKind::KdcTls,
-            SwitchReason::HealthDegraded(TransportKind::DirectUdp),
+            SwitchReason::HealthDegraded(TransportKind::NebulaDirect),
             1_700_000_000_000,
         );
         match e {
@@ -124,11 +124,11 @@ mod tests {
                 at_ms,
             } => {
                 assert_eq!(peer_id, "peer-A");
-                assert_eq!(from, Some(TransportKind::DirectUdp));
+                assert_eq!(from, Some(TransportKind::NebulaDirect));
                 assert_eq!(to, TransportKind::KdcTls);
                 assert_eq!(
                     reason,
-                    SwitchReason::HealthDegraded(TransportKind::DirectUdp),
+                    SwitchReason::HealthDegraded(TransportKind::NebulaDirect),
                 );
                 assert_eq!(at_ms, 1_700_000_000_000);
             }
@@ -140,7 +140,7 @@ mod tests {
         let e = PathSwitchEvent::switch(
             "peer-A".into(),
             None,
-            TransportKind::DirectUdp,
+            TransportKind::NebulaDirect,
             SwitchReason::Initial,
             1,
         );
@@ -157,7 +157,7 @@ mod tests {
         let e = PathSwitchEvent::switch(
             "p".into(),
             None,
-            TransportKind::DirectUdp,
+            TransportKind::NebulaDirect,
             SwitchReason::Initial,
             0,
         );
@@ -170,7 +170,7 @@ mod tests {
         let e = PathSwitchEvent::switch(
             "peer-A".into(),
             None,
-            TransportKind::DirectUdp,
+            TransportKind::NebulaDirect,
             SwitchReason::Initial,
             0,
         );
@@ -178,7 +178,7 @@ mod tests {
         assert!(s.contains("path_switch"));
         assert!(s.contains("peer=peer-A"));
         assert!(s.contains("from=none"));
-        assert!(s.contains("to=direct_udp"));
+        assert!(s.contains("to=nebula_direct"));
         assert!(s.contains("reason=initial"));
     }
 
@@ -186,17 +186,17 @@ mod tests {
     fn summary_includes_transport_in_health_degraded_token() {
         let e = PathSwitchEvent::switch(
             "peer-B".into(),
-            Some(TransportKind::DirectUdp),
+            Some(TransportKind::NebulaDirect),
             TransportKind::KdcTls,
-            SwitchReason::HealthDegraded(TransportKind::DirectUdp),
+            SwitchReason::HealthDegraded(TransportKind::NebulaDirect),
             0,
         );
         let s = e.summary();
-        assert!(s.contains("from=direct_udp"));
+        assert!(s.contains("from=nebula_direct"));
         assert!(s.contains("to=kdc_tls"));
         // SwitchReason::HealthDegraded carries the bumped transport
         // suffix in its audit_token.
-        assert!(s.contains("reason=health_degraded_direct_udp"));
+        assert!(s.contains("reason=health_degraded_nebula_direct"));
     }
 
     #[test]
@@ -207,13 +207,13 @@ mod tests {
         // picks up the right token.
         let e = PathSwitchEvent::switch(
             "p".into(),
-            Some(TransportKind::DirectUdp),
-            TransportKind::Https443,
+            Some(TransportKind::NebulaDirect),
+            TransportKind::NebulaHttps443,
             SwitchReason::Policy,
             0,
         );
         let s = e.summary();
-        assert!(s.contains("to=https443"));
+        assert!(s.contains("to=nebula_https443"));
         assert!(s.contains("reason=policy"));
     }
 }

@@ -244,7 +244,7 @@ pub fn lan_direct_wins(lan_rtt_ms: Option<u32>, derp_rtt_ms: Option<u32>) -> boo
 ///
 /// **NF-8.6 (v2.5 Nebula rebuild):** the predicate itself does
 /// not change. Its call sites currently dispatch to
-/// `TransportKind::DirectUdp` + `TransportKind::DerpRelay`; once
+/// `TransportKind::NebulaDirect` + `TransportKind::NebulaLighthouseRelay`; once
 /// NF-4 renames the variants those will become
 /// `TransportKind::NebulaDirect` + `TransportKind::NebulaLighthouseRelay`
 /// (and the Https443 path becomes `TransportKind::NebulaHttps443`).

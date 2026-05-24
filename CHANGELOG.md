@@ -5,6 +5,33 @@ unreleased; tag versions get a date when they ship.
 
 ## Unreleased
 
+### v2.5 Nebula fabric — transport rename + DERP retirement (2026-05-24)
+
+* **TransportKind / EdgeKind rename (NF-4.1, NF-4.2).** The
+  Tailscale-era enum variants retire in lock-step across both
+  enums: `DirectUdp` → `NebulaDirect`, `DerpRelay` →
+  `NebulaLighthouseRelay`, `Https443` → `NebulaHttps443`.
+  `KdcTls` is unchanged. The audit-log + metric tokens follow
+  (`direct_udp` → `nebula_direct`, etc.); the preference order
+  the mesh router uses (`NebulaDirect > KdcTls >
+  NebulaLighthouseRelay > NebulaHttps443`) keeps the same
+  semantics under the new names.
+
+* **`policy.toml` token migration (NF-4.3).** Operator-edited
+  policy files written under the v2.x token names keep parsing
+  cleanly — the parser accepts both spellings, and the loader
+  rewrites the user override file in place on first boot
+  (`policy::migrate_tokens`). Read-only-filesystem failures are
+  logged + tolerated so parsing still succeeds.
+
+* **DERP integration tests retired (NF-4.4).** The
+  `tests/integration_testcontainers.rs` Headscale+Tailscale
+  happy-path E2E suite, the `docker-tests` cargo feature, and
+  the `testcontainers` optional dependency are gone. Greenfield
+  Nebula has no Tailscale containers to spin up; NF-9.x bench
+  scenarios will rebuild live-process coverage against a local
+  Nebula stack.
+
 ### v2.5 Nebula fabric — CA epoch rotation + operator surfaces (2026-05-24)
 
 * **CA epoch rotation lands (NF-2.5).** A new leader taking the

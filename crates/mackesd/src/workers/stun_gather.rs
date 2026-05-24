@@ -235,7 +235,7 @@ mod tests {
             peer_id.to_string(),
             mackes_transport::peer_path::PeerPath::initial(
                 peer_id.to_string(),
-                TransportKind::DirectUdp,
+                TransportKind::NebulaDirect,
             ),
         );
         Arc::new(RwLock::new(map))
