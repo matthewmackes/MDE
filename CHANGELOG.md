@@ -97,6 +97,86 @@ cut): a fresh Fedora 44 VM with `dnf install mde-4.0-1.fc44
 mesh in under 10 minutes total operator time. `rpm -q tailscale
 headscale tailscale-derp` returns "not installed".
 
+## Unreleased — GF-2.2.a: Gluster D-Bus surface (methods + signal interfaces)
+
+Closes the method-side of GF-2.2 from the v5.0.0 GlusterFS
+mesh-home epic. The signal-emission worker hook (GF-2.2.b)
+stays HW-gated; the methods + signal-interface declarations
++ dispatch-loop wiring all ship today.
+
+Re-audit 2026-05-24 caught the original `[HW carve-out]`
+classification as overly broad: the 8 methods are bench-
+observable via `busctl --user call`, the 5 signal
+interface declarations are introspection-observable, the
+signal dispatcher loop is unit-tested via the mpsc round-
+trip. Only the worker-hook signal-emission gate is HW-
+blocked, and that's now split out as GF-2.2.b.
+
+**New `crates/mackesd/src/ipc/gluster.rs`:**
+
+- `GlusterStatusService` exposes `dev.mackes.MDE.Gluster.
+  Status` on `/dev/mackes/MDE/Gluster/Status` via zbus 5
+  `#[interface]`.
+- Methods (all 8 land):
+  - `Status()` → JSON `StatusSnapshot {volume_name,
+    peers_count, bricks_count, total_bytes, used_bytes,
+    free_bytes, heal_pending_count, conflict_count,
+    volume_online}`.
+  - `ListPeers()` → JSON `Vec<GlusterPeerRow {uuid, host,
+    state, is_self, brick_free_bytes}>`.
+  - `AddPeer(node_id)` shells `gluster peer probe
+    <node_id>`.
+  - `RemovePeer(node_id)` shells `gluster peer detach
+    <node_id>`.
+  - `ConflictList()` returns JSON
+    `Vec<ConflictRow {gfid, kind}>` from
+    `gluster volume heal mesh-home info split-brain --xml`.
+  - `HealStatus()` returns JSON `HealStatus {pending_count,
+    in_progress_count, split_brain_count}`.
+  - `MountStatus()` returns JSON `MountStatus {is_mounted,
+    mount_point, since_unix_s}` via `findmnt --target`.
+  - `BootstrapVolume()` shells the GF-2.4 genesis create
+    + start commands; idempotent (returns
+    `already-bootstrapped` when the volume exists).
+- Every gluster shell-out wrapped in a 30s timeout so a
+  hung CLI can't pin the IPC dispatch thread; non-zero
+  exit drops to a debug-log + `None`.
+- All 5 signals declared on the `#[interface]` block
+  (`PeerStateChanged`, `ConflictDetected`, `HealCompleted`,
+  `QuotaWarning`, `VolumeReady`) so introspection sees
+  them.
+- `spawn_signal_dispatcher` pumps events from an unbounded
+  mpsc channel into the `SignalEmitter` path; the returned
+  `GlusterSignalSender` exposes a fire-and-forget `emit()`
+  for the gluster_worker to call once GF-2.2.b wires the
+  worker hook.
+- Pure-fn XML parsers (`parse_volume_info`,
+  `parse_peer_count`, `parse_peer_rows`, `parse_heal_info`,
+  `parse_conflict_rows`) are all `pub` + test-covered.
+  String-based extraction via `extract_text_between` /
+  `count_tag_occurrences` / `sum_tag_u64` — no third-party
+  XML parser dep.
+- 18 unit tests pass.
+
+**Wiring:**
+
+- `crates/mackesd/src/ipc/mod.rs` — `pub mod gluster;` +
+  `paths::GLUSTER_STATUS` constant.
+- `crates/mackesd/src/bin/mackesd.rs` — Gluster.Status
+  registered as the sixth service between Nebula.Status and
+  Shell.* on the same shared `org.mackes.mackesd`
+  connection. Signal dispatcher spawned immediately after;
+  the `_sender` is logged + discarded today (the
+  `// GF-2.2.b will plumb _sender` comment marks the
+  follow-up hook site).
+
+The GF-2.2.b follow-up gates on hooking the
+`GlusterSignalSender` into the gluster_worker's existing
+state-transition detectors. That stays HW-blocked until a
+multi-peer fleet exists to bench the signals firing on
+live state transitions; the implementation itself is
+single-peer reviewable.
+
 ## Unreleased — MON-1.b: Netdata aggregator-IP publisher worker
 
 Closes MON-1.b from the v2.6 monitoring epic. Pairs with

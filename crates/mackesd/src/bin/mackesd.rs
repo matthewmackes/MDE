@@ -2526,6 +2526,60 @@ fn run_serve(
                                 );
                             }
                         }
+                        // GF-2.2 (v5.0.0) — Gluster.Status surface on
+                        // the same shared connection so Workbench
+                        // mesh-storage / mde-files / panel applet
+                        // consumers reach it without claiming a
+                        // second bus name. Signal dispatcher spawns
+                        // immediately after registration; the
+                        // GlusterSignalSender it returns is the
+                        // hook GF-2.2.b will wire into the
+                        // gluster_worker tick.
+                        let gluster_svc = mackesd_core::ipc::gluster::GlusterStatusService::new(
+                            Arc::clone(&store),
+                        );
+                        match mackesd_core::ipc::gluster::register_gluster_status_on(
+                            &conn, gluster_svc,
+                        )
+                        .await
+                        {
+                            Ok(()) => {
+                                tracing::info!(
+                                    "Gluster.Status dbus surface registered at {}",
+                                    mackesd_core::ipc::gluster::GLUSTER_STATUS_OBJECT_PATH
+                                );
+                                match mackesd_core::ipc::gluster::spawn_signal_dispatcher(
+                                    conn.clone(),
+                                )
+                                .await
+                                {
+                                    Ok(_sender) => {
+                                        // GF-2.2.b will plumb _sender
+                                        // into GlusterWorker::with_signal_sender
+                                        // and emit on state transitions.
+                                        tracing::info!(
+                                            "Gluster signal dispatcher spawned; GF-2.2.b will wire the worker hook"
+                                        );
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!(
+                                            error = %e,
+                                            "Gluster signal dispatcher spawn failed; \
+                                             signals will not fire until next mackesd restart"
+                                        );
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    error = %e,
+                                    "Gluster.Status dbus registration failed; \
+                                     mesh-storage panel + mde-files gluster awareness \
+                                     will fall back to direct CLI shell-outs"
+                                );
+                            }
+                        }
+
                         // v4.1 (2026-05-24) — Shell.{Healthz,Workers}
                         // surface on the same shared connection.
                         // Workers list is the shared Arc<Mutex<>>

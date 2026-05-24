@@ -29,6 +29,15 @@
 
 pub mod files;
 pub mod fleet;
+// GF-2.2 (v5.0.0) — dev.mackes.MDE.Gluster.Status surface.
+// Methods: Status / ListPeers / AddPeer / RemovePeer /
+// ConflictList / HealStatus / MountStatus / BootstrapVolume.
+// Signals: PeerStateChanged / ConflictDetected /
+// HealCompleted / QuotaWarning / VolumeReady. Reads shell to
+// `gluster volume info --xml` etc.; signal emission is the
+// GF-2.2.b follow-up where the gluster_worker hooks the
+// `GlusterSignalSender` into its state-transition detectors.
+pub mod gluster;
 // NF-Bundle-0 (v2.5) — dev.mackes.MDE.Nebula.Status surface.
 // Foundation that NF-10..NF-18 desktop consumers chain on.
 // Reachable from run_serve at boot.
@@ -61,4 +70,6 @@ pub mod paths {
     pub const SESSION: &str = "/org/mackes/Session";
     /// `/org/mackes/Fleet`
     pub const FLEET: &str = "/org/mackes/Fleet";
+    /// `/dev/mackes/MDE/Gluster/Status` — GF-2.2 (v5.0.0).
+    pub const GLUSTER_STATUS: &str = "/dev/mackes/MDE/Gluster/Status";
 }
