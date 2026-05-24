@@ -241,6 +241,15 @@ pub fn lan_direct_wins(lan_rtt_ms: Option<u32>, derp_rtt_ms: Option<u32>) -> boo
 /// Returns `true` when the routing layer should spray packets to
 /// both paths + dedupe on the receive side (the 64-bit packet-ID
 /// dedupe lives one layer up in [`PacketDedupe`]).
+///
+/// **NF-8.6 (v2.5 Nebula rebuild):** the predicate itself does
+/// not change. Its call sites currently dispatch to
+/// `TransportKind::DirectUdp` + `TransportKind::DerpRelay`; once
+/// NF-4 renames the variants those will become
+/// `TransportKind::NebulaDirect` + `TransportKind::NebulaLighthouseRelay`
+/// (and the Https443 path becomes `TransportKind::NebulaHttps443`).
+/// The rename is a pure identifier swap — no semantic shift to
+/// the multipath gate.
 #[must_use]
 pub fn should_use_multipath(rtt_a_ms: u32, rtt_b_ms: u32, bw_a_bps: u64, bw_b_bps: u64) -> bool {
     const RTT_CEILING_MS: u32 = 50;

@@ -59,6 +59,19 @@ mDNS issues:
   DERP relays — check DERP RTT in Mackes → Network → Mesh VPN →
   Diagnostics.
 
+### NAT traversal on the v2.5 Nebula fabric
+
+The v2.5 rebuild retires the explicit ICE/STUN candidate-gathering
+step (Phase 12.17). Nebula uses protocol-level UDP hole-punching:
+both peers send simultaneous packets through their respective NATs
+under coordination from the lighthouse, and the resulting NAT
+mappings stay open for the lifetime of the tunnel. No separate
+STUN servers, no `stun.l.google.com` probes — the lighthouse
+handshake carries the reflexive addresses inline. Symptoms that
+used to map to "STUN gather timed out" now map to "lighthouse
+unreachable" — see Mackes → Network → Mesh VPN → Diagnostics for
+the lighthouse RTT card.
+
 ## "Mesh peer says offline but I can ping it"
 
 Mesh VPN goes through Headscale's control plane. Possible causes:

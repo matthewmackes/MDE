@@ -169,3 +169,26 @@ fires.
 Link telemetry lands in `topology_link_health` every 30 seconds
 per 12.6.2. If a peer's metrics haven't moved in > 2 minutes, its
 local prober is stuck — restart `mackesd` on that peer.
+
+### What if my mesh can't reach the internet over UDP
+
+Some corporate / hotel / captive-portal networks block outbound
+UDP entirely while leaving TCP/443 open. On the v2.5 Nebula
+fabric, the explicit `Https443` transport (Phase 12.18) has been
+**rerouted to the Nebula lighthouse-relay tunnel introduced in
+NF-1**: the lighthouse runs a TLS-wrapped TCP/443 listener and
+relays UDP-style Nebula frames over it whenever a peer's
+direct-UDP and lighthouse-UDP paths both fail.
+
+Operator-side that means:
+
+- No separate `mde-https-fallback` daemon to enable. The
+  lighthouse handles it; peers fail over automatically once the
+  router worker's HTTPS-fallback state machine fires (same
+  policy thresholds as the legacy 12.18 path — 3 consecutive
+  direct-UDP + lighthouse-UDP failures).
+- The `MDE_HTTPS_FALLBACK_HOST` env var is replaced by the
+  lighthouse's `nebula.https_relay.host` config key; the v2.5
+  migration tool copies the old value over on first boot.
+- Diagnostics: `mackesd healthz | jq .transport.active` now
+  reports `nebula_https443` instead of the legacy `https_443`.
