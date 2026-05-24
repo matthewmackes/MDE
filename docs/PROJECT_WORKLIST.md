@@ -10190,14 +10190,27 @@ Last updated: 2026-05-21 — Claude Opus 4.7 (50-question lock survey
 > body). A single electric-indigo accent. No decoration without
 > purpose; no shadow without altitude; no motion without meaning.*
 
-- [!] **UX-PRE: Iced 0.13 → 0.14 workspace bump — v2.2 prereq, BLOCKED on transitive-dep + toolchain fix (probe attempted 2026-05-21)** —
-  Probe attempt with `mde-logout-dialog` pinned to `iced = "0.14"`
-  pulled in `softbuffer 0.4.8` via tiny-skia, which fails to
-  compile on Rust 1.95 (cargo 1.95.0 on Fedora 44). softbuffer's
-  `backend_dispatch::BufferDispatch` enum has a `match self { }`
-  that newer rustc treats as non-exhaustive (E0004; "references
-  are always considered inhabited"). Pinning back to 0.13 to
-  unblock the rest of the iteration. Fix paths:
+- [!] **UX-PRE: Iced 0.13 → 0.14 workspace bump — v2.2 prereq, BLOCKED on toolchain pin landing + operator action (re-probe 2026-05-23 confirmed same blockers; toolchain pin lifted to 1.94 this commit)** —
+  Re-probe 2026-05-23 against `iced = "0.14"` +
+  `iced_layershell = "0.18.1"` (the latest combo on crates.io):
+  - **softbuffer 0.4.8** still fails compile under Rust 1.95 with
+    the same `BufferDispatch` non-exhaustive-match error
+    (E0004) the 2026-05-21 probe hit. Confirmed by re-running
+    `cargo check` against a minimal iced 0.14 fixture.
+  - Dropping the `tiny-skia` feature (to skip softbuffer) hits
+    a second wall: `winit 0.30.13` compile_error!s with
+    "The platform you're compiling for is not supported by winit"
+    because iced 0.14 doesn't pass through the `wayland` /
+    `x11` cfg features winit needs to pick a backend.
+  Toolchain pin updated this commit (`rust-toolchain.toml`
+  1.95.0 → 1.94.0) per operator answer 2026-05-23 — 1.94 is
+  the last toolchain that still compiles softbuffer 0.4.8
+  cleanly. Operator action required for the pin to take effect
+  on dev machines: install rustup (`curl ... | sh`); the pin is
+  consumed by rustup, not by Fedora's stock `cargo` shim. Once
+  rustup is in place, re-probe with the iced 0.14 fixture +
+  patch winit feature pass-through if it surfaces again.
+  Original fix paths still apply:
   (a) wait for upstream `softbuffer` to ship 0.4.9+ with the
   match-arm fix;
   (b) pin `softbuffer = "= 0.4.7"` workspace-wide if Iced 0.14
