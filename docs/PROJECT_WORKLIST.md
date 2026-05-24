@@ -426,13 +426,16 @@ locked work appears under **Active** with `[ ] Open`.
   bundle's `(overlay_ip, external_addr)` tuples. Atomic via
   per-file temp + rename so a peer reading the dir during
   the write never sees a half-written file.
-- [ ] **NF-3.5: Config-file writer** —
-  `nebula_supervisor::materialize_config(bundle, role)` writes
-  `/etc/nebula/{config.yaml, ca.crt, host.crt, host.key}` atomically
-  (temp + fsync + rename). YAML includes:
-  `lighthouse.hosts` from bundle roster, `static_host_map`
-  seeded from LAN-discovery RTT cache (12.14 lives on as the
-  feeder), `listen.port: 4242`, `tun.dev: nebula1`.
+- [✓] **NF-3.5: Config-file writer retired duplicate (2026-05-24)** —
+  This entry was a stale earlier draft of the NF-3.5 task
+  above (line 419) which shipped alongside NF-3.4. The
+  `materialize_config` / `render_config_yaml` /
+  `render_lighthouse_config_yaml` helpers ship in
+  `crates/mackesd/src/workers/nebula_supervisor.rs` and are
+  invoked from the supervisor's reconcile loop. No new work
+  to do — the audit on 2026-05-24 confirmed both helper
+  shipping and runtime reachability (NebulaSupervisor is
+  spawned in run_serve at mackesd.rs:1592).
 - [ ] **NF-3.6: D-Bus surface for `mded enroll`** —
   `dev.mackes.MDE.Nebula.{Enroll, Status, RegenCerts}` methods.
   Polkit policy gates Enroll behind the existing

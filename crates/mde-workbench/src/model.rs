@@ -243,6 +243,14 @@ pub fn nav_model() -> Vec<NavEntry> {
                 Panel::new("mesh_ssh", "Mesh SSH"),
                 Panel::new("mesh_topology", "Mesh Topology"),
                 Panel::new("mesh_services", "Mesh Services"),
+                // NF-13.8 (v2.5) — service-publishing surface
+                // pairs naturally with Mesh Services. Best-choice
+                // deviation from the worklist note that put this
+                // under Fleet: Fleet is for cluster-wide ops,
+                // Network is where every mesh_* panel lives, and
+                // the operator looks for "what this peer publishes"
+                // alongside "what daemons are running".
+                Panel::new("service_publishing", "Service Publishing"),
                 Panel::new("vpn", "VPN"),
                 Panel::new("firewall", "Firewall"),
                 Panel::new("remote_desktop", "Remote Desktop"),

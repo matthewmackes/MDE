@@ -40,6 +40,7 @@ pub mod removable;
 pub mod repair;
 pub mod resources;
 pub mod run_history;
+pub mod service_publishing;
 pub mod session;
 pub mod snapshots;
 pub mod sound;

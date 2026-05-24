@@ -36,7 +36,8 @@ use crate::panels::{
     playbooks as playbooks_panel, power as power_panel,
     printers as printers_panel, remote_desktop as remote_desktop_panel,
     removable as removable_panel, repair as repair_panel,
-    resources as resources_panel, run_history as run_history_panel, session as session_panel,
+    resources as resources_panel, run_history as run_history_panel,
+    service_publishing as service_publishing_panel, session as session_panel,
     snapshots as snapshots_panel, sound as sound_panel,
     sync_status as sync_status_panel, system_update as system_update_panel,
     themes as themes_panel, vpn as vpn_panel, wallpaper as wallpaper_panel, wifi as wifi_panel,
@@ -165,6 +166,8 @@ pub enum Message {
     MeshControl(mesh_control_panel::Message),
     MeshPending(mesh_pending_panel::Message),
     MeshServices(mesh_services_panel::Message),
+    /// NF-13.8 — Network → Service Publishing sub-message.
+    ServicePublishing(service_publishing_panel::Message),
     MeshTopology(mesh_topology_panel::Message),
     PanelApps(panel_apps_panel::Message),
     RemoteDesktop(remote_desktop_panel::Message),
@@ -241,6 +244,8 @@ pub struct App {
     mesh_control: mesh_control_panel::MeshControlPanel,
     mesh_pending: mesh_pending_panel::MeshPendingPanel,
     mesh_services: mesh_services_panel::MeshServicesPanel,
+    /// NF-13.8 — Network → Service Publishing panel state.
+    service_publishing: service_publishing_panel::ServicePublishingPanel,
     mesh_topology: mesh_topology_panel::MeshTopologyPanel,
     panel_apps: panel_apps_panel::PanelAppsPanel,
     remote_desktop: remote_desktop_panel::RemoteDesktopPanel,
@@ -333,6 +338,7 @@ impl App {
             mesh_control: mesh_control_panel::MeshControlPanel::new(),
             mesh_pending: mesh_pending_panel::MeshPendingPanel::new(),
             mesh_services: mesh_services_panel::MeshServicesPanel::new(),
+            service_publishing: service_publishing_panel::ServicePublishingPanel::new(),
             mesh_topology: mesh_topology_panel::MeshTopologyPanel::new(),
             panel_apps: panel_apps_panel::PanelAppsPanel::new(),
             remote_desktop: remote_desktop_panel::RemoteDesktopPanel::new(),
@@ -682,6 +688,7 @@ impl App {
             Message::MeshControl(msg) => self.mesh_control.update(msg),
             Message::MeshPending(msg) => self.mesh_pending.update(msg),
             Message::MeshServices(msg) => self.mesh_services.update(msg),
+            Message::ServicePublishing(msg) => self.service_publishing.update(msg),
             Message::MeshTopology(msg) => self.mesh_topology.update(msg),
             Message::PanelApps(msg) => self.panel_apps.update(msg),
             Message::RemoteDesktop(msg) => self.remote_desktop.update(msg),
@@ -762,6 +769,13 @@ impl App {
             (Group::Network, "mesh_topology") => mesh_topology_panel::MeshTopologyPanel::load(),
             // v4.0.1 WB-2.j — same pattern for mesh services.
             (Group::Network, "mesh_services") => mesh_services_panel::MeshServicesPanel::load(),
+            // NF-13.8 (v2.5) — shell-out to
+            // mackes.mesh_nebula.published_services_summary
+            // for the 7 canonical services + per-row overlay
+            // bind state.
+            (Group::Network, "service_publishing") => {
+                service_publishing_panel::ServicePublishingPanel::load()
+            }
             // v4.0.1 WB-2.l — load cached peer-macs.json on
             // first nav so the known-hosts table is populated.
             (Group::Network, "remote_desktop") => remote_desktop_panel::RemoteDesktopPanel::load(),
@@ -1051,12 +1065,21 @@ impl App {
             } => self.mesh_topology.view(),
             // v4.0.1 WB-2.j (2026-05-23) — Network → Mesh
             // Services renders systemctl status + start/stop/
-            // restart for the mesh-fabric daemons (tailscaled,
-            // headscale, caddy, mackesd).
+            // restart for the mesh-fabric daemons. v2.5 NF-5.4
+            // (2026-05-24) swapped the set to nebula /
+            // nebula-lighthouse / mackes-nebula-https-tunnel /
+            // mackesd.
             View::Panel {
                 group: Group::Network,
                 panel: "mesh_services",
             } => self.mesh_services.view(),
+            // NF-13.8 (v2.5) — Network → Service Publishing
+            // renders the 7 canonical Nebula-published services
+            // with overlay-bind status pills.
+            View::Panel {
+                group: Group::Network,
+                panel: "service_publishing",
+            } => self.service_publishing.view(),
             // v4.0.1 WB-2.l (2026-05-23) — Network → Remote
             // Desktop renders cached peer-macs.json hosts +
             // per-host RDP/VNC launch buttons + a manual-entry
