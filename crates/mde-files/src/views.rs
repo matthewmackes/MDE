@@ -1005,11 +1005,18 @@ pub fn mesh_home<'a>(snap: &'a BackendSnapshot) -> Element<'a, Message> {
 /// `LocalFsBackend` path) — once GlusterFS is FUSE-mounted at
 /// the XDG dirs the listing is the same disk read but the
 /// content reflects mesh-replicated state.
+///
+/// AF-mesh.3 — subdirectory navigation. When `path` is non-
+/// empty the page shows a parent-link affordance ("↑ <prev>")
+/// and folder rows render as clickable buttons that dispatch
+/// `Message::MeshFolderEnter`. File rows stay non-clickable;
+/// future commits add per-file actions.
 pub fn mesh_home_child<'a>(
     slug: &'a str,
     files: Vec<FileRow>,
     search: &'a str,
     _layout: Layout,
+    path: &'a [String],
 ) -> Element<'a, Message> {
     let label = crate::app::mesh_home_label(slug);
     let filtered: Vec<FileRow> = if search::is_active(search) {
@@ -1018,19 +1025,45 @@ pub fn mesh_home_child<'a>(
         files
     };
     let count = filtered.len();
-    let banner_widget = banner(
-        icons::FOLDER,
-        format!("Mesh Home · {label}"),
+    let sub = path.join("/");
+    let banner_subtitle = if path.is_empty() {
         format!(
             "{count} item{plural} · mesh-replicated via GlusterFS",
             plural = if count == 1 { "" } else { "s" }
-        ),
+        )
+    } else {
+        format!(
+            "{count} item{plural} · ~/{label}/{sub}",
+            plural = if count == 1 { "" } else { "s" }
+        )
+    };
+    let banner_title = if path.is_empty() {
+        format!("Mesh Home · {label}")
+    } else {
+        format!("Mesh Home · {label}/{sub}")
+    };
+    let banner_widget = banner(
+        icons::FOLDER,
+        banner_title,
+        banner_subtitle,
         vec![BannerStat::new(count.to_string(), "Items")],
     );
 
     let mut list = column![file_row_head("Modified")];
+    // Parent-link row when descended at least one level.
+    if !path.is_empty() {
+        list = list.push(parent_link_row());
+    }
     for f in filtered {
-        list = list.push(file_row(f, false));
+        let is_folder = f.name.ends_with('/') || matches!(f.mime, crate::model::Mime::Folder);
+        if is_folder {
+            // Clickable folder row. Strip trailing `/` for the
+            // message payload so the reducer compares clean
+            // names against the path stack.
+            list = list.push(folder_row_button(f));
+        } else {
+            list = list.push(file_row(f, false));
+        }
     }
 
     column![
@@ -1039,6 +1072,60 @@ pub fn mesh_home_child<'a>(
         list.spacing(0),
     ]
     .spacing(0)
+    .into()
+}
+
+/// Parent-link row for nested Mesh Home navigation. Mirrors the
+/// shape of `file_row` so the list looks continuous; clicking
+/// dispatches `Message::MeshFolderUp`.
+fn parent_link_row() -> Element<'static, Message> {
+    button(
+        container(
+            row![
+                icon(icons::ARROW_LEFT, 14.0, t::FG_DIM),
+                Space::with_width(Length::Fixed(8.0)),
+                text("..").size(12).color(t::FG_DIM),
+                Space::with_width(Length::Fill),
+                text("parent folder").size(10).color(t::FG_FAINT),
+            ]
+            .align_y(iced::alignment::Vertical::Center),
+        )
+        .padding(Padding::from([6.0, 12.0]))
+        .width(Length::Fill),
+    )
+    .padding(0)
+    .style(|_, _| ghost_button_style())
+    .on_press(Message::MeshFolderUp)
+    .into()
+}
+
+/// Clickable folder row used inside `mesh_home_child`. Renders
+/// the same shape as `file_row` but the whole row is a button
+/// that dispatches `Message::MeshFolderEnter(name)`.
+fn folder_row_button(f: FileRow) -> Element<'static, Message> {
+    let name_payload = f.name.clone();
+    let display = f.name.trim_end_matches('/').to_owned();
+    let summary = f.size.clone();
+    let age = f.age.clone();
+    button(
+        container(
+            row![
+                icon(icons::FOLDER, 14.0, t::ACCENT),
+                Space::with_width(Length::Fixed(8.0)),
+                text(format!("{display}/")).size(12).color(t::FG),
+                Space::with_width(Length::Fill),
+                text(summary).size(11).color(t::FG_FAINT),
+                Space::with_width(Length::Fixed(14.0)),
+                text(age).size(11).color(t::FG_FAINT),
+            ]
+            .align_y(iced::alignment::Vertical::Center),
+        )
+        .padding(Padding::from([6.0, 12.0]))
+        .width(Length::Fill),
+    )
+    .padding(0)
+    .style(|_, _| ghost_button_style())
+    .on_press(Message::MeshFolderEnter(name_payload))
     .into()
 }
 

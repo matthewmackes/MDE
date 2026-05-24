@@ -482,6 +482,11 @@ impl LocalFsBackend {
     ///   * `"downloads"` → `$HOME/Downloads`.
     ///   * `"local:<slug>"` — a `LocalPin` id mapped to its real
     ///     path under `$HOME`.
+    ///   * `"local:<slug>/<subpath>"` — a pin id followed by
+    ///     a nested subdirectory (AF-mesh.3 subdir navigation).
+    ///     Path-safety: any `..` segment in the subpath aborts the
+    ///     resolve so the manager can never accidentally escape
+    ///     the XDG root the operator clicked into.
     ///   * any other relative path — treated relative to `$HOME`.
     fn resolve(&self, path: &str) -> Option<PathBuf> {
         let trimmed = path.trim_start_matches('/');
@@ -491,17 +496,39 @@ impl LocalFsBackend {
         if trimmed == "downloads" {
             return Some(self.home.join("Downloads"));
         }
-        if let Some(slug) = trimmed.strip_prefix("local:") {
-            return Some(match slug {
+        if let Some(rest) = trimmed.strip_prefix("local:") {
+            // Split `<slug>` from the optional `/<subpath>` tail.
+            let (slug, sub) = match rest.find('/') {
+                Some(pos) => (&rest[..pos], &rest[pos + 1..]),
+                None => (rest, ""),
+            };
+            let base = match slug {
                 "home" => self.home.clone(),
                 "docs" => self.home.join("Documents"),
                 "pics" => self.home.join("Pictures"),
                 "music" => self.home.join("Music"),
                 "videos" => self.home.join("Videos"),
                 "code" => self.home.join("code"),
+                "downloads" => self.home.join("Downloads"),
                 "root" => PathBuf::from("/"),
                 _ => return None,
-            });
+            };
+            if sub.is_empty() {
+                return Some(base);
+            }
+            // Path-safety: reject `..` segments outright. Empty
+            // segments (from a stray `//`) get skipped silently.
+            let mut joined = base;
+            for segment in sub.split('/') {
+                if segment.is_empty() {
+                    continue;
+                }
+                if segment == ".." || segment.contains('\0') {
+                    return None;
+                }
+                joined.push(segment);
+            }
+            return Some(joined);
         }
         // Already-absolute paths stay as-is; relative paths land
         // under $HOME so the app can never accidentally browse
@@ -1066,6 +1093,50 @@ mod tests {
     fn local_fs_backend_unknown_local_slug_returns_empty() {
         let b = LocalFsBackend::new();
         assert!(b.list("local:does-not-exist").is_empty());
+    }
+
+    #[test]
+    fn local_fs_backend_resolves_subpath_under_slug() {
+        let b = LocalFsBackend::new();
+        let p = b.resolve("local:docs/Projects/MDE").expect("resolves");
+        assert!(p.ends_with("Documents/Projects/MDE"));
+    }
+
+    #[test]
+    fn local_fs_backend_resolves_subpath_skips_double_slashes() {
+        let b = LocalFsBackend::new();
+        let p = b.resolve("local:docs//foo/bar").expect("resolves");
+        assert!(p.ends_with("Documents/foo/bar"));
+    }
+
+    #[test]
+    fn local_fs_backend_rejects_parent_traversal_in_subpath() {
+        let b = LocalFsBackend::new();
+        assert!(b.resolve("local:docs/..").is_none());
+        assert!(b.resolve("local:docs/a/../etc").is_none());
+    }
+
+    #[test]
+    fn local_fs_backend_rejects_null_byte_in_subpath() {
+        let b = LocalFsBackend::new();
+        assert!(b.resolve("local:docs/a\0b").is_none());
+    }
+
+    #[test]
+    fn local_fs_backend_root_slug_with_subpath() {
+        let b = LocalFsBackend::new();
+        let p = b.resolve("local:root/etc/hostname").expect("resolves");
+        assert_eq!(p, std::path::PathBuf::from("/etc/hostname"));
+    }
+
+    #[test]
+    fn local_fs_backend_downloads_slug_with_subpath() {
+        let b = LocalFsBackend::new();
+        // New `downloads` slug under `local:` (AF-mesh.3 added).
+        let p = b
+            .resolve("local:downloads/incoming")
+            .expect("resolves downloads");
+        assert!(p.ends_with("Downloads/incoming"));
     }
 
     #[test]

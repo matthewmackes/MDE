@@ -99,6 +99,19 @@ pub enum Message {
     /// No-op message used by buttons that don't have a wired behaviour yet
     /// (e.g. the sidebar's panel-toggle, the peer card's `…` button).
     Noop,
+    /// AF-mesh.3 (2026-05-24) — operator clicked into a sub-
+    /// directory inside `View::MeshHomeChild`. The name is the
+    /// row label (without the trailing `/` the renderer adds for
+    /// folders). Pushes onto the path stack so the breadcrumb
+    /// + the next backend list call reflect the descent.
+    MeshFolderEnter(String),
+    /// AF-mesh.3 — pop back up one level inside Mesh Home. Used
+    /// by the toolbar back button + the parent-link breadcrumb
+    /// click.
+    MeshFolderUp,
+    /// AF-mesh.3 — pop back to a specific depth (used by
+    /// breadcrumb mid-segment clicks). 0 = the slug root.
+    MeshFolderPop(usize),
 }
 
 /// Breadcrumb segment used by the toolbar.
@@ -128,6 +141,12 @@ pub struct MdeFiles {
     pub local_open: bool,
     pub layout: Layout,
     pub search: String,
+    /// AF-mesh.3 — path stack inside `View::MeshHomeChild(slug)`.
+    /// Empty = top of the XDG dir. Each entry is a single
+    /// subdirectory name. Cleared whenever the active slug
+    /// changes so the stack never carries stale state across
+    /// dirs.
+    pub mesh_home_path: Vec<String>,
     /// v2.0.0 Phase 1.3 — row selection state (focus + anchor +
     /// selected set). Cleared on view change.
     pub selection: Selection,
@@ -201,6 +220,7 @@ impl Default for MdeFiles {
             local_open: false,
             layout: Layout::default(),
             search: String::new(),
+            mesh_home_path: Vec::new(),
             selection: Selection::default(),
             details: DetailsPanel::default(),
             context_menu: ContextMenu::default(),
@@ -255,6 +275,17 @@ impl MdeFiles {
         match msg {
             Message::SelectView(v) => {
                 let is_local = matches!(v, View::Local);
+                // AF-mesh.3 — clear the path stack whenever we
+                // leave a MeshHomeChild OR switch to a different
+                // slug. Entering MeshHomeChild from the parent
+                // implicitly starts at the slug root.
+                let drop_path = match (&self.view, &v) {
+                    (View::MeshHomeChild(a), View::MeshHomeChild(b)) => a != b,
+                    _ => !matches!(v, View::MeshHomeChild(_)),
+                };
+                if drop_path {
+                    self.mesh_home_path.clear();
+                }
                 self.view = v;
                 if !is_local {
                     self.local_open = false;
@@ -263,6 +294,34 @@ impl MdeFiles {
                 // navigation so stale row keys don't leak across
                 // peer folders.
                 self.selection.clear();
+            }
+            Message::MeshFolderEnter(name) => {
+                if matches!(self.view, View::MeshHomeChild(_)) {
+                    // Strip the trailing `/` the renderer adds
+                    // for folders. Reject empty + `..` segments
+                    // so the path stack stays canonical.
+                    let clean = name.trim_end_matches('/').to_owned();
+                    if !clean.is_empty() && clean != ".." && !clean.contains('/') {
+                        self.mesh_home_path.push(clean);
+                        self.selection.clear();
+                    }
+                }
+            }
+            Message::MeshFolderUp => {
+                if matches!(self.view, View::MeshHomeChild(_))
+                    && !self.mesh_home_path.is_empty()
+                {
+                    self.mesh_home_path.pop();
+                    self.selection.clear();
+                }
+            }
+            Message::MeshFolderPop(depth) => {
+                if matches!(self.view, View::MeshHomeChild(_))
+                    && depth < self.mesh_home_path.len()
+                {
+                    self.mesh_home_path.truncate(depth);
+                    self.selection.clear();
+                }
             }
             Message::ToggleLocal => {
                 self.local_open = !self.local_open;
@@ -394,14 +453,21 @@ impl MdeFiles {
         self.snapshot = BackendSnapshot::capture(&*self.backend);
         self.peer_files = match &self.view {
             View::Peer(id) => self.backend.list(&format!("peer:{id}")),
-            View::MeshHomeChild(slug) => self.backend.list(&format!("local:{slug}")),
+            View::MeshHomeChild(slug) => {
+                let mut p = format!("local:{slug}");
+                for seg in &self.mesh_home_path {
+                    p.push('/');
+                    p.push_str(seg);
+                }
+                self.backend.list(&p)
+            }
             _ => Vec::new(),
         };
     }
 
     /// Top-level view tree.
     pub fn view(&self) -> Element<'_, Message> {
-        let crumbs = breadcrumbs_for(&self.view);
+        let crumbs = breadcrumbs_for_with_path(&self.view, &self.mesh_home_path);
         let snap = &self.snapshot;
 
         let main_body: Element<'_, Message> = match &self.view {
@@ -428,6 +494,7 @@ impl MdeFiles {
                 self.peer_files.clone(),
                 &self.search,
                 self.layout,
+                &self.mesh_home_path,
             ),
         };
 
@@ -491,6 +558,42 @@ impl MdeFiles {
             })
             .into()
     }
+}
+
+/// AF-mesh.3 — path-aware breadcrumb builder. Identical to
+/// `breadcrumbs_for` except for `MeshHomeChild`, where each
+/// element of `path` becomes its own crumb between the dir-name
+/// crumb and the leaf.
+pub fn breadcrumbs_for_with_path(view: &View, path: &[String]) -> Vec<Crumb> {
+    if let View::MeshHomeChild(slug) = view {
+        let mut out = vec![
+            Crumb {
+                label: "Mesh".into(),
+                mesh: true,
+            },
+            Crumb {
+                label: "Home".into(),
+                mesh: true,
+            },
+            Crumb {
+                label: mesh_home_label(slug).into(),
+                mesh: true,
+            },
+        ];
+        for seg in path {
+            out.push(Crumb {
+                label: seg.clone(),
+                mesh: true,
+            });
+        }
+        // Mark the final crumb as leaf (mesh: false) so the
+        // styling matches the other leaf crumbs.
+        if let Some(last) = out.last_mut() {
+            last.mesh = false;
+        }
+        return out;
+    }
+    breadcrumbs_for(view)
 }
 
 fn breadcrumbs_for(view: &View) -> Vec<Crumb> {
@@ -958,5 +1061,101 @@ mod tests {
         let c = breadcrumbs_for(&View::MeshHomeChild("docs".into()));
         assert_eq!(c.len(), 3);
         assert_eq!(c[2].label, "Documents");
+    }
+
+    #[test]
+    fn mesh_folder_enter_pushes_onto_path_stack() {
+        let mut s = MdeFiles::default();
+        let _ = s.update(Message::SelectView(View::MeshHomeChild("docs".into())));
+        let _ = s.update(Message::MeshFolderEnter("Projects/".into()));
+        assert_eq!(s.mesh_home_path, vec!["Projects".to_string()]);
+        let _ = s.update(Message::MeshFolderEnter("MDE".into()));
+        assert_eq!(
+            s.mesh_home_path,
+            vec!["Projects".to_string(), "MDE".to_string()]
+        );
+    }
+
+    #[test]
+    fn mesh_folder_enter_outside_mesh_home_child_is_noop() {
+        let mut s = MdeFiles::default();
+        // Default view is MeshOverview, not MeshHomeChild.
+        let _ = s.update(Message::MeshFolderEnter("anywhere".into()));
+        assert!(s.mesh_home_path.is_empty());
+    }
+
+    #[test]
+    fn mesh_folder_enter_rejects_path_separators() {
+        let mut s = MdeFiles::default();
+        let _ = s.update(Message::SelectView(View::MeshHomeChild("docs".into())));
+        // Reject anything that smells like an escape attempt.
+        let _ = s.update(Message::MeshFolderEnter("..".into()));
+        let _ = s.update(Message::MeshFolderEnter("a/b".into()));
+        let _ = s.update(Message::MeshFolderEnter("".into()));
+        assert!(s.mesh_home_path.is_empty());
+    }
+
+    #[test]
+    fn mesh_folder_up_pops_one_level() {
+        let mut s = MdeFiles::default();
+        let _ = s.update(Message::SelectView(View::MeshHomeChild("docs".into())));
+        let _ = s.update(Message::MeshFolderEnter("a".into()));
+        let _ = s.update(Message::MeshFolderEnter("b".into()));
+        let _ = s.update(Message::MeshFolderUp);
+        assert_eq!(s.mesh_home_path, vec!["a".to_string()]);
+    }
+
+    #[test]
+    fn mesh_folder_up_at_root_is_noop() {
+        let mut s = MdeFiles::default();
+        let _ = s.update(Message::SelectView(View::MeshHomeChild("docs".into())));
+        let _ = s.update(Message::MeshFolderUp);
+        assert!(s.mesh_home_path.is_empty());
+    }
+
+    #[test]
+    fn mesh_folder_pop_truncates_to_depth() {
+        let mut s = MdeFiles::default();
+        let _ = s.update(Message::SelectView(View::MeshHomeChild("docs".into())));
+        let _ = s.update(Message::MeshFolderEnter("a".into()));
+        let _ = s.update(Message::MeshFolderEnter("b".into()));
+        let _ = s.update(Message::MeshFolderEnter("c".into()));
+        let _ = s.update(Message::MeshFolderPop(1));
+        assert_eq!(s.mesh_home_path, vec!["a".to_string()]);
+    }
+
+    #[test]
+    fn changing_slug_clears_path_stack() {
+        let mut s = MdeFiles::default();
+        let _ = s.update(Message::SelectView(View::MeshHomeChild("docs".into())));
+        let _ = s.update(Message::MeshFolderEnter("a".into()));
+        let _ = s.update(Message::SelectView(View::MeshHomeChild("pics".into())));
+        assert!(
+            s.mesh_home_path.is_empty(),
+            "path must reset when slug changes"
+        );
+    }
+
+    #[test]
+    fn leaving_mesh_home_child_clears_path_stack() {
+        let mut s = MdeFiles::default();
+        let _ = s.update(Message::SelectView(View::MeshHomeChild("docs".into())));
+        let _ = s.update(Message::MeshFolderEnter("a".into()));
+        let _ = s.update(Message::SelectView(View::MeshOverview));
+        assert!(s.mesh_home_path.is_empty());
+    }
+
+    #[test]
+    fn breadcrumbs_with_path_lists_each_segment() {
+        let path = vec!["Projects".to_string(), "MDE".to_string()];
+        let c = breadcrumbs_for_with_path(&View::MeshHomeChild("docs".into()), &path);
+        assert_eq!(c.len(), 5);
+        assert_eq!(c[0].label, "Mesh");
+        assert_eq!(c[1].label, "Home");
+        assert_eq!(c[2].label, "Documents");
+        assert_eq!(c[3].label, "Projects");
+        assert_eq!(c[4].label, "MDE");
+        // The leaf crumb is rendered without the mesh tint.
+        assert!(!c[4].mesh);
     }
 }
