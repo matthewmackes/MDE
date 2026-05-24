@@ -41,6 +41,16 @@ pub const DEFAULT_TICK_INTERVAL: Duration = Duration::from_secs(5);
 /// units.
 pub const DEFAULT_ROLE_HOST_MARKER: &str = "/var/lib/mackesd/nebula/role.host";
 
+/// GF-1.3.a (v5.0.0) — plain-text file containing the local
+/// peer's Nebula overlay IP, written by the supervisor on
+/// every `refresh_config` once a signed bundle is in place.
+/// Consumed by downstream services that need to bind to the
+/// overlay address without speaking the full bundle JSON
+/// (notably `mackes-glusterd-nebula-bind.service` in GF-1.3.b
+/// which rewrites `/etc/glusterfs/glusterd.vol` so glusterd
+/// listens on the overlay rather than the public underlay).
+pub const DEFAULT_OVERLAY_IP_PATH: &str = "/var/lib/mackesd/nebula/overlay-ip";
+
 /// Worker handle. Holds the shared store (so CA mint can
 /// query / insert) + the bundle-watch state.
 pub struct NebulaSupervisor {
@@ -50,6 +60,7 @@ pub struct NebulaSupervisor {
     bundle_path: PathBuf,
     role_marker_path: PathBuf,
     config_dir: PathBuf,
+    overlay_ip_path: PathBuf,
     tick_interval: Duration,
     /// Cached bundle mtime so a change triggers a re-write.
     last_bundle_mtime: Option<SystemTime>,
@@ -77,6 +88,7 @@ impl NebulaSupervisor {
             bundle_path,
             role_marker_path: PathBuf::from(DEFAULT_ROLE_HOST_MARKER),
             config_dir: PathBuf::from("/etc/nebula"),
+            overlay_ip_path: PathBuf::from(DEFAULT_OVERLAY_IP_PATH),
             tick_interval: DEFAULT_TICK_INTERVAL,
             last_bundle_mtime: None,
             last_is_leader: false,
@@ -95,6 +107,14 @@ impl NebulaSupervisor {
     #[must_use]
     pub fn with_config_dir(mut self, path: PathBuf) -> Self {
         self.config_dir = path;
+        self
+    }
+
+    /// GF-1.3.a — override the overlay-ip publish path. Tests
+    /// that don't run as root point this at a tempdir.
+    #[must_use]
+    pub fn with_overlay_ip_path(mut self, path: PathBuf) -> Self {
+        self.overlay_ip_path = path;
         self
     }
 
@@ -193,6 +213,20 @@ impl NebulaSupervisor {
             ConfigRole::Peer
         };
         materialize_config(&self.config_dir, &bundle, role)?;
+        // GF-1.3.a — publish the overlay IP so downstream
+        // services (notably mackes-glusterd-nebula-bind in
+        // GF-1.3.b) can rewrite their bind config without
+        // re-parsing the full NebulaBundle JSON. Best-effort —
+        // a publish failure is logged but doesn't abort the
+        // Nebula-config refresh (the daemon itself still has
+        // a valid /etc/nebula tree).
+        if let Err(e) = publish_overlay_ip(&self.overlay_ip_path, &bundle.overlay_ip) {
+            tracing::warn!(
+                error = %e,
+                path = %self.overlay_ip_path.display(),
+                "nebula-supervisor: publishing overlay-ip failed",
+            );
+        }
         let _ = systemctl_reload("nebula.service");
         if self.last_is_leader {
             let _ = systemctl_reload("nebula-lighthouse.service");
@@ -336,6 +370,33 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
         path.extension().and_then(|s| s.to_str()).unwrap_or("")
     ));
     std::fs::write(&tmp, bytes).map_err(|e| format!("write tmp {}: {e}", tmp.display()))?;
+    std::fs::rename(&tmp, path)
+        .map_err(|e| format!("rename {} → {}: {e}", tmp.display(), path.display()))
+}
+
+/// GF-1.3.a — atomic-write the plain-text overlay IP file.
+/// Creates parent dirs if missing. Idempotent: a re-write of
+/// the same IP still bumps mtime, but the bytes match so
+/// downstream mtime-gate consumers can use a byte-compare to
+/// skip the reload step.
+///
+/// Exposed at module scope so the gluster bind helper (and
+/// future consumers) have a single shared path constant +
+/// writer signature to lean on.
+///
+/// # Errors
+///
+/// Returns the formatted error string from the underlying
+/// `std::fs` call when directory creation or rename fails.
+pub fn publish_overlay_ip(path: &Path, overlay_ip: &str) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("mkdir {}: {e}", parent.display()))?;
+    }
+    let body = format!("{overlay_ip}\n");
+    let tmp = path.with_extension("ip.tmp");
+    std::fs::write(&tmp, body.as_bytes())
+        .map_err(|e| format!("write tmp {}: {e}", tmp.display()))?;
     std::fs::rename(&tmp, path)
         .map_err(|e| format!("rename {} → {}: {e}", tmp.display(), path.display()))
 }
@@ -519,5 +580,58 @@ mod tests {
         write_atomic(&path, b"body").expect("write");
         let tmp_path = path.with_extension("yaml.tmp");
         assert!(!tmp_path.exists());
+    }
+
+    // GF-1.3.a — overlay-ip publisher.
+
+    #[test]
+    fn publish_overlay_ip_creates_parent_dir_and_writes_ip() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("var/lib/mackesd/nebula/overlay-ip");
+        publish_overlay_ip(&path, "10.42.0.5").expect("publish");
+        assert!(path.exists());
+        let body = std::fs::read_to_string(&path).expect("read");
+        assert_eq!(body, "10.42.0.5\n");
+    }
+
+    #[test]
+    fn publish_overlay_ip_overwrites_existing_file() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("overlay-ip");
+        publish_overlay_ip(&path, "10.42.0.5").expect("first");
+        publish_overlay_ip(&path, "10.42.0.7").expect("second");
+        let body = std::fs::read_to_string(&path).expect("read");
+        assert_eq!(body, "10.42.0.7\n");
+    }
+
+    #[test]
+    fn publish_overlay_ip_leaves_no_tempfile_on_success() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("overlay-ip");
+        publish_overlay_ip(&path, "10.42.0.5").expect("publish");
+        let tmp_path = path.with_extension("ip.tmp");
+        assert!(
+            !tmp_path.exists(),
+            "tempfile {} should have been renamed away",
+            tmp_path.display()
+        );
+    }
+
+    #[test]
+    fn publish_overlay_ip_handles_ipv6_format() {
+        // The publisher itself doesn't validate IP shape — it's
+        // intentionally a pass-through so the supervisor can
+        // publish whatever the bundle says without re-parsing.
+        // Document the contract via test.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join("overlay-ip");
+        publish_overlay_ip(&path, "fd42::5").expect("publish");
+        let body = std::fs::read_to_string(&path).expect("read");
+        assert_eq!(body, "fd42::5\n");
+    }
+
+    #[test]
+    fn default_overlay_ip_path_matches_design_doc() {
+        assert_eq!(DEFAULT_OVERLAY_IP_PATH, "/var/lib/mackesd/nebula/overlay-ip");
     }
 }

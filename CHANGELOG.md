@@ -97,6 +97,32 @@ cut): a fresh Fedora 44 VM with `dnf install mde-4.0-1.fc44
 mesh in under 10 minutes total operator time. `rpm -q tailscale
 headscale tailscale-derp` returns "not installed".
 
+## Unreleased — GF-1.3.a: nebula_supervisor publishes overlay-ip
+
+New `pub fn publish_overlay_ip(path, overlay_ip)` in
+`crates/mackesd/src/workers/nebula_supervisor.rs` atomic-writes
+the local peer's Nebula overlay address (plain text + trailing
+newline) to `/var/lib/mackesd/nebula/overlay-ip` after every
+`materialize_config` tick. The new path constant
+`DEFAULT_OVERLAY_IP_PATH` is exported at module scope so
+downstream consumers (notably the upcoming GF-1.3.b
+glusterd-nebula-bind helper) have a single shared lookup
+location. Publish failures are logged + retried on the next
+tick — they never abort the nebula-config refresh.
+
+RPM spec ships `/var/lib/mackesd/nebula/` as a
+world-readable directory (0755) so non-root consumers can
+read the file without sudo. 5 new unit tests cover
+create-parent-dir, overwrite, no-leftover-tempfile,
+IPv6 pass-through, and the constant match against the
+design-doc path. 15/15 nebula_supervisor tests pass.
+
+The GF-1.3 worklist task split into GF-1.3.a (this commit:
+the publisher) and GF-1.3.b (the glusterd config rewriter +
+reload service that hasn't landed yet) per §0.12's splitting
+rule — the original single-task formulation would have
+required a stub-or-staged commit to ship.
+
 ## Unreleased — v5.0.0 GlusterFS mesh-home + KDC2 file-transfer removal (placeholder)
 
 **SemVer-major bump.** v5.0.0's headline is `mesh-home`: a

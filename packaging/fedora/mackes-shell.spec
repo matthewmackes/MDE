@@ -501,6 +501,13 @@ install -m 0644 data/systemd/mackes-nebula-https-tunnel.service %{buildroot}%{_u
 install -d -m 0700 %{buildroot}/var/lib/mackesd/nebula-ca
 install -d -m 0755 %{buildroot}/etc/nebula
 install -d -m 0700 %{buildroot}/var/lib/mackesd/nebula-peers
+# GF-1.3.a (v5.0.0) — overlay-ip publish dir. nebula_supervisor
+# atomic-writes /var/lib/mackesd/nebula/overlay-ip on every
+# refresh_config tick. 0755 because non-root downstream services
+# (notably the glusterd-nebula-bind helper in GF-1.3.b) need to
+# read it; the file itself contains nothing private (just the
+# overlay IPv4).
+install -d -m 0755 %{buildroot}/var/lib/mackesd/nebula
 # VV-1 (v4.1.0) — Kamailio daemon unit + config dir.
 install -m 0644 data/systemd/kamailio-mde.service            %{buildroot}%{_unitdir}/
 install -d -m 0755 %{buildroot}/etc/kamailio-mde
@@ -1045,6 +1052,10 @@ fi
 %dir %attr(0700, root, root) /var/lib/mackesd/nebula-ca
 %dir %attr(0755, root, root) /etc/nebula
 %dir %attr(0700, root, root) /var/lib/mackesd/nebula-peers
+# GF-1.3.a — overlay-ip publish dir. 0755 (world-readable) so
+# downstream services like glusterd-nebula-bind can `cat` the
+# file without sudo.
+%dir %attr(0755, root, root) /var/lib/mackesd/nebula
 # VV-1 (v4.1.0) — Kamailio daemon. The /var/lib/kamailio-mde
 # + /var/log/kamailio-mde + /var/run/kamailio-mde dirs are
 # created at first start by the unit's StateDirectory= /
