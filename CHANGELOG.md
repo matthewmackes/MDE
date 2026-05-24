@@ -97,6 +97,23 @@ cut): a fresh Fedora 44 VM with `dnf install mde-4.0-1.fc44
 mesh in under 10 minutes total operator time. `rpm -q tailscale
 headscale tailscale-derp` returns "not installed".
 
+## Unreleased — worklist hygiene: tag HW-carve-out items
+
+Re-tag `GF-11.3` (3-peer split-brain bench test), `GF-15.2`
+(phone-pair → 2nd-peer-observe smoke), and `VV-15`
+(16-peer Docker fixture + live SIP-trunk drill) with
+explicit `[HW carve-out]` annotations + body notes pointing
+at `~/.claude/.../feedback_no_cut_until_worklist_empty.md`.
+
+Per the locked rule: Hardware-Testing-epic items never gate
+a release; only the non-HW worklist tail does. These three
+items stay `[ ]` Open (per the existing convention from
+`feedback_hardware_testing_epic`) but are now self-
+documenting about their carve-out status, so future
+read-of-the-worklist matches the cut-gate semantics.
+
+No code change. Worklist hygiene only.
+
 ## Unreleased — NF-4.5: https_fallback bridge-layer slim + stun re-classify
 
 `crates/mackesd/src/https_fallback.rs` shrinks from 644 LOC

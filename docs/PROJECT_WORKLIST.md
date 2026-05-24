@@ -234,7 +234,7 @@ locked work appears under **Active** with `[ ] Open`.
 
 - [ ] **GF-11.1: Unit tests for `gluster_worker`** (mocked `glusterd` via a fake CLI shim — pattern from existing `nebula_supervisor` tests).
 - [ ] **GF-11.2: VM-CI integration test** — extend the existing VM CI harness with: two-peer enrollment → cross-peer file create → conflict generation → LWW resolution → `.conflict-*` sibling appears.
-- [ ] **GF-11.3: Hardware Testing — three-peer split-brain bench test** added to the Hardware Testing epic at the bottom of this worklist: pull network on peer-B, edit `~/Documents/foo.md` on both A and B, reconnect, observe `foo.md.conflict-B-<ts>.md` on peer-A and the yellow chip in mde-files.
+- [ ] **GF-11.3: three-peer split-brain bench test [HW carve-out]** — pull network on peer-B, edit `~/Documents/foo.md` on both A and B, reconnect, observe `foo.md.conflict-B-<ts>.md` on peer-A and the yellow chip in mde-files. *(Hardware-Testing-epic carve-out per `feedback_no_cut_until_worklist_empty.md` — this item doesn't gate the cut. The carve-out memory's rule: HW items + HW-prefixed sub-epics never block a release, only the non-HW worklist tail does. Hardware-bench gates close as the operator runs the fleet drill.)*
 
 #### Migration & rollout
 
@@ -252,7 +252,7 @@ locked work appears under **Active** with `[ ] Open`.
 #### Phone bridge integration (depends on GF-5)
 
 - [ ] **GF-15.1: On phone pairing, create `~/Documents/From-<phone-name>/`** (idempotent, replicated by the mesh).
-- [ ] **GF-15.2: Smoke test — pair a phone, push a file, observe on a second peer** within `<2 s` (LAN) or `<heal-interval>` (WAN).
+- [ ] **GF-15.2: Smoke test — pair a phone, push a file, observe on a second peer [HW carve-out]** within `<2 s` (LAN) or `<heal-interval>` (WAN). *(Hardware-Testing-epic carve-out per `feedback_no_cut_until_worklist_empty.md` — needs a real Android phone + a real 2-peer Mackes mesh. Doesn't gate the cut.)*
 
 ### v2.5: Nebula fabric rebuild (locked 2026-05-23)
 
@@ -5532,7 +5532,9 @@ v4.1.0 can ship Kamailio + RTPengine + 1:1 calls cleanly.)*
     state to VV-7a's Backend panel + the status-cluster
     chip.
 
-- [ ] **v4.0: VV-15 acceptance drill harness + 16-peer Docker fixture (Tier 2 testing)**
+- [ ] **v4.0: VV-15 acceptance drill harness + 16-peer Docker fixture (Tier 2 testing) [HW carve-out]**
+
+  *(Hardware-Testing-epic carve-out per `feedback_no_cut_until_worklist_empty.md` — the 8 acceptance drills require a live 16-peer Docker fixture + a real Vitelity SIP trunk + actual Kamailio + RTPengine + PJSIP runtime; the harness IS bench-test infrastructure by design. Doesn't gate the cut.)*
 
   **As** the maintainer,
   **I want** a `make voice-acceptance` target that spins up a
