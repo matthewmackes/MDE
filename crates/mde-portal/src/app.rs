@@ -354,10 +354,32 @@ impl iced_layershell::Application for DockApp {
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::NavClicked(btn) => {
-                self.active_nav = if self.active_nav == Some(btn) {
-                    None
-                } else {
-                    Some(btn)
+                // Portal-16: drive the Portal-full scratchpad surface.
+                // prev = None        → show the window + goto the target layer.
+                // prev = Some(btn)   → same button clicked again; hide the window.
+                // prev = Some(other) → portal already visible; just switch layer.
+                let prev = self.active_nav;
+                self.active_nav = if prev == Some(btn) { None } else { Some(btn) };
+                let layer = btn.portal_layer();
+                return match prev {
+                    None => Task::batch([
+                        Task::perform(
+                            crate::workspace::portal_full_scratchpad_toggle(),
+                            |_| Message::Noop,
+                        ),
+                        Task::perform(
+                            crate::dbus::portal_full_goto(layer),
+                            |_| Message::Noop,
+                        ),
+                    ]),
+                    Some(p) if p == btn => Task::perform(
+                        crate::workspace::portal_full_scratchpad_toggle(),
+                        |_| Message::Noop,
+                    ),
+                    Some(_) => Task::perform(
+                        crate::dbus::portal_full_goto(layer),
+                        |_| Message::Noop,
+                    ),
                 };
             }
             Message::NavRightClicked(_btn) => {

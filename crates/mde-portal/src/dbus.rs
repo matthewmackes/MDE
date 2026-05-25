@@ -49,9 +49,10 @@ impl PortalState {
     /// so callers don't need to know the full layer set.
     async fn goto(&self, layer: &str) -> zbus::fdo::Result<()> {
         tracing::info!(layer, "Portal.Goto");
-        // Portal-16 will wire the sway scratchpad + Iced state
-        // machine. For Portal-1, we log + return Ok so the D-Bus
-        // call completes cleanly and the bus name is exercisable.
+        // Portal-16: forward the call to the mde-portal-full surface which
+        // owns the Iced window + its own D-Bus service. Ignore errors if
+        // the surface isn't running yet.
+        portal_full_goto(layer).await;
         Ok(())
     }
 
@@ -100,6 +101,28 @@ impl PortalState {
             }
         }
     }
+}
+
+/// zbus-generated async proxy for the `dev.mackes.MDE.Portal.Full` interface
+/// exposed by the `mde-portal-full` binary.  Used by the Dock to forward a
+/// `Goto(layer)` call that switches the active content layer.
+#[zbus::proxy(
+    interface = "dev.mackes.MDE.Portal.Full",
+    default_service = "dev.mackes.MDE.Portal.Full",
+    default_path = "/dev/mackes/MDE/Portal/Full"
+)]
+trait PortalFull {
+    async fn goto(&self, layer: &str) -> zbus::Result<()>;
+}
+
+/// Forward a `Goto(layer)` call to the `mde-portal-full` surface.
+///
+/// Silently ignores all errors — the Portal-full binary may not be running
+/// yet; the Dock should never block on its availability.
+pub async fn portal_full_goto(layer: &str) {
+    let Ok(conn) = zbus::Connection::session().await else { return };
+    let Ok(proxy) = PortalFullProxy::new(&conn).await else { return };
+    let _ = proxy.goto(layer).await;
 }
 
 /// Register the `dev.mackes.MDE.Portal` service on the session bus and
@@ -169,5 +192,12 @@ mod tests {
         let state = PortalState::new();
         // Result can be Ok (systemctl found) or Err (not available in CI).
         let _ = state.restart().await;
+    }
+
+    /// portal_full_goto must not panic when the Portal-full service is absent.
+    #[tokio::test]
+    async fn portal_full_goto_does_not_panic_when_service_absent() {
+        // Service is not running in tests; the function should return silently.
+        portal_full_goto("hub").await;
     }
 }

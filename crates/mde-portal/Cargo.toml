@@ -12,6 +12,11 @@ repository.workspace   = true
 name = "mde-portal"
 path = "src/main.rs"
 
+# Portal-16 — Portal-full scratchpad surface (regular Iced window, not layer-shell).
+[[bin]]
+name = "mde-portal-full"
+path = "src/portal_full_main.rs"
+
 [dependencies]
 # v6.0 Portal-1 — same Iced + layer-shell pair as mde-panel + mde-popover.
 # `svg` for Carbon icon rendering; `image` for app thumbnails (Portal-7 Aero-peek).

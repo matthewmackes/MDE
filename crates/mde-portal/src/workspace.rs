@@ -393,6 +393,29 @@ pub async fn wm_layout_cycle(con_id: i64) {
     }
 }
 
+/// Show or hide the Portal-full scratchpad surface via sway IPC.
+///
+/// `scratchpad show` with an app_id criterion toggles: if the window is in
+/// the scratchpad (hidden) it appears on the focused output; if it is
+/// already visible sway moves it back to the scratchpad.
+pub async fn portal_full_scratchpad_toggle() {
+    match Connection::new().await {
+        Ok(mut conn) => {
+            if let Err(e) = conn
+                .run_command(
+                    r#"[app_id="dev.mackes.MDE.Portal.Full"] scratchpad show"#,
+                )
+                .await
+            {
+                tracing::warn!(error = %e, "portal_full_scratchpad_toggle: command failed");
+            }
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "portal_full_scratchpad_toggle: swayipc connect failed");
+        }
+    }
+}
+
 /// Switch to the lowest unused workspace number ≥ 1.
 pub async fn new_workspace(taken_nums: Vec<i32>) {
     let next = (1i32..).find(|n| !taken_nums.contains(n)).unwrap_or(1);
@@ -668,6 +691,11 @@ mod tests {
     #[tokio::test]
     async fn wm_layout_cycle_does_not_panic_without_sway() {
         wm_layout_cycle(999_999).await;
+    }
+
+    #[tokio::test]
+    async fn portal_full_scratchpad_toggle_does_not_panic_without_sway() {
+        portal_full_scratchpad_toggle().await;
     }
 
     #[test]

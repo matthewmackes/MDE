@@ -158,6 +158,12 @@ for_window [app_id="^shell\.mackes\.Panel$"] floating enable, border none
 for_window [title="^mde-panel$"]             floating enable, border none
 for_window [app_id="^mde-shell$"]   floating enable
 for_window [app_id="^mde-session$"] floating enable
+# Portal-16 — Portal-full scratchpad surface.
+# The binary launches at startup and is immediately placed in the scratchpad
+# so it is hidden until the Dock's nav buttons reveal it.
+for_window [app_id="^dev\.mackes\.MDE\.Portal\.Full$"] move scratchpad
+for_window [app_id="^dev\.mackes\.MDE\.Portal\.Full$"] floating enable, border none
+for_window [app_id="^dev\.mackes\.MDE\.Portal\.Full$"] resize set 1280 720
 for_window [window_role="pop-up"]      floating enable
 for_window [window_role="task_dialog"] floating enable
 for_window [window_type="dialog"]      floating enable
@@ -177,6 +183,7 @@ for_window [window_type="dialog"]      floating enable
 exec_always mde-output-autoscale
 exec mde-applet-bg
 exec mde-panel
+exec mde-portal-full
 # v3.0.3 — long-running Win10-style watermark surface
 # (Layer::Background, bottom-right, visible only when dnf has
 # updates pending). See crates/mde-popover/src/watermark.rs.
