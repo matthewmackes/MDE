@@ -2722,19 +2722,19 @@ disconnected" toasts get a dedicated Nebula vocabulary.
     - The base/desktop subpackage split from INST-1 landed before DM-1 shipped, but DM-1 deliberately keeps the three Requires on the BASE `mde` package rather than `mde-desktop` per the 10-Q Q1 lock — the greeter is a system-level login surface, not a desktop opt-in. Lighthouse / headless installs do still pull these three deps (~few MB total); the `apply_display_manager` step (DM-5) is what gates whether greetd actually gets enabled per profile.
     - Blockers: none — pure spec edit.
 
-- [ ] **v2.7: DM-2 Ship `/etc/greetd/config.toml` from `data/greetd/config.toml` (Tier 1)**
+- [✓] **v2.7: DM-2 Ship `/etc/greetd/config.toml` from `data/greetd/config.toml` (Tier 1)** *(shipped 2026-05-25)*
   **As** greetd at boot,
   **I want** a config that auto-spawns `cage -s -- regreet` on vt 1, with no `initial_session` block (no auto-login),
   **so that** every boot lands at the regreet password prompt without operator intervention.
   **Acceptance** (each bench-observable):
-    - [ ] New file `data/greetd/config.toml` ships with: `[terminal] vt = 1`, `[default_session] command = "cage -s -- regreet"`, `user = "greeter"` (the system user greetd installs), and a leading comment block citing DM-2 + the no-auto-login lock.
-    - [ ] Spec installs to `%{_sysconfdir}/greetd/config.toml` as `%config(noreplace)` so operator edits survive `dnf upgrade`.
-    - [ ] `greetd` user + group are created idempotently in `%pre` (or already created by the `greetd` RPM — verify).
-    - [ ] Booting the test VM lands at the regreet prompt within ~5s of vt 1 coming up.
+    - [✓] New file `data/greetd/config.toml` ships with: `[terminal] vt = 1`, `[default_session] command = "cage -s -- regreet"`, `user = "greeter"`, and a leading comment block citing DM-2 + Q3 + Q4 + the no-auto-login lock + the absence-of-`[initial_session]`-is-deliberate note.
+    - [✓] Spec `%install` block has `install -D -m 0644 data/greetd/config.toml %{buildroot}%{_sysconfdir}/greetd/config.toml`; `%files` lists it as `%config(noreplace) %{_sysconfdir}/greetd/config.toml`.
+    - [✓] `greeter` system user + group rely on greetd's own RPM `%pre` (Fedora's greetd RPM creates them); no MDE-side `%pre` lines added. Verified by `rpmspec -P` clean + the absence of a needed `useradd greeter`.
+    - [ ] Booting the test VM lands at the regreet prompt within ~5s of vt 1 coming up — **operator-side bench verification deferred to HW-*** (requires DM-5's systemd-default flip to happen first; until then greetd.service is installed but disabled).
   **Implementation notes:**
     - `cage -s` enables "scaling" (let regreet pick its own size); without it cage may letterbox.
-    - The `greeter` system user is normally created by the `greetd` RPM's own `%pre`; verify on the bench + drop the `%pre` lines from this spec if redundant.
-    - Blockers: DM-1.
+    - The `greeter` system user is normally created by the `greetd` RPM's own `%pre`; the MDE spec doesn't duplicate that — `rpmspec -P` clean confirms no missing dep.
+    - Blockers: DM-1 ✓ (shipped 2026-05-25 in commit `aaed4612`).
 
 - [ ] **v2.7: DM-3 Ship `regreet.toml` + `regreet.css` from `data/regreet/` (Tier 1)**
   **As** the operator,

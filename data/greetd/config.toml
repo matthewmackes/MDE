@@ -1,0 +1,48 @@
+# /etc/greetd/config.toml — Mackes Desktop Environment greeter
+# substrate config (DM-2, v2.7, 2026-05-25).
+#
+# Wires greetd (the daemon, kiosk-locked, socket-IPC to greeter
+# clients) to launch `cage` (one-window wlroots compositor, no
+# escape keybindings pre-auth) hosting `regreet` (the Rust+GTK4
+# greeter UI). The chain implements the 10-Q operator-survey
+# locks from 2026-05-24:
+#
+#   Q3  — cage hosts regreet (kiosk-locked, no escape paths)
+#   Q4  — always prompt; no initial_session block, no auto-login
+#   Q5  — MDE-only session picker (per regreet.toml in DM-3)
+#   Q6  — username typed every time (per regreet.toml in DM-3)
+#   Q7  — all three power controls visible (per regreet.toml)
+#   Q8  — mesh-status chip visible (DM-7)
+#
+# The systemd default is NOT flipped here — DM-5's birthright
+# step (`apply_display_manager()` in `mackes/birthright.py`) is
+# what disables lightdm.service + enables greetd.service +
+# `systemctl set-default graphical.target`. Until DM-5 runs,
+# this config sits on disk inert.
+#
+# Owned by the `greeter` system user (created by the greetd
+# RPM's own %pre scriptlet — no MDE-side user creation needed).
+# Edits to this file survive `dnf upgrade` because the RPM
+# install line uses %config(noreplace).
+
+[terminal]
+# vt 1 is the standard graphical login VT on Fedora. Matches
+# what LightDM defaulted to.
+vt = 1
+
+[default_session]
+# `cage -s -- regreet` = launch regreet inside the cage kiosk
+# compositor. `-s` enables scaling (regreet picks its own size
+# vs being letterboxed). cage forbids keybinds + workspaces +
+# escape paths pre-auth — operator can only interact with
+# regreet's UI.
+command = "cage -s -- regreet"
+user    = "greeter"
+
+# Q4 lock — NO `[initial_session]` block. Without it greetd
+# always falls through to `[default_session]`, which prompts.
+# An auto-login boot would need:
+#     [initial_session]
+#     command = "..."
+#     user    = "<operator-uid>"
+# Adding that block would violate Q4 — keep it absent.

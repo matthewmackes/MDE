@@ -647,6 +647,16 @@ install -D -m 0644 data/sway/config %{buildroot}%{_datadir}/mde/sway/config
 install -D -m 0644 data/sway/config.d/mackes-defaults.conf \
     %{buildroot}%{_datadir}/mde/sway/config.d/mackes-defaults.conf
 
+# DM-2 (v2.7, 2026-05-25) — greetd substrate config. Wires
+# `cage -s -- regreet` as greetd's default_session on vt 1
+# with no [initial_session] block (always prompt; no
+# auto-login per Q4). Owned by the `greeter` system user
+# (created by greetd's own %pre). %config(noreplace) so
+# operator edits survive `dnf upgrade`. The systemd default
+# stays on lightdm until DM-5's birthright step flips it.
+install -D -m 0644 data/greetd/config.toml \
+    %{buildroot}%{_sysconfdir}/greetd/config.toml
+
 # KDC2-1.10 — Connect routing policy default. Ships as a
 # %config(noreplace) so operator edits survive package upgrades.
 install -D -m 0644 data/etc/mde/connect/policy.toml \
@@ -1141,6 +1151,10 @@ fi
 %config(noreplace) %{_sysconfdir}/netdata/health.d/mackesd.conf
 %config(noreplace) %{_sysconfdir}/netdata/health.d/workstation.conf
 %config(noreplace) %{_sysconfdir}/netdata/health.d/mde-suppressions.conf
+# DM-2 (v2.7) — greetd substrate config. Inert on disk until
+# DM-5's birthright step flips the systemd default to greetd;
+# operator edits survive `dnf upgrade` via %config(noreplace).
+%config(noreplace) %{_sysconfdir}/greetd/config.toml
 %{_prefix}/lib/systemd/user-preset/90-mackes.preset
 %{_prefix}/lib/systemd/user-preset/90-mde.preset
 # CB-2.4 — first-boot orchestration target + the two oneshot
