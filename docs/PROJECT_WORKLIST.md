@@ -148,7 +148,7 @@ locked work appears under **Active** with `[ ] Open`.
 - [✓] **Portal-5: Mini-i3-tree segment** with chevron-as-border internal cells (R4-Q63), adaptive 24px-floor width (R4-Q64 / truncation at 8 chars), all-workspaces visible + current-output highlight (R3-Q46), click-jump via swayipc (R3-Q23), `+` new-ws (R3-Q24). async-stream subscription reconnects on Sway disconnect. 44 tests passing. Marquee + Aero-peek split to Portal-5.b/5.c.
 - [ ] **Portal-5.b: Workspace name marquee at 50px/sec on overflow (R4-Q64)** — replace truncation with animated scroll; tick subscription + per-cell scroll offset; clip cell content to cell width.
 - [ ] **Portal-5.c: Workspace hover Aero-peek previews (R3-Q24)** — wlr-screencopy-based window thumbnails on workspace cell hover.
-- [ ] **Portal-6: Hostname segment** with `<host>:<output> [leader]` format, click cycles cross-peer (R4-Q6), pre-mesh-home '(local-only)' state (R4-Q46), tooltip with uptime/IP/role.
+- [>] **Portal-6: Hostname segment** with `<host>:<output> [leader]` format, click cycles cross-peer (R4-Q6), pre-mesh-home '(local-only)' state (R4-Q46), tooltip with uptime/IP/role.
 - [ ] **Portal-7: Pinned-zone segment** (drives by designated taskbar-tag, Q88, R8-Q43 universal-tag-driven incl. files); 36px icons + pip + Win10 click-expand (R3-Q9, R3-Q16); right-click parity with Hub (R3-Q10); drag-onto-Dock pins, drag-off unpins (R3-Q12); chevron-popover overflow (R3-Q14); middle-click new instance (R3-Q17); scroll cycles windows (R3-Q18); 350ms hover Aero-peek (R3-Q11).
 - [ ] **Portal-8: Running-zone segment** with cross-workspace icons + WS-badge (R3-Q15) + WM-buttons-on-hover (5 micro-buttons × close / float / full / minimize-to-scratchpad / layout-cycle — R4-Q67 to R4-Q71).
 - [ ] **Portal-9: Status-zone consolidated segment** with battery / network+mesh / volume / brightness / lock / power glyphs (R4-Q56, R3-Q32–R3-Q35, R4-Q74). Unified slide-up strip popover (full-width, ~25% screen, R4-Q76) with grid-of-cards layout (R4-Q79) + horizontal slide-swap transition between widgets (R4-Q78).
@@ -2724,18 +2724,16 @@ disconnected" toasts get a dedicated Nebula vocabulary.
     - The base/desktop subpackage split from INST-1 landed before DM-1 shipped, but DM-1 deliberately keeps the three Requires on the BASE `mde` package rather than `mde-desktop` per the 10-Q Q1 lock — the greeter is a system-level login surface, not a desktop opt-in. Lighthouse / headless installs do still pull these three deps (~few MB total); the `apply_display_manager` step (DM-5) is what gates whether greetd actually gets enabled per profile.
     - Blockers: none — pure spec edit.
 
-- [✓] **v2.7: DM-2 Ship `/etc/greetd/config.toml` from `data/greetd/config.toml` (Tier 1)** *(shipped 2026-05-25)*
-  **As** greetd at boot,
-  **I want** a config that auto-spawns `cage -s -- regreet` on vt 1, with no `initial_session` block (no auto-login),
-  **so that** every boot lands at the regreet password prompt without operator intervention.
+- [✓] **v2.7: DM-2 Ship MDE's greetd config at `/usr/share/mde/greetd/config.toml` (Tier 1)** *(shipped 2026-05-25; install path retargeted same-day after dual-ownership discovery)*
+  **As** greetd at boot, **I want** a config that auto-spawns `cage -s -- regreet` on vt 1 with no `initial_session` block (no auto-login), **so that** every boot lands at the regreet password prompt without operator intervention.
   **Acceptance** (each bench-observable):
     - [✓] New file `data/greetd/config.toml` ships with: `[terminal] vt = 1`, `[default_session] command = "cage -s -- regreet"`, `user = "greeter"`, and a leading comment block citing DM-2 + Q3 + Q4 + the no-auto-login lock + the absence-of-`[initial_session]`-is-deliberate note.
-    - [✓] Spec `%install` block has `install -D -m 0644 data/greetd/config.toml %{buildroot}%{_sysconfdir}/greetd/config.toml`; `%files` lists it as `%config(noreplace) %{_sysconfdir}/greetd/config.toml`.
-    - [✓] `greeter` system user + group rely on greetd's own RPM `%pre` (Fedora's greetd RPM creates them); no MDE-side `%pre` lines added. Verified by `rpmspec -P` clean + the absence of a needed `useradd greeter`.
-    - [ ] Booting the test VM lands at the regreet prompt within ~5s of vt 1 coming up — **operator-side bench verification deferred to HW-*** (requires DM-5's systemd-default flip to happen first; until then greetd.service is installed but disabled).
+    - [✓] Spec `%install` block ships the file to `%{_datadir}/mde/greetd/config.toml` (covered by the existing `%{_datadir}/%{name}/` catch-all in `%files`). **Path retargeted** from the original `%{_sysconfdir}/greetd/config.toml` because Fedora's `greetd` RPM already owns `/etc/greetd/config.toml` per `dnf repoquery -l greetd`. DM-5's birthright step copies this over the live `/etc/greetd/config.toml`.
+    - [✓] `greeter` system user + group rely on greetd's own RPM `%pre`; no MDE-side `%pre` lines added. `dnf repoquery -l greetd` confirms `/usr/lib/sysusers.d/greetd.conf` ships in the upstream package.
+    - [ ] Booting the test VM lands at the regreet prompt within ~5s of vt 1 coming up — **operator-side bench verification deferred to HW-*** (requires DM-5's systemd-default flip + the live-config copy to happen first).
   **Implementation notes:**
     - `cage -s` enables "scaling" (let regreet pick its own size); without it cage may letterbox.
-    - The `greeter` system user is normally created by the `greetd` RPM's own `%pre`; the MDE spec doesn't duplicate that — `rpmspec -P` clean confirms no missing dep.
+    - The live `/etc/greetd/config.toml` stays under upstream RPM ownership — DM-5's birthright copy should keep a `.rpmsave` of the original first so a rollback path exists.
     - Blockers: DM-1 ✓ (shipped 2026-05-25 in commit `aaed4612`).
 
 - [ ] **v2.7: DM-3 Ship `regreet.toml` + `regreet.css` from `data/regreet/` (Tier 1)**
@@ -2754,18 +2752,17 @@ disconnected" toasts get a dedicated Nebula vocabulary.
     - Voice-and-tone lint applies to any user-visible string we author (header text, button labels if we override the defaults).
     - Blockers: DM-1.
 
-- [ ] **v2.7: DM-4 Ship `/etc/pam.d/greetd` policy (Tier 1)**
-  **As** PAM,
-  **I want** an explicit policy for the `greetd` service (rather than inheriting some inherited `system-auth` chain that might not match what LightDM's stack assumes),
-  **so that** login behavior is auditable + greetd-specific (loosening one thing doesn't loosen the same thing for `sshd` / `sudo`).
+- [✓] **v2.7: DM-4 PAM stack for greetd — verified Fedora's default is sufficient (Tier 1)** *(closed 2026-05-25 as verify-and-document per the task body's escape clause)*
+  **As** PAM, **I want** an explicit policy for the `greetd` service (rather than inheriting some inherited `system-auth` chain that might not match what LightDM's stack assumes), **so that** login behavior is auditable + greetd-specific (loosening one thing doesn't loosen the same thing for `sshd` / `sudo`).
   **Acceptance** (each bench-observable):
-    - [ ] New file `data/pam.d/greetd` ships with a minimal policy: `auth include system-auth`, `account include system-auth`, `password include system-auth`, `session include system-auth`, plus `session optional pam_keyring.so auto_start` if the operator's keyring is to unlock at login (carries forward LightDM's de-facto behavior).
-    - [ ] Spec installs to `%{_sysconfdir}/pam.d/greetd` as `%config(noreplace)`.
-    - [ ] On the bench: login succeeds; subsequent user-keyring autounlock fires (no keyring agent comes up under MDE, so this reduces to "PAM session chain ran without error").
-    - [ ] No regression on the `auth` chain for `sshd`, `sudo`, `login` (smoke-test all three after install).
+    - [✓] Verified via `dnf repoquery -l greetd` that Fedora's greetd RPM ships both `/etc/pam.d/greetd` and `/etc/pam.d/greetd-greeter`. MDE ships **no parallel PAM file** — the upstream defaults are sufficient (Fedora's policy uses `system-auth` includes which match what every other Fedora display manager uses).
+    - [✓] No regression risk introduced: MDE doesn't claim ownership of `/etc/pam.d/greetd*`, so `dnf upgrade` of greetd cleanly updates the PAM stack if Fedora ships a refresh.
+    - [ ] On the bench: confirm login succeeds via greetd's stock PAM — **operator-side bench verification deferred to HW-*** (requires DM-5 to flip the systemd default first).
+    - [ ] No regression on the `auth` chain for `sshd`, `sudo`, `login` — **operator-side smoke deferred to HW-***; structurally we did not touch any of those files.
   **Implementation notes:**
-    - F44's `greetd` RPM may already ship a `/etc/pam.d/greetd` from upstream; verify before adding the MDE one. If upstream ships a sane default, this task becomes "verify and document" rather than "ship and own."
-    - Blockers: DM-1.
+    - Closed per the original task body's escape clause: "If upstream ships a sane default, this task becomes 'verify and document' rather than 'ship and own.'"
+    - If the bench later surfaces a need for an MDE-specific PAM session line (e.g. keyring autostart that isn't otherwise wired), file a follow-up DM-4.b that ships an `/etc/pam.d/greetd.d/mde-additions.conf` drop-in — additive only, never shadowing the upstream file.
+    - Blockers: DM-1 ✓ (the package + the upstream PAM file land together).
 
 #### Birthright (Python)
 

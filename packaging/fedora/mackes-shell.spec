@@ -650,12 +650,15 @@ install -D -m 0644 data/sway/config.d/mackes-defaults.conf \
 # DM-2 (v2.7, 2026-05-25) — greetd substrate config. Wires
 # `cage -s -- regreet` as greetd's default_session on vt 1
 # with no [initial_session] block (always prompt; no
-# auto-login per Q4). Owned by the `greeter` system user
-# (created by greetd's own %pre). %config(noreplace) so
-# operator edits survive `dnf upgrade`. The systemd default
-# stays on lightdm until DM-5's birthright step flips it.
+# auto-login per Q4). Ships to /usr/share/mde/greetd/ rather
+# than directly into /etc/greetd/ because Fedora's `greetd`
+# RPM already owns /etc/greetd/config.toml — dual-ownership
+# would fail at dnf-install time. DM-5's birthright step
+# (apply_display_manager) is what installs this over the live
+# /etc/greetd/config.toml when the operator commits to the
+# DM swap.
 install -D -m 0644 data/greetd/config.toml \
-    %{buildroot}%{_sysconfdir}/greetd/config.toml
+    %{buildroot}%{_datadir}/mde/greetd/config.toml
 
 # KDC2-1.10 — Connect routing policy default. Ships as a
 # %config(noreplace) so operator edits survive package upgrades.
@@ -1151,10 +1154,13 @@ fi
 %config(noreplace) %{_sysconfdir}/netdata/health.d/mackesd.conf
 %config(noreplace) %{_sysconfdir}/netdata/health.d/workstation.conf
 %config(noreplace) %{_sysconfdir}/netdata/health.d/mde-suppressions.conf
-# DM-2 (v2.7) — greetd substrate config. Inert on disk until
-# DM-5's birthright step flips the systemd default to greetd;
-# operator edits survive `dnf upgrade` via %config(noreplace).
-%config(noreplace) %{_sysconfdir}/greetd/config.toml
+# DM-2 (v2.7) — greetd substrate config lives at
+# /usr/share/mde/greetd/config.toml (covered by the existing
+# %{_datadir}/%{name}/ catch-all below). Lives there rather
+# than directly in /etc/greetd/ because Fedora's greetd RPM
+# already owns /etc/greetd/config.toml. DM-5's birthright
+# step copies this over the live /etc/greetd/config.toml at
+# install-time.
 %{_prefix}/lib/systemd/user-preset/90-mackes.preset
 %{_prefix}/lib/systemd/user-preset/90-mde.preset
 # CB-2.4 — first-boot orchestration target + the two oneshot
