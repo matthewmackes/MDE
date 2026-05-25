@@ -41,35 +41,53 @@ impl Palette {
         }
     }
 
-    /// Dark-theme palette (default in v1.x; one of two in v2.2).
+    /// Dark-theme palette — Classic ChromeOS (pre-2022) tokens
+    /// per CR-1 (2026-05-25). Source: `docs/design/
+    /// chromeos-classic-spec.md` § Palette (dark mode default).
     pub const fn dark() -> Self {
         Self {
-            background: Rgba::rgb(0x1d, 0x1d, 0x1f),
-            surface: Rgba::rgb(0x2a, 0x2a, 0x2c),
-            raised: Rgba::rgb(0x38, 0x38, 0x3a),
-            overlay: Rgba::rgb(0x48, 0x48, 0x4a),
+            // Page surface.
+            background: Rgba::rgb(0x20, 0x21, 0x24),
+            // Cards, popovers, hover surfaces.
+            surface: Rgba::rgb(0x2d, 0x2e, 0x30),
+            // Same as surface — the spec only carries 3 surface
+            // tiers (background / raised / active). The `raised`
+            // slot in this struct is the popover/modal tier,
+            // which Classic ChromeOS draws at the same elevation
+            // as cards. Keep both at #2d2e30 for now; a future
+            // CR-* polish task can split them if needed.
+            raised: Rgba::rgb(0x2d, 0x2e, 0x30),
+            // Active/pressed surface, also the 1px divider color.
+            overlay: Rgba::rgb(0x3c, 0x40, 0x43),
+            // Q2 indigo — unchanged across the CR-1 swap.
             accent: Rgba::rgb(0x5b, 0x6a, 0xf5),
-            // Hairline @ ~8% white per § 2.
-            border: Rgba::rgba(0xff, 0xff, 0xff, 0.08),
-            // ~92% white — clears WCAG AAA against background.
-            text: Rgba::rgba(0xff, 0xff, 0xff, 0.92),
-            text_muted: Rgba::rgba(0xff, 0xff, 0xff, 0.55),
+            // 1 px sharp divider per Classic ChromeOS — same hex
+            // as the active-surface token (no alpha blending).
+            border: Rgba::rgb(0x3c, 0x40, 0x43),
+            // Text primary.
+            text: Rgba::rgb(0xe8, 0xea, 0xed),
+            // Text muted.
+            text_muted: Rgba::rgb(0x9a, 0xa0, 0xa6),
         }
     }
 
-    /// Light-theme palette. Ships co-equal with dark in v2.2
-    /// (Q5 + FU-2 full parity).
+    /// Light-theme palette — Classic ChromeOS pair per CR-1.
+    /// Reserved for compile-time consumption; the light retrofit
+    /// epic toggles the live binding once it ships. Source:
+    /// `docs/design/chromeos-classic-spec.md` § Palette (light).
     pub const fn light() -> Self {
         Self {
-            background: Rgba::rgb(0xf5, 0xf5, 0xf7),
+            background: Rgba::rgb(0xf7, 0xf7, 0xf7),
             surface: Rgba::rgb(0xff, 0xff, 0xff),
-            raised: Rgba::rgb(0xf0, 0xf0, 0xf2),
-            overlay: Rgba::rgb(0xe5, 0xe5, 0xe7),
-            accent: Rgba::rgb(0x5b, 0x6a, 0xf5),
-            // 1 px solid border @ ~12% black per § 2.
-            border: Rgba::rgba(0x00, 0x00, 0x00, 0.12),
-            text: Rgba::rgba(0x00, 0x00, 0x00, 0.88),
-            text_muted: Rgba::rgba(0x00, 0x00, 0x00, 0.55),
+            raised: Rgba::rgb(0xff, 0xff, 0xff),
+            overlay: Rgba::rgb(0xe8, 0xea, 0xed),
+            // Darker indigo pair for light mode (Classic ChromeOS
+            // shifts the accent for AA contrast against white).
+            accent: Rgba::rgb(0x40, 0x51, 0xd3),
+            // Hard 1 px divider (no alpha) per Classic ChromeOS.
+            border: Rgba::rgb(0xda, 0xdc, 0xe0),
+            text: Rgba::rgb(0x1d, 0x1d, 0x1f),
+            text_muted: Rgba::rgb(0x5f, 0x63, 0x68),
         }
     }
 
@@ -98,22 +116,40 @@ mod tests {
     }
 
     #[test]
-    fn accent_is_identical_in_both_themes() {
-        // Q2: single restrained accent, same across themes.
-        assert_eq!(Palette::dark().accent, Palette::light().accent);
+    fn accent_differs_between_themes_per_chromeos() {
+        // CR-1 (2026-05-25): Classic ChromeOS shifts the accent
+        // for light mode (#4051d3) to keep AA contrast against
+        // white. Q2's "same accent across themes" rule is
+        // grandfathered; live lock is per-theme.
+        assert_ne!(Palette::dark().accent, Palette::light().accent);
+        // Both stay in the indigo family.
+        let d = Palette::dark().accent;
+        let l = Palette::light().accent;
+        assert!(d.b > d.r && d.b > d.g, "dark accent reads as indigo");
+        assert!(l.b > l.r && l.b > l.g, "light accent reads as indigo");
     }
 
     #[test]
-    fn dark_background_matches_q3_charcoal() {
+    fn dark_background_matches_chromeos_classic() {
+        // CR-1 (2026-05-25): #202124 — Classic ChromeOS page
+        // surface. Q3 charcoal #1d1d1f grandfathered.
         let bg = Palette::dark().background;
-        assert_eq!((bg.r, bg.g, bg.b), (0x1d, 0x1d, 0x1f));
+        assert_eq!((bg.r, bg.g, bg.b), (0x20, 0x21, 0x24));
     }
 
     #[test]
-    fn border_is_adaptive_per_q7() {
-        // Hairline (alpha ≈ 0.08) in dark; near-solid in light.
-        assert!(Palette::dark().border.a < 0.2);
-        assert!(Palette::light().border.a >= 0.10);
+    fn border_is_hard_1px_divider_per_chromeos() {
+        // CR-1: Classic ChromeOS uses hard 1 px dividers in
+        // both themes — no alpha hairline. The token resolves
+        // to the same value as `overlay` in dark mode (the
+        // "surface active" tier).
+        let d = Palette::dark();
+        assert_eq!(d.border, d.overlay);
+        let l = Palette::light();
+        assert_eq!((l.border.r, l.border.g, l.border.b), (0xda, 0xdc, 0xe0));
+        // Borders are solid (alpha 1.0), not hairline.
+        assert!(d.border.a >= 0.95);
+        assert!(l.border.a >= 0.95);
     }
 
     #[test]

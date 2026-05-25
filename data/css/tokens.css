@@ -1,53 +1,54 @@
-/* Mackes Shell — PatternFly design tokens (v2.0.0).
+/* Mackes Shell — Classic ChromeOS design tokens (CR-1, 2026-05-25).
  *
  * Single source of truth for the Mackes window chrome. Every color,
  * font, and spacing value lives here as a CSS variable; mackes.css and
  * the per-preset accent overrides consume these tokens.
  *
- * Palette: PatternFly v6 dark surfaces — --pf-t--global--background--*
- *          ported into named GTK @define-color tokens. The legacy
- *          `cds_*` token names are kept (153 refs across panels read
- *          them) but their VALUES now resolve to the PatternFly v6
- *          scale. Per-panel rewrites to use `pf_*` names ship in
- *          v2.1+ as each panel migrates.
- * Typography: Red Hat Display + Red Hat Text + Red Hat Mono (PF v6's
- *             official stack). Falls back to Red Hat / Cantarell /
+ * Palette: Classic ChromeOS (pre-2022) — flat surfaces, hard 1 px
+ *          dividers, single accent. The legacy `cds_*` token names
+ *          are kept (153 refs across panels read them) but their
+ *          VALUES now resolve to the Classic ChromeOS scale per
+ *          docs/design/chromeos-classic-spec.md. The previous
+ *          PatternFly v6 tokens are grandfathered in commit history.
+ * Typography: Roboto + Roboto Mono (Fedora's google-roboto-fonts +
+ *             google-roboto-mono-fonts). Falls back to Cantarell /
  *             system-ui so the previous typography isn't broken on
- *             machines that haven't yet run the v2.0 birthright fonts
- *             step.
- * Spacing: PF v6's 4 px grid (was Carbon's 8 px). cds-spacing tokens
- *          continue to compute to comment-documented px values.
+ *             machines that haven't yet run the v2.6 birthright
+ *             fonts step.
+ * Spacing: 4 / 8 / 16 px grid per the Classic ChromeOS spec; the
+ *          cds-spacing-* numeric ladder is unchanged so existing
+ *          callers keep computing the documented values.
  *
  * The per-preset accent (--mackes-accent) is the *only* token that
  * varies across presets.
  */
 
-/* ---- PatternFly v6 dark surfaces ---------------------------------------- */
+/* ---- Classic ChromeOS dark surfaces ------------------------------------- */
 
-@define-color cds_bg_default       #151515;
-@define-color cds_bg_layer_01      #1b1d21;
-@define-color cds_bg_layer_02      #292929;
-@define-color cds_bg_layer_03      #3c3f42;
-@define-color cds_bg_inverse       #f0f0f0;
-@define-color cds_bg_hover         #292929;
-@define-color cds_bg_active        #3c3f42;
-@define-color cds_bg_selected      #1f2933;
+@define-color cds_bg_default       #202124;
+@define-color cds_bg_layer_01      #202124;
+@define-color cds_bg_layer_02      #2d2e30;
+@define-color cds_bg_layer_03      #3c4043;
+@define-color cds_bg_inverse       #e8eaed;
+@define-color cds_bg_hover         #2d2e30;
+@define-color cds_bg_active        #3c4043;
+@define-color cds_bg_selected      #2d2e30;
 
-@define-color cds_text_primary     #f0f0f0;
-@define-color cds_text_secondary   #b8bbbe;
-@define-color cds_text_helper      #8a8d90;
-@define-color cds_text_placeholder #6a6e73;
-@define-color cds_text_disabled    #4f5255;
-@define-color cds_text_inverse     #151515;
+@define-color cds_text_primary     #e8eaed;
+@define-color cds_text_secondary   #9aa0a6;
+@define-color cds_text_helper      #9aa0a6;
+@define-color cds_text_placeholder #5f6368;
+@define-color cds_text_disabled    #5f6368;
+@define-color cds_text_inverse     #1d1d1f;
 @define-color cds_text_error       #ff5454;
 @define-color cds_text_warning     #f0ab00;
 @define-color cds_text_success     #3e8635;
 
-@define-color cds_border_subtle_00 #292929;
-@define-color cds_border_subtle_01 #3c3f42;
-@define-color cds_border_subtle_02 #6a6e73;
-@define-color cds_border_strong_01 #8a8d90;
-@define-color cds_border_inverse   #f0f0f0;
+@define-color cds_border_subtle_00 #3c4043;
+@define-color cds_border_subtle_01 #3c4043;
+@define-color cds_border_subtle_02 #5f6368;
+@define-color cds_border_strong_01 #9aa0a6;
+@define-color cds_border_inverse   #e8eaed;
 
 @define-color cds_focus            #73bcf7;
 @define-color cds_focus_inset      #151515;
@@ -99,11 +100,10 @@
 @define-color mackes_dim           @cds_text_helper;
 
 
-/* ---- Typography (PF v6: Red Hat Display + Red Hat Text + Red Hat Mono) -- */
+/* ---- Typography (CR-1: Roboto + Roboto Mono) ---------------------------- */
 
 * {
-    font-family: "Red Hat Text", "Red Hat Text", "Cantarell", "system-ui", sans-serif;
-    font-feature-settings: "ss01" on;
+    font-family: "Roboto", "Cantarell", "system-ui", sans-serif;
 }
 
 .title-1, .title-2, .title-3, .title-4,
@@ -112,13 +112,13 @@
 .mackes-section-header,
 .cds-heading-01, .cds-heading-02, .cds-heading-03,
 .cds-heading-04, .cds-heading-05, .cds-heading-06, .cds-heading-07 {
-    font-family: "Red Hat Display", "Red Hat Text", "Cantarell", sans-serif;
-    font-weight: 600;
+    font-family: "Roboto", "Cantarell", sans-serif;
+    font-weight: 500;
 }
 
 textview.monospace, textview.monospace text,
 .monospace, .cds-code-01, .cds-code-02 {
-    font-family: "Red Hat Mono", "Red Hat Mono", "Cascadia Code", "JetBrains Mono", monospace;
+    font-family: "Roboto Mono", "Cascadia Code", "JetBrains Mono", monospace;
 }
 
 /* Phase 7.2: Nerd Font fallback for inline-text contexts.
@@ -137,10 +137,10 @@ textview.monospace, textview.monospace text,
 .mackes-apple-menu-status,
 .mackes-drawer-mini {
     font-family:
-        "RedHatMono Nerd Font Mono", "RedHatMono Nerd Font",
+        "RobotoMono Nerd Font Mono", "RobotoMono Nerd Font",
         "JetBrainsMono Nerd Font", "FiraCode Nerd Font",
         "Symbols Nerd Font Mono", "Symbols Nerd Font",
-        "Red Hat Mono", monospace;
+        "Roboto Mono", monospace;
     font-feature-settings: "calt" on, "liga" on;
 }
 

@@ -1,18 +1,23 @@
-//! Typography tokens. Locks: Q11/Q12 (Geologica display + body),
-//! Q13 (IBM Plex Mono), Q14 (1.2 minor third scale),
-//! Q15 (optical sizing — tight on display, default on body).
+//! Typography tokens. CR-1 (2026-05-25) swapped the v2.2 lock
+//! (Geologica + IBM Plex Mono) for Classic ChromeOS Roboto +
+//! Roboto Mono per `docs/design/chromeos-classic-spec.md`. The
+//! pre-CR-1 Q11/Q12 lock is grandfathered in source comments
+//! for archaeology; the live tokens are Roboto/Roboto Mono.
 
-/// Display + body font family. Geologica is variable; the same
-/// font face is used at every size, with the `opsz` axis driving
-/// optical adjustments.
-pub const FONT_DISPLAY_BODY: &str = "Geologica";
+/// Display + body font family. Roboto — Fedora's
+/// `google-roboto-fonts` package supplies it. Q11 grandfathered
+/// (was Geologica).
+pub const FONT_DISPLAY_BODY: &str = "Roboto";
 
-/// Monospace font family. IBM Plex Mono — paths, IDs, peer
-/// addresses, code samples.
-pub const FONT_MONO: &str = "IBM Plex Mono";
+/// Monospace font family. Roboto Mono — Fedora's
+/// `google-roboto-mono-fonts` package supplies it. Q12
+/// grandfathered (was IBM Plex Mono).
+pub const FONT_MONO: &str = "Roboto Mono";
 
-/// Type scale ratio. 1.2 minor third (Q14). Calm progression
-/// matching Apple System Settings' rhythm.
+/// Type scale ratio. Classic ChromeOS uses a flatter scale than
+/// Q14's 1.2 minor third — body 13, display 22, ~1.69×. The
+/// constant stays here for legacy callers that read it; the
+/// FontSize tier defaults are the live source of truth.
 pub const SCALE_RATIO: f32 = 1.2;
 
 /// Roles a piece of text can take. Maps to the eight tiers in
@@ -108,16 +113,28 @@ pub struct FontSize {
 }
 
 impl FontSize {
-    /// Token defaults — the 1.2 minor third scale per Q14.
+    /// Token defaults — Classic ChromeOS tiers per CR-1
+    /// (2026-05-25). Source: `docs/design/chromeos-classic-spec
+    /// .md` § Typography (UI body 13, Section header 11, Page
+    /// title 18, Display title 22, Monospace 12). The
+    /// `subheading` + `heading` slots interpolate between
+    /// `body` and `section` since the spec doesn't carry
+    /// distinct tiers for them — picked 15 and 16 to keep the
+    /// progression monotonic.
     pub const fn defaults() -> Self {
         Self {
-            caption: 12.0,
-            body: 14.0,
-            subheading: 17.0,
-            heading: 20.0,
-            section: 24.0,
-            display: 28.0,
-            mono: 13.0,
+            // Section header (small caps, +0.5 px letter-space).
+            caption: 11.0,
+            // UI body.
+            body: 13.0,
+            subheading: 15.0,
+            heading: 16.0,
+            // Page title.
+            section: 18.0,
+            // Display title.
+            display: 22.0,
+            // Monospace.
+            mono: 12.0,
         }
     }
 }
@@ -182,13 +199,16 @@ mod tests {
     }
 
     #[test]
-    fn body_size_is_14sp() {
-        assert_eq!(FontSize::defaults().body as i32, 14);
+    fn body_size_is_chromeos_13px() {
+        // CR-1 (2026-05-25): UI body Roboto 400 / 13 px / 18 px
+        // line per docs/design/chromeos-classic-spec.md.
+        assert_eq!(FontSize::defaults().body as i32, 13);
     }
 
     #[test]
-    fn display_size_is_28sp() {
-        assert_eq!(FontSize::defaults().display as i32, 28);
+    fn display_size_is_chromeos_22px() {
+        // CR-1: Display title Roboto 400 / 22 px / 28 px line.
+        assert_eq!(FontSize::defaults().display as i32, 22);
     }
 
     #[test]
@@ -203,21 +223,24 @@ mod tests {
     }
 
     #[test]
-    fn font_family_is_geologica() {
-        assert_eq!(FONT_DISPLAY_BODY, "Geologica");
+    fn font_family_is_roboto() {
+        // CR-1 (2026-05-25): Classic ChromeOS Roboto replaces
+        // Geologica per docs/design/chromeos-classic-spec.md.
+        assert_eq!(FONT_DISPLAY_BODY, "Roboto");
     }
 
     #[test]
-    fn mono_is_ibm_plex_mono() {
-        assert_eq!(FONT_MONO, "IBM Plex Mono");
+    fn mono_is_roboto_mono() {
+        // CR-1: Roboto Mono replaces IBM Plex Mono.
+        assert_eq!(FONT_MONO, "Roboto Mono");
     }
 
     #[test]
     fn type_role_size_resolves() {
         let sizes = FontSize::defaults();
-        assert_eq!(TypeRole::Body.size_in(sizes) as i32, 14);
-        assert_eq!(TypeRole::Display.size_in(sizes) as i32, 28);
-        assert_eq!(TypeRole::Mono.size_in(sizes) as i32, 13);
+        assert_eq!(TypeRole::Body.size_in(sizes) as i32, 13);
+        assert_eq!(TypeRole::Display.size_in(sizes) as i32, 22);
+        assert_eq!(TypeRole::Mono.size_in(sizes) as i32, 12);
     }
 
     #[test]

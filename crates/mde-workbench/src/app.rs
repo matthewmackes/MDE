@@ -1484,14 +1484,18 @@ mod tests {
     // guard against accidental drift from the Q-locked values.
 
     #[test]
-    fn workbench_iced_theme_background_matches_q3_charcoal() {
+    fn workbench_iced_theme_background_matches_chromeos_classic() {
+        // CR-1 (2026-05-25) swapped the Q3 Apple-charcoal
+        // #1d1d1f page surface for the Classic ChromeOS
+        // #202124 page surface per
+        // `docs/design/chromeos-classic-spec.md`. Q3
+        // grandfathered in source comments only.
         let theme = mde_workbench_iced_theme();
         let bg = theme.palette().background;
-        // Q3 lock — Apple charcoal #1d1d1f.
         let expected = (
-            0x1d as f32 / 255.0,
-            0x1d as f32 / 255.0,
-            0x1f as f32 / 255.0,
+            0x20 as f32 / 255.0,
+            0x21 as f32 / 255.0,
+            0x24 as f32 / 255.0,
         );
         assert!(
             (bg.r - expected.0).abs() < 1e-4,

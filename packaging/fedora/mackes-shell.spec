@@ -292,6 +292,17 @@ Recommends:     redhat-mono-fonts
 # ZIP today.
 Recommends:     ibm-plex-mono-fonts
 
+# CR-1 (2026-05-25): Classic ChromeOS swap — Roboto + Roboto Mono
+# replace Geologica + IBM Plex Mono per
+# docs/design/chromeos-classic-spec.md. Hard `Requires:` rather
+# than `Recommends:` because every Workbench surface now sources
+# both faces; missing them would render the live binary with
+# unhinted fallback metrics that the operator notices immediately.
+# Fedora's `google-roboto-fonts` + `google-roboto-mono-fonts`
+# ship the canonical Roboto family.
+Requires:       google-roboto-fonts
+Requires:       google-roboto-mono-fonts
+
 # QNM is detected at runtime; soft dep so users without QNM still get
 # Network → QNM panel with an install prompt (C2/Q38 lock).
 Recommends:     qnm

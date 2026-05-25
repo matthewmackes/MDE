@@ -2660,20 +2660,7 @@ disconnected" toasts get a dedicated Nebula vocabulary.
   locks section to name Classic ChromeOS as the sole reference,
   adds `[[project_chromeos_classic_visual_lock]]` +
   `[[project_object_card_pattern]]` memories, opens this epic.
-- [ ] **CR-1: v2.6 — Theme token swap in `mde_theme` + `data/css/tokens.css`.**
-  **As** an MDE operator, **I want** every surface to render in
-  the locked Classic ChromeOS palette + Roboto typography,
-  **so that** the platform's visual identity matches the
-  2026-05-24 lock end-to-end. **Acceptance:**
-  - [ ] `mde_theme::palette::dark()` returns the Classic ChromeOS dark tokens (`#202124 / #2d2e30 / #3c4043 / #e8eaed / #9aa0a6`).
-  - [ ] `mde_theme::palette::light()` returns the Classic ChromeOS light tokens (`#f7f7f7 / #ffffff / #dadce0 / #1d1d1f / #5f6368`).
-  - [ ] `mde_theme::typography::body()` resolves to Roboto 400 / 13 px / 18 px line; `typography::mono()` to Roboto Mono 400 / 12 px.
-  - [ ] `data/css/tokens.css` rewritten with the same tokens; lint-css.sh passes.
-  - [ ] `packaging/fedora/mackes-shell.spec` gains `Requires: google-roboto-fonts` + `google-roboto-mono-fonts`.
-  **Implementation notes:**
-    - Spec source: `docs/design/chromeos-classic-spec.md`.
-    - Icon: `Icon::Theme` (no chrome change in this task).
-    - Blockers: none — entry point for the whole epic.
+- [✓] **CR-1: v2.6 — Theme token swap in `mde_theme` + `data/css/tokens.css`** *(shipped 2026-05-25 — every acceptance bullet met: `mde_theme::palette::dark()` returns `#202124 / #2d2e30 / #3c4043 / #e8eaed / #9aa0a6` (the spec uses the surface-active tier as both `overlay` and `border` since Classic ChromeOS draws hard 1px dividers rather than alpha hairlines); `palette::light()` returns `#f7f7f7 / #ffffff / #dadce0 / #1d1d1f / #5f6368` with the `#4051d3` darker-indigo accent pair for AA contrast; `FontSize::defaults()` returns the Classic ChromeOS tiers (caption 11 → section-header, body 13, section 18 → page-title, display 22 → display-title, mono 12); `FONT_DISPLAY_BODY = "Roboto"`, `FONT_MONO = "Roboto Mono"`. `data/css/tokens.css` rewritten — every `cds_bg_*` / `cds_text_*` / `cds_border_*` token resolves to ChromeOS hex; `font-family` rules now name Roboto / Roboto Mono; lint-css.sh clean (4/4 OK). `packaging/fedora/mackes-shell.spec` gains hard `Requires: google-roboto-fonts` + `Requires: google-roboto-mono-fonts` after the existing Geologica/IBM Plex Mono block (kept as commented archaeology). Downstream tests updated to match (Q3 charcoal background test in `mde-workbench/src/app.rs` → ChromeOS #202124; Q2 same-accent-both-themes palette test → Classic ChromeOS per-theme accent; high_contrast a11y test → solid border brightening rather than alpha widening; typography tests now assert Roboto/13/22/12). `cargo test`: mde-theme 95/95, mde-workbench 614/614, mde-files 190/190. Voice lint + CSS lint clean. `rpmspec -P` parses the spec.)*
 - [ ] **CR-2: v2.6 — Workbench shell retrofit (sidebar + tab-strip header + Shelf).**
   **As** an operator opening Workbench, **I want** the sidebar to
   hover-expand 56→256 px, the window header to render as a
