@@ -200,6 +200,22 @@ Requires:       netdata
 Requires:       kamailio >= 5.8
 Requires:       rtpengine
 
+# DM-1 (v2.7, 2026-05-25) — greetd + regreet + cage replace
+# LightDM as the display manager per the 10-Q operator survey
+# locked 2026-05-24. greetd is the daemon (kiosk-locked,
+# socket-IPC to greeters); regreet is the Rust+GTK4 greeter
+# UI; cage is the one-window wlroots compositor that hosts
+# regreet so pre-auth has no escape keybindings. LightDM
+# stays Required for now (rollback path); the
+# `apply_display_manager()` birthright step (DM-5) is what
+# flips the systemd default on first wizard run. All three
+# packages ship in F44's official repo — no Copr / RPM-Fusion
+# dep. After greetd is verified on the bench (HW-*),
+# `Requires: lightdm` can drop.
+Requires:       greetd
+Requires:       regreet
+Requires:       cage
+
 # Mesh filesystem (SSHFS-over-QNM, §8.10)
 # Fedora packages sshfs as `fuse-sshfs` (deliberately namespaced to
 # disambiguate fuse2/fuse3 binaries).

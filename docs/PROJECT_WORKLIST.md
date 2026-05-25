@@ -2708,18 +2708,18 @@ disconnected" toasts get a dedicated Nebula vocabulary.
 
 #### Substrate (RPM deps + system configs)
 
-- [ ] **v2.7: DM-1 Add `greetd`, `regreet`, `cage` to the base `mde` RPM (Tier 1)**
+- [✓] **v2.7: DM-1 Add `greetd`, `regreet`, `cage` to the base `mde` RPM (Tier 1)** *(shipped 2026-05-25)*
   **As** a mackes-shell operator,
   **I want** the three new display-manager packages to land automatically when I `dnf install mde`,
   **so that** I don't have to manually track + install them and the greeter is wired up out of the box.
   **Acceptance** (each bench-observable):
-    - [ ] `packaging/fedora/mackes-shell.spec`'s base `mde` `Requires:` block gains three lines: `Requires: greetd`, `Requires: regreet`, `Requires: cage`. (No version pins — F44's stock versions of all three are sufficient as of 2026-05-24.)
-    - [ ] `rpmspec -P` is clean.
-    - [ ] `dnf install mde` on a clean F44 VM pulls all three.
-    - [ ] LightDM stays `Requires: lightdm` for now (rollback path); a `# TODO: drop after greetd verified on bench (HW-*)` comment marks the line so a future cut can clean it up.
+    - [✓] `packaging/fedora/mackes-shell.spec`'s base `mde` `Requires:` block gains three lines: `Requires: greetd`, `Requires: regreet`, `Requires: cage` (alongside the existing Kamailio/RTPengine voice-stack block). Comment block cites DM-1 + the 10-Q operator survey lock + the LightDM rollback intent.
+    - [✓] `rpmspec -P` is clean.
+    - [ ] `dnf install mde` on a clean F44 VM pulls all three — operator-side bench verification deferred to HW-*.
+    - [✓] LightDM stays as a base `Requires:` for now (rollback path preserved); the in-comment note in the spec marks it as the future-drop candidate once DM-5 (`apply_display_manager` birthright step) ships + bench verifies on HW-*.
   **Implementation notes:**
     - F44 ships all three packages in `fedora` + `updates`; no Copr / RPM-Fusion dependency.
-    - Sister INST-1 epic introduces the base-vs-addon spec split; if INST-1 hasn't landed yet, the three deps go in the existing single `mde` spec and migrate to the base subpackage when INST-1 ships.
+    - The base/desktop subpackage split from INST-1 landed before DM-1 shipped, but DM-1 deliberately keeps the three Requires on the BASE `mde` package rather than `mde-desktop` per the 10-Q Q1 lock — the greeter is a system-level login surface, not a desktop opt-in. Lighthouse / headless installs do still pull these three deps (~few MB total); the `apply_display_manager` step (DM-5) is what gates whether greetd actually gets enabled per profile.
     - Blockers: none — pure spec edit.
 
 - [ ] **v2.7: DM-2 Ship `/etc/greetd/config.toml` from `data/greetd/config.toml` (Tier 1)**
