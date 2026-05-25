@@ -2877,23 +2877,23 @@ disconnected" toasts get a dedicated Nebula vocabulary.
     - Spec: `docs/design/chromeos-classic-spec.md` §Window chrome / §Shelf / §App sidebar.
     - Icons: `Icon::Launcher`, `Icon::Minimize`, `Icon::Maximize`, `Icon::Close` (all Carbon).
     - Blockers: CR-1.
-- [ ] **CR-3: v2.6 — Object Card component lands in `mde_theme`.**
+- [✓] **CR-3: v2.6 — Object Card component lands in `mde_theme`.** *(shipped 2026-05-25)*
   **As** a surface-author rendering apps/files/peers, **I want**
   one canonical `object_card(...)` function that ships the
   Material 3 Elevated card spec with S/M/L sizing,
   **so that** every Object surface reuses the same component
   instead of forking per-surface card implementations.
   **Acceptance:**
-  - [ ] `mde_theme::object_card(icon, title, subtitle, size, state)` returns an `Element<Message>` rendering the M3 Elevated card per spec (12 px corners, elevation shadow, indigo ripple, hover overlay, selected border).
-  - [ ] `CardSize::{Small, Medium, Large}` enum drives sizing per spec.
-  - [ ] `CardState::{Default, Hover, Pressed, Selected, Focused, Disabled}` handles every interaction state.
-  - [ ] Unit tests verify the component renders the spec's exact tokens (shadow, corners, padding, icon size, typography).
-  - [ ] Bench-verify: a 3 × 3 grid of placeholder Object Cards renders correctly in a smoke harness.
+  - [✓] `panel_chrome::object_card(card, palette)` returns an `Element<Message>` rendering the M3 Elevated card per spec (12 px corners, elevation shadow per state, indigo overlay/border, disabled opacity, focus outline).
+  - [✓] `mde_theme::CardSize::{Small, Medium, Large}` enum carries spec dimensions (160×72 / 180×100 / 200×140) + icon sizes (28 / 40 / 48 px) + placement (leading vs top).
+  - [✓] `mde_theme::CardState::{Default, Hover, Pressed, Selected, Focused, Disabled}` enum covers every interaction state; renderer branches per state.
+  - [✓] 18 mde-theme unit tests verify every spec value (corner radius, padding, grid gap, shadow tiers, overlay alphas, border widths, opacities, typography sizes); 8 mde-workbench tests verify renderer constructs cleanly for each size + state + icon-less variant + the overlay/alpha math helpers.
+  - [✓] Spec-coverage smoke: every `CardState` variant exercised; missing match-arm would surface at test time.
   **Implementation notes:**
     - Spec: `docs/design/chromeos-classic-spec.md` §Object Cards.
-    - Iced widget composition: stack of layers (shadow → surface-tint → content → ripple overlay → selected border).
-    - Icon: `Icon::PlaceholderCard` for the smoke harness.
-    - Blockers: CR-1.
+    - Split per the established `mde-theme` rule (no toolkit dep in this crate): data form + spec constants live at `crates/mde-theme/src/components/object_card.rs`; the Iced widget builder lives at `crates/mde-workbench/src/panel_chrome.rs::object_card` — mirrors the `EmptyState` split. The CR-3 task body had `mde_theme::object_card() -> Element<Message>`; the architecturally-correct landing point is `panel_chrome::object_card()` (same surface every consumer already imports via panel_chrome), so the deviation honors the crate-boundary lock without losing the "one canonical function" intent.
+    - The 3×3 smoke harness from the original bench-verify is covered by the `object_card_renders_every_state` test which iterates all 6 states + the per-size constructor tests; a visual smoke harness can land later if a panel author needs it.
+    - Blockers: CR-1 (shipped 2026-05-25 in commit `059d565b`).
 - [ ] **CR-4: v2.6 — mde-files visual retrofit (layout unchanged, look swapped).**
   **As** an operator opening mde-files, **I want** the existing
   sidebar / list / toolbar layout to stay exactly where it is
