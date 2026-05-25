@@ -25,6 +25,9 @@ use crate::app::Message;
 /// Adaptive-width floor for workspace cells (R4-Q64).
 pub const WORKSPACE_CELL_MIN_PX: f32 = 24.0;
 
+/// Characters above which a workspace name is truncated / marqueed (R4-Q64).
+pub const WS_NAME_MAX_CHARS: usize = 8;
+
 // ── Window info (Portal-8.a) ──────────────────────────────────────────────────
 
 /// Trimmed window data the running-zone segment needs (Portal-8.a).
@@ -86,9 +89,6 @@ fn collect_windows(node: &swayipc_async::Node, ws_num: i32) -> Vec<WindowInfo> {
     }
     windows
 }
-
-/// Maximum displayed characters before a workspace name is truncated.
-const WS_NAME_MAX_CHARS: usize = 8;
 
 /// Trimmed workspace data the Dock strip needs.
 #[derive(Debug, Clone, PartialEq, Eq)]

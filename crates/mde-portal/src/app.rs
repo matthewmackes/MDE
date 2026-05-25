@@ -20,6 +20,9 @@
 //! click moves all tiling windows to scratchpad (indigo active indicator);
 //! click again restores them by container ID (R4-Q73).
 
+use std::collections::HashMap;
+
+use iced::widget::scrollable::{self, AbsoluteOffset, Direction, Scrollbar};
 use iced::widget::{container, mouse_area, row, text};
 use iced::{Color, Element, Length, Padding, Subscription, Task, Theme};
 use iced_layershell::reexport::{Anchor, KeyboardInteractivity, Layer};
@@ -28,8 +31,19 @@ use iced_layershell::to_layer_message;
 
 use crate::fonts::{resolve_icon, FONT_INTEL_ONE_MONO};
 use crate::status::StatusInfo;
-use crate::workspace::{WindowInfo, WorkspaceInfo};
+use crate::workspace::{WindowInfo, WorkspaceInfo, WS_NAME_MAX_CHARS};
 use mde_theme::{Icon, IconSize};
+
+// ── marquee constants (Portal-5.b) ────────────────────────────────────────────
+
+/// Fixed display width of a marquee workspace cell in logical pixels.
+const WS_MARQUEE_CELL_PX: f32 = 64.0;
+/// Intel One Mono at 12 px: ~7.2 px/char (monospace advance).
+const WS_MARQUEE_PX_PER_CHAR: f32 = 7.2;
+/// Visual gap between the name and its duplicate (spaces as chars).
+const WS_MARQUEE_GAP: &str = "   ";
+/// px advanced per 20 ms tick → 50 px/sec.
+const WS_MARQUEE_ADVANCE_PX: f32 = 1.0;
 
 /// Crate-private app-id constant visible to the layer-shell compositor.
 pub(crate) const APP_ID: &str = "dev.mackes.MDE.Portal";
@@ -188,6 +202,8 @@ pub enum Message {
     ClockTick,
     /// 5-second tick to persist shell state (Portal-29 crash recovery).
     SnapshotTick,
+    /// 20ms tick to advance workspace-name marquee offsets (Portal-5.b, R4-Q64).
+    MarqueeTick,
     /// User clicked the show-wallpaper strip (Portal-12, R4-Q72).
     ShowDesktopToggle,
     /// Async result of `show_desktop_hide()` — carries IDs of moved windows.
@@ -245,6 +261,8 @@ pub struct DockApp {
     running_windows: Vec<WindowInfo>,
     /// App-id key of the currently hovered running-zone group; `None` = no hover.
     hovered_running_group: Option<String>,
+    /// Horizontal scroll offsets (px) per workspace name for marquee (Portal-5.b).
+    ws_marquee_offsets: HashMap<String, f32>,
 }
 
 impl Default for DockApp {
@@ -260,6 +278,7 @@ impl Default for DockApp {
             status_info: StatusInfo::default(),
             running_windows: Vec::new(),
             hovered_running_group: None,
+            ws_marquee_offsets: HashMap::new(),
         }
     }
 }
@@ -361,6 +380,33 @@ impl iced_layershell::Application for DockApp {
                     crate::workspace::new_workspace(taken),
                     |_| Message::Noop,
                 );
+            }
+            Message::MarqueeTick => {
+                // Advance scroll offset 1px per tick (50px/sec at 20ms cadence).
+                // Only overflow workspaces (name > WS_NAME_MAX_CHARS) scroll.
+                let mut tasks: Vec<Task<Message>> = Vec::new();
+                for ws in &self.workspaces {
+                    if ws.name.chars().count() <= WS_NAME_MAX_CHARS {
+                        continue;
+                    }
+                    let name_len = ws.name.chars().count();
+                    let gap_len = WS_MARQUEE_GAP.chars().count();
+                    let loop_px = (name_len + gap_len) as f32 * WS_MARQUEE_PX_PER_CHAR;
+                    let offset = self.ws_marquee_offsets.entry(ws.name.clone()).or_insert(0.0);
+                    *offset = (*offset + WS_MARQUEE_ADVANCE_PX) % loop_px;
+                    let x = *offset;
+                    let id = scrollable::Id::new(format!("ws-marquee-{}", ws.name));
+                    tasks.push(scrollable::scroll_to(id, AbsoluteOffset { x, y: 0.0 }));
+                }
+                // Drop offsets for workspaces that no longer exist.
+                let names: Vec<String> =
+                    self.workspaces.iter().map(|w| w.name.clone()).collect();
+                self.ws_marquee_offsets.retain(|k, _| names.contains(k));
+
+                if tasks.is_empty() {
+                    return Task::none();
+                }
+                return Task::batch(tasks);
             }
             Message::HostnameClicked => {
                 // Portal-6.b: cross-peer cycling activates when mesh-home is live.
@@ -478,6 +524,7 @@ impl iced_layershell::Application for DockApp {
             clock_subscription(),
             snapshot_subscription(),
             status_subscription(),
+            marquee_subscription(),
         ])
     }
 
@@ -597,6 +644,19 @@ fn status_subscription() -> Subscription<Message> {
     )
 }
 
+/// 20ms marquee tick subscription (Portal-5.b, 50px/sec).
+fn marquee_subscription() -> Subscription<Message> {
+    Subscription::run_with_id(
+        "mde-portal-marquee",
+        async_stream::stream! {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                yield Message::MarqueeTick;
+            }
+        },
+    )
+}
+
 /// 1-second clock tick subscription (Portal-11).
 fn clock_subscription() -> Subscription<Message> {
     Subscription::run_with_id(
@@ -661,14 +721,13 @@ fn build_hostname_segment<'a>(app: &DockApp, fg: Color) -> Element<'a, Message> 
     .into()
 }
 
-/// Build the workspace segment (Portal-5): `[ws1›][ws2›][dev…›][+]`.
+/// Build the workspace segment (Portal-5 / Portal-5.b): `[ws1›][ws2›][dev…›][+]`.
 ///
-/// Each cell has the workspace label + inline `›` right-chevron acting as the
-/// cell border (R4-Q63).  Cells adapt to content width; 24 px floor (R4-Q64).
-/// Focused workspace: indigo bg.  Current-output visible workspace: subtle
-/// highlight.  Urgent: red bg.  Other outputs' workspaces: dimmed.
+/// Each cell has the workspace label + inline `›` right-chevron (R4-Q63).
+/// Short names (≤ 8 chars): static cell with shrink width, 24 px floor (R4-Q64).
+/// Long names (> 8 chars): fixed 64 px cell with horizontal-scrollable marquee
+/// at 50 px/sec; the name is duplicated with a gap for a seamless loop (Portal-5.b).
 fn build_workspace_segment<'a>(app: &DockApp, fg: Color) -> Element<'a, Message> {
-    // Determine output of the focused workspace — that's the "current" output.
     let current_output: &str = app
         .workspaces
         .iter()
@@ -682,8 +741,7 @@ fn build_workspace_segment<'a>(app: &DockApp, fg: Color) -> Element<'a, Message>
         let is_focused = ws.focused;
         let is_current_output = ws.output == current_output;
         let is_urgent = ws.urgent;
-
-        let label = ws.display_label();
+        let is_overflow = ws.name.chars().count() > WS_NAME_MAX_CHARS;
 
         let text_color = if is_focused {
             Color::WHITE
@@ -711,29 +769,69 @@ fn build_workspace_segment<'a>(app: &DockApp, fg: Color) -> Element<'a, Message>
             Color { r: 0.3, g: 0.3, b: 0.3, a: 1.0 }
         };
 
-        let cell_content = row![
-            text(label).size(12.0).color(text_color),
-            text("›").size(10.0).color(chevron_color),
-        ]
-        .spacing(2)
-        .align_y(iced::Alignment::Center);
-
-        let cell = container(cell_content)
-            .width(Length::Shrink)
-            .height(Length::Fill)
-            .align_y(iced::alignment::Vertical::Center)
-            .padding(Padding::from([0, 8]))
-            .style(move |_: &Theme| iced::widget::container::Style {
-                background: cell_bg.map(iced::Background::Color),
-                ..Default::default()
-            });
-
         let ws_name = ws.name.clone();
-        cells.push(
-            mouse_area(cell)
-                .on_press(Message::FocusWorkspace(ws_name))
-                .into(),
-        );
+
+        let cell: Element<'a, Message> = if is_overflow {
+            // Portal-5.b marquee: duplicate name with gap for seamless loop.
+            let marquee_text = format!("{}{WS_MARQUEE_GAP}{}", ws.name, ws.name);
+            let scroll_id = scrollable::Id::new(format!("ws-marquee-{}", ws.name));
+
+            // Zero-height scrollbar — no visible UI chrome, just the clipping.
+            let marquee = iced::widget::scrollable(
+                text(marquee_text).size(12.0).color(text_color),
+            )
+            .id(scroll_id)
+            .direction(Direction::Horizontal(
+                Scrollbar::new().width(0.0).scroller_width(0.0),
+            ))
+            .width(WS_MARQUEE_CELL_PX)
+            .height(Length::Fill);
+
+            let cell_content = row![
+                marquee,
+                text("›").size(10.0).color(chevron_color),
+            ]
+            .spacing(2)
+            .align_y(iced::Alignment::Center);
+
+            mouse_area(
+                container(cell_content)
+                    .height(Length::Fill)
+                    .align_y(iced::alignment::Vertical::Center)
+                    .padding(Padding::from([0, 4]))
+                    .style(move |_: &Theme| iced::widget::container::Style {
+                        background: cell_bg.map(iced::Background::Color),
+                        ..Default::default()
+                    }),
+            )
+            .on_press(Message::FocusWorkspace(ws_name))
+            .into()
+        } else {
+            // Short name: static shrink-width cell (original Portal-5 design).
+            let label = ws.display_label();
+            let cell_content = row![
+                text(label).size(12.0).color(text_color),
+                text("›").size(10.0).color(chevron_color),
+            ]
+            .spacing(2)
+            .align_y(iced::Alignment::Center);
+
+            mouse_area(
+                container(cell_content)
+                    .width(Length::Shrink)
+                    .height(Length::Fill)
+                    .align_y(iced::alignment::Vertical::Center)
+                    .padding(Padding::from([0, 8]))
+                    .style(move |_: &Theme| iced::widget::container::Style {
+                        background: cell_bg.map(iced::Background::Color),
+                        ..Default::default()
+                    }),
+            )
+            .on_press(Message::FocusWorkspace(ws_name))
+            .into()
+        };
+
+        cells.push(cell);
     }
 
     // `+` button — creates the next unused workspace.
@@ -1672,6 +1770,82 @@ mod tests {
         );
         // strip_on stays false until ShowDesktopHidden arrives.
         assert!(!app.wallpaper_strip_on);
+    }
+
+    // ── Portal-5.b marquee tests ──────────────────────────────────────────────
+
+    #[test]
+    fn ws_marquee_offsets_start_empty() {
+        let app = DockApp::default();
+        assert!(app.ws_marquee_offsets.is_empty());
+    }
+
+    #[test]
+    fn marquee_tick_noop_when_no_overflow_workspaces() {
+        let mut app = DockApp::default();
+        // Only short-name workspaces — no overflow.
+        let _ = iced_layershell::Application::update(
+            &mut app,
+            Message::WorkspaceList(vec![make_ws(1, "1", true, true, "eDP-1")]),
+        );
+        let _task = iced_layershell::Application::update(&mut app, Message::MarqueeTick);
+        // No offsets should be created for short names.
+        assert!(app.ws_marquee_offsets.is_empty());
+    }
+
+    #[test]
+    fn marquee_tick_creates_and_advances_offset_for_overflow_workspace() {
+        let mut app = DockApp::default();
+        let long_name = "my-very-long-project"; // > 8 chars → overflow
+        let _ = iced_layershell::Application::update(
+            &mut app,
+            Message::WorkspaceList(vec![make_ws(1, long_name, true, true, "eDP-1")]),
+        );
+        // First tick: offset initialised at 0, then advanced by ADVANCE_PX.
+        let _task = iced_layershell::Application::update(&mut app, Message::MarqueeTick);
+        let offset = app.ws_marquee_offsets.get(long_name).copied().unwrap_or(-1.0);
+        assert!(
+            (offset - WS_MARQUEE_ADVANCE_PX).abs() < f32::EPSILON,
+            "offset should equal ADVANCE_PX after first tick, got {offset}"
+        );
+    }
+
+    #[test]
+    fn marquee_offset_wraps_at_loop_width() {
+        let mut app = DockApp::default();
+        let name = "long-workspace"; // 14 chars → loop_width = (14 + 3) * 7.2 = 122.4 px
+        let _ = iced_layershell::Application::update(
+            &mut app,
+            Message::WorkspaceList(vec![make_ws(2, name, true, true, "eDP-1")]),
+        );
+        let gap_len = WS_MARQUEE_GAP.chars().count();
+        let loop_px = (name.chars().count() + gap_len) as f32 * WS_MARQUEE_PX_PER_CHAR;
+        // Seed offset just below the loop boundary.
+        app.ws_marquee_offsets.insert(name.to_string(), loop_px - 0.5);
+        let _task = iced_layershell::Application::update(&mut app, Message::MarqueeTick);
+        let offset = app.ws_marquee_offsets.get(name).copied().unwrap_or(-1.0);
+        assert!(
+            offset < loop_px,
+            "offset {offset} should have wrapped below loop_px {loop_px}"
+        );
+    }
+
+    #[test]
+    fn marquee_tick_cleans_up_removed_workspaces() {
+        let mut app = DockApp::default();
+        let name = "long-workspace";
+        // Seed an offset for a workspace that is now gone.
+        app.ws_marquee_offsets.insert(name.to_string(), 10.0);
+        // Workspace list no longer contains that name.
+        let _ = iced_layershell::Application::update(
+            &mut app,
+            Message::WorkspaceList(vec![make_ws(1, "1", true, true, "eDP-1")]),
+        );
+        let _task = iced_layershell::Application::update(&mut app, Message::MarqueeTick);
+        assert!(
+            !app.ws_marquee_offsets.contains_key(name),
+            "stale offset should be cleaned up after workspace removed"
+        );
     }
 
     // ── Portal-8.b WM-buttons-on-hover tests ─────────────────────────────────
