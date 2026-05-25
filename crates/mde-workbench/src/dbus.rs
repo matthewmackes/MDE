@@ -104,6 +104,28 @@ impl PendingFocus {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    /// Serializes every test that touches the `PendingFocus`
+    /// global. Tests in this module hold a single shared
+    /// `[u8; 0]` value-less guard for their full body so
+    /// concurrent runs (the default `cargo test` topology)
+    /// observe sequential `submit` / `drain` interleavings.
+    /// Without this guard the six `pending_focus_*` and
+    /// `focus_handler_*` tests race on the process-wide slot
+    /// and `cargo test` fails intermittently
+    /// (OV-test-flake-1).
+    static FOCUS_LOCK: Mutex<()> = Mutex::new(());
+
+    /// Acquire the focus-test lock. Recovers from poisoning so
+    /// a panicking earlier test doesn't block the rest of the
+    /// suite — every test calls `reset_pending()` immediately
+    /// after to scrub state.
+    fn lock_focus() -> std::sync::MutexGuard<'static, ()> {
+        FOCUS_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
 
     /// Drop the process-wide slot between tests so they don't
     /// observe each other's writes. Safe because we hold the
@@ -129,12 +151,14 @@ mod tests {
 
     #[test]
     fn pending_focus_drain_returns_none_on_empty_slot() {
+        let _guard = lock_focus();
         reset_pending();
         assert_eq!(PendingFocus::drain(), None);
     }
 
     #[test]
     fn pending_focus_round_trip_through_submit_and_drain() {
+        let _guard = lock_focus();
         reset_pending();
         assert!(PendingFocus::submit("network.mesh_ssh".into()));
         assert_eq!(PendingFocus::drain(), Some("network.mesh_ssh".into()));
@@ -143,6 +167,7 @@ mod tests {
 
     #[test]
     fn pending_focus_coalesces_to_latest_submit() {
+        let _guard = lock_focus();
         reset_pending();
         PendingFocus::submit("apps".into());
         PendingFocus::submit("network".into());
@@ -154,6 +179,7 @@ mod tests {
 
     #[tokio::test]
     async fn focus_handler_writes_into_pending_slot() {
+        let _guard = lock_focus();
         reset_pending();
         let svc = WorkbenchService;
         svc.focus("look_and_feel").await.expect("focus ok");
@@ -162,6 +188,7 @@ mod tests {
 
     #[tokio::test]
     async fn focus_handler_normalises_whitespace_only_slug_to_empty() {
+        let _guard = lock_focus();
         reset_pending();
         let svc = WorkbenchService;
         svc.focus("   ").await.expect("focus ok");
@@ -172,6 +199,7 @@ mod tests {
 
     #[tokio::test]
     async fn focus_handler_trims_surrounding_whitespace() {
+        let _guard = lock_focus();
         reset_pending();
         let svc = WorkbenchService;
         svc.focus("  network.mesh_ssh  ").await.expect("focus ok");
