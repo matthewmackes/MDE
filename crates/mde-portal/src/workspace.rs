@@ -352,6 +352,47 @@ pub async fn show_desktop_restore(ids: Vec<i64>) {
     }
 }
 
+// ── WM micro-actions (Portal-8.b) ─────────────────────────────────────────────
+
+/// Kill the window with the given container ID (Portal-8.b close button).
+pub async fn wm_close(con_id: i64) {
+    if let Ok(mut conn) = Connection::new().await {
+        let _ = conn.run_command(&format!("[con_id={con_id}] kill")).await;
+    }
+}
+
+/// Toggle floating state for the given container (Portal-8.b float button).
+pub async fn wm_float_toggle(con_id: i64) {
+    if let Ok(mut conn) = Connection::new().await {
+        let _ = conn.run_command(&format!("[con_id={con_id}] floating toggle")).await;
+    }
+}
+
+/// Toggle fullscreen for the given container (Portal-8.b fullscreen button).
+pub async fn wm_fullscreen_toggle(con_id: i64) {
+    if let Ok(mut conn) = Connection::new().await {
+        let _ = conn.run_command(&format!("[con_id={con_id}] fullscreen toggle")).await;
+    }
+}
+
+/// Move the given container to the scratchpad (Portal-8.b minimize button).
+pub async fn wm_scratchpad(con_id: i64) {
+    if let Ok(mut conn) = Connection::new().await {
+        let _ = conn.run_command(&format!("[con_id={con_id}] move to scratchpad")).await;
+    }
+}
+
+/// Cycle the parent layout: split → tabbed → stacking (Portal-8.b layout button).
+pub async fn wm_layout_cycle(con_id: i64) {
+    if let Ok(mut conn) = Connection::new().await {
+        let _ = conn
+            .run_command(&format!(
+                "[con_id={con_id}] layout toggle split tabbed stacking"
+            ))
+            .await;
+    }
+}
+
 /// Switch to the lowest unused workspace number ≥ 1.
 pub async fn new_workspace(taken_nums: Vec<i32>) {
     let next = (1i32..).find(|n| !taken_nums.contains(n)).unwrap_or(1);
@@ -597,6 +638,36 @@ mod tests {
 
     fn parse_node(json: &str) -> swayipc_async::Node {
         serde_json::from_str(json).expect("test node JSON should parse")
+    }
+
+    // ── Portal-8.b WM action function existence tests ─────────────────────────
+    //
+    // Sway is not running in test; these verify the functions are callable
+    // without panicking (they fail gracefully when the socket is absent).
+
+    #[tokio::test]
+    async fn wm_close_does_not_panic_without_sway() {
+        wm_close(999_999).await; // graceful no-op when SWAYSOCK absent
+    }
+
+    #[tokio::test]
+    async fn wm_float_toggle_does_not_panic_without_sway() {
+        wm_float_toggle(999_999).await;
+    }
+
+    #[tokio::test]
+    async fn wm_fullscreen_toggle_does_not_panic_without_sway() {
+        wm_fullscreen_toggle(999_999).await;
+    }
+
+    #[tokio::test]
+    async fn wm_scratchpad_does_not_panic_without_sway() {
+        wm_scratchpad(999_999).await;
+    }
+
+    #[tokio::test]
+    async fn wm_layout_cycle_does_not_panic_without_sway() {
+        wm_layout_cycle(999_999).await;
     }
 
     #[test]

@@ -196,6 +196,20 @@ pub enum Message {
     WindowList(Vec<WindowInfo>),
     /// User clicked a running-zone cell — focus that window by con_id (Portal-8.a).
     FocusWindowById(i64),
+    /// Cursor entered a running-zone group cell — show WM micro-buttons (Portal-8.b).
+    HoverRunningGroup(String),
+    /// Cursor left a running-zone group cell — hide WM micro-buttons (Portal-8.b).
+    UnhoverRunningGroup,
+    /// WM micro-button: close the window (Portal-8.b, R4-Q67).
+    WmClose(i64),
+    /// WM micro-button: toggle floating (Portal-8.b, R4-Q68).
+    WmFloat(i64),
+    /// WM micro-button: toggle fullscreen (Portal-8.b, R4-Q69).
+    WmFull(i64),
+    /// WM micro-button: move window to scratchpad (Portal-8.b, R4-Q70).
+    WmScratchpad(i64),
+    /// WM micro-button: cycle parent layout split→tabbed→stacking (Portal-8.b, R4-Q71).
+    WmLayoutCycle(i64),
     /// 30-second sysfs poll result (Portal-9.a: battery/network/backlight).
     StatusUpdate(StatusInfo),
     /// User clicked the Lock glyph — triggers `loginctl lock-session` (Portal-9.a).
@@ -229,6 +243,8 @@ pub struct DockApp {
     status_info: StatusInfo,
     /// Live window list from swayipc tree (Portal-8.a). Empty until subscription fires.
     running_windows: Vec<WindowInfo>,
+    /// App-id key of the currently hovered running-zone group; `None` = no hover.
+    hovered_running_group: Option<String>,
 }
 
 impl Default for DockApp {
@@ -243,6 +259,7 @@ impl Default for DockApp {
             desktop_window_ids: Vec::new(),
             status_info: StatusInfo::default(),
             running_windows: Vec::new(),
+            hovered_running_group: None,
         }
     }
 }
@@ -383,6 +400,42 @@ impl iced_layershell::Application for DockApp {
             Message::FocusWindowById(con_id) => {
                 return Task::perform(
                     crate::workspace::focus_window_by_id(con_id),
+                    |_| Message::Noop,
+                );
+            }
+            Message::HoverRunningGroup(key) => {
+                self.hovered_running_group = Some(key);
+            }
+            Message::UnhoverRunningGroup => {
+                self.hovered_running_group = None;
+            }
+            Message::WmClose(con_id) => {
+                return Task::perform(
+                    crate::workspace::wm_close(con_id),
+                    |_| Message::Noop,
+                );
+            }
+            Message::WmFloat(con_id) => {
+                return Task::perform(
+                    crate::workspace::wm_float_toggle(con_id),
+                    |_| Message::Noop,
+                );
+            }
+            Message::WmFull(con_id) => {
+                return Task::perform(
+                    crate::workspace::wm_fullscreen_toggle(con_id),
+                    |_| Message::Noop,
+                );
+            }
+            Message::WmScratchpad(con_id) => {
+                return Task::perform(
+                    crate::workspace::wm_scratchpad(con_id),
+                    |_| Message::Noop,
+                );
+            }
+            Message::WmLayoutCycle(con_id) => {
+                return Task::perform(
+                    crate::workspace::wm_layout_cycle(con_id),
                     |_| Message::Noop,
                 );
             }
@@ -806,20 +859,18 @@ fn nav_button_cell<'a>(
         .into()
 }
 
-/// Build the running-zone segment (Portal-8.a, R3-Q15).
+/// Build the running-zone segment (Portal-8.a / Portal-8.b, R3-Q15, R4-Q67–Q71).
 ///
-/// Groups windows by `app_id`.  Each group is a clickable cell showing:
+/// Groups windows by `app_id`.  Each group is a cell showing:
 ///   - Short app label (first 10 chars of app_id, or title fallback)
 ///   - Workspace-number badge when the group spans multiple workspaces (R3-Q15)
 ///   - Count badge when there are 2+ windows in the group
 ///   - Indigo background when any window in the group is focused
 ///
-/// Click calls `[con_id=N] focus` on the focused window in the group (or
-/// the first window if none is focused).
-///
-/// WM-buttons-on-hover (Portal-8.b) not yet wired.
+/// Clicking the label area focuses the window (focused one or first in group).
+/// Hovering the cell reveals 5 WM micro-buttons (Portal-8.b, R4-Q67–Q71):
+///   `✕` close · `◱` float · `□` fullscreen · `↓` scratchpad · `≡` layout-cycle
 fn build_running_zone<'a>(app: &DockApp, fg: Color) -> Element<'a, Message> {
-    // Group by app_id key (fall back to con_id string if no app_id).
     use std::collections::BTreeMap;
     let mut groups: BTreeMap<String, Vec<&WindowInfo>> = BTreeMap::new();
     for w in &app.running_windows {
@@ -835,6 +886,8 @@ fn build_running_zone<'a>(app: &DockApp, fg: Color) -> Element<'a, Message> {
     for (label_key, group) in &groups {
         let any_focused = group.iter().any(|w| w.focused);
         let count = group.len();
+        let is_hovered =
+            app.hovered_running_group.as_deref() == Some(label_key.as_str());
 
         // Best window to focus on click: the focused one or the first.
         let target_id = group
@@ -843,14 +896,13 @@ fn build_running_zone<'a>(app: &DockApp, fg: Color) -> Element<'a, Message> {
             .unwrap_or(&group[0])
             .con_id;
 
-        // Workspace numbers present in this group (for multi-WS badge).
+        // Workspace numbers in this group (for multi-WS badge).
         let mut ws_nums: Vec<i32> = group.iter().map(|w| w.workspace_num).collect();
         ws_nums.dedup();
 
         let bg: Option<Color> = if any_focused { Some(COLOR_INDIGO) } else { None };
         let text_color = if any_focused { Color::WHITE } else { fg };
 
-        // Truncate the label key to a display-friendly length.
         let display: String = {
             let raw = label_key.as_str();
             let max = 10usize;
@@ -866,51 +918,79 @@ fn build_running_zone<'a>(app: &DockApp, fg: Color) -> Element<'a, Message> {
             text(display).size(10.0).color(text_color).into(),
         ];
 
-        // Count badge for multiple windows.
         if count > 1 {
             label_parts.push(
-                container(
-                    text(count.to_string()).size(8.0).color(Color::WHITE),
-                )
-                .style(|_: &Theme| iced::widget::container::Style {
-                    background: Some(iced::Background::Color(
-                        Color { r: 0.5, g: 0.5, b: 0.6, a: 1.0 }
-                    )),
-                    border: iced::Border {
-                        radius: iced::border::Radius::from(4.0),
+                container(text(count.to_string()).size(8.0).color(Color::WHITE))
+                    .style(|_: &Theme| iced::widget::container::Style {
+                        background: Some(iced::Background::Color(Color {
+                            r: 0.5, g: 0.5, b: 0.6, a: 1.0,
+                        })),
+                        border: iced::Border {
+                            radius: iced::border::Radius::from(4.0),
+                            ..Default::default()
+                        },
                         ..Default::default()
-                    },
-                    ..Default::default()
-                })
-                .padding(Padding::from([0, 2]))
-                .width(Length::Shrink)
-                .into(),
+                    })
+                    .padding(Padding::from([0, 2]))
+                    .width(Length::Shrink)
+                    .into(),
             );
         }
 
-        // Workspace badge when windows spread across multiple workspaces.
         if ws_nums.len() > 1 {
             label_parts.push(
                 text("·").size(8.0).color(Color { a: 0.5, ..text_color }).into(),
             );
         }
 
-        let inner = container(
-            row(label_parts)
-                .spacing(2)
+        // Label section: clickable for focus; left padding carries the bg indent.
+        let label_section: Element<'a, Message> = mouse_area(
+            container(row(label_parts).spacing(2).align_y(iced::Alignment::Center))
+                .height(Length::Fill)
+                .align_y(iced::alignment::Vertical::Center)
+                .padding(Padding::from([0, 6])),
+        )
+        .on_press(Message::FocusWindowById(target_id))
+        .into();
+
+        // WM micro-buttons — revealed on hover (Portal-8.b).
+        let btn_color = Color { r: 0.85, g: 0.87, b: 0.95, a: 0.90 };
+        let wm_section: Element<'a, Message> = if is_hovered {
+            row![
+                wm_micro_btn("✕", btn_color, Message::WmClose(target_id)),
+                wm_micro_btn("◱", btn_color, Message::WmFloat(target_id)),
+                wm_micro_btn("□", btn_color, Message::WmFull(target_id)),
+                wm_micro_btn("↓", btn_color, Message::WmScratchpad(target_id)),
+                wm_micro_btn("≡", btn_color, Message::WmLayoutCycle(target_id)),
+            ]
+            .spacing(1)
+            .align_y(iced::Alignment::Center)
+            .height(Length::Fill)
+            .padding(Padding::from([0, 3]))
+            .into()
+        } else {
+            iced::widget::Space::new(0.0, Length::Fill).into()
+        };
+
+        // Outer container: applies the bg (indigo when focused, transparent when not).
+        let cell = container(
+            row![label_section, wm_section]
+                .spacing(0)
+                .height(Length::Fill)
                 .align_y(iced::Alignment::Center),
         )
         .height(Length::Fill)
-        .align_y(iced::alignment::Vertical::Center)
-        .padding(Padding::from([0, 6]))
         .style(move |_: &Theme| iced::widget::container::Style {
             background: bg.map(iced::Background::Color),
             ..Default::default()
         });
 
+        // Outer mouse_area: manages hover state only (no on_press here so WM
+        // buttons don't double-fire with the label's FocusWindowById handler).
         cells.push(
-            mouse_area(inner)
-                .on_press(Message::FocusWindowById(target_id))
+            mouse_area(cell)
+                .on_enter(Message::HoverRunningGroup(label_key.clone()))
+                .on_exit(Message::UnhoverRunningGroup)
                 .into(),
         );
     }
@@ -925,6 +1005,21 @@ fn build_running_zone<'a>(app: &DockApp, fg: Color) -> Element<'a, Message> {
         .align_y(iced::Alignment::Center)
         .padding(Padding::from([0, 4]))
         .into()
+}
+
+/// Tiny WM action button for the running-zone hover overlay (Portal-8.b).
+///
+/// Outer mouse_area of the group cell does NOT carry an `on_press`, so only
+/// this button's own press handler fires when clicked.
+fn wm_micro_btn<'a>(glyph: &'static str, color: Color, msg: Message) -> Element<'a, Message> {
+    mouse_area(
+        container(text(glyph).size(10.0).color(color))
+            .height(Length::Fill)
+            .align_y(iced::alignment::Vertical::Center)
+            .padding(Padding::from([0, 3])),
+    )
+    .on_press(msg)
+    .into()
 }
 
 /// Build the status-zone glyph segment (Portal-9.a, R4-Q56, R3-Q32–R3-Q35).
@@ -1577,5 +1672,89 @@ mod tests {
         );
         // strip_on stays false until ShowDesktopHidden arrives.
         assert!(!app.wallpaper_strip_on);
+    }
+
+    // ── Portal-8.b WM-buttons-on-hover tests ─────────────────────────────────
+
+    #[test]
+    fn hovered_running_group_starts_none() {
+        let app = DockApp::default();
+        assert!(app.hovered_running_group.is_none());
+    }
+
+    #[test]
+    fn hover_running_group_sets_key() {
+        let mut app = DockApp::default();
+        let _ = iced_layershell::Application::update(
+            &mut app,
+            Message::HoverRunningGroup("foot".to_string()),
+        );
+        assert_eq!(app.hovered_running_group.as_deref(), Some("foot"));
+    }
+
+    #[test]
+    fn unhover_running_group_clears_key() {
+        let mut app = DockApp::default();
+        app.hovered_running_group = Some("foot".to_string());
+        let _ = iced_layershell::Application::update(&mut app, Message::UnhoverRunningGroup);
+        assert!(app.hovered_running_group.is_none());
+    }
+
+    #[test]
+    fn hover_then_hover_different_group_switches_key() {
+        let mut app = DockApp::default();
+        let _ = iced_layershell::Application::update(
+            &mut app,
+            Message::HoverRunningGroup("foot".to_string()),
+        );
+        let _ = iced_layershell::Application::update(
+            &mut app,
+            Message::HoverRunningGroup("firefox".to_string()),
+        );
+        assert_eq!(app.hovered_running_group.as_deref(), Some("firefox"));
+    }
+
+    #[test]
+    fn wm_close_fires_task_without_panic() {
+        let mut app = DockApp::default();
+        let _task = iced_layershell::Application::update(&mut app, Message::WmClose(42));
+    }
+
+    #[test]
+    fn wm_float_fires_task_without_panic() {
+        let mut app = DockApp::default();
+        let _task = iced_layershell::Application::update(&mut app, Message::WmFloat(42));
+    }
+
+    #[test]
+    fn wm_full_fires_task_without_panic() {
+        let mut app = DockApp::default();
+        let _task = iced_layershell::Application::update(&mut app, Message::WmFull(42));
+    }
+
+    #[test]
+    fn wm_scratchpad_fires_task_without_panic() {
+        let mut app = DockApp::default();
+        let _task =
+            iced_layershell::Application::update(&mut app, Message::WmScratchpad(42));
+    }
+
+    #[test]
+    fn wm_layout_cycle_fires_task_without_panic() {
+        let mut app = DockApp::default();
+        let _task =
+            iced_layershell::Application::update(&mut app, Message::WmLayoutCycle(42));
+    }
+
+    #[test]
+    fn wm_messages_do_not_alter_hover_state() {
+        let mut app = DockApp::default();
+        app.hovered_running_group = Some("foot".to_string());
+        let _ = iced_layershell::Application::update(&mut app, Message::WmClose(1));
+        assert_eq!(
+            app.hovered_running_group.as_deref(),
+            Some("foot"),
+            "WM actions should not clear hover state"
+        );
     }
 }
