@@ -63,31 +63,17 @@ BuildRequires:  cargo
 # (i3, i3status, dmenu) per CB-3.2. The Wayland stack below
 # replaces them.
 Requires:       python3
-Requires:       python3-gobject
-Requires:       gtk3
 Requires:       python3-pyyaml
 
-# CB-3.2 Wayland-stack hard-Requires (v2.0.0 lock).
-Requires:       sway
-Requires:       swaylock
-Requires:       swayidle
-Requires:       swaybg
-Requires:       foot
-Requires:       bemenu
-Requires:       brightnessctl
-Requires:       pipewire
-Requires:       wireplumber
-Requires:       grim
-Requires:       slurp
+# CB-3.2 Wayland stack moved to `mde-desktop` subpackage
+# (INST-1, 2026-05-25). A `dnf install mde` lighthouse install
+# no longer pulls sway / mako / pipewire / etc. — install
+# `mde mde-desktop` together on workstations to get the full
+# desktop session.
 
-# v2.0.3 — Wayland-native notifications. dunst is X11-only and
-# crash-loops on every Wayland login (operator-verification on
-# the bench 2026-05-22 surfaced this). mako owns
-# org.freedesktop.Notifications instead. Conflicts: dunst makes
-# the swap automatic on upgrades from the Fedora-default that
-# pulled dunst in transitively.
-Requires:       mako
-Conflicts:      dunst
+# python3-gobject + gtk3 also live on `mde-desktop` — the
+# surviving mackes/ Python panels are a GTK-only legacy
+# surface; the daemon + CLI don't import them.
 
 # v2.1+ KDC2 — native re-implementation supersedes the v13
 # Option A wrapper of upstream kdeconnectd. The KDC protocol
@@ -123,24 +109,11 @@ Requires:       plymouth-scripts
 # Flatpak — birthright wizard adds the Flathub remote per-user
 Recommends:     flatpak
 
-# Remote desktop birthright (v1.2.0, RD-2 swap 2026-05-24) —
-# every node serves xrdp + wayvnc and runs a local
-# Tomcat-hosted Guacamole web app behind the Caddy gateway.
-# The web .war is fetched from the Apache archive during the
-# wizard's Remote desktop step (not vendored to keep the RPM
-# size sane).
-#
-# RD-2 (v2.6) — `x11vnc` swap to `wayvnc`. The v2.0.0 hard-
-# switch to sway (Wayland-only) broke x11vnc's `:0`-display-
-# mirroring assumption — see `docs/design/v2.6-wayland-vnc.md`
-# for the 5-Q decision rationale (wayvnc is sway-native via
-# wlroots screencopy, ~200 KB closure, no GNOME drag).
-Requires:       xrdp
-Requires:       xrdp-selinux
-Requires:       wayvnc
-Requires:       guacd
-Requires:       tomcat
-Requires:       curl
+# Remote-desktop birthright stack (xrdp / wayvnc / Guacamole)
+# moved to `mde-desktop` subpackage (INST-1, 2026-05-25). The
+# birthright step that installs the Guacamole web app via
+# `curl` only runs on full-profile installs that already pulled
+# `mde-desktop`, so the deps move cleanly with no orphan code.
 
 # Fleet management birthright (v1.3.0) — ansible-pull on every node,
 # playbook tree replicated through QNM-Shared. The 7 curated roles ship
@@ -292,16 +265,11 @@ Recommends:     redhat-mono-fonts
 # ZIP today.
 Recommends:     ibm-plex-mono-fonts
 
-# CR-1 (2026-05-25): Classic ChromeOS swap — Roboto + Roboto Mono
-# replace Geologica + IBM Plex Mono per
-# docs/design/chromeos-classic-spec.md. Hard `Requires:` rather
-# than `Recommends:` because every Workbench surface now sources
-# both faces; missing them would render the live binary with
-# unhinted fallback metrics that the operator notices immediately.
-# Fedora's `google-roboto-fonts` + `google-roboto-mono-fonts`
-# ship the canonical Roboto family.
-Requires:       google-roboto-fonts
-Requires:       google-roboto-mono-fonts
+# CR-1 (2026-05-25): Roboto + Roboto Mono — desktop-only.
+# Moved to `mde-desktop` subpackage by INST-1 the same day.
+# A lighthouse-only `dnf install mde` doesn't render any UI;
+# Roboto only matters on workstations + laptops that also
+# pulled `mde-desktop`.
 
 # QNM is detected at runtime; soft dep so users without QNM still get
 # Network → QNM panel with an install prompt (C2/Q38 lock).
@@ -330,6 +298,7 @@ minutes. PatternFly v6 styling (Red Hat Display / Text / Mono).
 %package xorg
 Summary:        Mackes Desktop Environment — XOrg/i3 session
 Requires:       mde = %{version}-%{release}
+Requires:       mde-desktop = %{version}-%{release}
 Requires:       i3
 Requires:       i3lock
 Requires:       xorg-x11-server-utils
@@ -345,6 +314,67 @@ mde-xorg.desktop XSession entry, an i3 config tuned for MDE, and
 a systemd user target that gates on DISPLAY instead of
 WAYLAND_DISPLAY.  Install alongside the main `mde` package to get
 both session choices in the display-manager greeter.
+
+# INST-1 (v2.7, 2026-05-25) — addon RPM that adds every GUI
+# binary + Wayland-stack runtime dep to a base `mde` install.
+# Lighthouse VPS boxes and headless mesh peers `dnf install mde`
+# without dragging in sway / wlroots / GTK / iced / KDC2 GUI
+# plugins / Roboto fonts. A full desktop install runs
+# `dnf install mde mde-desktop` (or pulls the
+# `mackes-desktop-environment` comps group, which lists both).
+%package desktop
+Summary:        Mackes Desktop Environment — Wayland desktop add-on
+Requires:       mde = %{version}-%{release}
+
+# Wayland compositor stack — the desktop add-on owns the sway
+# session host + every Wayland-native runtime dep.
+Requires:       sway
+Requires:       swaylock
+Requires:       swayidle
+Requires:       swaybg
+Requires:       foot
+Requires:       bemenu
+Requires:       brightnessctl
+Requires:       pipewire
+Requires:       wireplumber
+Requires:       grim
+Requires:       slurp
+
+# Wayland-native notification daemon. Conflicts: dunst stays
+# here so the addon's installation guarantees no X11 daemon
+# races for org.freedesktop.Notifications.
+Requires:       mako
+Conflicts:      dunst
+
+# GTK 3 for the surviving mackes/ Python panels (v1.x legacy
+# surface still shipped by the addon; v2.x retires per panel).
+Requires:       python3-gobject
+Requires:       gtk3
+
+# Remote-desktop birthright stack (wayvnc + xrdp + Guacamole).
+# Pure GUI feature — moves out of base.
+Requires:       xrdp
+Requires:       xrdp-selinux
+Requires:       wayvnc
+Requires:       guacd
+Requires:       tomcat
+Requires:       curl
+
+# Classic ChromeOS typography (CR-1) — only matters once a UI
+# is on the wire. Lighthouse / headless installs skip Roboto.
+Requires:       google-roboto-fonts
+Requires:       google-roboto-mono-fonts
+
+%description desktop
+Wayland desktop add-on for Mackes Desktop Environment.  Pulls
+in the sway compositor, every mde-* / mde-applet-* GUI binary,
+the GTK 3 stack for the surviving v1.x panels, the Wayland-
+native notification daemon (mako), the remote-desktop birthright
+stack (wayvnc + xrdp + Guacamole), and the Classic ChromeOS
+Roboto / Roboto Mono typography.  Install alongside `mde`
+(`dnf install mde mde-desktop`) on workstations and laptops;
+omit on lighthouse VPS boxes and headless mesh peers that only
+need the daemon + CLI.
 
 %prep
 # sdist generated by `python -m build` unpacks to mackes_shell-<version>/
@@ -1004,75 +1034,33 @@ fi
 %files
 %license LICENSE
 %doc README.md CHANGELOG.md docs/MACKES_SHELL_SPEC.md docs/MIGRATION_FROM_V2.2.md
+# INST-1 (v2.7, 2026-05-25) — base RPM ships the CLI entry
+# points, the mackesd daemon, the migrators, and the Python
+# birthright tree. Every GUI binary moves to `%files desktop`
+# below so `dnf install mde` on a lighthouse VPS doesn't pull
+# in sway / iced / GTK / Roboto.
 %{_bindir}/mackes
-%{_bindir}/mackes-clipboard
-%{_bindir}/mackes-enforce-session
-%{_bindir}/mackes-gvfsd-mesh
-%{_bindir}/mackes-mesh-open
-%{_bindir}/mackes-panel
-%{_bindir}/mackes-wm
 %{_bindir}/mackesd
-# CB-1 — Iced MDE Workbench preview (1.1.1+).
-%{_bindir}/mde-workbench
-%{_datadir}/applications/mde-workbench.desktop
-# v2.0.0 Phase E.1 — Iced panel + Phase D.1 session orchestrator +
-# Phase D.2 logout dialog + Phase A daemon binary + Phase E.8
-# drawer applet + CB-1.10 wizard + 16 applet binaries.
-%{_bindir}/mde-panel
-%{_bindir}/mde-popover
-# v4.0.1 BUG-4 — mde-files Artifact Manager.
-%{_bindir}/mde-files
-%{_datadir}/applications/mde-files.desktop
-# v4.0.1 visual-identity.md Q11 — Geologica font family (OFL 1.1).
-%dir %{_datadir}/fonts/geologica
-%{_datadir}/fonts/geologica/Geologica-Light.ttf
-%{_datadir}/fonts/geologica/Geologica-Regular.ttf
-%{_datadir}/fonts/geologica/Geologica-Medium.ttf
-%{_datadir}/fonts/geologica/Geologica-Bold.ttf
-%{_datadir}/fonts/geologica/Geologica-Black.ttf
-%license %{_datadir}/fonts/geologica/OFL.txt
-%{_bindir}/mde-session
-%{_bindir}/mde-logout-dialog
 %{_bindir}/mded
-%{_bindir}/mde-applet-drawer
-%{_bindir}/mde-wizard
-%{_bindir}/mde-peer-card
-%{_bindir}/mde-applet-app-switcher
-%{_bindir}/mde-applet-apple-menu
-%{_bindir}/mde-applet-audio
-%{_bindir}/mde-applet-bg
-%{_bindir}/mde-applet-brightness-osd
-%{_bindir}/mde-applet-clock
-%{_bindir}/mde-applet-dock
-%{_bindir}/mde-applet-mesh-status
-%{_bindir}/mde-applet-network
-%{_bindir}/mde-applet-notification-bell
-%{_bindir}/mde-applet-notifications
-%{_bindir}/mde-applet-recents
-%{_bindir}/mde-applet-start-menu
-%{_bindir}/mde-applet-status-cluster
-%{_bindir}/mde-applet-sway-cluster
-%{_bindir}/mde-applet-volume-osd
-# v2.0.0 Phase 0.3 — mde-* binary wrappers + migrators.
+# mde-* wrapper + migrators stay in base — they're invocable
+# on lighthouses too (the migrators run pre-install on every
+# upgrade path, with or without a GUI).
 %{_bindir}/mde
-%{_bindir}/mde-wm
-%{_bindir}/mde-enforce-session
 %{_bindir}/mde-migrate-from-1x
 %{_bindir}/mde-shell-migrate-v2
-# v2.0.3 — per-output default scale picker.
-%{_bindir}/mde-output-autoscale
-# v2.0.3 build-identity files (%{_datadir}/mde/build-{hash,date})
-# are covered by the %{_datadir}/%{name}/ catch-all below.
 # v2.0.0 Phase 0.3 — man pages.
 %{_mandir}/man1/mde.1*
 %{_mandir}/man1/mde-migrate-from-1x.1*
 %{_mandir}/man1/mde-shell-migrate-v2.1*
 %{_mandir}/man8/mded.8*
-# v2.0.0 Phase 0.4 — D-Bus service files. v4.0.1 TEST-1 restored
-# the `org.mackes.*` aliases — the planning lock for "one release
-# back-compat" was still in flight against the v1.x consumers
-# (tests/test_dbus_service_files.py guards their presence). Both
-# the dev.mackes.MDE.* and org.mackes.* names ship in v4.0.1.
+# v2.0.3 build-identity files (%{_datadir}/mde/build-{hash,date})
+# are covered by the %{_datadir}/%{name}/ catch-all below.
+# v2.0.0 Phase 0.4 — D-Bus service files. mackesd registers
+# these at run-time; keeping them in base means a lighthouse
+# install of `mde` alone still exposes the daemon's surfaces
+# for CLI consumers (`busctl --user call` etc.). Desktop GUI
+# clients added by `mde-desktop` consume the same service
+# names without owning the .service files.
 %{_datadir}/dbus-1/services/dev.mackes.MDE.*.service
 %{_datadir}/dbus-1/services/org.mackes.*.service
 # v2.0.0 Phase D.5 — sway config now covered by the
@@ -1081,22 +1069,13 @@ fi
 %{py3_sitelib}/mackes/
 %{py3_sitelib}/mackes_shell-%{version}.dist-info/
 %{_datadir}/%{name}/
-%{_datadir}/applications/mackes-shell.desktop
-%{_datadir}/applications/mackes-clipboard.desktop
-%{_datadir}/applications/mackes-mesh-uri-handler.desktop
-# v2.0.0 Phase 0.9 — MDE-namespaced .desktop + metainfo aliases.
-%{_datadir}/applications/mde.desktop
+# Metainfo for the dev.mackes.MDE upstream identity. Stays in
+# base so `appstream-cli` / dnf metadata clients can list MDE
+# even on lighthouse installs.
 %{_metainfodir}/dev.mackes.MDE.metainfo.xml
-# v2.0.0 cut: XDG autostart overrides retired
-# (mackes-panel.desktop, xfdesktop.desktop, mackes-enforce-session
-# .desktop, mackes-suppress-xfce4-panel.desktop, kdeconnect-indicator
-# .desktop). The Wayland session orchestrator (mde-session) and
-# sway config handle panel + desktop bring-up natively.
 %{_metainfodir}/io.github.matthewmackes.MackesShell.metainfo.xml
 %{_metainfodir}/shell.mackes.Panel.metainfo.xml
-%{_datadir}/gvfs/mounts/mesh.mount
 %{_datadir}/icons/hicolor/scalable/apps/mackes-shell.svg
-%{_datadir}/thumbnailers/mackes-mesh.thumbnailer
 %{_unitdir}/mackes-node.service
 %{_unitdir}/mackes-tailscale-bootstrap.service
 %{_unitdir}/mackesd.service
@@ -1115,30 +1094,15 @@ fi
 # downstream services like glusterd-nebula-bind can `cat` the
 # file without sudo.
 %dir %attr(0755, root, root) /var/lib/mackesd/nebula
-# VV-1 (v4.1.0) — Kamailio daemon. The /var/lib/kamailio-mde
-# + /var/log/kamailio-mde + /var/run/kamailio-mde dirs are
-# created at first start by the unit's StateDirectory= /
-# LogsDirectory= / RuntimeDirectory= directives.
-%{_unitdir}/kamailio-mde.service
-%dir %attr(0755, root, root) /etc/kamailio-mde
-# VV-1.5 (v4.1.0) — RTPengine relay daemon. Same systemd-
-# managed runtime/state/log dir pattern as Kamailio above.
-%{_unitdir}/rtpengine-mde.service
-%dir %attr(0755, root, root) /etc/rtpengine-mde
+# GF-4.1 (v5.0.0) — mesh-home FUSE mount template. Stays in
+# base so a lighthouse install can mount mesh-home even
+# without the desktop session host.
+%{_userunitdir}/mde-mesh-mount@.service
 # v12.16 Self-hosted DERP relay unit. Inactive on non-Host peers
 # (gated by ConditionPathExists=/var/lib/mde/derper.enabled). The
 # headscale DERP-map example shipped under
 # %{_datadir}/%{name}/headscale/ is covered by the data catch-all.
 %{_unitdir}/mde-derper.service
-# v2.0.0 Phase B.13 retired 10 standalone systemd units (the 8
-# named services + 3 paired .timer files); their roles now run
-# inside `mackesd serve` as workers (Phase A.2 supervisor).
-# v2.0.0 Phase D.6 mde-session.service ships as the user-session
-# orchestrator (replaces mackes-enforce-session on the v2.0.0 line).
-%{_userunitdir}/mde-session.service
-# GF-4.1 (v5.0.0) — mesh-home FUSE mount template (one
-# instance per XDG dir; operator/birthright enables them).
-%{_userunitdir}/mde-mesh-mount@.service
 # MON-2 (v2.6) — Netdata health.d alert configs. %config(noreplace)
 # so operator edits to thresholds survive package upgrades; the
 # defaults match the v2.6 MON-2 design lock.
@@ -1149,47 +1113,113 @@ fi
 %config(noreplace) %{_sysconfdir}/netdata/health.d/workstation.conf
 %config(noreplace) %{_sysconfdir}/netdata/health.d/mde-suppressions.conf
 %{_prefix}/lib/systemd/user-preset/90-mackes.preset
-# CB-3.6 + CB-2.1 — v2.0.0 user preset + Wayland-session entry.
 %{_prefix}/lib/systemd/user-preset/90-mde.preset
-%{_datadir}/wayland-sessions/mde.desktop
 # CB-2.4 — first-boot orchestration target + the two oneshot
-# migrator units (mde-migrate-from-1x.service +
-# mde-shell-migrate-v2.service).
+# migrator units. Migrators stay in base because they run on
+# every upgrade path (GUI or headless) before the desktop
+# session host comes up.
 %{_userunitdir}/mde-firstboot.target
 %{_userunitdir}/mde-migrate-from-1x.service
 %{_userunitdir}/mde-shell-migrate-v2.service
-# CB-3.4 — comps group definition is under
-# %{_datadir}/%{name}/comps/ which is now covered by the
-# %{_datadir}/%{name}/ catch-all below.
 %config(noreplace) /etc/sudoers.d/mackes-shell
 # KDC2-1.10 — Connect routing policy. Operator edits survive
-# package upgrades.
+# package upgrades. Stays in base because mackesd reads it
+# at start-up regardless of whether the GUI is installed.
 %dir %{_sysconfdir}/mde
 %dir %{_sysconfdir}/mde/connect
 %config(noreplace) %{_sysconfdir}/mde/connect/policy.toml
-# v2.0.0 cut: C panel plugins (mackes-clipboard, mackes-launcher,
-# mackes-drawer) retired alongside xfce4-panel.  Their roles
-# move to native mackes-panel applets in Phase E.1.x (Iced
-# port). Until then, the desktop-applet feature set is reduced
-# to the panel binary's built-in surfaces.
-# Vendored GTK themes: Orchis-Dark (gtk-2/3/4 + xfwm) is the default;
-# Shiki-Statler provides the classic xfwm4 window borders.
+# Plymouth Mackes boot theme. Stays in base because Plymouth
+# can render on TTY-only lighthouse boxes (themes are inert
+# until activated; activation happens in the wizard's
+# birthright step which is gated on the full profile).
+%{_datadir}/plymouth/themes/mackes/
+
+%files desktop
+# INST-1 (v2.7, 2026-05-25) — every Wayland-stack GUI binary
+# the platform ships. A `dnf install mde` lighthouse install
+# omits all of these; `dnf install mde mde-desktop` (or the
+# `mackes-desktop-environment` comps group) pulls them back.
+%{_datadir}/applications/mackes-shell.desktop
+%{_datadir}/applications/mackes-clipboard.desktop
+%{_datadir}/applications/mackes-mesh-uri-handler.desktop
+# v2.0.0 Phase 0.9 — MDE-namespaced .desktop launcher.
+%{_datadir}/applications/mde.desktop
+# Legacy mackes-* GTK panel binaries that the v2.0+ Iced port
+# is still co-shipping pending per-panel retirements.
+%{_bindir}/mackes-clipboard
+%{_bindir}/mackes-enforce-session
+%{_bindir}/mackes-gvfsd-mesh
+%{_bindir}/mackes-mesh-open
+%{_bindir}/mackes-panel
+%{_bindir}/mackes-wm
+# Iced GUI binaries (mde-* family).
+%{_bindir}/mde-workbench
+%{_datadir}/applications/mde-workbench.desktop
+%{_bindir}/mde-panel
+%{_bindir}/mde-popover
+%{_bindir}/mde-files
+%{_datadir}/applications/mde-files.desktop
+%{_bindir}/mde-session
+%{_bindir}/mde-logout-dialog
+%{_bindir}/mde-wizard
+%{_bindir}/mde-peer-card
+# Per-applet binaries (16).
+%{_bindir}/mde-applet-drawer
+%{_bindir}/mde-applet-app-switcher
+%{_bindir}/mde-applet-apple-menu
+%{_bindir}/mde-applet-audio
+%{_bindir}/mde-applet-bg
+%{_bindir}/mde-applet-brightness-osd
+%{_bindir}/mde-applet-clock
+%{_bindir}/mde-applet-dock
+%{_bindir}/mde-applet-mesh-status
+%{_bindir}/mde-applet-network
+%{_bindir}/mde-applet-notification-bell
+%{_bindir}/mde-applet-notifications
+%{_bindir}/mde-applet-recents
+%{_bindir}/mde-applet-start-menu
+%{_bindir}/mde-applet-status-cluster
+%{_bindir}/mde-applet-sway-cluster
+%{_bindir}/mde-applet-volume-osd
+# v2.0.0 Phase 0.3 — mde-* GUI helpers.
+%{_bindir}/mde-wm
+%{_bindir}/mde-enforce-session
+# v2.0.3 — per-output default scale picker (sway-only).
+%{_bindir}/mde-output-autoscale
+# v4.0.1 visual-identity.md Q11 — Geologica font family (OFL 1.1).
+# Grandfathered alongside the CR-1 Roboto swap; both shipped
+# under the desktop addon (lighthouse installs skip all UI fonts).
+%dir %{_datadir}/fonts/geologica
+%{_datadir}/fonts/geologica/Geologica-Light.ttf
+%{_datadir}/fonts/geologica/Geologica-Regular.ttf
+%{_datadir}/fonts/geologica/Geologica-Medium.ttf
+%{_datadir}/fonts/geologica/Geologica-Bold.ttf
+%{_datadir}/fonts/geologica/Geologica-Black.ttf
+%license %{_datadir}/fonts/geologica/OFL.txt
+# Vendored GTK themes — only render in a graphical session.
 %{_datadir}/themes/Orchis-Dark/
 %{_datadir}/themes/Shiki-Statler/
-# v4.0.2 — Mackes-Dark greeter theme. configure-lightdm.sh
-# selects this for the LightDM session so the operator sees
-# the Carbon palette + indigo accent stripe at login.
 %{_datadir}/themes/Mackes-Dark/
-# Vendored Black-Sun icon theme (GPL-3.0, github.com/SethStormR/Black-Sun)
+# Vendored icon themes — same reason.
 %{_datadir}/icons/Black-Sun/
-# Mackes-Carbon — IBM Carbon Design System symbolic icons (Apache 2.0,
-# github.com/carbon-design-system/carbon). Built from /tmp/carbon-icons
-# via install-helpers/build-mackes-carbon.sh; freedesktop names mapped to
-# Carbon basenames in install-helpers/mackes-carbon.map.
 %{_datadir}/icons/Mackes-Carbon/
-# Plymouth Mackes boot theme (theme files only; not activated at install
-# time — activation happens in the wizard's birthright step)
-%{_datadir}/plymouth/themes/mackes/
+# GVFS mesh-mount handler + thumbnailer — file-manager-only
+# surfaces; the daemon doesn't read them.
+%{_datadir}/gvfs/mounts/mesh.mount
+%{_datadir}/thumbnailers/mackes-mesh.thumbnailer
+# Wayland session entry — only useful when a DM is on the box.
+%{_datadir}/wayland-sessions/mde.desktop
+# v2.0.0 Phase D.6 mde-session.service — user-session
+# orchestrator. Only runs after the operator logs in to the
+# Wayland session host.
+%{_userunitdir}/mde-session.service
+# VV-1 (v4.1.0) — Kamailio daemon. Voice/video stack is a
+# desktop feature (the GUI is what calls it); on lighthouses
+# the SIP path stays dormant.
+%{_unitdir}/kamailio-mde.service
+%dir %attr(0755, root, root) /etc/kamailio-mde
+%{_unitdir}/rtpengine-mde.service
+%dir %attr(0755, root, root) /etc/rtpengine-mde
 
 %files xorg
 %{_bindir}/mde-session-xorg

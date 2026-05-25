@@ -115,6 +115,186 @@ locked work appears under **Active** with `[ ] Open`.
 > / 12.18 entries below carry in-place retraction notes
 > pointing to the NF-N.M sub-tasks that replace them.
 
+### v6.0 mde-portal — Portal-* / VOIP-* / MESH-* / CONTAINER-* (locked 2026-05-24/25 across 10 survey rounds, ~573 decisions)
+
+> **v6.0 = major paradigm-shift bump.** Single Rust binary `mde-portal`
+> replaces `start_menu.rs`, `crates/mde-files/`, `crates/mde-workbench/`,
+> the v8.7 top-bar, swaylock theming, and the standalone notification
+> surface — all in one hard cut. Two-primitive design language ("every
+> object is a card; every navigation is a breadcrumb"). Six Wayland
+> surfaces: Dock, Portal-compact, Portal-full scratchpad, Lock,
+> Boot/shutdown theater, Mesh-wallpaper.
+>
+> **Design lock:** `docs/design/v6.0-mde-portal.md` (470+ lines).
+> **Extended memory:** `~/.claude/projects/-home-mm-Desktop-files-mackes-shell/memory/project_v6_0_mde_portal.md`.
+>
+> **Build order (R10-Q50):**
+> 1. Dock baseline (layer-shell + 6 buttons + chevrons + clock + show-wp + Intel One Mono)
+> 2. Hub layer + cascade + tag system
+> 3. Library + activity files
+> 4. Control + initial panels
+> 5. Parallel: VOIP / MESH / CONTAINER workstreams
+>
+> **Each commit ships END-TO-END** per [[feedback_no_stubs]] + §0.12.
+> **Build authorization granted** (R10-Q49 + R10-Q50).
+> **Bound by** [[feedback_no_cut_until_worklist_empty]] — drain Portal-* / VOIP-* / MESH-* / CONTAINER-* before any cut.
+
+#### Portal-* — core shell
+
+- [ ] **Portal-1: Scaffold `crates/mde-portal/` Rust crate with Iced + libcosmic + swayipc-async + wlr-layer-shell deps.** Bootstrap mded supervises mde-portal; D-Bus `dev.mackes.MDE.Portal` registers Goto/Focus/Lock/ToggleDND methods. End-to-end runnable: launches, registers, exits cleanly.
+- [ ] **Portal-2: Dock layer-shell surface** — 56px bottom strip, exclusive zone, per-output instances (R3-Q1, R3-Q45). Renders solid charcoal strip (off-white in light, R4-Q75). Bound on every output via i3 output-add events.
+- [ ] **Portal-3: Intel One Mono font + Carbon icon set + Nerd Glyph fallback** integrated platform-wide via xdg-desktop-portal-mde theme.
+- [ ] **Portal-4: 6 direct nav buttons** (Apps/Files/Notifications/VoIP/Network/Settings) with Carbon glyphs, 36px sizing, domain-color chevrons between (R10-Q1, R10-Q2, R10-Q14, R10-Q46), tier-pulse + count badge (R10-Q3), tonal-inversion active indicator (R10-Q15), per-button-specific right-click (R10-Q5).
+- [ ] **Portal-5: Mini-i3-tree segment** with chevron-as-border internal cells (R4-Q63), adaptive 24px-floor width + marquee on overflow (R4-Q64), all-workspaces visible + current-output highlight (R3-Q46), click-jump + hover Aero-peek + `+` new-ws (R3-Q23, R3-Q24).
+- [ ] **Portal-6: Hostname segment** with `<host>:<output> [leader]` format, click cycles cross-peer (R4-Q6), pre-mesh-home '(local-only)' state (R4-Q46), tooltip with uptime/IP/role.
+- [ ] **Portal-7: Pinned-zone segment** (drives by designated taskbar-tag, Q88, R8-Q43 universal-tag-driven incl. files); 36px icons + pip + Win10 click-expand (R3-Q9, R3-Q16); right-click parity with Hub (R3-Q10); drag-onto-Dock pins, drag-off unpins (R3-Q12); chevron-popover overflow (R3-Q14); middle-click new instance (R3-Q17); scroll cycles windows (R3-Q18); 350ms hover Aero-peek (R3-Q11).
+- [ ] **Portal-8: Running-zone segment** with cross-workspace icons + WS-badge (R3-Q15) + WM-buttons-on-hover (5 micro-buttons × close / float / full / minimize-to-scratchpad / layout-cycle — R4-Q67 to R4-Q71).
+- [ ] **Portal-9: Status-zone consolidated segment** with battery / network+mesh / volume / brightness / lock / power glyphs (R4-Q56, R3-Q32–R3-Q35, R4-Q74). Unified slide-up strip popover (full-width, ~25% screen, R4-Q76) with grid-of-cards layout (R4-Q79) + horizontal slide-swap transition between widgets (R4-Q78).
+- [ ] **Portal-10: Tray segment** (StatusNotifierItem + full XEmbed compat, R3-Q29) with 24px icons, first-seen order, 5-cap chevron-popover overflow, tier-pulse on NeedsAttention (R3-Q27), Aero-peek tooltip (R3-Q30).
+- [ ] **Portal-11: Clock segment** at right with 24h time + date below; click opens calendar popover (R4-Q55).
+- [ ] **Portal-12: Show-wallpaper strip** at far-right (R4-Q72); toggle (R4-Q73) syncs scratchpad of visible windows + restore.
+- [ ] **Portal-13: Notification-cluster popover on hover of Notifications button** (R10-Q7): 3-row list-row stack, smart-default click, 'x' dismiss, 'View all' chip to Library-with-notifs-filter (R10-Q8); crit-tier escalation = transient toast top-center + button pulse + chime (R10-Q9).
+- [ ] **Portal-14: Breadcrumb typewriter + reverse-typewriter** at 60 chars/sec (R4-Q22, R4-Q24); subtle typewriter-tick audio (R4-Q28); marquee scroll at 50px/sec, pause-on-hover, click-jump (R4-Q60); continuous breath-line gradient sweep 15s cycle (R4-Q91).
+- [ ] **Portal-15: Cross-mode card morph + spring physics** (R5-Q8); shared-element animation between segment / cascade-card / list-row / mini-tree-cell / lock-widget / hero render modes.
+- [ ] **Portal-16: Portal-full scratchpad surface** via i3 scratchpad mechanism (R3-Q105). Super-tap morphs Dock→Portal-full (element-by-element morph per R3-Q49). One shared instance, follows focus (Q12). 5-second tiered Esc behavior (Q13).
+- [ ] **Portal-17: Hub layer** — hierarchical 3-level-cap cascade over tags. System tags (All apps / Untagged / Workspaces / Settings / Power / Mesh; 'Recent' retired R3-Q20). User-curated tags from scratch (Q48). Tag intersection via sticky multi-select (R2-Q77, R2-Q78). Cards in cascade-card mode (Q27). Right-click iconic Layout Chooser (Q62 directive). Pure-fuzzy + Levenshtein-2 typo tolerance (Q42, Q36) — WAIT, search REMOVED in Round 2; Hub is pure navigation. Type-ahead jumps caret across visible columns (R2-Q75).
+- [ ] **Portal-18: Tag system universal across apps + files + activities + peers + contacts + containers + workspaces + tray + zones**. Storage: app/peer/contact tags in `~/.local/share/mde/tags.json`; file tags in xattr `user.mde.tags`; activity tags in JSON state. Mesh-synced via GlusterFS (Q56). 3 tag flavors: manual (default), smart (⚡ predicate), preset (⚗ launch-bundle, Q63). Card reorder only in Edit-tags modal (R1-Q103). Tag-driven workspace policy + per-tag layout default (Q59, Q60, Q61). One designated tag drives Dock pinned-zone (Q88).
+- [ ] **Portal-19: Library layer** — XDG cascade-card grid landing (R5-Q4); 2-section sidebar (Mesh peers + Views, R2-Q17); tabs Ctrl+T/W/Tab (R2-Q30); 3-level depth cap with smart-collapse (R5-Q5); file selection = dual-presence cascade-card + breadcrumb tail (R5-Q11); mesh-aware trash (R2-Q28, R2-Q29 5GB cap).
+- [ ] **Portal-20: Control layer** — 6 meta-categories (Hardware/Network/Customize/Maintenance/Containers/About) with cascade UX matching Hub (R2-Q41, R10-Q16). Display/Audio/Keyboard/Storage/About/Mesh/Updates sub-panels per R2-Q43..Q50. 3-lever theming (R2-Q44).
+- [ ] **Portal-21: VoIP layer** — dialpad + recent-calls landing (R10-Q10); call UI as Portal-full overlay (R9-Q8); see VOIP-* tasks for backend.
+- [ ] **Portal-22: Network layer** — full-screen mesh-view with sidebar peer-list + detail pane (R10-Q13); shares rendering pipeline with Portal-compact + Mesh-wallpaper. See MESH-* tasks.
+- [ ] **Portal-23: Portal-compact (Mod+Space, Mod+\\ on IBus systems R6-Q7)** — 336px-tall floating-bottom strip globe view (R6-Q6). 3-mode toggle Globe/Wireframe/Hybrid (R8-Q3). Globe = dark-mode 2D-flat projection with sparse 1px coastlines (R6-Q4, R8-Q42, R8-Q45). MaxMind GeoLite2 bundled offline (R8-Q77).
+- [ ] **Portal-24: Mesh-wallpaper surface** (6th Wayland surface, wlr-layer-shell `background`) — same rendering at lower fidelity (R6-Q27, R8-Q42); 12s default (6–60s) update; auto-pause when fully obscured; view-only (R6-Q28).
+- [ ] **Portal-25: Lock screen layer-shell overlay** (R2-Q54, R4-Q4) — replaces swaylock theming. Minimal `M › hostname` breadcrumb + clock + date + mesh pip + weather + battery + wifi/mesh icons.
+- [ ] **Portal-26: Boot theater + shutdown theater** — full-screen overlays rendering real-time systemd telemetry around M-watermark assembly/disassembly (R2-Q99, R2-Q100, R4-Q49, R4-Q50). 2–3s budget each. Breadcrumb types in left-to-right synchronized with service events.
+- [ ] **Portal-27: Birthright wizard** runs once on first install (R2-Q58): fonts, wallpaper, mesh enrolment, theme, DND hours. Captive until mesh-home mounts (R2-Q89). Renders inside Portal-full with breadcrumb showing `M › <hostname> › Birthright:Step1/5` (R4-Q45).
+- [ ] **Portal-28: App-switcher lives on Dock** (R3-Q41) — Alt+Tab cycles Dock running-zone icons in place with Aero-peek thumbnail above current; Esc cancels; Alt-release commits.
+- [ ] **Portal-29: 5s snapshot crash recovery** to `~/.cache/mde/shell-state.json` (R2-Q59); full state restores on respawn (R4-Q48).
+- [ ] **Portal-30: Universal recovery gesture** Super+Shift+Q soft-restarts mde-portal (R4-Q87).
+- [ ] **Portal-31: Universal cards subsystem** — 12-field schema (R5-Q3), 6 render modes (R5-Q2 + R5-Q7 + R5-Q17 + R5-Q21), stable mesh-merged IDs (R5-Q9), composition via `children: Card[]` (R5-Q10), `schema_version: 1` with migration registry (R10-Q36), forward-compatible across mesh-version drift (R10-Q37).
+- [ ] **Portal-32: Card enrichment subsystem** — 9+ sources (Wikipedia/MusicBrainz/TMDB/GitHub/Open-Food-Facts/local-thumbnailer/OSM/PyPI/recipe-sites — R5-Q14); lazy-fetch + cache-forever (R5-Q16, R10-Q40); inline in card JSON (R5-Q15); per-source toggle ALL-ON default (R5-Q19); soft caps 100MB/card + 10MB/hr/peer + pause at mesh-home >90% (R10-Q43); silent retries + exponential backoff (R10-Q39); tag-driven opt-out (R10-Q41); hero render default (R5-Q17, R5-Q18); color-as-image text-only hero fallback (R10-Q38); multi-source merge with cited chips (R10-Q42); freedesktop XDG thumbnail spec for files (R5-Q22).
+- [ ] **Portal-33: Activity-as-files subsystem** — 8 types written to `~/.local/share/mde/activity/<type>/<iso8601>-<hash>.json`; FDO Notification schema mirror + MDE extensions (R2-Q3); state embedded `{read, starred, pinned, tags}` (R2-Q4); per-type retention (R2-Q5); ≤3s e2e mesh-sync (R2-Q9); FDO Notifications + new `dev.mackes.MDE.Activity.Emit(type, payload)` D-Bus emit (R2-Q8); Clipboard Local-Only mode (R2-Q87); cross-peer all-react mesh-wide DND with greyed segments (R2-Q37, R4-Q39); per-source mute right-click (R2-Q40); 5-action notification right-click menu (R4-Q41); 4-action stack-collapse (R2-Q36).
+- [ ] **Portal-34: Three-scale Portal model** — Dock ↔ Portal-compact ↔ Portal-full as scales of one surface (R3-Q50). Morph animations between scales (R3-Q49, R4-Q33).
+- [ ] **Portal-35: mde:// URI scheme** for cross-layer + cross-peer deep linking (R2-Q51); routed internally by mde-portal; external apps can emit via xdg-desktop-portal-mde.
+- [ ] **Portal-36: xdg-desktop-portal-mde implementation** (R2-Q66, R2-Q67) — pops Library in 'picker mode' for file pickers; Grim/Slurp + activity card for screenshots (R2-Q68); theme + accent + dark/light backends route to GTK4/Qt6 apps.
+- [ ] **Portal-37: MDE GTK4 + Qt6 themes** matching Portal visual identity; ships in `data/themes/` (Carbon-inspired pastel-on-charcoal). Intel One Mono system-wide via portal theme prefs.
+- [ ] **Portal-38: Sound design** — typewriter tick on breadcrumb segment append (R4-Q28); per-activity-type cues (notif ping/call ring/file tick/alert siren, R2-Q90); lock-engaged thud + unlock ping (R2-Q90).
+- [ ] **Portal-39: 15 default wallpapers** (5 curated + animated M + 10 community, R2-Q82) with mesh-sync toggle (R2-Q81).
+- [ ] **Portal-40: Easter eggs** (R2-Q91) — 7-click M-watermark = credits + brand-story; `#!` tag-name = CrunchBang ASCII tribute; Konami code = chiptune dev console.
+
+#### VOIP-* — SIP / VoIP layer (Round 9, R8-Q86+ R9-Q1..Q20)
+
+- [ ] **VOIP-1: Kamailio in podman container per peer** (R9-Q1); mded supervises; container-local creds + podman secret-management (R9-Q2).
+- [ ] **VOIP-2: Vitelity sub-account auto-registration** on Birthright completion; mesh-internal peer registration via Kamailio inter-tie.
+- [ ] **VOIP-3: Bare-hostname dialing** resolves `<host>.mesh.mde` via mesh DNS (R9-Q3); intra-mesh calls bypass Vitelity.
+- [ ] **VOIP-4: Smart external routing** — pick peer with best Vitelity latency at moment of dial (R9-Q4).
+- [ ] **VOIP-5: Focused-peer-only inbound ring** (R9-Q5); peer-focus detection via mde-portal.
+- [ ] **VOIP-6: Vitelity voicemail integration** → mesh-home `~/Documents/Voicemail/<peer>/<iso8601>.mp3` + transcript card in calls/ activity (R9-Q6).
+- [ ] **VOIP-7: PJSIP-based dialer + active call UI** as Portal-full overlay (R8-Q86, R9-Q8). Dialpad + recent-calls landing (R10-Q10).
+- [ ] **VOIP-8: Video stack** — VP9 default + H.264 fallback + AV1 opt-in + SRTP + adaptive 90p–1080p (R9-Q7).
+- [ ] **VOIP-9: Group calls** via per-call best-uplink any-peer bridge, 8-participant cap (R9-Q9).
+- [ ] **VOIP-10: Per-peer recording toggle** in Customize, off by default (R9-Q10); recordings saved to `~/Documents/Call-recordings/<peer>/<iso8601>.{mka,mkv}`.
+- [ ] **VOIP-11: Vitelity SMS API** → conversational cards in calls/ activity, inline replies, mesh-synced threads (R9-Q11).
+- [ ] **VOIP-12: Contacts as universal cards** — type='contact', stored in mesh-home `~/.local/share/mde/contacts/<ulid>.json`, fully participate in tag system (R9-Q12).
+- [ ] **VOIP-13: PipeWire role-based audio routing** with context-sensitive Mod+Space PTT during calls (R9-Q13).
+- [ ] **VOIP-14: RNNoise + WebRTC AEC3** echo cancellation + noise suppression (R9-Q14).
+- [ ] **VOIP-15: Adaptive bitrate cascade** with 'connection adapting' chip (R9-Q15).
+- [ ] **VOIP-16: 5 ringtones** + per-contact override (R9-Q16) via right-click contact card → 'Set ringtone…'.
+- [ ] **VOIP-17: Encryption** — Nebula intra-mesh + SRTP-AES external (R9-Q17); transport-encryption label on every call edge (R8-Q19).
+- [ ] **VOIP-18: Multi-mesh SIP-over-Matrix bridge** (R9-Q18) — federation between MDE meshes via Matrix bridges.
+- [ ] **VOIP-19: NAT traversal** — inherits Nebula UDP-hole-punching intra-mesh + SIP UDP/TLS with rport for external Vitelity (R9-Q19).
+- [ ] **VOIP-20: Active call edge visualization** on globe (R8-Q85) — living purple edge + phone-glyph midpoint + audio-sync pulse + 1Hz throb; same for any SIP client activity.
+
+#### MESH-* — mesh-view subsystem (R7 + R8, ~100 decisions, 5 subgroups)
+
+##### MESH-A — assessment + Crowdsec (R7)
+
+- [ ] **MESH-A-1: Per-peer network assessment subsystem** — 9 items collected hybrid-cadence (passive always + active 10min + manual refresh — R7-Q1, R8-Q12). Storage `~/.local/share/mde/netassess/<peer>/<iso8601>-<hash>.json` mesh-synced 30d rolling (R7-Q3).
+- [ ] **MESH-A-2: Route-trace targets** — lighthouse + all peers + gateway + 1.1.1.1 + 8.8.8.8 + GlusterFS leader (R7-Q7).
+- [ ] **MESH-A-3: Crowdsec assimilation** — agent on every peer (R7-Q5); CTI enrichment of external IPs (R8-Q81); behavioral anomaly detection (R8-Q18); auto-ban on probe (R8-Q23).
+- [ ] **MESH-A-4: Surrounding-host identification** — mDNS + DHCP vendor + MAC OUI + reverse-DNS + HTTP banner + active TCP/IP fingerprint (R8-Q8). 14 host types (R8-Q9). 3 trust states (R8-Q10).
+- [ ] **MESH-A-5: Mesh-coordinated firewall DROP** via mesh-home consensus for blocked hosts (R8-Q44). 1-minute propagation.
+- [ ] **MESH-A-6: Network defense surfaces** — ARP-spoof detect + auto-static-ARP (R8-Q53); rogue DHCP detect-only (R8-Q54); evil-twin AP warn (R8-Q60); captive portal crit alert + browser action (R8-Q31); DNS leak detect + one-click fix (R8-Q41); TLS observation via eBPF (R8-Q78); lateral-movement Crowdsec only (R8-Q75); persistent attack single-accumulated alert + 24h auto-ack (R8-Q74).
+- [ ] **MESH-A-7: 12 well-known port → connect-action mappings** (R8-Q50): SSH/HTTP/HTTPS/VNC/RDP/SMB/FTP/CUPS/psql/mysql/redis/HTTP-alt/mongosh.
+- [ ] **MESH-A-8: Host onboarding wizard** — probe `mde://discover/` + pair-with-passcode or install-first script + QR (R8-Q35). Auto-suggest pairing on LAN-detected MDE peer (R8-Q90).
+- [ ] **MESH-A-9: Audit log of network-state changes** — streams into existing alerts/ + logins/ activity types tagged `kind='audit'` (R8-Q80).
+
+##### MESH-G — globe rendering (R6, R8 globe-specific)
+
+- [ ] **MESH-G-1: Dark-mode 2D-flat-projection globe** — sparse style (1px coastlines, empty oceans, R8-Q45). Auto-rotate 30s/full + drag + scroll-zoom 3 levels + click-cycle (R6-Q5, R8-Q42).
+- [ ] **MESH-G-2: Peer-dot rendering** — solid+glow+group-color for mesh peers (R8-Q1) + connection-type glyph inside (🌐📶📱🔒, R8-Q59) + inner WiFi signal-strength glow + channel-busy arc (R8-Q58) + heat-glow power halo (R8-Q67) + 30px latency sparkline below (R8-Q69) + speedtest color tier (R8-Q32).
+- [ ] **MESH-G-3: Surrounding-host dots** — hollow-outline + type-glyph, orbiting discovering peer (R8-Q1, R8-Q2). Adaptive 24px floor + marquee on overflow (R8-Q64).
+- [ ] **MESH-G-4: Lighthouse pyramid/beam glyph** (R8-Q70); leader peer glowing crown above dot (R8-Q34).
+- [ ] **MESH-G-5: Subnet halos** — auto-hashed /24 prefix + user override (R8-Q68).
+- [ ] **MESH-G-6: Day/night terminator overlay** + moon-icon on night peers (R8-Q65).
+- [ ] **MESH-G-7: Cross-peer view** — click hostname segment cycles to other peers (R4-Q6); full RW remote control via SSH/KDC2 (R4-Q7, R8-Q63); 4px amber border + 'Viewing: <peer>' badge (R4-Q8); representation-only via mesh-synced `~/.local/share/mde/state/breadcrumb.json` (R8-Q97); always-confirm + recipient audit notification (R8-Q98); optimistic-with-rollback action feedback; M-click / hostname-cycle / Esc-twice return (R4-Q9); M-badge 360° spin on return (R4-Q96); TZ display switches to remote peer (R8-Q95).
+- [ ] **MESH-G-8: ASN cloud-glyph nodes** for external destinations (R8-Q17) with AS info + Wikipedia enrichment + Crowdsec CTI threat-intel chip (R8-Q47, R8-Q81).
+- [ ] **MESH-G-9: Right-click peer-dot 'Zoom into LAN'** (R8-Q30); zoom orbit to fill ~60% Portal-compact; Esc back.
+- [ ] **MESH-G-10: Per-output independence** — only focused-output shows extended breadcrumb (R4-Q29).
+- [ ] **MESH-G-11: Right-click reachability matrix** modal (R8-Q66) — peer-by-peer green/amber/red diagnostic.
+
+##### MESH-W — wireframe + EtherApe (R8)
+
+- [ ] **MESH-W-1: Force-directed graph layout** (R8-Q4); 3-mode toggle Globe/Wireframe/Hybrid via corner icon (R8-Q3).
+- [ ] **MESH-W-2: Edge encoding** — thickness=bandwidth(log) + color=protocol + animated particles=packet rate (R8-Q5); transport-encryption label on every edge (R8-Q19).
+- [ ] **MESH-W-3: Per-protocol line styles** — Nebula gold-dash / Gluster solid-blue with cyan file-sync particles (R8-Q88) / KDC2 dotted-purple with throb (R8-Q85) / Activity-sync thin-grey / MDE-internal thin-grey distinct (R8-Q46, R8-Q61).
+- [ ] **MESH-W-4: Pure Rust eBPF flow collection** module loaded by mde-portal (R8-Q6); raw mesh-wide flow data (R8-Q7); pyramid downsampling 1s→1m→1h→1d 90d cap (R8-Q48).
+- [ ] **MESH-W-5: Protocol toggle filter** (R8-Q16); live last 1m only.
+- [ ] **MESH-W-6: Heatmap overlay layer** on top of any view mode (R8-Q97); geographic traffic-density.
+- [ ] **MESH-W-7: BGP/AS-path visualization** — hop-dots AS-grouped + AS-transition labels (R8-Q20, R8-Q89).
+- [ ] **MESH-W-8: Latency dual-encoding** color-grade + wiggle (R8-Q56); multi-path stacked text labels on edges (R8-Q57).
+
+##### MESH-V — visualizations + activity
+
+- [ ] **MESH-V-1: Multicast/broadcast expanding-ring waves** from source dot (R8-Q64); multicast-group always-visible orbital rings (R8-Q91); confirmed-DHCP labeling (R8-Q92); on-demand WiFi channel scan modal (R8-Q93).
+- [ ] **MESH-V-2: Bandwidth surge inflation + ripple + flame glyph** (R8-Q55).
+- [ ] **MESH-V-3: Per-peer per-app polyphonic audio cues** (HTTPS click / SSH thunk / DNS chirp, R8-Q26).
+- [ ] **MESH-V-4: Network-change comet-trail relocation animation** + info-tier 'Network changed' notification (R8-Q76).
+- [ ] **MESH-V-5: Public-IP rotation notification on every rotation** (R8-Q79).
+- [ ] **MESH-V-6: Captive portal canary-URL probe** + crit-tier notification + 'Open in browser' action (R8-Q31).
+- [ ] **MESH-V-7: VPN integration** — Mullvad/ProtonVPN/IVPN/WireGuard-generic/OpenVPN-generic providers (R8-Q37); VPN tab in Control + ubiquitous status (R8-Q36); per-peer kill-switch with mesh-traffic-exemption (R8-Q40); DNS leak detect + one-click fix (R8-Q41).
+- [ ] **MESH-V-8: Egress-mesh-routing via per-app SOCKS5 over Nebula** (R8-Q38); curved-arc visualization A→B→VPN-cloud (R8-Q39).
+- [ ] **MESH-V-9: Cross-peer process management** — listening services chip-row + top-processes (R8-Q62, R8-Q63); kill/restart/view-logs over SSH/KDC2.
+- [ ] **MESH-V-10: Mesh-internal protocol traffic visualization** (Nebula tunnel + GlusterFS replication + KDC2 calls + Activity sync as labeled animated edges).
+- [ ] **MESH-V-11: Right-click empty area on Portal-compact**: reachability matrix / multicast groups / show-archived chip recovery.
+- [ ] **MESH-V-12: Optional mesh-DNS resolver** on leader peer (Unbound/dns-rs) — opt-in toggle in Control (R8-Q83).
+
+##### MESH-WP — mesh-wallpaper variant
+
+- [ ] **MESH-WP-1: Mesh-wallpaper layer-shell `background` surface** (R6-Q27, R8-Q42); 12s default update interval (6–60s configurable).
+- [ ] **MESH-WP-2: Auto-pause when fully obscured** via swayipc workspace events (R6-Q27).
+- [ ] **MESH-WP-3: Lower-fidelity rendering** — skip particle animations, reduce force-directed solver iterations.
+- [ ] **MESH-WP-4: View-only** — no click interactivity (R6-Q28); user uses Portal-compact for interaction.
+- [ ] **MESH-WP-5: Wallpaper picker integration** in Customize › Themes › Wallpaper (replaces static wallpaper or coexists per user choice).
+
+#### CONTAINER-* — Podman full management (Round 10, R10-Q16..Q35)
+
+- [ ] **CONTAINER-1: Control › Containers 6th top-level category** (R10-Q16); split landing view = mesh-wide summary top + local containers bottom (R10-Q17). 8 sub-categories (Containers/Pods/Images/Volumes/Networks/Registries/Compose-projects/Builds).
+- [ ] **CONTAINER-2: Container lifecycle ops** — Start/Stop/Restart/Pause/Unpause/Kill/Remove + Exec shell + View logs in Library + Copy CLI + Inspect JSON + Stats live-graph + Move to peer + Promote to systemd service (R10-Q18).
+- [ ] **CONTAINER-3: Live stats sparklines** on each running-container card (60s rolling, 1s refresh, R10-Q19); pause when card not visible.
+- [ ] **CONTAINER-4: Image management** — Pull/Push/Build/Prune with progress as activity cards + live build logs (R10-Q20).
+- [ ] **CONTAINER-5: Compose-projects sub-category** (R10-Q21) — `.yml` files in `~/.config/containers/compose/` as cards; supports podman-compose + Quadlet generation.
+- [ ] **CONTAINER-6: Registries sub-category** (R10-Q22) — cards with login state + last-used + image-count; built-in docker.io / quay.io / ghcr.io / gitlab + 'Add registry' modal.
+- [ ] **CONTAINER-7: Container logs viewer** — Library opens log file (`~/.local/share/containers/storage/overlay/<id>/<id>-json.log`) with live-tail + filter + search (R10-Q24).
+- [ ] **CONTAINER-8: Exec shell as i3-tile terminal** spawn (R10-Q25) running `podman exec -it <id>` next to Portal.
+- [ ] **CONTAINER-9: Cross-peer container management** — per-peer drill + SSH-RPC to remote peer's podman socket (R10-Q26).
+- [ ] **CONTAINER-10: Pods as composite parent-cards with container children** (R10-Q27, R5-Q10 pattern).
+- [ ] **CONTAINER-11: Cross-peer pod networking** — Nebula L3 overlay 10.42.0.0/16; service discovery via mesh DNS `<pod>.pods.mesh.mde` (R10-Q30, R10-Q33).
+- [ ] **CONTAINER-12: User-explicit pod scheduling** per launch modal (R10-Q31); remembered for future launches.
+- [ ] **CONTAINER-13: Network policies** — allow-all default + explicit deny rules; mesh-wide policy file `~/.config/mde/podnet-policies.yaml` (R10-Q32).
+- [ ] **CONTAINER-14: Pod restart policies** — standard podman `--restart=` Never/On-failure(5)/Always (R10-Q34).
+- [ ] **CONTAINER-15: Volumes as cards** with size + containers-using-it + 'Browse in Library' bridge (R10-Q28).
+- [ ] **CONTAINER-16: Networks as cards** with connected-container children; subnet-halo viz on globe (R10-Q29).
+- [ ] **CONTAINER-17: Privileged-allowed-by-default security** with per-container toggle (R10-Q35); rootless + SELinux + seccomp configurable in 'Advanced › Security'.
+
+#### Open follow-ups (post-Round-10)
+
+- v6.0 design notes are exhaustive; outstanding directives covered. Build authorization granted.
+- **Card schema versioning** — locked R10-Q36/Q37 forward-compatible mechanism; migrations land in Portal-31.
+- **Hero card fallbacks** — locked R10-Q38 (text-only accent-color hero); falls under Portal-32.
+
+---
+
 ### GF-1..GF-15: v5.0.0 — GlusterFS mesh-home (primary file sync, locked 2026-05-24 via 25-Q survey)
 
 > **v5.0.0 = SemVer-major bump.** KDC2 file-transfer removal is a
