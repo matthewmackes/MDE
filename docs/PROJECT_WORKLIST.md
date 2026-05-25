@@ -459,6 +459,134 @@ locked work appears under **Active** with `[ ] Open`.
 - [ ] **GF-15.1: On phone pairing, create `~/Documents/From-<phone-name>/` [HW carve-out]** *(HW carve-out tagged 2026-05-24 per `feedback_no_cut_until_worklist_empty.md`: needs live KDC2 inbound file handler + a paired Android phone + mesh-home FUSE mount to verify the drop-folder replicates across peers. Doesn't gate the cut.)* (idempotent, replicated by the mesh).
 - [ ] **GF-15.2: Smoke test — pair a phone, push a file, observe on a second peer [HW carve-out]** within `<2 s` (LAN) or `<heal-interval>` (WAN). *(Hardware-Testing-epic carve-out per `feedback_no_cut_until_worklist_empty.md` — needs a real Android phone + a real 2-peer Mackes mesh. Doesn't gate the cut.)*
 
+### GF-16.1..GF-16.10: v5.1 — Gluster control surface + notification policy (audit 2026-05-25)
+
+> Audit findings from the 2026-05-25 review of the v5.0.0 GlusterFS
+> surface. Today's shipped pipeline is observation-only —
+> `gluster_worker` + `dev.mackes.MDE.Gluster.Status` expose 8 read
+> methods + 5 signal declarations, but the operator has no
+> discretionary control over sync (pause / throttle / pin /
+> force-heal), and `alert_relay` treats every event as a generic
+> FDO toast regardless of class. Target release v5.1. None of these
+> block the v5.0.0 cut — they're follow-ups to the GF-1..GF-15 epic.
+
+#### Gluster-centric controls
+
+- [ ] **GF-16.1: Pause / resume / throttle sync controls on `dev.mackes.MDE.Gluster.Status`**
+  **As** an operator on a metered hotspot, an active call, or low battery,
+  **I want** to pause, resume, and bandwidth-cap gluster sync without leaving the mesh,
+  **so that** I retain control of when the desktop bleeds bandwidth and disk.
+  **Acceptance** (each bench-observable):
+    - [ ] Three new methods on `crates/mackesd/src/ipc/gluster.rs::GlusterStatusService`: `PauseSync(scope: &str, duration_s: u64)`, `ResumeSync(scope: &str)`, `SetBandwidthCap(bytes_per_s: u64)`. `scope` is one of `Volume` / `Heal` / `WriteOnly`.
+    - [ ] `Status()` payload gains `pause_state: { active: bool, scope: String, expires_unix_s: Option<u64>, reason: String }` consumed by mde-applet-mesh-status (renders "Sync paused — 12 min remaining (operator)" line).
+    - [ ] `PauseSync(_, 0)` is indefinite; `PauseSync(_, N>0)` auto-resumes after N seconds via worker tick reading the expires-unix.
+    - [ ] `SetBandwidthCap(0)` removes the cap; non-zero pushes `gluster volume set mesh-home performance.write-behind-window-size <bytes>` via a new pure-fn `bandwidth_set_argv(binary, bytes)` helper.
+    - [ ] `busctl --user call … PauseSync sx Heal 60` returns success → heal queue stops draining for 60 s → `Status()` reflects the pause → after 60 s heal resumes automatically.
+
+- [ ] **GF-16.9: Per-file pin xattr (`user.mde.pin=true`) — escape hatch for the 5 GB stub cap**
+  **As** an operator with an 8 GB project file I want resident on every peer,
+  **I want** to pin a file so the GF-4.2 stub watcher skips it,
+  **so that** the file stays available offline on all peers.
+  **Acceptance** (each bench-observable):
+    - [ ] mde-files right-click menu adds "Pin to all peers" + "Unpin" actions. Click sets/clears `user.mde.pin=true` xattr via `setfattr -n user.mde.pin -v true <path>`.
+    - [ ] GF-4.2 write-watcher (when shipped) reads the xattr via `getfattr -n user.mde.pin` and skips `.mesh-stub` replacement when set.
+    - [ ] mde-files row renders a Carbon `pin` glyph (12 px) on pinned files, alongside the GF-6.2 sync badge.
+    - [ ] Bench: drop a 6 GB file in `~/Videos` → right-click "Pin to all peers" → other peers receive the real bytes (not a stub) within the LAN-first heal window.
+
+- [ ] **GF-16.10: UPower battery gating for non-essential heals [HW carve-out]** *(HW carve-out — needs a real battery + UPower live to verify the on-battery + low-percent gates fire; the argv-not-issued path is bench-observable via DBus simulation but the property-subscription wiring needs a laptop.)*
+  **As** an operator with a laptop at 15% battery on the road,
+  **I want** gluster to defer non-essential heal work,
+  **so that** the heal queue doesn't bleed my last 15% of battery.
+  **Acceptance** (each bench-observable):
+    - [ ] `gluster_worker` subscribes to `org.freedesktop.UPower` `Battery.Percentage` + `OnBattery` properties via zbus.
+    - [ ] When `OnBattery == true && Percentage < 20`: conflict-heal step (GF-2.9) skips `heal split-brain latest-mtime` argv invocations; peer-probe + peer-detach + quota-probe continue (cheap CLI calls).
+    - [ ] `Status().pause_state.reason = "battery-low"` surfaces in `mde-applet-mesh-status` as "Heal paused — battery low. Resumes when charging."
+    - [ ] Hysteresis: heal resumes when `OnBattery == false || Percentage >= 25` (not 20, to prevent flap).
+    - [ ] One-time low-urgency FDO toast on entry to battery-low pause; no toast on resume.
+    - [ ] Bench (DBus-simulated): `dbus-send` UPower properties → introduce a split-brain → no `heal split-brain` argv fires; flip `OnBattery=false` → heal resumes within one tick.
+
+#### Notification policy + alert-relay class awareness
+
+- [ ] **GF-16.4: `class:` field in MON-3 ULID schema + class-aware policy table in `alert_relay`** *(foundational — GF-16.2 / GF-16.3 / GF-16.5 / GF-16.7 / GF-16.8 all depend on this)*
+  **As** the `alert_relay` worker,
+  **I want** to know what an alert is *about* (gluster.conflict / nebula.handshake / workstation.thermal),
+  **so that** I can apply class-specific notification policy (coalesce, action buttons, DND pierce).
+  **Acceptance** (each bench-observable):
+    - [ ] `mde-alert-emit` schema gains `class: String` field. Format: dot-namespaced (`gluster.conflict`, `gluster.heal`, `gluster.quota`, `gluster.quorum`, `gluster.brick`, `gluster.peer`, `nebula.handshake`, `workstation.disk`, etc.). `#[serde(default)]` on the read side so legacy events deserialize as `class = "unknown"`.
+    - [ ] CLI gains `--class <value>` flag; `health_alarm_notify.conf` wrappers (one per `data/netdata/health.d/*.conf` alarm namespace) pass the locked class. Lock for the existing 5 gluster alarms: `gluster_brick_down`→`gluster.brick`, `gluster_heal_queue_depth`→`gluster.heal`, `gluster_split_brain`→`gluster.conflict-summary` (per GF-16.8), `mesh_home_disk_full`→`gluster.quota`, `gluster_quorum_lost`→`gluster.quorum`.
+    - [ ] `alert_relay` ships a `ClassPolicy { coalesce_threshold: Option<u32>, coalesce_window_s: u32, dnd_pierce: DndPierceMode, actions: Vec<FdoAction> }` table keyed on class. Unknown class → default policy (no coalesce, honor DND fully, no actions).
+    - [ ] Pure-fn `policy_for_class(class: &str) -> ClassPolicy` exported + unit-tested for every locked class.
+    - [ ] Bench: `mde-alert-emit --class=gluster.conflict --dry-run-from-env <env-vars>` outputs JSON with the field; round-trip through `alert_relay` honors the field; missing-field events deserialize as `unknown` without panic.
+
+- [ ] **GF-16.2: Action-bearing conflict notifications [HW carve-out for end-to-end]** *(depends on GF-16.4 + GF-2.2.b live conflict signal)*
+  **As** an operator presented with a file-conflict toast,
+  **I want** inline `[Keep mine] [Keep theirs] [Open diff…]` buttons,
+  **so that** I resolve the conflict in one click instead of navigating mde-files.
+  **Acceptance** (each bench-observable):
+    - [ ] New D-Bus method `Gluster.Status::ResolveConflict(gfid: &str, winner: &str)`. `winner` is one of `self` / a peer node-id. Renames the loser to `~/Local/conflict-archive/<ts>/`; emits `HealCompleted` signal.
+    - [ ] `alert_relay`, when emitting an FDO notification with `class == "gluster.conflict"`, attaches three actions via `notify-send --action=keep-mine:Keep\ mine --action=keep-theirs:Keep\ theirs --action=open-diff:Open\ diff…` (depends on GF-16.4 policy table).
+    - [ ] `keep-mine` invokes `Gluster.Status::ResolveConflict(gfid, "self")`; `keep-theirs` invokes `ResolveConflict(gfid, <other-peer-from-gfid-metadata>)`; `open-diff` invokes `xdg-open` on a side-by-side diff (re-uses GF-13.1 resolver UI).
+    - [ ] Dismissal without action is a no-op (LWW already picked a winner; no UX regression).
+    - [ ] Bench: trigger split-brain → toast appears with 3 buttons → click `keep-mine` → `<file>.conflict-<host>-<ts>` moves to `~/Local/conflict-archive/<ts>/` → mde-files reflects single-version-per-path.
+
+- [ ] **GF-16.3: Conflict-storm coalescing in `alert_relay`** *(depends on GF-16.4)*
+  **As** an operator after a network flap that surfaces 200 split-brain GFIDs,
+  **I want** one coalesced toast instead of 200,
+  **so that** the desktop stays usable.
+  **Acceptance** (each bench-observable):
+    - [ ] `alert_relay` keeps a per-class rolling window `ConflictWindow { class, count, first_unix_s, last_unix_s, last_replaces_id }`. When an event arrives + the window has ≥`coalesce_threshold` events within the last `coalesce_window_s` seconds, suppress the per-file toast and emit/update a single coalesced toast: `"<count> new conflicts on peer-<host> — Open mde-files"` with action `open-mde-files`.
+    - [ ] Coalesced toast updates in place via FDO `replaces_id` (the `last_replaces_id` from the window) so the count grows without spawning new toasts.
+    - [ ] Threshold + window are class-policy driven (GF-16.4): `gluster.conflict` → `coalesce_threshold=5, coalesce_window_s=10`.
+    - [ ] Pure-fn `should_coalesce(window, now) -> bool` + `coalesced_summary(window) -> String` exported + unit-tested.
+    - [ ] Bench: scripted 50-file split-brain → 1 coalesced toast with count 50 → click → mde-files opens with conflict filter applied.
+
+- [ ] **GF-16.5: Source-class DND policy (DND-pierce rules locked in `ClassPolicy`)** *(depends on GF-16.4)*
+  **As** an operator with DND enabled,
+  **I want** infrastructure-critical alerts to pierce DND while sync-status churn stays silent,
+  **so that** DND means "don't bother me with non-essentials" rather than "go dark on production-down."
+  **Acceptance** (each bench-observable):
+    - [ ] `Portal::DndState()` extended to expose `quiet_hours_active: bool` (computed from operator-configured quiet-hours window; defaults to `false` when no window configured).
+    - [ ] `alert_relay` consults `ClassPolicy.dnd_pierce` before emitting. `DndPierceMode` enum: `Always` / `OutsideQuietHours` / `Never`. Policy lock for gluster classes:
+      - `gluster.quota` (crit), `gluster.quorum`, `gluster.brick` (sustained down) → `Always`
+      - `gluster.heal` (warn), `gluster.conflict` (per-file) → `OutsideQuietHours`
+      - `gluster.heal-completed`, `gluster.volume-ready`, `gluster.peer-state-changed` (added/removed) → `Never`
+    - [ ] `notify-send` is suppressed when DND is on + policy is `Never`, or DND is on + quiet-hours active + policy is `OutsideQuietHours`.
+    - [ ] Suppressed alerts still write to `~/.local/share/mde/alerts/*.json` (the audit trail is preserved; only the toast is suppressed).
+    - [ ] Bench: enable DND → trigger `gluster_quorum_lost` → toast appears + pierces; trigger `HealCompleted` → no toast; `~/.local/share/mde/alerts/` shows both events.
+
+- [ ] **GF-16.6: Origin-peer xattr + replication-echo suppression [HW carve-out]** *(needs phone + multi-peer mesh to verify end-to-end suppression)*
+  **As** an operator with 3 peers (A/B/C) and a phone paired to peer A,
+  **I want** only peer A to fire a "new file from <phone>" toast,
+  **so that** B and C aren't spammed about events that didn't happen on them.
+  **Acceptance** (each bench-observable):
+    - [ ] KDC2 inbound file handler writes xattr `user.mde.origin_peer=<self-node-id>` on every file received from a phone before placing it in `~/Documents/From-<phone>/`.
+    - [ ] Verify gluster replication preserves xattrs across peers (`getfattr -d -m user.mde <path>` on peer B reports the same `origin_peer` as on peer A).
+    - [ ] mde-files notification path (and any future "new file in From-<phone>" relay) reads the xattr and short-circuits when `origin_peer != self_node_id`.
+    - [ ] Pure-fn `should_emit_origin_toast(file_origin: &str, self_node_id: &str) -> bool` exported + unit-tested.
+    - [ ] Bench: pair phone to peer A, push file → peer A fires "new file from <phone>" toast; peers B + C silent; `getfattr` on B + C shows the xattr.
+
+- [ ] **GF-16.7: Decommission + replica-count-change notifications** *(depends on GF-2.2.b for signal emission)*
+  **As** an operator on peer C after the admin revokes peer-laptop2's CA,
+  **I want** a toast saying "peer-laptop2 left the mesh — replica count now 3,"
+  **so that** I know fault-tolerance shifted without checking Workbench.
+  **Acceptance** (each bench-observable):
+    - [ ] `gluster_worker`'s peer-detach step (`peers_to_detach` consumer in `tick_once`) emits `GlusterSignal::PeerStateChanged{ node_id, state: "removed", replica_count_after }` for every observed detach.
+    - [ ] `alert_relay` maps `class == "gluster.peer"` + `state == "removed"` to a normal-urgency toast: `"peer-<host> left the mesh — replica count now <N>"`.
+    - [ ] Add-peer convergence emits the same signal with `state: "added"` + a low-urgency toast `"peer-<host> joined the mesh — replica count now <N>"`.
+    - [ ] DND policy (GF-16.5): `gluster.peer` events are `Never` pierce — they're informational.
+    - [ ] Bench: 3-peer fleet → CA-revoke peer C from peer A → peers A and B receive the "left" toast within 10 s; `Gluster.Status::Status()` reflects the new replica count.
+
+- [ ] **GF-16.8: De-dup Netdata `gluster_split_brain` vs gluster_worker `ConflictDetected`** *(decision lock; depends on GF-16.4)*
+  **As** an operator,
+  **I want** one canonical source of conflict notifications,
+  **so that** I don't get a Netdata toast AND a gluster_worker toast for the same split-brain event.
+  **Acceptance** (each bench-observable):
+    - [ ] Lock: **gluster_worker owns per-file `ConflictDetected` UX** (per-file toasts via GF-16.2 + mde-files yellow chip + coalescing via GF-16.3). **Netdata's `gluster_split_brain` alarm fires only as a fleet-wide summary** (`split_brain_count > 0 sustained 30 s` with no per-file detail).
+    - [ ] `data/netdata/health.d/gluster.conf`'s `gluster_split_brain` alarm: add `delay: down 30s multiplier 1.5 max 1h` to enforce the 30 s sustained window; update `info:` to "fleet-wide split-brain summary — per-file UX in mde-files."
+    - [ ] Class lock (per GF-16.4 map): the Netdata alarm wrapper passes `--class=gluster.conflict-summary` (NOT `gluster.conflict`). `alert_relay`'s `ClassPolicy` for `gluster.conflict-summary`: low urgency, no actions, no coalescing, single toast.
+    - [ ] Bench (single split-brain): user sees the gluster_worker per-file toast (with `keep-mine` / `keep-theirs` / `open-diff` actions). Netdata's 30 s window doesn't fire because the gluster_worker LWW resolver clears it before 30 s.
+    - [ ] Bench (100 split-brains): user sees the GF-16.3 coalesced toast immediately + the Netdata summary toast at the 30 s mark (different urgency + shape, intentional — the summary catches the case where gluster_worker's LWW can't clear in time).
+
 ### v2.5: Nebula fabric rebuild (locked 2026-05-23)
 
 > **Design lock:** `docs/design/v2.5-nebula-fabric.md`.
