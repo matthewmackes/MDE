@@ -316,8 +316,11 @@ mod tests {
 
     #[test]
     fn backup_path_for_mirrors_bundle_convention() {
+        // GF-9.1 (v5.0.0) renamed `ca-backup.enc` → `state-backup.enc`
+        // so the backup carries the full mackesd state (CA + volume
+        // config), not just the CA bundle. Test follows the rename.
         let p = backup_path_for(Path::new("/qnm"), "peer:anvil");
-        assert_eq!(p, PathBuf::from("/qnm/peer:anvil/mackesd/ca-backup.enc"));
+        assert_eq!(p, PathBuf::from("/qnm/peer:anvil/mackesd/state-backup.enc"));
     }
 
     #[test]
