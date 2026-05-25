@@ -155,7 +155,7 @@ locked work appears under **Active** with `[ ] Open`.
 - [✓] **Portal-8.a: Running-zone segment** — live window list via swayipc Window events + get_tree(); app_id grouping with multi-window count badge; click-focus by con_id; cross-workspace WS-badge (R3-Q15). Text labels for app names (icon resolution in Portal-8.b).
 - [✓] **Portal-8.b: Running-zone WM-buttons-on-hover** — 5 micro-buttons (close / float / full / minimize-to-scratchpad / layout-cycle) shown on hover per window group (R4-Q67 to R4-Q71). Hover state in DockApp; outer mouse_area handles on_enter/on_exit; label section carries FocusWindowById; WM buttons each have their own mouse_area so no double-fire. 105 tests passing.
 - [✓] **Portal-9.a: Status-zone glyphs in Dock** — battery % (sysfs, color-coded), network up/down dot, mesh (nebula0) up/down dot, volume icon (static), brightness % (sysfs), lock click → `loginctl lock-session`, power click → `systemctl suspend` (R4-Q56, R3-Q32–R3-Q35, R4-Q74). 30 s sysfs-poll subscription.
-- [ ] **Portal-9.b: Status-zone slide-up strip popover** (full-width, ~25% screen, R4-Q76); grid-of-cards layout (R4-Q79); horizontal slide-swap transition between widgets (R4-Q78); volume IPC (PipeWire/pactl); brightness adjustment (brightnessctl); full power submenu. Depends on Portal-16.
+- [>] **Portal-9.b: Status-zone slide-up strip popover** (full-width, ~25% screen, R4-Q76); grid-of-cards layout (R4-Q79); horizontal slide-swap transition between widgets (R4-Q78); volume IPC (PipeWire/pactl); brightness adjustment (brightnessctl); full power submenu. Depends on Portal-16.
 - [ ] **Portal-10: Tray segment** (StatusNotifierItem + full XEmbed compat, R3-Q29) with 24px icons, first-seen order, 5-cap chevron-popover overflow, tier-pulse on NeedsAttention (R3-Q27), Aero-peek tooltip (R3-Q30).
 - [✓] **Portal-11: Clock segment** — 24h time (`%H:%M`) + date (`%b %d`) via 1-second tick subscription. chrono::Local::now() updated on ClockTick message. Calendar popover deferred to Portal-11.b (requires Portal-16 scratchpad surface). 52 tests passing.
 - [✓] **Portal-11.b: Calendar popover on clock click (R4-Q55)** — layer-shell popup or Portal-16 scratchpad surface showing monthly calendar; depends on Portal-16. Wired: `ClockClicked` message + `mde-popover clock` spawn; clock segment wrapped in `mouse_area`. 121 tests passing.
@@ -586,6 +586,146 @@ locked work appears under **Active** with `[ ] Open`.
     - [ ] Class lock (per GF-16.4 map): the Netdata alarm wrapper passes `--class=gluster.conflict-summary` (NOT `gluster.conflict`). `alert_relay`'s `ClassPolicy` for `gluster.conflict-summary`: low urgency, no actions, no coalescing, single toast.
     - [ ] Bench (single split-brain): user sees the gluster_worker per-file toast (with `keep-mine` / `keep-theirs` / `open-diff` actions). Netdata's 30 s window doesn't fire because the gluster_worker LWW resolver clears it before 30 s.
     - [ ] Bench (100 split-brains): user sees the GF-16.3 coalesced toast immediately + the Netdata summary toast at the 30 s mark (different urgency + shape, intentional — the summary catches the case where gluster_worker's LWW can't clear in time).
+
+### GF-17.1..GF-17.11: v5.1 — Mesh notification bus + focus modes (locked 2026-05-25 via 5-Q survey)
+
+> **Design lock:** `docs/design/v5.1-notification-bus.md`.
+> **5-Q locks:** (1) scope-driven fanout (fleet→Aggregator, peer→Origin,
+> user→Attended, security→All); (2) 15-min roaming-grace window;
+> (3) minimal 3-mode catalog (work / quiet / off); (4) uniform-work
+> default for non-lighthouse peers, lighthouses → off; (5) hard-cut
+> migration of `~/.local/share/mde/alerts/` → `<qnm_root>/<self>/
+> mackesd/notifications/`, breaking change documented in v5.1 CHANGELOG.
+>
+> **Headline:** the mesh is one user's many machines, not N independent
+> desktops. Three composed moves: (M1) attended-peer routing — toasts
+> follow the user, not the machine; (M2) unified mesh notification bus
+> — every notification lands in one JSON schema replicated via
+> QNM-Shared; (M3) focus modes — 3 named filters per peer with
+> birthright defaults.
+
+#### Substrate + schema (Move 2)
+
+- [✓] **GF-17.1: Design doc `docs/design/v5.1-notification-bus.md` captures the 5-Q locks + architecture + acceptance** *(shipped 2026-05-25 in the same commit that introduces this worklist section — locks the schema + class fanout table + glob semantics + router pipeline; cross-refs `docs/design/v5.0.0-gluster-mesh-home.md` for the QNM-Shared replication baseline; mentions out-of-scope items so v5.2 readers know what's deferred.)*
+
+- [ ] **GF-17.2: notification.json schema + hard-cut path migration in `mde-alert-emit`**
+  **As** the alert-emit binary,
+  **I want** to write events to `<qnm_root>/<self>/mackesd/notifications/<ulid>.json` with the v5.1 schema,
+  **so that** alerts mesh-replicate via QNM-Shared instead of being trapped in `~/.local/share/`.
+  **Acceptance** (each bench-observable):
+    - [ ] `crates/mde-alert-emit/src/main.rs::default_output_dir()` changes from `$XDG_DATA_HOME/mde/alerts/` to `<qnm_root>/<self>/mackesd/notifications/` (no `--legacy-output-dir` flag — hard-cut per Q5).
+    - [ ] Event JSON schema bumped to `schema_version: 1` (v5.1 baseline) with all 11 fields from design doc § 3.1: `id` (ULID), `class`, `scope`, `fanout`, `urgency`, `origin_peer_id`, `origin_unix_s`, `title`, `body`, `thread_id`, `actions`, `chart_url`, `ttl_unix_s`, `dismissed_at`. `#[serde(default)]` on read-side so legacy events deserialize as `class = "unknown"`, `fanout = "attended"`, `scope = "user"`.
+    - [ ] New CLI flags: `--class <value>`, `--fanout <attended|origin|aggregator|all>`, `--scope <fleet|peer|user|security>`, `--thread <id>`, `--ttl-seconds <N>`. Defaults from `default_fanout_for_class(class)` (per design doc § 3.2 table).
+    - [ ] `health_alarm_notify.conf` wrappers (5 gluster alarms, 6 nebula alarms, 4 workstation alarms, 3 mackesd alarms) pass `--class=<value>` + `--scope=<value>` matching the design-doc fanout table.
+    - [ ] CHANGELOG entry at top of `CHANGELOG.md` under `## 5.1 — Mesh notification bus + focus modes` documents the breaking change: any external consumer of `~/.local/share/mde/alerts/` must update.
+    - [ ] Bench: `mde-alert-emit --class=test.alert --dry-run-from-env` writes JSON with all v1 fields to `<qnm_root>/<self>/mackesd/notifications/<ulid>.json`; `cat $XDG_DATA_HOME/mde/alerts/` returns ENOENT (or shows only legacy data — new emits don't land there).
+
+#### Attendance + roaming (Move 1)
+
+- [ ] **GF-17.3: Attendance publisher in mded — writes `<qnm_root>/<self>/mackesd/attendance.json` every 30 s**
+  **As** every peer's mded,
+  **I want** to publish my idle + lock state on a 30 s cadence,
+  **so that** the alert router can elect the attended peer for routing decisions.
+  **Acceptance** (each bench-observable):
+    - [ ] New worker `crates/mackesd/src/workers/attendance.rs::AttendancePublisher` — 30 s tick, atomic-write JSON to `<qnm_root>/<self>/mackesd/attendance.json` with `{node_id, last_input_unix_s, lock_state, schema_version: 1}`.
+    - [ ] `last_input_unix_s` sourced via zbus call to `org.freedesktop.IdleMonitor.GetIdletime` (sway-side); converts ms-since-input → unix-s for the timestamp. On non-sway hosts (lighthouses, headless), publishes `last_input_unix_s = 0` so they never win the election.
+    - [ ] `lock_state` sourced via `org.freedesktop.ScreenSaver::GetActive` → `"locked"` or `"unlocked"`. Fallback: `"unknown"` (treated as locked by electer).
+    - [ ] Spawned in `run_serve()` between gluster_worker + nebula_https_listener with `RestartPolicy::Always`.
+    - [ ] Bench: on a sway desktop, after 60 s `cat <qnm_root>/<self>/mackesd/attendance.json` returns the expected fields; type on the keyboard → next tick `last_input_unix_s` updates to within 30 s of now.
+
+- [ ] **GF-17.4: Pure-fn `elect_attended` + roaming-grace scan in `alert_router`**
+  **As** the alert router on any peer,
+  **I want** to elect the lowest-idle unlocked peer as attended + scan unseen events when this peer becomes attended,
+  **so that** notifications follow the user across peer transitions with a 15-min grace window.
+  **Acceptance** (each bench-observable):
+    - [ ] Pure-fn `elect_attended(snapshots: &[AttendanceSnapshot], now_unix_s: u64) -> Option<NodeId>` in `crates/mackesd/src/workers/alert_router.rs::attendance`: drops snapshots older than 300 s (stalled publisher), filters to `lock_state == "unlocked"`, picks min idle (now - last_input), tie-breaks on node_id lex.
+    - [ ] Pure-fn `roaming_grace_window_s() -> u64 { 900 }` (constant; Q2 lock).
+    - [ ] Router maintains an in-memory `last_attended_peer: Option<NodeId>` from previous tick. When `elect_attended()` returns this peer for the first time after returning a different peer (or `None`), invoke `scan_unseen_attended_events(now - 900, now)`: query the local DB for events with `fanout == Attended && dismissed_at IS NULL && id NOT IN toasted_locally`. For each match, fire `notify-send` with `[Late] ` title prefix; insert into `toasted_locally` table.
+    - [ ] New SQLite table `toasted_locally(event_id TEXT PRIMARY KEY, toasted_at_unix_s INTEGER NOT NULL)` migration in `crates/mackesd-core/src/store.rs`.
+    - [ ] 8+ unit tests cover: empty snapshots → None; all locked → None; one unlocked wins; tie-break determinism; stale-snapshot drop; `[Late]` prefix on roaming scan; toasted_locally dedupe; transition detection (other→self only).
+
+#### Router rename + dispatch (Move 2)
+
+- [ ] **GF-17.5: Rename `alert_relay` → `alert_router`; scan all peers' notification dirs**
+  **As** the unified router,
+  **I want** to read every peer's `<qnm_root>/<peer>/mackesd/notifications/*.json`, not just my own,
+  **so that** mesh-replicated alerts surface on every peer that should fire them.
+  **Acceptance** (each bench-observable):
+    - [ ] Rename `crates/mackesd/src/workers/alert_relay.rs` → `alert_router.rs`; `AlertRelayWorker` → `AlertRouterWorker`; update `crates/mackesd/src/workers/mod.rs:158` re-export; update the `spawn(Spawn::new(AlertRouterWorker::new(...)))` site in `crates/mackesd/src/bin/mackesd.rs` and the worker-names list (changes the user-facing worker name string).
+    - [ ] Default scan dir changes from `$XDG_DATA_HOME/mde/alerts/` to `<qnm_root>/*/mackesd/notifications/` (glob across all peer dirs).
+    - [ ] Per-event dedupe key changes from `(filename)` to `(event.id)` (ULID) so cross-peer reads with the same id are correctly seen-once.
+    - [ ] Local NotificationsService DB write happens always (per design § 3.6) so the history panel sees every event regardless of whether `notify-send` fires on this peer.
+    - [ ] Existing 11 tests update for the rename; 4 new tests cover cross-peer scan (3 peer dirs each with 1 event → router sees all 3; dedupe across replays; missing peer dir → silent skip).
+
+- [ ] **GF-17.6: Fanout dispatch + class fanout default table in `alert_router`**
+  **As** the router,
+  **I want** to dispatch each event to the correct peer(s) per its `fanout` field (or the class default if absent),
+  **so that** fleet events fire on the aggregator, peer events fire at origin, user events follow the attended peer, and security events fan to all.
+  **Acceptance** (each bench-observable):
+    - [ ] `enum Fanout { Attended, Origin, Aggregator, All }` in `crates/mackesd/src/workers/alert_router.rs::fanout`. Serde-round-trips the lowercase strings.
+    - [ ] Pure-fn `default_fanout_for_class(class: &str) -> Fanout` ships the 10-row table from design § 3.2 (gluster.quorum→Aggregator, workstation.thermal→Origin, kdc2.notif.*→Attended, security.*→All, unmatched→Attended). Glob match: first match wins.
+    - [ ] Router dispatch: `should_fire_on_self(event, self_node_id, attended, aggregator_leader) -> bool`. Attended → matches `Some(attended) == Some(self_node_id)`; Origin → matches `event.origin_peer_id == self_node_id`; Aggregator → matches `Some(aggregator_leader) == Some(self_node_id)`; All → always true.
+    - [ ] Aggregator leader is read from `<qnm_root>/<self>/mackesd/netdata-aggregator.json` (the MON-1.b pointer the netdata_aggregator worker already publishes).
+    - [ ] 12+ unit tests cover every (fanout, role-played) pair + the default table.
+    - [ ] Bench (3-peer fleet): trigger `gluster_quorum_lost` → only aggregator peer fires; trigger `workstation.thermal` on peer-A → only peer-A fires; trigger `security.audit` → all 3 fire; trigger `voice.call` → only attended peer fires.
+
+- [ ] **GF-17.7: `thread_id` coalescing + `ttl_unix_s` pruning in router**
+  **As** the router,
+  **I want** to collapse same-thread events into one growing toast + unlink TTL-expired events,
+  **so that** conflict-storms produce one coalesced toast and the notifications dir doesn't grow unbounded.
+  **Acceptance** (each bench-observable):
+    - [ ] Per-thread rolling window `ThreadWindow { thread_id, count, first_unix_s, last_unix_s, last_replaces_id }`. When an event arrives + `(count + 1) >= 3` within `(now - first_unix_s) <= 10s`, suppress per-event toast and emit/update coalesced toast `"<count> events in <thread>"` via `notify-send --replace-id=<last_replaces_id>`.
+    - [ ] Pure-fn `should_coalesce(window, now) -> bool` + `coalesced_summary(window) -> String` exported + unit-tested.
+    - [ ] TTL pruning: every router tick, walk `<qnm_root>/*/mackesd/notifications/`; for each file with `ttl_unix_s < now`, `unlink()` it. Pure-fn `should_prune(event, now) -> bool` exported + tested. Defaults from urgency: `critical → 7d`, `normal → 24h`, `low → 1h` if `ttl_unix_s` missing.
+    - [ ] Bench: drop 50 events with same `thread_id` within 10 s → 1 coalesced toast with count = 50; drop an event with `ttl_unix_s = now - 1` → next tick the file is gone from the QNM-Shared dir on every peer.
+
+#### Focus modes (Move 3)
+
+- [ ] **GF-17.8: focus-profile.json schema + glob matcher + router filter**
+  **As** the router,
+  **I want** to consult the active focus mode's allow/block class globs before firing,
+  **so that** each peer surfaces only the notification classes its current mode cares about.
+  **Acceptance** (each bench-observable):
+    - [ ] New schema in `crates/mackesd/src/settings/focus_profile.rs::FocusProfile { active_mode: String, schema_version: u32, modes: BTreeMap<String, ModeFilter> }`; `ModeFilter { allow_classes: Vec<String>, block_classes: Vec<String>, pierce_dnd: Vec<String> }`. Read from `<qnm_root>/<self>/mackesd/focus-profile.json`.
+    - [ ] Ships the 3 default modes from design § 3.5: `work` (allow all, pierce `*.critical`); `quiet` (allow `*.critical` + `voice.call` + `security.*`, block all); `off` (block all). Default-write at birthright (GF-17.11).
+    - [ ] Pure-fn `matches_class(pattern: &str, class: &str) -> bool` supports `*` (one-or-more class tokens at one level), bare `*` (anything), `*.foo` (suffix). 10+ unit tests for edge cases.
+    - [ ] Pure-fn `is_allowed(mode: &ModeFilter, class: &str, dnd_on: bool) -> Decision` returns `Allow` / `Block` / `BlockedByDnd`. Allow iff `any(allow_match) && !any(block_match)` AND (`!dnd_on || any(pierce_match)`).
+    - [ ] Router invokes `is_allowed(active_mode, event.class, dnd_state())` after fanout dispatch decides this peer should fire; only fires `notify-send` if `Allow`. DB write happens regardless.
+    - [ ] Bench: set focus to `off` → trigger `voice.call` → no toast, history DB row written; set focus to `quiet` → trigger `voice.call` → toast fires; trigger `gluster.heal` → no toast.
+
+- [ ] **GF-17.9: Portal status-zone focus glyph + click-cycle**
+  **As** the operator,
+  **I want** a visible glyph for my current focus mode in the Portal status zone + click to cycle modes,
+  **so that** I always know what's filtering my notifications + can change it without opening Workbench.
+  **Acceptance** (each bench-observable):
+    - [ ] New status-zone glyph in `crates/mde-portal/src/app.rs` Status segment: Carbon `view-filled` (work) / `notification-off` (quiet) / `notification-off-filled` (off). 16×16 px, leading position in status zone.
+    - [ ] Glyph updates within 5 s of `focus-profile.json` change (subscribes via inotify or polls on Portal tick).
+    - [ ] Click → cycles `work → quiet → off → work`; atomic-writes the updated `focus-profile.json` via mded D-Bus method `dev.mackes.MDE.Portal.SetFocusMode(mode: &str)` or direct file write (latter avoids cross-process race; safer here).
+    - [ ] Tooltip on hover: `"Focus mode: <mode> — click to cycle"`.
+    - [ ] (Optional follow-on, deferred GF-17.9.b) Mesh-Wallpaper per-peer focus glyph on each globe marker.
+    - [ ] Bench: start Portal → see `view-filled` glyph (default work); click → glyph cycles to `notification-off` (quiet); cycle again → `notification-off-filled` (off); `cat focus-profile.json` reflects each transition within one Portal tick.
+
+- [ ] **GF-17.10: Workbench Notifications focus-mode editor panel**
+  **As** the operator,
+  **I want** a Workbench panel to view + edit my focus mode profile (allow/block class lists, pierce DND rules),
+  **so that** I can tune what each mode admits without hand-editing JSON.
+  **Acceptance** (each bench-observable):
+    - [ ] New panel `mackes/workbench/system/notifications.py` using Carbon refresh helpers (`_breadcrumb`, `_page_title`, `_page_subtitle`, `_section_title`).
+    - [ ] Sections: **current mode** (3 radio buttons: work / quiet / off, default 'work' per Q4); **mode editor** (per-mode: allow_classes list with add/remove, block_classes list, pierce_dnd list); **default-mode reset** button restores the design-doc § 3.5 defaults.
+    - [ ] Nav item `NavItem("Notifications", "notification-symbolic", …)` inserted under the System sidebar group (after the existing Notifications/notification-relay item, this is the per-peer focus-mode editor).
+    - [ ] Edits write to `<qnm_root>/<self>/mackesd/focus-profile.json` via `mde-config` helper; router picks up via inotify or next tick.
+    - [ ] Bench: open Workbench → Notifications → Focus Modes → click `quiet` radio → `focus-profile.json` `active_mode` becomes `quiet` within 5 s; add a class to `quiet`'s allow_classes → file reflects + router admits that class on the next event.
+
+- [ ] **GF-17.11: Birthright role-default focus assignment**
+  **As** the birthright wizard,
+  **I want** to write the role-appropriate focus profile on first install,
+  **so that** lighthouses are silent by default and every other peer surfaces all classes (uniform-work per Q4).
+  **Acceptance** (each bench-observable):
+    - [ ] New step `apply_focus_default(role)` in `mackes/birthright.py`: `role == "lighthouse"` → write `focus-profile.json` with `active_mode: "off"`; any other role → `active_mode: "work"`. Always ships the full 3-mode catalog so the operator can switch via Portal or Workbench without first having to create entries.
+    - [ ] Registered in `mackes/wizard/pages/apply.py` between the existing `apply_gluster_bootstrap` step and `apply_user_dirs`.
+    - [ ] Atomic write via tempfile + rename so a half-written file never lands.
+    - [ ] 5 pytest tests cover: lighthouse role → off; host role → work; peer role → work; missing role → work (fail-safe); idempotent re-run leaves file alone.
+    - [ ] Bench: fresh install with `role=host` → after birthright completes, `<qnm_root>/<self>/mackesd/focus-profile.json` shows `active_mode: work` + the 3 default modes; same install with `role=lighthouse` → shows `active_mode: off`.
 
 ### v2.5: Nebula fabric rebuild (locked 2026-05-23)
 
