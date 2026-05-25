@@ -28,7 +28,7 @@ use iced_layershell::to_layer_message;
 
 use crate::fonts::{resolve_icon, FONT_INTEL_ONE_MONO};
 use crate::status::StatusInfo;
-use crate::workspace::WorkspaceInfo;
+use crate::workspace::{WindowInfo, WorkspaceInfo};
 use mde_theme::{Icon, IconSize};
 
 /// Crate-private app-id constant visible to the layer-shell compositor.
@@ -192,6 +192,10 @@ pub enum Message {
     ShowDesktopToggle,
     /// Async result of `show_desktop_hide()` — carries IDs of moved windows.
     ShowDesktopHidden(Vec<i64>),
+    /// Window subscription delivered a fresh window list (Portal-8.a).
+    WindowList(Vec<WindowInfo>),
+    /// User clicked a running-zone cell — focus that window by con_id (Portal-8.a).
+    FocusWindowById(i64),
     /// 30-second sysfs poll result (Portal-9.a: battery/network/backlight).
     StatusUpdate(StatusInfo),
     /// User clicked the Lock glyph — triggers `loginctl lock-session` (Portal-9.a).
@@ -223,6 +227,8 @@ pub struct DockApp {
     desktop_window_ids: Vec<i64>,
     /// Last sysfs status snapshot (Portal-9.a). Updated every 30 s.
     status_info: StatusInfo,
+    /// Live window list from swayipc tree (Portal-8.a). Empty until subscription fires.
+    running_windows: Vec<WindowInfo>,
 }
 
 impl Default for DockApp {
@@ -236,6 +242,7 @@ impl Default for DockApp {
             wallpaper_strip_on: false,
             desktop_window_ids: Vec::new(),
             status_info: StatusInfo::default(),
+            running_windows: Vec::new(),
         }
     }
 }
@@ -370,6 +377,15 @@ impl iced_layershell::Application for DockApp {
                 self.wallpaper_strip_on = !ids.is_empty();
                 self.desktop_window_ids = ids;
             }
+            Message::WindowList(windows) => {
+                self.running_windows = windows;
+            }
+            Message::FocusWindowById(con_id) => {
+                return Task::perform(
+                    crate::workspace::focus_window_by_id(con_id),
+                    |_| Message::Noop,
+                );
+            }
             Message::StatusUpdate(info) => {
                 self.status_info = info;
             }
@@ -405,6 +421,7 @@ impl iced_layershell::Application for DockApp {
     fn subscription(&self) -> Subscription<Message> {
         Subscription::batch([
             crate::workspace::workspace_subscription(),
+            crate::workspace::window_subscription(),
             clock_subscription(),
             snapshot_subscription(),
             status_subscription(),
@@ -418,6 +435,7 @@ impl iced_layershell::Application for DockApp {
 
         let ws_seg = build_workspace_segment(self, fg);
         let host_seg = build_hostname_segment(self, fg);
+        let running_zone = build_running_zone(self, fg);
         let status_seg = build_status_segment(self, fg);
         let clock_seg = build_clock_segment(self, fg);
         let nav_row = build_nav_row(self, fg);
@@ -427,6 +445,7 @@ impl iced_layershell::Application for DockApp {
             row![
                 ws_seg,
                 host_seg,
+                running_zone,
                 iced::widget::horizontal_space(),
                 status_seg,
                 clock_seg,
@@ -784,6 +803,127 @@ fn nav_button_cell<'a>(
     mouse_area(cell)
         .on_press(Message::NavClicked(btn))
         .on_right_press(Message::NavRightClicked(btn))
+        .into()
+}
+
+/// Build the running-zone segment (Portal-8.a, R3-Q15).
+///
+/// Groups windows by `app_id`.  Each group is a clickable cell showing:
+///   - Short app label (first 10 chars of app_id, or title fallback)
+///   - Workspace-number badge when the group spans multiple workspaces (R3-Q15)
+///   - Count badge when there are 2+ windows in the group
+///   - Indigo background when any window in the group is focused
+///
+/// Click calls `[con_id=N] focus` on the focused window in the group (or
+/// the first window if none is focused).
+///
+/// WM-buttons-on-hover (Portal-8.b) not yet wired.
+fn build_running_zone<'a>(app: &DockApp, fg: Color) -> Element<'a, Message> {
+    // Group by app_id key (fall back to con_id string if no app_id).
+    use std::collections::BTreeMap;
+    let mut groups: BTreeMap<String, Vec<&WindowInfo>> = BTreeMap::new();
+    for w in &app.running_windows {
+        let key = w
+            .app_id
+            .clone()
+            .unwrap_or_else(|| format!("#{}", w.con_id));
+        groups.entry(key).or_default().push(w);
+    }
+
+    let mut cells: Vec<Element<'a, Message>> = Vec::new();
+
+    for (label_key, group) in &groups {
+        let any_focused = group.iter().any(|w| w.focused);
+        let count = group.len();
+
+        // Best window to focus on click: the focused one or the first.
+        let target_id = group
+            .iter()
+            .find(|w| w.focused)
+            .unwrap_or(&group[0])
+            .con_id;
+
+        // Workspace numbers present in this group (for multi-WS badge).
+        let mut ws_nums: Vec<i32> = group.iter().map(|w| w.workspace_num).collect();
+        ws_nums.dedup();
+
+        let bg: Option<Color> = if any_focused { Some(COLOR_INDIGO) } else { None };
+        let text_color = if any_focused { Color::WHITE } else { fg };
+
+        // Truncate the label key to a display-friendly length.
+        let display: String = {
+            let raw = label_key.as_str();
+            let max = 10usize;
+            if raw.chars().count() > max {
+                let prefix: String = raw.chars().take(max).collect();
+                format!("{prefix}…")
+            } else {
+                raw.to_string()
+            }
+        };
+
+        let mut label_parts: Vec<Element<'a, Message>> = vec![
+            text(display).size(10.0).color(text_color).into(),
+        ];
+
+        // Count badge for multiple windows.
+        if count > 1 {
+            label_parts.push(
+                container(
+                    text(count.to_string()).size(8.0).color(Color::WHITE),
+                )
+                .style(|_: &Theme| iced::widget::container::Style {
+                    background: Some(iced::Background::Color(
+                        Color { r: 0.5, g: 0.5, b: 0.6, a: 1.0 }
+                    )),
+                    border: iced::Border {
+                        radius: iced::border::Radius::from(4.0),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                })
+                .padding(Padding::from([0, 2]))
+                .width(Length::Shrink)
+                .into(),
+            );
+        }
+
+        // Workspace badge when windows spread across multiple workspaces.
+        if ws_nums.len() > 1 {
+            label_parts.push(
+                text("·").size(8.0).color(Color { a: 0.5, ..text_color }).into(),
+            );
+        }
+
+        let inner = container(
+            row(label_parts)
+                .spacing(2)
+                .align_y(iced::Alignment::Center),
+        )
+        .height(Length::Fill)
+        .align_y(iced::alignment::Vertical::Center)
+        .padding(Padding::from([0, 6]))
+        .style(move |_: &Theme| iced::widget::container::Style {
+            background: bg.map(iced::Background::Color),
+            ..Default::default()
+        });
+
+        cells.push(
+            mouse_area(inner)
+                .on_press(Message::FocusWindowById(target_id))
+                .into(),
+        );
+    }
+
+    if cells.is_empty() {
+        return iced::widget::Space::new(0.0, Length::Fill).into();
+    }
+
+    row(cells)
+        .spacing(2)
+        .height(Length::Fill)
+        .align_y(iced::Alignment::Center)
+        .padding(Padding::from([0, 4]))
         .into()
 }
 
@@ -1274,6 +1414,67 @@ mod tests {
         // Should produce a Task::perform without panicking (sway not running,
         // so the async op will fail silently at runtime).
         let _task = iced_layershell::Application::update(&mut app, Message::NewWorkspace);
+    }
+
+    // ── Portal-8.a running-zone tests ────────────────────────────────────────
+
+    fn make_window(con_id: i64, app_id: &str, ws_num: i32, focused: bool) -> WindowInfo {
+        WindowInfo {
+            con_id,
+            app_id: Some(app_id.to_string()),
+            title: Some(format!("{app_id} window")),
+            workspace_num: ws_num,
+            focused,
+        }
+    }
+
+    #[test]
+    fn running_windows_start_empty() {
+        let app = DockApp::default();
+        assert!(app.running_windows.is_empty());
+    }
+
+    #[test]
+    fn window_list_message_updates_state() {
+        let mut app = DockApp::default();
+        let windows = vec![
+            make_window(1, "foot", 1, true),
+            make_window(2, "firefox", 1, false),
+        ];
+        let _ = iced_layershell::Application::update(
+            &mut app,
+            Message::WindowList(windows),
+        );
+        assert_eq!(app.running_windows.len(), 2);
+        assert_eq!(app.running_windows[0].app_id.as_deref(), Some("foot"));
+    }
+
+    #[test]
+    fn window_list_replaces_previous() {
+        let mut app = DockApp::default();
+        let _ = iced_layershell::Application::update(
+            &mut app,
+            Message::WindowList(vec![make_window(1, "foot", 1, true)]),
+        );
+        let _ = iced_layershell::Application::update(
+            &mut app,
+            Message::WindowList(vec![
+                make_window(2, "firefox", 1, false),
+                make_window(3, "code", 2, true),
+            ]),
+        );
+        assert_eq!(app.running_windows.len(), 2, "list should be replaced, not appended");
+        assert!(app.running_windows.iter().all(|w| w.app_id.as_deref() != Some("foot")));
+    }
+
+    #[test]
+    fn focus_window_by_id_task_fires_without_panic() {
+        let mut app = DockApp::default();
+        // sway not running in test; the async op fails silently at runtime.
+        let _task = iced_layershell::Application::update(
+            &mut app,
+            Message::FocusWindowById(99),
+        );
     }
 
     // ── Portal-9.a status segment tests ──────────────────────────────────────

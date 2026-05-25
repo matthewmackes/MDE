@@ -4,13 +4,17 @@
 //! `workspace_subscription()` (an Iced `Subscription` that emits
 //! `Message::WorkspaceList` on startup and on every workspace change).
 //!
+//! Also provides `WindowInfo` (the running-zone data, Portal-8.a) and
+//! `window_subscription()` (emits `Message::WindowList` on every window
+//! open / close / focus / title change).
+//!
 //! Two swayipc connections are opened per watcher run:
-//!   1. A command connection — used for `get_workspaces()` refreshes.
-//!   2. An event connection — consumed by `subscribe()`, streams workspace events.
+//!   1. A command connection — used for `get_workspaces()` / `get_tree()` refreshes.
+//!   2. An event connection — consumed by `subscribe()`, streams events.
 //!
 //! If swayipc is unavailable ($SWAYSOCK unset, Sway not running), the
-//! subscription retries every 3 s without panicking.  The Dock renders
-//! an empty workspace segment until a connection succeeds.
+//! subscriptions retry every 3 s without panicking.  The Dock renders
+//! empty segments until a connection succeeds.
 
 use futures_util::StreamExt as _;
 use iced::Subscription;
@@ -20,6 +24,68 @@ use crate::app::Message;
 
 /// Adaptive-width floor for workspace cells (R4-Q64).
 pub const WORKSPACE_CELL_MIN_PX: f32 = 24.0;
+
+// ── Window info (Portal-8.a) ──────────────────────────────────────────────────
+
+/// Trimmed window data the running-zone segment needs (Portal-8.a).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowInfo {
+    /// sway container ID — stable within a session.
+    pub con_id: i64,
+    /// Wayland app_id (e.g. `"foot"`, `"firefox"`), if set.
+    pub app_id: Option<String>,
+    /// Window title / WM_NAME.
+    pub title: Option<String>,
+    /// Workspace number the window is currently on (−1 = scratchpad).
+    pub workspace_num: i32,
+    /// This window has keyboard focus.
+    pub focused: bool,
+}
+
+impl WindowInfo {
+    /// Short label for the running zone: app_id (first 10 chars), or
+    /// the window title (first 10 chars), or `con_id` as fallback.
+    pub fn display_label(&self) -> String {
+        let raw = self
+            .app_id
+            .as_deref()
+            .or(self.title.as_deref())
+            .unwrap_or("?");
+        let max = 10;
+        if raw.chars().count() > max {
+            let prefix: String = raw.chars().take(max).collect();
+            format!("{prefix}…")
+        } else {
+            raw.to_string()
+        }
+    }
+}
+
+/// Recursively collect `WindowInfo` for all tiling leaf windows.
+///
+/// `ws_num` tracks the workspace number as we descend the tree.
+fn collect_windows(node: &swayipc_async::Node, ws_num: i32) -> Vec<WindowInfo> {
+    let current_ws_num = if node.node_type == NodeType::Workspace {
+        node.num.unwrap_or(ws_num)
+    } else {
+        ws_num
+    };
+
+    let mut windows = Vec::new();
+    if node.node_type == NodeType::Con && node.nodes.is_empty() && node.app_id.is_some() {
+        windows.push(WindowInfo {
+            con_id: node.id,
+            app_id: node.app_id.clone(),
+            title: node.name.clone(),
+            workspace_num: current_ws_num,
+            focused: node.focused,
+        });
+    }
+    for child in &node.nodes {
+        windows.extend(collect_windows(child, current_ws_num));
+    }
+    windows
+}
 
 /// Maximum displayed characters before a workspace name is truncated.
 const WS_NAME_MAX_CHARS: usize = 8;
@@ -132,6 +198,76 @@ pub fn workspace_subscription() -> Subscription<Message> {
             }
         },
     )
+}
+
+/// Iced `Subscription` that emits `Message::WindowList` on startup and on
+/// every window event (open / close / focus / title change).
+///
+/// Uses the same two-connection pattern as `workspace_subscription()`.
+pub fn window_subscription() -> Subscription<Message> {
+    Subscription::run_with_id(
+        "mde-portal-windows",
+        async_stream::stream! {
+            loop {
+                let cmd_conn = match Connection::new().await {
+                    Ok(c) => c,
+                    Err(e) => {
+                        tracing::debug!(error = %e, "swayipc window cmd connect failed; retrying in 3s");
+                        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                        continue;
+                    }
+                };
+                let mut conn = cmd_conn;
+
+                // Emit initial window list from tree.
+                if let Ok(tree) = conn.get_tree().await {
+                    let windows = collect_windows(&tree, -1);
+                    yield Message::WindowList(windows);
+                }
+
+                let event_conn = match Connection::new().await {
+                    Ok(c) => c,
+                    Err(e) => {
+                        tracing::debug!(error = %e, "swayipc window event connect failed; retrying in 3s");
+                        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                        continue;
+                    }
+                };
+
+                let mut events = match event_conn.subscribe([EventType::Window]).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        tracing::debug!(error = %e, "window subscribe failed; retrying in 3s");
+                        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                        continue;
+                    }
+                };
+
+                while let Some(event_result) = events.next().await {
+                    if let Ok(swayipc_async::Event::Window(_)) = event_result {
+                        if let Ok(tree) = conn.get_tree().await {
+                            let windows = collect_windows(&tree, -1);
+                            yield Message::WindowList(windows);
+                        }
+                    }
+                }
+
+                tracing::debug!("swayipc window event stream ended; reconnecting");
+            }
+        },
+    )
+}
+
+/// Focus a window by container ID via a fresh swayipc connection (Portal-8.a).
+pub async fn focus_window_by_id(con_id: i64) {
+    match Connection::new().await {
+        Ok(mut conn) => {
+            if let Err(e) = conn.run_command(&format!("[con_id={con_id}] focus")).await {
+                tracing::warn!(con_id, error = %e, "focus_window_by_id command failed");
+            }
+        }
+        Err(e) => tracing::warn!(error = %e, "focus_window_by_id: swayipc connect failed"),
+    }
 }
 
 /// Focus a workspace by name via a fresh swayipc connection.
@@ -305,6 +441,68 @@ mod tests {
         let taken: Vec<i32> = vec![];
         let next = (1i32..).find(|n| !taken.contains(n)).unwrap_or(1);
         assert_eq!(next, 1);
+    }
+
+    // ── Portal-8.a WindowInfo tests ───────────────────────────────────────────
+
+    fn make_window_info(app_id: &str, focused: bool) -> WindowInfo {
+        WindowInfo {
+            con_id: 99,
+            app_id: Some(app_id.to_string()),
+            title: Some(format!("{app_id} window")),
+            workspace_num: 1,
+            focused,
+        }
+    }
+
+    #[test]
+    fn window_display_label_short_app_id() {
+        let w = make_window_info("foot", false);
+        assert_eq!(w.display_label(), "foot");
+    }
+
+    #[test]
+    fn window_display_label_truncates_long_app_id() {
+        let w = make_window_info("com.example.very-long-app-id", false);
+        let label = w.display_label();
+        assert!(label.ends_with('…'), "long app_id should be truncated: {label}");
+        assert!(label.chars().count() <= 11, "truncated label too long: {label}");
+    }
+
+    #[test]
+    fn window_display_label_falls_back_to_title() {
+        let w = WindowInfo {
+            con_id: 1,
+            app_id: None,
+            title: Some("Doc".to_string()),
+            workspace_num: 1,
+            focused: false,
+        };
+        assert_eq!(w.display_label(), "Doc", "should use title when no app_id");
+    }
+
+    #[test]
+    fn window_display_label_falls_back_to_question_mark() {
+        let w = WindowInfo {
+            con_id: 1,
+            app_id: None,
+            title: None,
+            workspace_num: 1,
+            focused: false,
+        };
+        assert_eq!(w.display_label(), "?");
+    }
+
+    #[test]
+    fn collect_windows_skips_non_con_nodes() {
+        // A Workspace node with a child leaf Con that has an app_id.
+        let json = workspace_json(10, 99);
+        // workspace_json uses con_leaf_json which doesn't set app_id.
+        // The collect_windows function only collects when app_id.is_some(),
+        // so this workspace should yield an empty list (leaf has no app_id).
+        let node: swayipc_async::Node = serde_json::from_str(&json).unwrap();
+        let windows = collect_windows(&node, -1);
+        assert!(windows.is_empty(), "leaf without app_id should not be collected");
     }
 
     // ── Portal-12 show-desktop tree-walk tests ────────────────────────────────
