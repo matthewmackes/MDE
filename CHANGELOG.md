@@ -169,6 +169,47 @@ mackesd-side nebula signal interface declarations. Total
 `cargo test -p mackesd --features async-services --lib ipc::`:
 62 passing.
 
+## Unreleased — OV-8.a: systemd1 per-unit PropertiesChanged subscription
+
+Closes the last live-refresh gap on the Workbench Overview's
+SSH / RDP / VNC / Mesh Services rows. After this change, the
+operator never has to hit Refresh to see a local-daemon
+state flip.
+
+**`crates/mde-workbench/src/panels/home.rs`:**
+
+- `run_subscription` opens a session zbus connection, calls
+  `org.freedesktop.systemd1.Manager.Subscribe()` (the
+  prereq systemd needs before it emits per-unit
+  `PropertiesChanged` to this connection), then adds a
+  single broad match rule scoped to
+  `sender=org.freedesktop.systemd1,
+  interface=org.freedesktop.DBus.Properties,
+  member=PropertiesChanged`.
+- New `unit_name_from_path()` helper reverses systemd's
+  unit-object-path escape (each non-`[A-Za-z0-9_]` byte is
+  hex-encoded as `_xx`). Round-trip: `sshd.service` ↔
+  `sshd_2eservice`, `x11vnc@:0.service` ↔
+  `x11vnc_40_3a0_2eservice`.
+- New `systemd_watch_list()` returns the union of the
+  fixed SSH / RDP / VNC slots (sshd / xrdp / x11vnc@:0 /
+  wayvnc) plus every `MESH_UNITS` entry the Workbench
+  Network → Mesh Services panel curates. Anything outside
+  this list still fans out from the bus but is dropped
+  silently before turning into a `DbusEvent::UnitChanged`.
+- Demux loop now distinguishes systemd1 `PropertiesChanged`
+  from Nebula / Fleet signals: systemd matches go through
+  the watch-list filter and emit `Message::Home(
+  DbusEvent::UnitChanged(name))`; Nebula / Fleet signals
+  take the existing per-rule dispatch.
+
+**Tests:** 5 new unit tests cover the escape decoder
+(sshd / x11vnc@:0 template instance / bare alphanumeric /
+non-systemd-path rejection) + the watch-list membership
+(asserts every `MESH_UNITS` entry is present). Total
+`cargo test -p mde-workbench --lib panels::home`: **26 /
+0** passing. Voice-and-tone lint clean.
+
 ## Unreleased — GF-2.2.a: Gluster D-Bus surface (methods + signal interfaces)
 
 Closes the method-side of GF-2.2 from the v5.0.0 GlusterFS

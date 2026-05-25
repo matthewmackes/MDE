@@ -1287,10 +1287,13 @@ fn extract_peer_count(row: &CapabilityRow) -> Option<u32> {
 /// probe fan-out on each event, so status pills flip without
 /// the operator hitting Refresh.
 ///
-/// systemd1 `PropertiesChanged` for individual units is **out
-/// of scope for OV-8** — manual Refresh + the load-on-nav path
-/// cover that case; OV-8.a captures the systemd subscription
-/// as a follow-up if the Refresh button proves insufficient.
+/// systemd1 per-unit `PropertiesChanged` (OV-8.a, shipped
+/// 2026-05-25) is also subscribed: the loop calls
+/// `org.freedesktop.systemd1.Manager.Subscribe()` once at
+/// connection time + matches `PropertiesChanged` on every
+/// `/org/freedesktop/systemd1/unit/<escaped-name>` path. Only
+/// units in [`systemd_watch_list`] propagate to the Overview;
+/// the rest fan out and are dropped silently.
 ///
 /// On connection loss (mackesd restart, bus disconnect) the
 /// loop re-establishes with a 5 s backoff so the Overview
@@ -1312,6 +1315,26 @@ pub fn dbus_subscription() -> iced::Subscription<crate::Message> {
     })
 }
 
+/// systemd unit names the OV-8.a subscription cares about.
+/// Anything outside this list still fans out from the bus but
+/// is dropped before turning into a `DbusEvent::UnitChanged`.
+/// Built from the SSH / RDP / VNC slots plus every
+/// `MESH_UNITS` entry so the per-row probes refresh on any
+/// state flip.
+#[must_use]
+pub fn systemd_watch_list() -> Vec<String> {
+    let mut v: Vec<String> = vec![
+        "sshd.service".into(),
+        "xrdp.service".into(),
+        "x11vnc@:0.service".into(),
+        "wayvnc.service".into(),
+    ];
+    for (name, _, _) in MESH_UNITS.iter() {
+        v.push((*name).to_string());
+    }
+    v
+}
+
 async fn run_subscription(
     output: &mut iced::futures::channel::mpsc::Sender<crate::Message>,
 ) -> Result<(), String> {
@@ -1322,6 +1345,10 @@ async fn run_subscription(
     let conn = zbus::Connection::session()
         .await
         .map_err(|e| format!("session bus connect: {e}"))?;
+
+    let bus_proxy = zbus::fdo::DBusProxy::new(&conn)
+        .await
+        .map_err(|e| format!("DBus proxy: {e}"))?;
 
     let mut rules = Vec::new();
     for (iface, member, event) in [
@@ -1353,14 +1380,38 @@ async fn run_subscription(
             .member(member)
             .map_err(|e| format!("rule member {member}: {e}"))?
             .build();
-        zbus::fdo::DBusProxy::new(&conn)
-            .await
-            .map_err(|e| format!("DBus proxy: {e}"))?
+        bus_proxy
             .add_match_rule(rule.clone())
             .await
             .map_err(|e| format!("add_match_rule {iface}.{member}: {e}"))?;
         rules.push((rule, event));
     }
+
+    // ---- systemd1 PropertiesChanged subscription (OV-8.a) ---
+    // Manager.Subscribe() is the prereq — without it systemd
+    // does not emit per-unit signals to the session bus. The
+    // call is idempotent on the systemd side; safe to retry
+    // on every reconnect.
+    if let Err(e) = subscribe_to_systemd(&conn).await {
+        tracing::warn!(
+            target: "mde_workbench::home::dbus_subscription",
+            "systemd Manager.Subscribe failed: {e}; unit refresh stays manual",
+        );
+    }
+    let watch = systemd_watch_list();
+    let systemd_rule = MatchRule::builder()
+        .msg_type(zbus::message::Type::Signal)
+        .sender("org.freedesktop.systemd1")
+        .map_err(|e| format!("rule systemd sender: {e}"))?
+        .interface("org.freedesktop.DBus.Properties")
+        .map_err(|e| format!("rule properties iface: {e}"))?
+        .member("PropertiesChanged")
+        .map_err(|e| format!("rule propchanged member: {e}"))?
+        .build();
+    bus_proxy
+        .add_match_rule(systemd_rule)
+        .await
+        .map_err(|e| format!("add_match_rule systemd PropertiesChanged: {e}"))?;
 
     let stream = MessageStream::from(&conn);
     use iced::futures::StreamExt;
@@ -1375,6 +1426,22 @@ async fn run_subscription(
         let Some(iface) = header.interface() else { continue };
         let iface_str = iface.as_str();
         let member_str = member.as_str();
+
+        // systemd1 PropertiesChanged dispatch (OV-8.a).
+        if iface_str == "org.freedesktop.DBus.Properties" && member_str == "PropertiesChanged" {
+            let Some(path) = header.path() else { continue };
+            let path_str = path.as_str();
+            let Some(unit) = unit_name_from_path(path_str) else { continue };
+            if watch.iter().any(|w| w == &unit) {
+                let _ = output
+                    .send(crate::Message::Home(Message::DbusEvent(
+                        DbusEvent::UnitChanged(unit),
+                    )))
+                    .await;
+            }
+            continue;
+        }
+
         for (_rule, ev) in &rules {
             // Match by interface+member; ignore other traffic on
             // the bus (zbus's per-rule fan-out lands here too).
@@ -1402,6 +1469,57 @@ async fn run_subscription(
         }
     }
     Err("message stream ended".to_string())
+}
+
+/// Call `org.freedesktop.systemd1.Manager.Subscribe()` over a
+/// raw method-call message. Required prereq for systemd to
+/// emit per-unit `PropertiesChanged` signals on this bus
+/// connection. Idempotent on the systemd side.
+async fn subscribe_to_systemd(conn: &zbus::Connection) -> Result<(), String> {
+    let proxy = zbus::Proxy::new(
+        conn,
+        "org.freedesktop.systemd1",
+        "/org/freedesktop/systemd1",
+        "org.freedesktop.systemd1.Manager",
+    )
+    .await
+    .map_err(|e| format!("systemd1 manager proxy: {e}"))?;
+    proxy
+        .call_method("Subscribe", &())
+        .await
+        .map(|_| ())
+        .map_err(|e| format!("Manager.Subscribe: {e}"))
+}
+
+/// Decode a systemd1 unit-object path back to the canonical
+/// unit name. Returns `None` for paths outside the
+/// `/org/freedesktop/systemd1/unit/` prefix.
+///
+/// systemd escape convention: each non-`[A-Za-z0-9_]` byte is
+/// encoded as `_xx` (lowercase hex). So `sshd.service` →
+/// `sshd_2eservice`, `x11vnc@:0.service` →
+/// `x11vnc_40_3a0_2eservice`.
+#[must_use]
+pub fn unit_name_from_path(path: &str) -> Option<String> {
+    let basename = path.strip_prefix("/org/freedesktop/systemd1/unit/")?;
+    let mut out = String::with_capacity(basename.len());
+    let bytes = basename.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'_' && i + 2 < bytes.len() {
+            let h1 = (bytes[i + 1] as char).to_digit(16);
+            let h2 = (bytes[i + 2] as char).to_digit(16);
+            if let (Some(a), Some(b)) = (h1, h2) {
+                let byte = u8::try_from(a * 16 + b).unwrap_or(b'?');
+                out.push(byte as char);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i] as char);
+        i += 1;
+    }
+    Some(out)
 }
 
 // ---------------------------------------------------------------------------
@@ -1604,6 +1722,52 @@ mod tests {
         let _ = panel.update(Message::Refreshed(new_snap));
         assert_eq!(panel.snapshot.capabilities.len(), 11, "refresh keeps capability rows");
         assert!(!panel.snapshot.mackesd_reachable, "refresh keeps mackesd_reachable");
+    }
+
+    #[test]
+    fn unit_name_decodes_sshd() {
+        assert_eq!(
+            unit_name_from_path("/org/freedesktop/systemd1/unit/sshd_2eservice").as_deref(),
+            Some("sshd.service"),
+        );
+    }
+
+    #[test]
+    fn unit_name_decodes_x11vnc_template() {
+        assert_eq!(
+            unit_name_from_path("/org/freedesktop/systemd1/unit/x11vnc_40_3a0_2eservice")
+                .as_deref(),
+            Some("x11vnc@:0.service"),
+        );
+    }
+
+    #[test]
+    fn unit_name_decodes_no_escapes() {
+        assert_eq!(
+            unit_name_from_path("/org/freedesktop/systemd1/unit/mackesd").as_deref(),
+            Some("mackesd"),
+        );
+    }
+
+    #[test]
+    fn unit_name_returns_none_for_non_systemd_path() {
+        assert!(unit_name_from_path("/org/freedesktop/DBus").is_none());
+        assert!(unit_name_from_path("").is_none());
+    }
+
+    #[test]
+    fn systemd_watch_list_includes_ssh_rdp_vnc_and_mesh_units() {
+        let list = systemd_watch_list();
+        assert!(list.iter().any(|u| u == "sshd.service"));
+        assert!(list.iter().any(|u| u == "xrdp.service"));
+        assert!(list.iter().any(|u| u == "x11vnc@:0.service"));
+        assert!(list.iter().any(|u| u == "wayvnc.service"));
+        for (name, _, _) in MESH_UNITS.iter() {
+            assert!(
+                list.iter().any(|u| u == name),
+                "MESH_UNITS entry {name} missing from watch list",
+            );
+        }
     }
 
     #[test]
