@@ -177,13 +177,15 @@ pub enum Message {
     FocusWorkspace(String),
     /// User clicked `+` — switch to the next unused workspace number.
     NewWorkspace,
+    /// User clicked the hostname segment (Portal-6; cross-peer cycling in Portal-6.b).
+    HostnameClicked,
     /// Fire-and-forget placeholder for Task::perform callbacks that produce no message.
     Noop,
 }
 
 // ── application state ─────────────────────────────────────────────────────────
 
-/// Dock application state (Portal-5).
+/// Dock application state (Portal-6).
 #[derive(Debug)]
 pub struct DockApp {
     /// Currently active nav layer; `None` = Dock-only (Portal-full hidden).
@@ -192,6 +194,8 @@ pub struct DockApp {
     badge_counts: [u32; 6],
     /// Live workspace list from swayipc (Portal-5). Empty until subscription fires.
     workspaces: Vec<WorkspaceInfo>,
+    /// This machine's hostname — read from `/proc/sys/kernel/hostname` at startup.
+    hostname: String,
 }
 
 impl Default for DockApp {
@@ -200,6 +204,7 @@ impl Default for DockApp {
             active_nav: None,
             badge_counts: [0u32; 6],
             workspaces: Vec::new(),
+            hostname: String::new(),
         }
     }
 }
@@ -248,7 +253,10 @@ impl iced_layershell::Application for DockApp {
     type Flags = ();
 
     fn new(_flags: ()) -> (Self, Task<Message>) {
-        (Self::default(), Task::none())
+        let hostname = std::fs::read_to_string("/proc/sys/kernel/hostname")
+            .map(|s| s.trim().to_string())
+            .unwrap_or_else(|_| "localhost".to_string());
+        (Self { hostname, ..Self::default() }, Task::none())
     }
 
     fn namespace(&self) -> String {
@@ -285,6 +293,10 @@ impl iced_layershell::Application for DockApp {
                     |_| Message::Noop,
                 );
             }
+            Message::HostnameClicked => {
+                // Portal-6.b: cross-peer cycling activates when mesh-home is live.
+                // In pre-mesh-home state clicking the hostname is a no-op.
+            }
             Message::Noop => {}
             // Variants injected by #[to_layer_message] (layer-shell protocol
             // actions: AnchorChange, SetInputRegion, etc.).  Not used by the
@@ -304,11 +316,13 @@ impl iced_layershell::Application for DockApp {
         let fg = if theme == Theme::Dark { Color::WHITE } else { Color::BLACK };
 
         let ws_seg = build_workspace_segment(self, fg);
+        let host_seg = build_hostname_segment(self, fg);
         let nav_row = build_nav_row(self, fg);
 
         container(
             row![
                 ws_seg,
+                host_seg,
                 iced::widget::horizontal_space(),
                 nav_row,
             ]
@@ -331,6 +345,35 @@ impl iced_layershell::Application for DockApp {
 }
 
 // ── widget helpers ────────────────────────────────────────────────────────────
+
+/// Build the hostname segment (Portal-6): `host:output (local-only)`.
+///
+/// Format per R4-Q6 / R4-Q46. Pre-mesh-home state always shows `(local-only)`;
+/// cross-peer cycling and the leader indicator `[leader]` activate in Portal-6.b
+/// once GlusterFS mesh-home is established.
+fn build_hostname_segment<'a>(app: &DockApp, fg: Color) -> Element<'a, Message> {
+    let output = app
+        .workspaces
+        .iter()
+        .find(|w| w.focused)
+        .map(|w| w.output.clone())
+        .unwrap_or_else(|| "?".to_string());
+
+    let label = if app.hostname.is_empty() {
+        format!("{output} (local-only)")
+    } else {
+        format!("{}:{output} (local-only)", app.hostname)
+    };
+
+    mouse_area(
+        container(text(label).size(11.0).color(Color { a: 0.6, ..fg }))
+            .height(Length::Fill)
+            .align_y(iced::alignment::Vertical::Center)
+            .padding(Padding::from([0, 8])),
+    )
+    .on_press(Message::HostnameClicked)
+    .into()
+}
 
 /// Build the workspace segment (Portal-5): `[ws1›][ws2›][dev…›][+]`.
 ///
@@ -723,6 +766,54 @@ mod tests {
     fn workspaces_start_empty() {
         let app = DockApp::default();
         assert!(app.workspaces.is_empty());
+    }
+
+    // ── Portal-6 hostname segment tests ──────────────────────────────────────
+
+    #[test]
+    fn hostname_defaults_to_empty_in_test_mode() {
+        let app = DockApp::default();
+        // default() uses empty hostname; real hostname read in new() at runtime.
+        assert_eq!(app.hostname, "");
+    }
+
+    #[test]
+    fn hostname_segment_shows_local_only_tag_when_no_focused_ws() {
+        let app = DockApp { hostname: "mybox".to_string(), ..DockApp::default() };
+        // No workspaces → output defaults to "?"; label includes (local-only).
+        let ws = app.workspaces.iter().find(|w| w.focused);
+        let output = ws.map(|w| w.output.as_str()).unwrap_or("?");
+        let label = format!("{}:{output} (local-only)", app.hostname);
+        assert!(label.contains("(local-only)"));
+        assert!(label.contains("mybox"));
+    }
+
+    #[test]
+    fn hostname_segment_uses_focused_workspace_output() {
+        let mut app = DockApp { hostname: "devbox".to_string(), ..DockApp::default() };
+        let _ = iced_layershell::Application::update(
+            &mut app,
+            Message::WorkspaceList(vec![
+                WorkspaceInfo {
+                    num: 1, name: "1".to_string(), focused: true,
+                    visible: true, output: "eDP-1".to_string(), urgent: false,
+                },
+            ]),
+        );
+        let ws = app.workspaces.iter().find(|w| w.focused);
+        let output = ws.map(|w| w.output.as_str()).unwrap_or("?");
+        assert_eq!(output, "eDP-1");
+        let label = format!("{}:{output} (local-only)", app.hostname);
+        assert_eq!(label, "devbox:eDP-1 (local-only)");
+    }
+
+    #[test]
+    fn hostname_clicked_is_noop() {
+        let mut app = DockApp::default();
+        let _task = iced_layershell::Application::update(&mut app, Message::HostnameClicked);
+        // State unchanged.
+        assert!(app.workspaces.is_empty());
+        assert_eq!(app.active_nav, None);
     }
 
     #[test]
