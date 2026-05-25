@@ -364,6 +364,10 @@ Requires:       curl
 # is on the wire. Lighthouse / headless installs skip Roboto.
 Requires:       google-roboto-fonts
 Requires:       google-roboto-mono-fonts
+# Portal-3 — Intel One Mono for mde-portal Dock/Portal surfaces;
+# Symbols Nerd Font Mono for Carbon icon-glyph fallback rendering.
+Requires:       intel-one-mono-fonts
+Requires:       symbols-nerd-font-mono-fonts
 
 %description desktop
 Wayland desktop add-on for Mackes Desktop Environment.  Pulls

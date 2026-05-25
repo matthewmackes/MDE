@@ -16,6 +16,8 @@ use iced_layershell::reexport::{Anchor, KeyboardInteractivity, Layer};
 use iced_layershell::settings::{LayerShellSettings, Settings, StartMode};
 use iced_layershell::to_layer_message;
 
+use crate::fonts::FONT_INTEL_ONE_MONO;
+
 /// Crate-private app-id constant visible to the layer-shell compositor.
 pub(crate) const APP_ID: &str = "dev.mackes.MDE.Portal";
 
@@ -70,6 +72,9 @@ impl DockApp {
                 start_mode: StartMode::AllScreens,
                 ..Default::default()
             },
+            // Portal-3: Intel One Mono as primary font; resolved by
+            // fontconfig from the `intel-one-mono-fonts` RPM dep.
+            default_font: FONT_INTEL_ONE_MONO,
             ..Default::default()
         }
     }

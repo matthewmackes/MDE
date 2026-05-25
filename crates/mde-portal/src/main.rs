@@ -1,14 +1,16 @@
-//! `mde-portal` — v6.0 unified shell (Portal-2 Dock surface).
+//! `mde-portal` — v6.0 unified shell (Portal-3: font + icon theme).
 //!
 //! Single Rust binary that hosts all six Wayland surfaces:
 //!   Dock / Portal-compact / Portal-full / Lock / Theater / Mesh-wallpaper
 //!
-//! Portal-2 ships the Dock: 56 px bottom strip, exclusive zone,
-//! `StartMode::AllScreens` (one strip per connected output),
-//! theme-adaptive background (charcoal dark / off-white light).
-//! `dev.mackes.MDE.Portal` D-Bus (Goto/Focus/Lock/ToggleDND) landed
-//! in Portal-1. Every subsequent Portal-N task wires in its surface
-//! or segment.
+//! Portal-3 adds the font stack: Intel One Mono as the Iced default
+//! font (resolved via fontconfig, installed by `intel-one-mono-fonts`),
+//! Symbols Nerd Font Mono as icon-glyph fallback, and the Carbon icon
+//! system wired via `mde_theme::mde_icon` / `fonts::resolve_icon`.
+//! Portal-4 onward uses `resolve_icon` for nav-button glyphs.
+//!
+//! Portal-2 ships the Dock (AllScreens, 56 px, theme-adaptive bg).
+//! Portal-1 ships `dev.mackes.MDE.Portal` D-Bus registration.
 //!
 //! **Supervision:** `mde-portal.service` (systemd user unit) is
 //! `WantedBy=graphical-session.target` so the session manager starts
@@ -25,6 +27,8 @@ use iced_layershell::Application as _;
 
 mod app;
 mod dbus;
+// Portal-3 — font + Carbon icon theme layer.
+pub mod fonts;
 
 /// CLI surface for `mde-portal`.
 #[derive(Parser, Debug)]
