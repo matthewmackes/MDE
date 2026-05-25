@@ -3,7 +3,7 @@
 //! Dock layout (56 px, AllScreens, Intel One Mono):
 //!
 //! ```text
-//! [1›][2›][dev…›][+]  ···spacer···  [›Apps][›Files][›Notif][›VoIP][›Net][›Settings]
+//! [1›][2›][dev…›][+]  ···spacer···  [›Apps][›Files][›Notif][›VoIP][›Net][›Settings][▏]
 //! ```
 //!
 //! **Workspace segment** (Portal-5): chevron-as-border cells (R4-Q63),
@@ -15,6 +15,10 @@
 //! **Nav buttons** (Portal-4): 36 px Carbon glyphs, domain-color chevrons
 //! (R10-Q46), tonal-inversion active indicator (R10-Q15), count badge
 //! (R10-Q3), right-click (R10-Q5).
+//!
+//! **Show-wallpaper strip** (Portal-12, R4-Q72): 4 px strip at far-right;
+//! click moves all tiling windows to scratchpad (indigo active indicator);
+//! click again restores them by container ID (R4-Q73).
 
 use iced::widget::{container, mouse_area, row, text};
 use iced::{Color, Element, Length, Padding, Subscription, Task, Theme};
@@ -183,6 +187,10 @@ pub enum Message {
     ClockTick,
     /// 5-second tick to persist shell state (Portal-29 crash recovery).
     SnapshotTick,
+    /// User clicked the show-wallpaper strip (Portal-12, R4-Q72).
+    ShowDesktopToggle,
+    /// Async result of `show_desktop_hide()` — carries IDs of moved windows.
+    ShowDesktopHidden(Vec<i64>),
     /// Fire-and-forget placeholder for Task::perform callbacks that produce no message.
     Noop,
 }
@@ -202,6 +210,10 @@ pub struct DockApp {
     hostname: String,
     /// Current wall-clock time for the clock segment (Portal-11).
     clock_now: chrono::DateTime<chrono::Local>,
+    /// Whether the show-wallpaper strip is active (Portal-12).
+    wallpaper_strip_on: bool,
+    /// Container IDs of windows moved to scratchpad by show-wallpaper toggle.
+    desktop_window_ids: Vec<i64>,
 }
 
 impl Default for DockApp {
@@ -212,6 +224,8 @@ impl Default for DockApp {
             workspaces: Vec::new(),
             hostname: String::new(),
             clock_now: chrono::Local::now(),
+            wallpaper_strip_on: false,
+            desktop_window_ids: Vec::new(),
         }
     }
 }
@@ -324,6 +338,28 @@ impl iced_layershell::Application for DockApp {
             Message::SnapshotTick => {
                 persist_snapshot(self);
             }
+            Message::ShowDesktopToggle => {
+                if self.wallpaper_strip_on {
+                    // Restore: pull the stored IDs, clear state immediately (optimistic),
+                    // then fire the async restore.
+                    let ids = std::mem::take(&mut self.desktop_window_ids);
+                    self.wallpaper_strip_on = false;
+                    return Task::perform(
+                        crate::workspace::show_desktop_restore(ids),
+                        |_| Message::Noop,
+                    );
+                } else {
+                    return Task::perform(
+                        crate::workspace::show_desktop_hide(),
+                        Message::ShowDesktopHidden,
+                    );
+                }
+            }
+            Message::ShowDesktopHidden(ids) => {
+                // Active only when at least one window was actually moved.
+                self.wallpaper_strip_on = !ids.is_empty();
+                self.desktop_window_ids = ids;
+            }
             Message::Noop => {}
             // Variants injected by #[to_layer_message] (layer-shell protocol
             // actions: AnchorChange, SetInputRegion, etc.).  Not used by the
@@ -350,6 +386,7 @@ impl iced_layershell::Application for DockApp {
         let host_seg = build_hostname_segment(self, fg);
         let clock_seg = build_clock_segment(self, fg);
         let nav_row = build_nav_row(self, fg);
+        let wallpaper_strip = build_wallpaper_strip(self);
 
         container(
             row![
@@ -358,10 +395,12 @@ impl iced_layershell::Application for DockApp {
                 iced::widget::horizontal_space(),
                 clock_seg,
                 nav_row,
+                wallpaper_strip,
             ]
                 .width(Length::Fill)
                 .height(Length::Fill)
-                .padding(Padding::from([0, 8])),
+                // Left pad 8 px; strip is flush at right edge (R4-Q72).
+                .padding(Padding { top: 0.0, right: 0.0, bottom: 0.0, left: 8.0 }),
         )
         .style(move |_theme: &Theme| iced::widget::container::Style {
             background: Some(iced::Background::Color(bg)),
@@ -692,6 +731,32 @@ fn nav_button_cell<'a>(
         .on_press(Message::NavClicked(btn))
         .on_right_press(Message::NavRightClicked(btn))
         .into()
+}
+
+/// Build the show-wallpaper strip (Portal-12, R4-Q72).
+///
+/// 4 px wide, full-height, flush at the right edge of the Dock.
+/// Inactive: subtle grey.  Active (windows in scratchpad): indigo accent.
+/// Click toggles between hiding all tiling windows (→ wallpaper visible)
+/// and restoring them by their saved container IDs (R4-Q73).
+fn build_wallpaper_strip(app: &DockApp) -> Element<'_, Message> {
+    let strip_color = if app.wallpaper_strip_on {
+        COLOR_INDIGO
+    } else {
+        Color { r: 0.40, g: 0.41, b: 0.43, a: 1.0 }
+    };
+
+    mouse_area(
+        container(iced::widget::Space::new(Length::Fill, Length::Fill))
+            .width(4.0)
+            .height(Length::Fill)
+            .style(move |_: &Theme| iced::widget::container::Style {
+                background: Some(iced::Background::Color(strip_color)),
+                ..Default::default()
+            }),
+    )
+    .on_press(Message::ShowDesktopToggle)
+    .into()
 }
 
 // ── tests ─────────────────────────────────────────────────────────────────────
@@ -1043,5 +1108,63 @@ mod tests {
         // Should produce a Task::perform without panicking (sway not running,
         // so the async op will fail silently at runtime).
         let _task = iced_layershell::Application::update(&mut app, Message::NewWorkspace);
+    }
+
+    // ── Portal-12 show-wallpaper strip tests ─────────────────────────────────
+
+    #[test]
+    fn wallpaper_strip_starts_inactive() {
+        let app = DockApp::default();
+        assert!(!app.wallpaper_strip_on);
+        assert!(app.desktop_window_ids.is_empty());
+    }
+
+    #[test]
+    fn show_desktop_hidden_activates_strip_when_windows_moved() {
+        let mut app = DockApp::default();
+        let _ = iced_layershell::Application::update(
+            &mut app,
+            Message::ShowDesktopHidden(vec![101, 202]),
+        );
+        assert!(app.wallpaper_strip_on, "strip should be active after hiding windows");
+        assert_eq!(app.desktop_window_ids, vec![101, 202]);
+    }
+
+    #[test]
+    fn show_desktop_hidden_with_empty_ids_leaves_strip_inactive() {
+        let mut app = DockApp::default();
+        let _ = iced_layershell::Application::update(
+            &mut app,
+            Message::ShowDesktopHidden(vec![]),
+        );
+        assert!(!app.wallpaper_strip_on, "strip should stay inactive when no windows were moved");
+    }
+
+    #[test]
+    fn show_desktop_toggle_when_active_clears_state_immediately() {
+        let mut app = DockApp::default();
+        // Simulate: windows already hidden.
+        app.wallpaper_strip_on = true;
+        app.desktop_window_ids = vec![55, 66];
+
+        let _task = iced_layershell::Application::update(
+            &mut app,
+            Message::ShowDesktopToggle,
+        );
+        // strip_on resets immediately (optimistic); IDs are cleared.
+        assert!(!app.wallpaper_strip_on);
+        assert!(app.desktop_window_ids.is_empty());
+    }
+
+    #[test]
+    fn show_desktop_toggle_when_inactive_fires_hide_task() {
+        let mut app = DockApp::default();
+        // Should not panic even without a running sway session.
+        let _task = iced_layershell::Application::update(
+            &mut app,
+            Message::ShowDesktopToggle,
+        );
+        // strip_on stays false until ShowDesktopHidden arrives.
+        assert!(!app.wallpaper_strip_on);
     }
 }

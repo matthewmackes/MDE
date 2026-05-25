@@ -14,7 +14,7 @@
 
 use futures_util::StreamExt as _;
 use iced::Subscription;
-use swayipc_async::{Connection, EventType};
+use swayipc_async::{Connection, EventType, NodeType};
 
 use crate::app::Message;
 
@@ -149,6 +149,73 @@ pub async fn focus_workspace(name: String) {
     }
 }
 
+/// Recursively collect the container IDs of all tiling-window leaf nodes.
+///
+/// A tiling window is a `Con` node with no child `nodes` (i.e., a leaf
+/// that isn't a split container, workspace, or output).
+fn collect_tiling_ids(node: &swayipc_async::Node) -> Vec<i64> {
+    let mut ids = Vec::new();
+    if node.node_type == NodeType::Con && node.nodes.is_empty() {
+        ids.push(node.id);
+    }
+    for child in &node.nodes {
+        ids.extend(collect_tiling_ids(child));
+    }
+    ids
+}
+
+/// Move all tiling windows to the scratchpad (Portal-12 show-wallpaper on).
+///
+/// Returns the container IDs of every window moved, so `show_desktop_restore`
+/// can bring exactly those windows back without disturbing pre-existing
+/// scratchpad items.
+pub async fn show_desktop_hide() -> Vec<i64> {
+    let conn = match Connection::new().await {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!(error = %e, "show_desktop: swayipc connect failed");
+            return Vec::new();
+        }
+    };
+    let mut conn = conn;
+
+    let tree = match conn.get_tree().await {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::warn!(error = %e, "show_desktop: get_tree failed");
+            return Vec::new();
+        }
+    };
+
+    let ids = collect_tiling_ids(&tree);
+    for id in &ids {
+        if let Err(e) = conn.run_command(&format!("[con_id={id}] move to scratchpad")).await {
+            tracing::warn!(error = %e, con_id = id, "show_desktop: move to scratchpad failed");
+        }
+    }
+    ids
+}
+
+/// Restore tiling windows from the scratchpad by container ID (Portal-12).
+///
+/// Only windows whose IDs were returned by `show_desktop_hide()` are
+/// restored, leaving any pre-existing scratchpad items untouched.
+pub async fn show_desktop_restore(ids: Vec<i64>) {
+    let conn = match Connection::new().await {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!(error = %e, "show_desktop restore: swayipc connect failed");
+            return;
+        }
+    };
+    let mut conn = conn;
+    for id in &ids {
+        if let Err(e) = conn.run_command(&format!("[con_id={id}] scratchpad show")).await {
+            tracing::warn!(error = %e, con_id = id, "show_desktop: scratchpad show failed");
+        }
+    }
+}
+
 /// Switch to the lowest unused workspace number ≥ 1.
 pub async fn new_workspace(taken_nums: Vec<i32>) {
     let next = (1i32..).find(|n| !taken_nums.contains(n)).unwrap_or(1);
@@ -238,5 +305,132 @@ mod tests {
         let taken: Vec<i32> = vec![];
         let next = (1i32..).find(|n| !taken.contains(n)).unwrap_or(1);
         assert_eq!(next, 1);
+    }
+
+    // ── Portal-12 show-desktop tree-walk tests ────────────────────────────────
+    //
+    // `swayipc_async::Node` is #[non_exhaustive] so we can't construct it via
+    // struct literals from external crates.  We deserialize from minimal JSON
+    // (swayipc types derive Deserialize) to build test nodes instead.
+
+    /// Minimal JSON for a leaf `Con` node with no children.
+    fn con_leaf_json(id: i64) -> String {
+        format!(
+            r#"{{
+                "id": {id},
+                "name": "win-{id}",
+                "type": "con",
+                "border": "none",
+                "current_border_width": 0,
+                "layout": "splith",
+                "orientation": "none",
+                "percent": null,
+                "rect": {{"x":0,"y":0,"width":100,"height":100}},
+                "window_rect": {{"x":0,"y":0,"width":100,"height":100}},
+                "deco_rect": {{"x":0,"y":0,"width":0,"height":0}},
+                "geometry": {{"x":0,"y":0,"width":100,"height":100}},
+                "urgent": false,
+                "focused": false,
+                "focus": [],
+                "floating": null,
+                "floating_nodes": [],
+                "sticky": false
+            }}"#
+        )
+    }
+
+    /// Minimal JSON for a `Con` with one child (a leaf Con with given ID).
+    fn con_split_json(parent_id: i64, child_id: i64) -> String {
+        let child = con_leaf_json(child_id);
+        format!(
+            r#"{{
+                "id": {parent_id},
+                "name": "split-{parent_id}",
+                "type": "con",
+                "border": "none",
+                "current_border_width": 0,
+                "layout": "splith",
+                "orientation": "none",
+                "percent": null,
+                "rect": {{"x":0,"y":0,"width":200,"height":100}},
+                "window_rect": {{"x":0,"y":0,"width":200,"height":100}},
+                "deco_rect": {{"x":0,"y":0,"width":0,"height":0}},
+                "geometry": {{"x":0,"y":0,"width":200,"height":100}},
+                "urgent": false,
+                "focused": false,
+                "focus": [],
+                "floating": null,
+                "nodes": [{child}],
+                "floating_nodes": [],
+                "sticky": false
+            }}"#
+        )
+    }
+
+    /// Minimal JSON for a `Workspace` node with a child leaf Con.
+    fn workspace_json(ws_id: i64, child_id: i64) -> String {
+        let child = con_leaf_json(child_id);
+        format!(
+            r#"{{
+                "id": {ws_id},
+                "name": "1",
+                "type": "workspace",
+                "border": "none",
+                "current_border_width": 0,
+                "layout": "splith",
+                "orientation": "none",
+                "percent": null,
+                "rect": {{"x":0,"y":0,"width":1920,"height":1080}},
+                "window_rect": {{"x":0,"y":0,"width":1920,"height":1080}},
+                "deco_rect": {{"x":0,"y":0,"width":0,"height":0}},
+                "geometry": {{"x":0,"y":0,"width":1920,"height":1080}},
+                "urgent": false,
+                "focused": true,
+                "focus": [],
+                "floating": null,
+                "nodes": [{child}],
+                "floating_nodes": [],
+                "sticky": false,
+                "num": 1,
+                "representation": "H[xterm]"
+            }}"#
+        )
+    }
+
+    fn parse_node(json: &str) -> swayipc_async::Node {
+        serde_json::from_str(json).expect("test node JSON should parse")
+    }
+
+    #[test]
+    fn collect_tiling_ids_leaf_con_returned() {
+        let leaf = parse_node(&con_leaf_json(42));
+        let ids = collect_tiling_ids(&leaf);
+        assert_eq!(ids, vec![42]);
+    }
+
+    #[test]
+    fn collect_tiling_ids_workspace_not_returned() {
+        let ws = parse_node(&workspace_json(10, 99));
+        // The workspace itself should NOT be in the list, only the leaf Con child
+        let ids = collect_tiling_ids(&ws);
+        assert!(!ids.contains(&10), "workspace node should not be collected");
+        assert!(ids.contains(&99), "leaf Con inside workspace should be collected");
+    }
+
+    #[test]
+    fn collect_tiling_ids_non_leaf_con_not_returned() {
+        let split = parse_node(&con_split_json(10, 99));
+        let ids = collect_tiling_ids(&split);
+        assert!(!ids.contains(&10), "non-leaf Con should not be in result");
+        assert!(ids.contains(&99), "leaf child should be collected");
+    }
+
+    #[test]
+    fn collect_tiling_ids_leaf_con_empty_nodes() {
+        // A leaf Con with no children should always be collected.
+        let leaf = parse_node(&con_leaf_json(7));
+        let ids = collect_tiling_ids(&leaf);
+        assert_eq!(ids.len(), 1);
+        assert_eq!(ids[0], 7);
     }
 }

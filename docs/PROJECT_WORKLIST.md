@@ -157,7 +157,7 @@ locked work appears under **Active** with `[ ] Open`.
 - [ ] **Portal-10: Tray segment** (StatusNotifierItem + full XEmbed compat, R3-Q29) with 24px icons, first-seen order, 5-cap chevron-popover overflow, tier-pulse on NeedsAttention (R3-Q27), Aero-peek tooltip (R3-Q30).
 - [✓] **Portal-11: Clock segment** — 24h time (`%H:%M`) + date (`%b %d`) via 1-second tick subscription. chrono::Local::now() updated on ClockTick message. Calendar popover deferred to Portal-11.b (requires Portal-16 scratchpad surface). 52 tests passing.
 - [ ] **Portal-11.b: Calendar popover on clock click (R4-Q55)** — layer-shell popup or Portal-16 scratchpad surface showing monthly calendar; depends on Portal-16.
-- [ ] **Portal-12: Show-wallpaper strip** at far-right (R4-Q72); toggle (R4-Q73) syncs scratchpad of visible windows + restore.
+- [✓] **Portal-12: Show-wallpaper strip** at far-right (R4-Q72); toggle (R4-Q73) syncs scratchpad of visible windows + restore.
 - [ ] **Portal-13: Notification-cluster popover on hover of Notifications button** (R10-Q7): 3-row list-row stack, smart-default click, 'x' dismiss, 'View all' chip to Library-with-notifs-filter (R10-Q8); crit-tier escalation = transient toast top-center + button pulse + chime (R10-Q9).
 - [ ] **Portal-14: Breadcrumb typewriter + reverse-typewriter** at 60 chars/sec (R4-Q22, R4-Q24); subtle typewriter-tick audio (R4-Q28); marquee scroll at 50px/sec, pause-on-hover, click-jump (R4-Q60); continuous breath-line gradient sweep 15s cycle (R4-Q91).
 - [ ] **Portal-15: Cross-mode card morph + spring physics** (R5-Q8); shared-element animation between segment / cascade-card / list-row / mini-tree-cell / lock-widget / hero render modes.
