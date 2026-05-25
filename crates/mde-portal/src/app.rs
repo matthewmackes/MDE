@@ -433,8 +433,16 @@ impl iced_layershell::Application for DockApp {
                 return Task::batch(tasks);
             }
             Message::HostnameClicked => {
-                // Portal-6.b: cross-peer cycling activates when mesh-home is live.
-                // In pre-mesh-home state clicking the hostname is a no-op.
+                // Portal-6.c: spawn the hostname-info tooltip popover.
+                // Portal-6.b cross-peer cycling activates when mesh-home is live.
+                return Task::perform(
+                    async {
+                        let _ = tokio::process::Command::new("mde-popover")
+                            .arg("hostname-info")
+                            .spawn();
+                    },
+                    |_| Message::Noop,
+                );
             }
             Message::ClockTick => {
                 self.clock_now = chrono::Local::now();
@@ -1631,10 +1639,11 @@ mod tests {
     }
 
     #[test]
-    fn hostname_clicked_is_noop() {
+    fn hostname_clicked_fires_task_without_panic() {
         let mut app = DockApp::default();
-        let _task = iced_layershell::Application::update(&mut app, Message::HostnameClicked);
-        // State unchanged.
+        // HostnameClicked spawns mde-popover hostname-info; state itself unchanged.
+        let _task =
+            iced_layershell::Application::update(&mut app, Message::HostnameClicked);
         assert!(app.workspaces.is_empty());
         assert_eq!(app.active_nav, None);
     }

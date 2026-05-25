@@ -30,6 +30,7 @@ mod clock;
 mod dismiss;
 mod expose;
 mod fonts;
+mod hostname_info;
 mod icon_mapper;
 mod minimized;
 mod network;
@@ -109,6 +110,11 @@ enum Kind {
     /// "Customize Icon..." entry on the WM-3 window-actions
     /// popover.
     IconMapper,
+    /// Portal-6.c — hostname-info tooltip. Small card at the
+    /// bottom-left corner above the Dock showing hostname,
+    /// uptime, primary IP, and mesh role. Spawned when the
+    /// user clicks the Dock's hostname segment.
+    HostnameInfo,
 }
 
 fn main() -> iced_layershell::Result {
@@ -139,5 +145,6 @@ fn main() -> iced_layershell::Result {
         Kind::WindowActions => window_actions::run(),
         Kind::SnapAssist => snap_assist::run(),
         Kind::IconMapper => icon_mapper::run(),
+        Kind::HostnameInfo => hostname_info::run(),
     }
 }
