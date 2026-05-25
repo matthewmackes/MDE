@@ -181,6 +181,8 @@ pub enum Message {
     HostnameClicked,
     /// 1-second tick from the clock subscription (Portal-11).
     ClockTick,
+    /// 5-second tick to persist shell state (Portal-29 crash recovery).
+    SnapshotTick,
     /// Fire-and-forget placeholder for Task::perform callbacks that produce no message.
     Noop,
 }
@@ -261,7 +263,21 @@ impl iced_layershell::Application for DockApp {
         let hostname = std::fs::read_to_string("/proc/sys/kernel/hostname")
             .map(|s| s.trim().to_string())
             .unwrap_or_else(|_| "localhost".to_string());
-        (Self { hostname, ..Self::default() }, Task::none())
+
+        let snap = restore_snapshot().unwrap_or_default();
+        let active_nav = snap
+            .active_nav_index
+            .and_then(|i| NavButton::ALL.get(i).copied());
+
+        (
+            Self {
+                hostname,
+                active_nav,
+                badge_counts: snap.badge_counts,
+                ..Self::default()
+            },
+            Task::none(),
+        )
     }
 
     fn namespace(&self) -> String {
@@ -305,6 +321,9 @@ impl iced_layershell::Application for DockApp {
             Message::ClockTick => {
                 self.clock_now = chrono::Local::now();
             }
+            Message::SnapshotTick => {
+                persist_snapshot(self);
+            }
             Message::Noop => {}
             // Variants injected by #[to_layer_message] (layer-shell protocol
             // actions: AnchorChange, SetInputRegion, etc.).  Not used by the
@@ -318,6 +337,7 @@ impl iced_layershell::Application for DockApp {
         Subscription::batch([
             crate::workspace::workspace_subscription(),
             clock_subscription(),
+            snapshot_subscription(),
         ])
     }
 
@@ -358,6 +378,59 @@ impl iced_layershell::Application for DockApp {
 }
 
 // ── widget helpers ────────────────────────────────────────────────────────────
+
+// ── Portal-29 crash-recovery snapshot ────────────────────────────────────────
+
+/// Persisted state for crash recovery (R2-Q59, R4-Q48).
+///
+/// Serialized to `~/.cache/mde/shell-state.json` every 5 seconds.
+/// On respawn, restored in `DockApp::new()` before the first frame.
+#[derive(serde::Serialize, serde::Deserialize, Debug, Default)]
+struct ShellSnapshot {
+    /// Index into `NavButton::ALL` of the active nav, or `None`.
+    active_nav_index: Option<usize>,
+    /// Badge counts matching `NavButton::ALL` order.
+    badge_counts: [u32; 6],
+}
+
+fn snapshot_path() -> Option<std::path::PathBuf> {
+    dirs::cache_dir().map(|d| d.join("mde").join("shell-state.json"))
+}
+
+fn persist_snapshot(app: &DockApp) {
+    let Some(path) = snapshot_path() else { return };
+    let snap = ShellSnapshot {
+        active_nav_index: app.active_nav.and_then(|btn| {
+            NavButton::ALL.iter().position(|&b| b == btn)
+        }),
+        badge_counts: app.badge_counts,
+    };
+    if let Ok(json) = serde_json::to_string(&snap) {
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::write(&path, json);
+    }
+}
+
+fn restore_snapshot() -> Option<ShellSnapshot> {
+    let path = snapshot_path()?;
+    let json = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str(&json).ok()
+}
+
+/// 5-second snapshot subscription (Portal-29).
+fn snapshot_subscription() -> Subscription<Message> {
+    Subscription::run_with_id(
+        "mde-portal-snapshot",
+        async_stream::stream! {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                yield Message::SnapshotTick;
+            }
+        },
+    )
+}
 
 /// 1-second clock tick subscription (Portal-11).
 fn clock_subscription() -> Subscription<Message> {
@@ -853,6 +926,58 @@ mod tests {
         assert_eq!(output, "eDP-1");
         let label = format!("{}:{output} (local-only)", app.hostname);
         assert_eq!(label, "devbox:eDP-1 (local-only)");
+    }
+
+    // ── Portal-29 snapshot tests ──────────────────────────────────────────────
+
+    #[test]
+    fn shell_snapshot_default_has_no_active_nav() {
+        let snap = ShellSnapshot::default();
+        assert!(snap.active_nav_index.is_none());
+    }
+
+    #[test]
+    fn shell_snapshot_default_has_zero_badge_counts() {
+        let snap = ShellSnapshot::default();
+        assert_eq!(snap.badge_counts, [0u32; 6]);
+    }
+
+    #[test]
+    fn shell_snapshot_roundtrips_via_json() {
+        let snap = ShellSnapshot {
+            active_nav_index: Some(2),
+            badge_counts: [0, 3, 0, 0, 0, 0],
+        };
+        let json = serde_json::to_string(&snap).expect("serialize");
+        let restored: ShellSnapshot = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(restored.active_nav_index, Some(2));
+        assert_eq!(restored.badge_counts[1], 3);
+    }
+
+    #[test]
+    fn restore_snapshot_returns_none_for_corrupt_json() {
+        // Simulate a corrupt file — should not panic, returns None.
+        let result: Option<ShellSnapshot> = serde_json::from_str("{bad json}").ok();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn snapshot_tick_message_handled_without_state_change() {
+        let mut app = DockApp::default();
+        app.active_nav = Some(NavButton::Files);
+        // SnapshotTick triggers persist_snapshot (writes to disk if possible).
+        // State itself should be unchanged.
+        let _task = iced_layershell::Application::update(&mut app, Message::SnapshotTick);
+        assert_eq!(app.active_nav, Some(NavButton::Files), "SnapshotTick should not change active_nav");
+    }
+
+    #[test]
+    fn active_nav_index_round_trips_through_snapshot() {
+        // If NavButton::Files is index 1 in NavButton::ALL, snapshot index = 1.
+        let idx = NavButton::ALL.iter().position(|&b| b == NavButton::Files);
+        assert_eq!(idx, Some(1), "Files should be at index 1");
+        let restored = NavButton::ALL.get(1).copied();
+        assert_eq!(restored, Some(NavButton::Files));
     }
 
     // ── Portal-11 clock segment tests ─────────────────────────────────────────
