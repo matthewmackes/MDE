@@ -131,6 +131,20 @@ scan FORBIDDEN-LEGACY-MESH \
     'pre-v2.5 mesh vocabulary leaked into user-visible copy' \
     '--include=*.rs --include=*.desktop'
 
+# EPIC-UI-MOTION.lint (2026-05-26 — Q47 + `docs/design/motion-
+# language.md` §3 forbidden-verbs list). The motion principle is
+# "functional + subtle decorative motion" with a 100/120/150/200 ms
+# ease grid; user-visible strings must not promise bouncy / springy
+# / decorative animation. "rotate" is allowed (clock hands +
+# mesh-globe spin); "pop" / "punch" / "snap" as nouns for button-
+# press feedback are allowed too — they're listed in motion-
+# language.md §3 but not blocked here because the noun-vs-verb
+# disambiguation false-positives more than it catches.
+scan FORBIDDEN-MOTION-VOCAB \
+    '"[^"]*\b(bounce|bouncy|springy|elastic|wiggle|jiggle|swoosh|whoosh|twirl|swirl)\b[^"]*"' \
+    'motion-language §3 forbidden vocab leaked into user-visible copy' \
+    '--include=*.rs --include=*.py --include=*.desktop'
+
 # ──────────────────────────────────────────────────────────────
 # Verb discipline (locked §Verb discipline)
 # Targets clear button-label-shape strings only: capitalized
