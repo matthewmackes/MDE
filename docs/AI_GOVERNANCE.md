@@ -49,7 +49,7 @@ cross-peer state?" If no → not bundled. (Q7)
 | KDC2 phone bridge | Core | v2.1 |
 | Netdata aggregator | Core | v2.6 MON-* |
 | Airsonic music client | **Core** (mesh-library aware) | Q9 |
-| Voice & Video (Kamailio + Vitelity) | **Ships in 1.0; spinout deferred to 1.1** | Q8 + Q94 |
+| Voice & Video (PJSIP + Vitelity) | **Ships in 1.0; stays in core forever** | Q8 + Q21 (25-Q) + R11 (v6.0) |
 | Caddy gateway | **Retire** | Q10 |
 
 ---

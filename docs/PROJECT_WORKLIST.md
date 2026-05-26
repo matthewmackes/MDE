@@ -516,14 +516,14 @@ call-end lifecycle, never at install or login.
     - [ ] Cross-referenced from AI_GOVERNANCE.md §7 + §13.
     - [ ] AI_PLATFORM_REFERENCE.md §11.5 updated: gap → closed.
 
-- [ ] **TUNE-13: TUNE-RETIRE-Q92 — drop VoIP spinout plan.**
+- [✓] **TUNE-13: TUNE-RETIRE-Q92 — drop VoIP spinout plan.** *(shipped 2026-05-26 — session=opus-47-2026-05-26-ship-X; AI_GOVERNANCE.md §2 Bundle policy line 52 amended from "Voice & Video (Kamailio + Vitelity) | Ships in 1.0; spinout deferred to 1.1 | Q8 + Q94" to "Voice & Video (PJSIP + Vitelity) | Ships in 1.0; stays in core forever | Q8 + Q21 (25-Q) + R11 (v6.0)" — drops the Kamailio reference (R11 retired the container-PBX model in favor of direct PJSIP-to-Vitelity per peer) AND retires the "spinout deferred to 1.1" framing per Q21 of the 25-Q tuning survey. AI_GOVERNANCE.md §11 post-1.0 list line 287 was already "VoIP stays in core forever (Q21 of 25-Q retired Q92's `mde-voice` spinout plan)" — no change needed there. EPIC-SCOPE-VOIP-DEFER worklist entry (line 1892) annotated SUPERSEDED with cross-ref to TUNE-13. Memory file project_v6_0_mde_portal.md doesn't carry stale Q92 spinout references (only unrelated R3-Q92 lock+power placement + R4-Q92 Ctrl-click-permanent locks); no annotation needed. Worklist contains zero `mde-voice` REPO creation tasks (all `mde-voice-*` references are workspace CRATE names: mde-voice-config, mde-voice-pjsip-sys, mde-voice-client, mde-voice-workbench, mde-voice-hud — all in `crates/`). VoIP now permanently in core; no repo split planned at any release boundary.)*
   **As** the platform's "Simple" master-rule alignment,
   **I want** the v4.1 voice-video spinout to `mde-voice` repo retired,
   **so that** post-1.0 strategy stays single-repo.
   **Acceptance**:
-    - [ ] AI_GOVERNANCE.md §11 post-1.0 list amended: "VoIP spinout" line retires.
-    - [ ] Memory file [[project_v6_0_mde_portal]] R12 + Q92 cross-references annotated SUPERSEDED.
-    - [ ] No new `mde-voice` repo creation tasks remain in worklist.
+    - [✓] AI_GOVERNANCE.md §11 post-1.0 list amended: "VoIP spinout" line retires. (Already in place from prior 25-Q survey aftermath commit — line 287 says "VoIP stays in core forever".)
+    - [✓] Memory file [[project_v6_0_mde_portal]] R12 + Q92 cross-references annotated SUPERSEDED. (Verified — file carries no stale Q92 spinout references; the R3-Q92 + R4-Q92 sub-question IDs are unrelated to the spinout decision.)
+    - [✓] No new `mde-voice` repo creation tasks remain in worklist. (Verified — all `mde-voice-*` strings reference workspace crates under `crates/`, never a separate repo.)
 
 - [ ] **TUNE-14: TUNE-RETIRE-CARBON — final Carbon-anywhere sweep.**
   **As** the Q1+Q2 Material-only lock,
@@ -1889,14 +1889,14 @@ call-end lifecycle, never at install or login.
 
 #### EPIC-SCOPE (scope clarifications)
 
-- [✓] **EPIC-SCOPE-VOIP-DEFER: Defer VoIP spinout from Q8 immediate to 1.1 per Q94** *(Q94 softens Q8)* *(shipped 2026-05-25 — session=opus-cw-2026-05-25-23:55)*
+- [✓] **EPIC-SCOPE-VOIP-DEFER: Defer VoIP spinout from Q8 immediate to 1.1 per Q94** *(Q94 softens Q8)* *(shipped 2026-05-25 — session=opus-cw-2026-05-25-23:55)* **SUPERSEDED 2026-05-26 by Q21 of 25-Q tuning survey (see TUNE-13, session=opus-47-2026-05-26-ship-X):** VoIP stays in core forever. The "spinout deferred to 1.1" framing is retired; no spinout to `mde-voice` repo ever — VoIP lives in this workspace permanently. AI_GOVERNANCE.md §2 + §11 already reflect "stays in core forever"; this task body retained for historical context only.
   **As** the 1.0 release scope,
   **I want** VoIP to ship in 1.0 (no spinout yet) and re-evaluate spinout at 1.1,
   **so that** the 1.0 cut isn't blocked on repo split.
   **Acceptance** (each bench-observable):
     - [✓] v4.1.0 worklist section header gains TARGET REVISED suffix + AMENDED block citing Q8 + Q94 + Q67 supersession rule.
     - [✓] v4.2.0 worklist section header same treatment.
-    - [✓] AI_GOVERNANCE.md §2 Bundle policy table already reflects "Ships in 1.0; spinout deferred to 1.1" — locked at write-time in Bundle 0 (the 100-Q survey aftermath commit).
+    - [✓] AI_GOVERNANCE.md §2 Bundle policy table already reflects "Ships in 1.0; spinout deferred to 1.1" — locked at write-time in Bundle 0 (the 100-Q survey aftermath commit). **2026-05-26 amendment per TUNE-13:** line updated to "Ships in 1.0; stays in core forever | Q8 + Q21 (25-Q) + R11 (v6.0)" + Kamailio dropped from the data plane reference (R11 replaced with direct PJSIP-to-Vitelity).
 
 #### Master rule reference
 
