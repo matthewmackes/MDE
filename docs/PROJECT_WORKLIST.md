@@ -68,6 +68,19 @@ locked work appears under **Active** with `[ ] Open`.
 
 ## Active
 
+> **🔒 PLATFORM FEATURE LOCKED (2026-05-26 → next named release cut)**
+>
+> No new features, no new epics, no new survey-locked scope, no new
+> design docs that grow the surface. The items below are the
+> **complete release backlog** (324 active as of 2026-05-26).
+> Allowed during the lock: bug fixes, polish, scope-reducing
+> refactors (R11-style), worklist hygiene, retirement audits, HW
+> bench work, release-prep, and completing already-locked tasks
+> end-to-end. The lock lifts when the next named release cuts via
+> `cut release X.Y.Z`. See `.claude/CLAUDE.md` §0.16 +
+> [[feedback_platform_feature_locked]] for full rule + trigger
+> phrases that should be refused.
+
 > **Active section status (2026-05-21 — post-iteration):**
 >
 > * `[!] Blocked` = **0**. Every v2.0.0 deliverable shipped.

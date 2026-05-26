@@ -407,6 +407,79 @@ cuts" framing in `.claude/CLAUDE.md` §0.7 + the two memory
 files; both should be amended to reference §0.15 as the new
 governing rule.
 
+### 0.16 Platform feature lock (2026-05-26)
+
+**Effective 2026-05-26 the platform is FEATURE LOCKED until the
+next named release cuts.** No new features, no new epics, no new
+survey-locked scope, no new design docs that grow the surface
+area. The 324 active items already in `docs/PROJECT_WORKLIST.md`
+are the complete release backlog.
+
+**What this means for Claude:**
+
+- **REFUSE new feature scoping** even if the operator asks for it.
+  Surface this rule first, then ask whether the request belongs in
+  a *post-release* backlog file or genuinely warrants lifting the
+  lock. Don't silently extend the worklist.
+- **Allowed without question:**
+  - Bug fixes against any existing `[ ] Open` / `[>] In Progress` /
+    `[✓] Done` task.
+  - Polish, refactor, simplification, or scope **reduction** on
+    locked work (R11-style "retire Kamailio" is the canonical
+    example — it removes a container layer, doesn't add).
+  - Worklist hygiene: retiring SUPERSEDED sections, marking
+    obsolete tasks, fixing untagged titles, [[mackes-worklist-management]]
+    audit passes.
+  - Quarterly retirement audits per §0.13.
+  - Hardware bench work + release-prep + the `cut release` flow.
+  - Completing already-locked tasks end-to-end (this is the
+    point of the lock — drain the queue).
+- **Allowed with explicit operator override:**
+  - Re-locking sections that became stale because of an
+    architectural simplification (e.g., the v4.1.0 Voice & Video +
+    v4.2.0 Voice PBX sections need a post-R11 re-lock to align
+    with the direct PJSIP-to-Vitelity model). This is technically
+    "new scope" because it rewrites task bodies, but its purpose
+    is to bring the worklist *into sync* with already-locked
+    architecture, not to expand it. Surface the rule, get one-line
+    confirmation, proceed.
+  - Critical security fixes that warrant scope creep (none
+    anticipated; would be vanishingly rare).
+
+**Trigger phrases to refuse (or surface this rule before
+complying):**
+
+- "Let's lock in feature X with an N-question survey"
+- "Add an epic for Y"
+- "Scope a new <surface>" / "design a new <subsystem>"
+- "What if we also added Z?"
+- "Survey N questions about <net-new feature>"
+- "Brainstorm features for <new domain>"
+- "Lift design-doc actions for <new doc> into the worklist"
+
+If the operator confirms they really do want to lift the lock for
+a specific request, do it — but surface that the lock is being
+*temporarily lifted* for that scope and re-engage afterward. Don't
+silently let the lock slide.
+
+**When the lock lifts:**
+
+The lock lifts the moment the next named release cuts (any version
+tag pushed via the `cut release` flow per §0.6 — most likely 1.0,
+but applies to any intermediate cut). Post-release the operator
+may re-lock or open a new scoping window explicitly.
+
+**Why this rule:** the active worklist already represents 324
+items across 15+ epics. Continuing to add scope while draining is
+the failure mode that produced the v3.x dead-module audit. The
+lock is the forcing function that says "ship what's planned, then
+plan again."
+
+**Authority placement (§0.14 hierarchy):** this rule lives in
+CLAUDE.md tier 2 and is mirrored in memory tier 1
+([[feedback_platform_feature_locked]]). Memory wins if they
+contradict. Operator-issued lock-lifts override both.
+
 ---
 
 ## 1. Worklist Rule
