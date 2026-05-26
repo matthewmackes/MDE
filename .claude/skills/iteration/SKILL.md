@@ -13,6 +13,15 @@ description: "[RETIRED 2026-05-25 per Q87] Use `plan` for the rescue-pass + N-Q 
 >
 > This body is retained for slash-name back-compat.
 
+> **ICONOGRAPHY UPDATE 2026-05-26 (Q43 + EPIC-UI-MATERIAL):** every
+> mention of "Carbon Icon Set" / "Carbon glyph" / "Carbon symbolic
+> name" / `assets/icons/carbon/` below is **SUPERSEDED by Material
+> Symbols**. Body text retained for archeology only; the live
+> design lock is "Material Symbols everywhere" per Q43 of the
+> 100-Q tightening survey, mirrored in `docs/design/voice-and-tone.md`
+> and [[project_ux_polish_locks]]. SVG asset migration is tracked
+> as `EPIC-UI-MATERIAL.svg-swap` in `docs/PROJECT_WORKLIST.md`.
+
 # Iteration
 
 The autonomous-worker pattern, scaled up, **with a mandatory rescue

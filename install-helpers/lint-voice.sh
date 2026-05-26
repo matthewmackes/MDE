@@ -145,6 +145,18 @@ scan FORBIDDEN-MOTION-VOCAB \
     'motion-language §3 forbidden vocab leaked into user-visible copy' \
     '--include=*.rs --include=*.py --include=*.desktop'
 
+# EPIC-UI-MATERIAL.lint (2026-05-26 — Q43 + Q97). Material Symbols
+# supersedes Carbon per the 100-Q tightening survey. User-visible
+# strings must not still advertise Carbon-branded iconography.
+# Conservative match — only quoted strings containing the literal
+# phrases "Carbon icon" / "Carbon glyph" / "Carbon Symbolic", or
+# the `carbon-<name>` symbolic-name format. Bare `carbon` is
+# allowed (lithography, carbon-copy idiom, etc).
+scan FORBIDDEN-CARBON-VOCAB \
+    '"[^"]*(Carbon (icon|glyph|Symbolic)|carbon-[a-z0-9-]{2,})[^"]*"' \
+    'Carbon iconography vocab leaked into user-visible copy (Q43 superseded by Material Symbols)' \
+    '--include=*.rs --include=*.py --include=*.desktop'
+
 # ──────────────────────────────────────────────────────────────
 # Verb discipline (locked §Verb discipline)
 # Targets clear button-label-shape strings only: capitalized

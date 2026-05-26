@@ -27,7 +27,7 @@ write for them.
 Avoid:
 
 - **Exclamation marks** (except in error severity prefixes).
-- **Emojis**. Use status icons (Carbon line glyphs) instead.
+- **Emojis**. Use status icons (Material Symbols, per Q43 + EPIC-UI-MATERIAL) instead.
 - **"Please"** in routine prompts. Only use it when MDE is
   inconveniencing the user beyond the default contract.
 - **"Sorry"**. Lead with what happened and what to do.
