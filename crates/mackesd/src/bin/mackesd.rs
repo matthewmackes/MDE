@@ -586,6 +586,11 @@ enum CaCmd {
         /// Cert lifetime in days (default 365).
         #[arg(long, default_value_t = 365)]
         cert_lifetime_days: u32,
+        /// TUNE-11 — bypass the 8-peer cap (Q3 + Q22 lock). The
+        /// override engages an audit-log entry. Document any
+        /// real use in `docs/design/cap-overrides.md`.
+        #[arg(long, default_value_t = false)]
+        override_cap: bool,
     },
 }
 
@@ -1422,6 +1427,7 @@ fn main() -> anyhow::Result<()> {
                     scratch_dir,
                     lighthouse_addr,
                     cert_lifetime_days,
+                    override_cap,
                 } => {
                     // NF-3.6.b — sign the peer's pending-enroll
                     // CSR + write the bundle back to QNM-Shared.
@@ -1472,8 +1478,19 @@ fn main() -> anyhow::Result<()> {
                         &paths,
                         lighthouses,
                         cert_lifetime_days,
+                        override_cap,
                     ) {
                         Ok(outcome) => {
+                            if override_cap {
+                                eprintln!(
+                                    "TUNE-11 OVERRIDE ENGAGED: signed {} past the {}-peer cap. \
+                                     Audit-log entry written to the journal under \
+                                     `mackesd::cap_override`. Document the exception in \
+                                     docs/design/cap-overrides.md.",
+                                    outcome.peer_id,
+                                    mackesd_core::ca::sign::MAX_PEER_CAP,
+                                );
+                            }
                             println!(
                                 "signed {} into mesh '{}' at epoch {} (overlay {}); bundle at {}.",
                                 outcome.peer_id,

@@ -460,6 +460,16 @@ pub enum SignCsrError {
         /// Underlying CaError message.
         reason: String,
     },
+    /// TUNE-11 — the active-peer count already meets or exceeds
+    /// the [`crate::ca::sign::MAX_PEER_CAP`] lock and the caller
+    /// did not pass `allow_override = true`.
+    PeerCapReached {
+        /// Distinct active node_ids in `nebula_peer_certs` at the
+        /// active epoch when the check fired.
+        current: u32,
+        /// The locked cap value (8 for 1.0).
+        cap: u32,
+    },
 }
 
 impl std::fmt::Display for SignCsrError {
@@ -491,6 +501,15 @@ impl std::fmt::Display for SignCsrError {
                 f,
                 "could not read signed peer key for bundle: \
                  {reason}. Check ownership on the scratch dir.",
+            ),
+            Self::PeerCapReached { current, cap } => write!(
+                f,
+                "MackesDE for Workgroups is sized for up to {cap} peers \
+                 (Q3 lock). The mesh already has {current} active peer \
+                 cert(s) at the current CA epoch. Run \
+                 `mackesd ca sign-csr <node-id> --override-cap` to \
+                 bypass; document the exception in \
+                 docs/design/cap-overrides.md.",
             ),
         }
     }
@@ -533,6 +552,7 @@ pub fn sign_pending_csr<B: crate::ca::NebulaCertBackend + ?Sized>(
     paths: &SignCsrPaths,
     lighthouses: Vec<crate::ca::bundle::LighthouseEntry>,
     cert_lifetime_days: u32,
+    allow_override: bool,
 ) -> Result<SignOutcome, SignCsrError> {
     let csr_path = pending_enroll_path(qnm_root, peer_id);
     if !csr_path.exists() {
@@ -545,6 +565,33 @@ pub fn sign_pending_csr<B: crate::ca::NebulaCertBackend + ?Sized>(
         serde_json::from_slice(&csr_bytes).map_err(|e| SignCsrError::CsrCorrupt {
             reason: e.to_string(),
         })?;
+    // TUNE-11 — 8-peer cap (Q3 + Q22) enforcement. Counts
+    // distinct active node_ids at the active epoch. The
+    // UNIQUE(node_id, epoch) constraint on `nebula_peer_certs`
+    // means same-epoch re-enrollment of an existing peer
+    // already fails at the SQL layer with a clear constraint
+    // error, so this gate is concerned only with NEW peers
+    // pushing past the cap.
+    let active_count = crate::ca::sign::count_active_peers(conn, mesh_id)
+        .map_err(|e| SignCsrError::SignFailed { reason: e.to_string() })?;
+    if active_count >= crate::ca::sign::MAX_PEER_CAP {
+        if allow_override {
+            tracing::warn!(
+                target: "mackesd::cap_override",
+                event = "cap.override.engaged",
+                peer_id = %csr.node_id,
+                mesh_id = %mesh_id,
+                current = active_count,
+                cap = crate::ca::sign::MAX_PEER_CAP,
+                "TUNE-11: signing peer past the 8-peer cap by operator override",
+            );
+        } else {
+            return Err(SignCsrError::PeerCapReached {
+                current: active_count,
+                cap: crate::ca::sign::MAX_PEER_CAP,
+            });
+        }
+    }
     // Hand-off to the underlying ca::sign machinery. Output
     // paths go into the scratch dir keyed by node_id so multiple
     // concurrent signings don't trample each other.
@@ -910,6 +957,7 @@ mod tests {
             &paths,
             Vec::new(),
             365,
+            false,
         );
         match r {
             Err(SignCsrError::CsrMissing { path }) => {
@@ -944,6 +992,7 @@ mod tests {
             &paths,
             lighthouses.clone(),
             365,
+            false,
         )
         .expect("sign");
         assert_eq!(outcome.peer_id, "peer:anvil");
@@ -995,6 +1044,7 @@ mod tests {
             &paths,
             Vec::new(),
             365,
+            false,
         );
         assert!(matches!(r, Err(SignCsrError::CsrCorrupt { .. })));
     }
@@ -1025,6 +1075,7 @@ mod tests {
             &paths,
             Vec::new(),
             365,
+            false,
         );
         match r {
             Err(SignCsrError::SignFailed { reason }) => {
@@ -1032,6 +1083,102 @@ mod tests {
             }
             other => panic!("expected SignFailed, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn sign_csr_rejects_ninth_peer_without_override() {
+        // Pre-populate 8 peer certs at the active epoch, then
+        // attempt to sign a 9th from scratch. The cap check
+        // fires before any sign machinery runs.
+        let tmp = tempdir().expect("tempdir");
+        let conn = fresh_store();
+        let (ca_crt, ca_key) = make_test_ca(tmp.path(), &conn);
+        for i in 1..=8 {
+            conn.execute(
+                "INSERT INTO nebula_peer_certs \
+                 (node_id, epoch, cert_pem, overlay_ip, expires_at) \
+                 VALUES (?1, 0, 'pem', ?2, 9999999)",
+                rusqlite::params![format!("peer:slot-{i}"), format!("10.42.0.{i}")],
+            )
+            .unwrap();
+        }
+        let _pending = place_csr(tmp.path(), "peer:ninth");
+        let paths = SignCsrPaths {
+            ca_crt,
+            ca_key,
+            scratch_dir: tmp.path().join("scratch"),
+        };
+        let r = sign_pending_csr(
+            &MockBackend,
+            &conn,
+            tmp.path(),
+            "peer:ninth",
+            "test-mesh",
+            &paths,
+            Vec::new(),
+            365,
+            false,
+        );
+        match r {
+            Err(SignCsrError::PeerCapReached { current, cap }) => {
+                assert_eq!(current, 8);
+                assert_eq!(cap, 8);
+            }
+            other => panic!("expected PeerCapReached, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn sign_csr_accepts_ninth_peer_with_override() {
+        let tmp = tempdir().expect("tempdir");
+        let conn = fresh_store();
+        let (ca_crt, ca_key) = make_test_ca(tmp.path(), &conn);
+        for i in 1..=8 {
+            conn.execute(
+                "INSERT INTO nebula_peer_certs \
+                 (node_id, epoch, cert_pem, overlay_ip, expires_at) \
+                 VALUES (?1, 0, 'pem', ?2, 9999999)",
+                rusqlite::params![format!("peer:slot-{i}"), format!("10.42.0.{i}")],
+            )
+            .unwrap();
+        }
+        let _pending = place_csr(tmp.path(), "peer:ninth");
+        let paths = SignCsrPaths {
+            ca_crt,
+            ca_key,
+            scratch_dir: tmp.path().join("scratch"),
+        };
+        let outcome = sign_pending_csr(
+            &MockBackend,
+            &conn,
+            tmp.path(),
+            "peer:ninth",
+            "test-mesh",
+            &paths,
+            Vec::new(),
+            365,
+            true,
+        )
+        .expect("override path succeeds");
+        assert_eq!(outcome.peer_id, "peer:ninth");
+        // Row landed past the cap.
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM nebula_peer_certs \
+                 WHERE node_id = 'peer:ninth' AND revoked_at IS NULL",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn peer_cap_error_message_names_override_flag_and_doc() {
+        let m = SignCsrError::PeerCapReached { current: 8, cap: 8 }.to_string();
+        assert!(m.contains("8 peers"));
+        assert!(m.contains("--override-cap"));
+        assert!(m.contains("docs/design/cap-overrides.md"));
     }
 
     #[test]

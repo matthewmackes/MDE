@@ -211,6 +211,9 @@ impl NebulaCsrWatcher {
                 overlay_ip: "10.42.0.1".to_string(),
                 external_addr: self.lighthouse_addr.clone(),
             }];
+            // TUNE-11: the watcher NEVER auto-overrides the cap.
+            // Operator overrides only flow through the explicit
+            // `mackesd ca sign-csr --override-cap` CLI path.
             match crate::nebula_enroll::sign_pending_csr(
                 &*self.backend,
                 &conn,
@@ -220,6 +223,7 @@ impl NebulaCsrWatcher {
                 &self.paths,
                 lighthouses,
                 self.cert_lifetime_days,
+                false,
             ) {
                 Ok(outcome) => {
                     tracing::info!(

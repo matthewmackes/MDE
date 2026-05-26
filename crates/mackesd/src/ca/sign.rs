@@ -19,6 +19,21 @@ pub const DEFAULT_CIDR_PREFIX: u8 = 16;
 /// Default mesh CIDR; allocator walks it sequentially.
 pub const DEFAULT_MESH_CIDR_BASE: &str = "10.42.0.0";
 
+/// Maximum number of distinct active (non-revoked) peer certs the
+/// CA will sign at the current epoch without an explicit override.
+///
+/// Locked at **8** by Q3 + Q22 of the 100-Q tightening survey
+/// (2026-05-25) + Q3 of the 25-Q tuning survey (2026-05-26):
+/// MackesDE for Workgroups is sized for ≤ 8 peers; gluster replica
+/// cost, Bus broker mesh, and attendance election all assume this
+/// cap. TUNE-11 (2026-05-26) makes the cap a runtime check on the
+/// CSR sign path rather than a paper-only design assumption.
+///
+/// Operators with a legitimate need to exceed the cap must invoke
+/// `mackesd ca sign-csr --override-cap` per
+/// `docs/design/cap-overrides.md`. Each override is audit-logged.
+pub const MAX_PEER_CAP: u32 = 8;
+
 /// Outcome of one signing call.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SignedPeer {
@@ -168,6 +183,35 @@ pub fn allocate_overlay_ip(
     Err(CaError::CidrExhausted("10.42.0.0/16".to_string()))
 }
 
+/// Count of distinct active (non-revoked) peer certs at `epoch`.
+///
+/// Used by TUNE-11 to gate the [`MAX_PEER_CAP`] check on
+/// [`crate::nebula_enroll::sign_pending_csr`]. Distinct on
+/// `node_id` so the same peer rotating its cert at the same
+/// epoch counts once, not twice.
+///
+/// # Errors
+/// [`CaError::Sql`] on database failure.
+pub fn count_active_peers(
+    conn: &Connection,
+    mesh_id: &str,
+) -> Result<u32, CaError> {
+    let epoch = match active_epoch(conn, mesh_id)? {
+        Some(e) => e,
+        None => return Ok(0),
+    };
+    let mut stmt = conn
+        .prepare(
+            "SELECT COUNT(DISTINCT node_id) FROM nebula_peer_certs \
+             WHERE epoch = ?1 AND revoked_at IS NULL",
+        )
+        .map_err(|e| CaError::Sql(e.to_string()))?;
+    let count: i64 = stmt
+        .query_row([epoch], |r| r.get(0))
+        .map_err(|e| CaError::Sql(e.to_string()))?;
+    Ok(u32::try_from(count.max(0)).unwrap_or(u32::MAX))
+}
+
 fn load_taken_ips(
     conn: &Connection,
     epoch: i64,
@@ -206,6 +250,40 @@ mod tests {
         let key = tmp.path().join("ca.key");
         mint::mint_ca(&MockBackend, conn, "m1", Some(&crt), Some(&key)).expect("mint");
         tmp
+    }
+
+    #[test]
+    fn count_active_peers_returns_zero_for_unminted_mesh() {
+        let conn = fresh_conn();
+        // No CA + no rows → zero.
+        assert_eq!(count_active_peers(&conn, "m1").unwrap(), 0);
+    }
+
+    #[test]
+    fn count_active_peers_counts_active_node_ids_at_active_epoch() {
+        // Four peers at epoch 0; one revoked → counts as 3.
+        // The UNIQUE(node_id, epoch) constraint means each
+        // active node_id appears exactly once per epoch, so
+        // COUNT(DISTINCT node_id) is the right shape regardless.
+        let conn = fresh_conn();
+        let _tmp = mint_one(&conn);
+        conn.execute(
+            "INSERT INTO nebula_peer_certs \
+             (node_id, epoch, cert_pem, overlay_ip, expires_at) \
+             VALUES ('peer:a', 0, 'pem', '10.42.0.1', 9999999), \
+                    ('peer:b', 0, 'pem', '10.42.0.2', 9999999), \
+                    ('peer:c', 0, 'pem', '10.42.0.3', 9999999), \
+                    ('peer:d', 0, 'pem', '10.42.0.4', 9999999)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE nebula_peer_certs SET revoked_at = 1234567890 \
+             WHERE node_id = 'peer:d'",
+            [],
+        )
+        .unwrap();
+        assert_eq!(count_active_peers(&conn, "m1").unwrap(), 3);
     }
 
     #[test]
