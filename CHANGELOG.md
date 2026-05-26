@@ -5,6 +5,18 @@ unreleased; tag versions get a date when they ship.
 
 ## Unreleased — v1.0 MackesDE for Workgroups (rebrand cut)
 
+**BUS-3.5 — Sonarr / Radarr adapter (v6.x Mackes Bus, 2026-05-26)**
+- `SonarrAdapter` dispatches on the JSON body's `eventType` field
+  (the upstream Servarr "Connect" notifications don't ship a
+  distinguishing HTTP header). One adapter handles both Sonarr
+  (TV) and Radarr (movies) — `title` resolves to either
+  `series.title` or `movie.title`; `target` becomes either an
+  "S01E03" episode label or a "2024" year. `size_human` formats
+  raw bytes as SI-suffixed strings.
+- Four event types: Download, Grab, HealthIssue, Test.
+  `data/bus/hooks/sonarr.yaml` ships the rule set — Grab is
+  min-priority background-only, HealthIssue lifts to high.
+
 **BUS-3.4 — Gitea adapter (v6.x Mackes Bus, 2026-05-26)**
 - `GiteaAdapter` dispatches on `X-Gitea-Event` and ships
   extractors for `push`, `pull_request`, and `issues` events.

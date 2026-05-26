@@ -39,6 +39,7 @@ pub mod github;
 pub mod matcher;
 pub mod publisher;
 pub mod server;
+pub mod sonarr;
 
 pub use config::{AdapterConfig, HooksConfig, Match, Priority, PublishSpec, Rule};
 pub use matcher::{match_request, RenderedPublish};

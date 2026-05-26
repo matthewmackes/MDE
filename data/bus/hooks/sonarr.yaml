@@ -1,0 +1,59 @@
+# BUS-3.5 — Sonarr / Radarr adapter rule set.
+#
+# Sonarr (TV) and Radarr (movies) ship the same webhook payload
+# shape (the upstream "Connect" notification system), so a single
+# `sonarr` adapter handles both. The `instance` template variable
+# carries the source label so a single topic ("media/download")
+# can be split downstream by ntfy filters when desired.
+#
+# Configure each Sonarr / Radarr instance's "Webhook" Connection
+# to POST to:
+#
+#   http://<peer-overlay-ip>:8444/hooks/sonarr
+#
+# Four event types ship: Download, Grab, HealthIssue, Test.
+
+adapters:
+
+  sonarr:
+    rules:
+
+      - name: media-downloaded
+        match:
+          event: Download
+        publish:
+          topic: media/download
+          priority: default
+          title: "{{ instance }}: Downloaded {{ title }} ({{ target }})"
+          body: |
+            {{ title }} ({{ target }}) — {{ quality }} — {{ size_human }}
+
+      - name: media-grabbed
+        match:
+          event: Grab
+        publish:
+          topic: media/grab
+          priority: min
+          title: "{{ instance }}: Grabbed {{ title }} ({{ target }})"
+          body: |
+            {{ release_title }}
+
+            Quality: {{ quality }}
+
+      - name: media-health-issue
+        match:
+          event: HealthIssue
+        publish:
+          topic: media/health
+          priority: high
+          title: "{{ instance }} health: {{ severity }}"
+          body: "{{ message }}"
+
+      - name: media-test
+        match:
+          event: Test
+        publish:
+          topic: media/test
+          priority: min
+          title: "{{ instance }} test webhook"
+          body: "Webhook is configured correctly."
