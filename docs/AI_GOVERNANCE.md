@@ -180,6 +180,14 @@ re-target to the Iced workbench tree, not `mackes/workbench/`.
 | Backup destinations | Mesh-replicated + optional off-mesh (S3/B2/SSH) | Q59 |
 | Public ports | Document allowed (4242/UDP + 443/TCP); lint-block anything else | Q60 |
 
+**Posture expansion:** [`docs/design/security-posture.md`](design/security-posture.md)
+documents the deliberate stance — Fedora targeted SELinux as the
+policy base, user-UID isolation as the process model, Nebula's
+`CAP_NET_ADMIN` scoped via systemd `CapabilityBoundingSet` (no
+custom `nebula_mde_t` SELinux type in 1.0; trigger documented),
+flat-trust threat model rationale, and the intra-mesh boundary
+list. Closes AI_PLATFORM_REFERENCE.md §11.5.
+
 ---
 
 ## 8. Process + rules
@@ -315,6 +323,9 @@ ships.
    matches your task; look for `[>] session=<id>` markers to avoid
    collisions
 5. Specific `docs/design/<epic>.md` only if doing epic-specific work
+   — including [`security-posture.md`](design/security-posture.md)
+   when touching public ports, D-Bus methods, capabilities, or
+   `{{exec}}` Tera templates (§7 expansion)
 
 ### 13.2 When in doubt
 

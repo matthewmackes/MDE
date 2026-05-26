@@ -991,14 +991,30 @@ but a unified "what passes the bench" checklist would help
 AI partners reason about gate readiness.
 
 ### 11.5 What replaces the in-process AppArmor / SELinux
-posture (GAP)
+posture (CLOSED 2026-05-26 by TUNE-12)
 
-The platform documents no SELinux policy or AppArmor profile
-strategy. Fedora ships SELinux enforcing by default; MDE
-components don't ship per-component policies. This is fine for
-v1.0 if every component runs as the user's UID, but it's
-under-documented for security reviewers asking "what's your
-MAC posture?"
+**Closed by [`docs/design/security-posture.md`](design/security-posture.md)**
+(2026-05-26, TUNE-12 of the 25-Q tuning survey). The doc states
+the deliberate posture explicitly: Fedora targeted SELinux as the
+policy base; user-UID isolation as the process model (every
+component runs under the operator's `$UID`); Nebula's
+`CAP_NET_ADMIN` scoped via systemd `CapabilityBoundingSet` on the
+unit file rather than a custom `nebula_mde_t` SELinux type
+(deferral trigger documented); flat-trust threat model rationale
+(Q51 + Q54 + Q56); a 10-row intra-mesh boundary list mapping
+mechanism + lint gate per boundary; and a defense-in-depth-gap
+table that names each control NOT implemented with its
+deliberate-choice rationale. Cross-referenced from AI_GOVERNANCE.md
+§7 + §13.1.
+
+The original gap text is retained below for historical context.
+
+> The platform documents no SELinux policy or AppArmor profile
+> strategy. Fedora ships SELinux enforcing by default; MDE
+> components don't ship per-component policies. This is fine for
+> v1.0 if every component runs as the user's UID, but it's
+> under-documented for security reviewers asking "what's your
+> MAC posture?"
 
 ### 11.6 The "Calm enterprise" framing vs. the single-operator
 sizing (INFERRED tension)
