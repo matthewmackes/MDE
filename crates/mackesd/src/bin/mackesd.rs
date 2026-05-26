@@ -2734,6 +2734,17 @@ fn run_serve(
         ));
         worker_names.lock().expect("worker_names mutex").push("kdc_host".into());
 
+        // BUS-1.1 (v6.x Mackes Bus) — supervise the `mde-bus` daemon
+        // subprocess. Gracefully degrades when the binary is absent
+        // (dev box, RPM not yet installed) — the worker loops on a
+        // 30s tick waiting for the binary to appear. Once the BUS-1
+        // sub-epic ships, every mackesd peer carries the bus.
+        sup.spawn(Spawn::new(
+            mackesd_core::workers::bus_supervisor::BusSupervisor::new(),
+            RestartPolicy::Always,
+        ));
+        worker_names.lock().expect("worker_names mutex").push("bus_supervisor".into());
+
         // The reconcile worker runs on its own OS thread (kept on
         // std::thread so its sync rusqlite calls don't block the
         // tokio scheduler). Still surfaced via Shell.Workers so

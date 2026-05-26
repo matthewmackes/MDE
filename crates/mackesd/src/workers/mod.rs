@@ -165,6 +165,14 @@ pub mod thumbnailer;
 // rtpengine-mde when it changes.
 pub mod voice_config;
 pub mod wol;
+// BUS-1.1 (v6.x Mackes Bus) — `mde-bus` subprocess supervisor.
+// Spawns `mde-bus daemon`, restarts on exit, gracefully degrades
+// when the binary is absent (development boxes that don't have
+// the RPM installed yet). The outer supervisor's
+// RestartPolicy::Always wraps this worker; inner respawn cooldown
+// paces clean-exit restarts. Broker + mDNS + persistence land
+// inside the binary in BUS-1.2/1.3/1.4.
+pub mod bus_supervisor;
 
 /// Every worker registered with the supervisor implements this
 /// trait. The trait is `async_trait` because the supervisor stores

@@ -36,6 +36,7 @@ members  = [
     "crates/mde-applets/sway-cluster",
     "crates/mde-applets/volume-osd",
     "crates/mde-alert-emit",
+    "crates/mde-bus",
     "crates/mde-card",
     "crates/mde-config",
     "crates/mde-drawer",
