@@ -191,9 +191,17 @@ install-hooks:
 		echo "  Move it aside, then re-run \`make install-hooks\`."; \
 		exit 1; \
 	fi
+	@if [ -e .git/hooks/commit-msg ] && [ ! -L .git/hooks/commit-msg ]; then \
+		echo "✗ .git/hooks/commit-msg already exists and is not a symlink."; \
+		echo "  Move it aside, then re-run \`make install-hooks\`."; \
+		exit 1; \
+	fi
 	@ln -sfn "$$(pwd)/.claude/hooks/pre-commit-worklist.sh" .git/hooks/pre-commit
 	@chmod +x .claude/hooks/pre-commit-worklist.sh
-	@echo "✓ .git/hooks/pre-commit → .claude/hooks/pre-commit-worklist.sh"
+	@ln -sfn "$$(pwd)/.claude/hooks/commit-msg.sh" .git/hooks/commit-msg
+	@chmod +x .claude/hooks/commit-msg.sh
+	@echo "✓ .git/hooks/pre-commit  → .claude/hooks/pre-commit-worklist.sh"
+	@echo "✓ .git/hooks/commit-msg  → .claude/hooks/commit-msg.sh (TUNE-9 visual-citation gate #11)"
 
 clean:
 	rm -rf build dist rpmbuild target *.egg-info
