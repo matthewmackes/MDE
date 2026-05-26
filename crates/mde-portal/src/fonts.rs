@@ -44,13 +44,15 @@ pub const FONT_INTEL_ONE_MONO: Font = Font::with_name(INTEL_ONE_MONO);
 
 /// Iced `Font` value for Symbols Nerd Font Mono.
 ///
-/// Used by Carbon icon fallback rendering until UX-8.a ships real SVG bytes.
+/// Used by Material Symbol fallback rendering on surfaces that haven't
+/// adopted the SVG bytes path yet.
 pub const FONT_NERD_SYMBOLS: Font = Font::with_name(NERD_SYMBOLS_FONT);
 
-/// Resolve a Carbon icon to its `ResolvedIcon` (SVG bytes + Unicode fallback).
+/// Resolve a Material Symbol to its `ResolvedIcon` (SVG bytes + Unicode fallback).
 ///
 /// Delegates to `mde_theme::mde_icon` — the semantic mapping is
-/// owned by `mde-theme` so call sites stay stable across Carbon SVG migrations.
+/// owned by `mde-theme` so call sites stay stable across icon-set
+/// migrations (Carbon → Material Symbols shipped EPIC-UI-MATERIAL.svg-swap).
 /// Portal-4 nav buttons call this for their 20 px icon glyphs.
 pub fn resolve_icon(icon: mde_theme::Icon, size: mde_theme::IconSize) -> mde_theme::ResolvedIcon {
     mde_theme::mde_icon(icon, size)

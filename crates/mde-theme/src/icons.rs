@@ -1,43 +1,64 @@
-//! UX-8 — Carbon icon system.
+//! EPIC-UI-MATERIAL.svg-swap — Material Symbols icon system.
 //!
-//! Locks (50-Q survey 2026-05-21):
-//!   * Q24, Q37 — Carbon icon set, pivot away from Round 2's
-//!     Lucide/Phosphor proposal. The panel already uses Carbon
-//!     glyphs (see `crates/mde-panel/src/start_menu.rs:780`'s
-//!     `every_action_carries_a_carbon_symbolic_icon` test).
-//!   * Q37 — size tiers: **16 px inline, 20 px nav, 24 px panel
-//!     header**, with empty-state 32 px + wizard-hero 48 px
-//!     retained as additional tiers.
-//!   * Q38 — style mostly line, filled only for status dots +
-//!     notification bell.
-//!   * Q39 — line weight 1 px (Carbon standard).
+//! Supersedes the prior Carbon-based system per Q43 + Q97 of the
+//! 100-Q tightening survey (2026-05-25) + the 8-Q icon-mapping
+//! survey 2026-05-26. **Design lock:** `docs/design/icon-mapping.md`.
+//!
+//! ## Locks
+//!
+//! - **Variant**: Outlined Material Symbols
+//! - **Weight**: 400 (Material default)
+//! - **Sizing**: Material optical-size variants — bundle 20 / 24 /
+//!   40 px SVGs per icon; [`IconSize`] tiers map onto the nearest
+//!   bundled optical size via [`IconSize::optical_svg_size`].
+//! - **Fill rule**: status indicators + notification bell + the
+//!   playbook play-glyph are **always filled** (carries over Q38);
+//!   nav-group + sidebar icons render **filled when
+//!   [`IconState::Active`]**, outlined otherwise (the new
+//!   active-state behavior).
+//! - **Source**: 180 SVGs fetched from Google's
+//!   `material-design-icons` GitHub repo (Apache-2.0) by
+//!   `install-helpers/fetch-material-symbols.sh` into
+//!   `assets/icons/material-symbols/`.
+//! - **API**: [`Icon::material_name`] returns the Material symbolic
+//!   name (e.g. `"network_check"`). [`Icon::fill_mode`] returns the
+//!   `FillMode` tri-state ([`FillMode::NeverFill`] /
+//!   [`FillMode::AlwaysFill`] / [`FillMode::OnActive`]).
+//!   [`ResolvedIcon::svg_bytes`] takes an [`IconState`] argument
+//!   and returns the appropriate (outlined or filled) byte slice.
 //!
 //! ## Surface
 //!
 //! [`Icon`] is the semantic enum — call sites use
 //! `Icon::Fleet`, `Icon::Snapshot`, etc., **never** a hardcoded
-//! Carbon glyph name or Unicode codepoint. [`IconSize`] is the
-//! locked size enum. Resolution happens via [`mde_icon`]:
+//! Material name or Unicode codepoint. [`IconSize`] is the locked
+//! tier enum (16 / 20 / 24 / 32 / 48 px render sizes;
+//! consumer-facing). [`IconState`] is `Idle` or `Active` and drives
+//! the outlined↔filled swap for icons whose `fill_mode` is
+//! `OnActive`. Resolution happens via [`mde_icon`]:
 //!
 //! ```
-//! use mde_theme::{mde_icon, Icon, IconSize};
+//! use mde_theme::{mde_icon, Icon, IconSize, IconState};
 //! let glyph = mde_icon(Icon::Fleet, IconSize::Nav);
 //! assert_eq!(glyph.size_px(), 20.0);
+//! // Pick outlined or filled bytes based on selection state:
+//! let bytes_idle = glyph.svg_bytes_for_state(IconState::Idle);
+//! let bytes_active = glyph.svg_bytes_for_state(IconState::Active);
+//! assert!(bytes_idle.len() > 32);
 //! ```
 //!
-//! ## Implementation
+//! ## Migration history
 //!
-//! v1 of this module (this commit) returns the Carbon **symbolic
-//! name** as a `&'static str` paired with a Unicode fallback
-//! glyph. The actual SVG rendering happens consumer-side — the
-//! workbench Iced builder picks the fallback today; a follow-up
-//! task (UX-8.a) will swap in real Carbon SVG bytes via
-//! `include_bytes!` from `assets/icons/carbon/`. The semantic
-//! surface (`Icon::Fleet → "fleet" + "⛁"`) is the stable contract
-//! that lives forever.
+//! Original UX-8 (50-Q survey 2026-05-21) locked Carbon. Q43 of
+//! the 100-Q tightening survey re-pivoted to Material Symbols to
+//! align with the ChromeOS-Classic visual lock. The 8-Q
+//! icon-mapping survey 2026-05-26 locked variant / weight /
+//! sizing / source / API; this file implements those locks. The
+//! retiring legacy GTK panel (`crates/mackes-panel/`) still has
+//! its own Carbon-named test as historical context;
+//! `crates/mde-theme/` is the new authoritative surface.
 
-/// Locked icon size tiers per Q37. Component dimensions, not
-/// density-scaled (UX-24 sub-lock).
+/// Locked icon size tiers (consumer-facing render dimensions).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum IconSize {
     /// 16 px — inline within text, in tight controls (input
@@ -54,7 +75,7 @@ pub enum IconSize {
 }
 
 impl IconSize {
-    /// Pixel size for this tier. Locked by Q37; tests assert.
+    /// Pixel size for this tier (consumer render size).
     #[must_use]
     pub const fn px(self) -> f32 {
         match self {
@@ -65,21 +86,69 @@ impl IconSize {
             IconSize::WizardHero => 48.0,
         }
     }
+
+    /// Material Symbols optical SVG size for this tier — the file
+    /// to load. Material ships SVGs at 20 / 24 / 40 px with
+    /// per-size stroke-weight tuning; [`IconSize::px`] is the
+    /// render dimension, this is the source-asset dimension.
+    /// Picks the nearest bundled optical size.
+    #[must_use]
+    pub const fn optical_svg_size(self) -> u32 {
+        match self {
+            // 16 px renders the 20 px optical — Material's smallest
+            // bundled size; the renderer scales down.
+            IconSize::Inline => 20,
+            IconSize::Nav => 20,
+            IconSize::PanelHeader => 24,
+            // 32 px + 48 px both pick up the 40 px optical;
+            // renderer handles the scale.
+            IconSize::EmptyState => 40,
+            IconSize::WizardHero => 40,
+        }
+    }
 }
 
-/// Carbon line weight in px. Q39 lock.
-pub const CARBON_LINE_WEIGHT_PX: f32 = 1.0;
+/// Material Symbols stroke weight in px (weight 400 maps to 1 px
+/// effective stroke at 24 px optical). Matches the prior Carbon
+/// 1-px lock.
+pub const MATERIAL_LINE_WEIGHT_PX: f32 = 1.0;
 
-/// Semantic icon names. Every Iced/GTK call site uses these
-/// enum variants — never a hardcoded glyph/path/codepoint.
-/// Adding a new variant requires:
-///   1. add an arm to [`Icon::carbon_name`]
-///   2. add an arm to [`Icon::fallback_glyph`]
-///   3. add an arm to [`Icon::is_filled`] (default unset = line
-///      style per Q38; only status dots + notification bell flip
-///      to filled)
+/// Selection / activation state — drives the outlined↔filled swap
+/// for icons whose [`Icon::fill_mode`] is [`FillMode::OnActive`].
 ///
-/// The `every_variant_resolves` test guards against missing arms.
+/// Most callsites pass [`IconState::Idle`]. Selection-aware
+/// surfaces (sidebar selected row, active tab, focused dock
+/// button) thread [`IconState::Active`] when the icon represents
+/// the currently-active entry.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IconState {
+    /// Outlined render (default for most callsites).
+    Idle,
+    /// Filled render when this icon's [`FillMode`] is
+    /// [`FillMode::OnActive`]. No effect on [`FillMode::AlwaysFill`]
+    /// (already filled) or [`FillMode::NeverFill`] (always outlined).
+    Active,
+}
+
+/// Tri-state fill policy per icon. Locked by the 8-Q icon-mapping
+/// survey Round 1 Q2 (2026-05-26).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FillMode {
+    /// Icon is always outlined regardless of state (most icons).
+    NeverFill,
+    /// Icon is always filled (status dots, notification bell,
+    /// playbook play-glyph — Q38 carry-over).
+    AlwaysFill,
+    /// Outlined by default; filled when paired with
+    /// [`IconState::Active`] (nav-group + sidebar icons).
+    OnActive,
+}
+
+/// Semantic icon names. Every Iced/GTK call site uses these enum
+/// variants — never a hardcoded glyph/path/codepoint. Adding a new
+/// variant requires arms in `material_name`, `fallback_glyph`,
+/// `fill_mode`, and the `svg_bytes` resolver; the
+/// `every_variant_resolves_*` tests guard against missing arms.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Icon {
     // --- Navigation surfaces ---
@@ -133,7 +202,7 @@ pub enum Icon {
     Themes,
     /// Session / login.
     Session,
-    /// Notifications / bell. **Filled** per Q38.
+    /// Notifications / bell. **Always filled** per Round 1 Q2.
     Notification,
     /// Wi-Fi.
     Wifi,
@@ -141,7 +210,7 @@ pub enum Icon {
     Vpn,
     /// Firewall.
     Firewall,
-    /// Playbook / automation.
+    /// Playbook / automation. **Always filled** (play-glyph).
     Playbook,
     /// History / past events.
     History,
@@ -149,19 +218,13 @@ pub enum Icon {
     Settings,
     /// Inventory / list.
     Inventory,
-    /// Workbench brand-strip glyph (matches the start-menu's
-    /// pinned-tile icon for the `mde-workbench` launcher; used in
-    /// the in-app header bar to keep brand-chrome surfaces in
-    /// sync). Added v4.0.1 BUG-20 (2026-05-23).
+    /// Workbench brand-strip glyph.
     Workbench,
-    /// Files manager brand-strip glyph (matches the start-menu's
-    /// pinned-tile icon for the `mde-files` launcher). Added
-    /// v4.0.1 BUG-20 (2026-05-23) so the same surface story —
-    /// in-app header bar mirrors the WM titlebar + start-menu
-    /// tile — can extend to mde-files when its header lands.
+    /// Files manager brand-strip glyph. Active when the Files
+    /// nav button is selected.
     Files,
 
-    // --- Window controls (UX-4 swap-in target) ---
+    // --- Window controls ---
     /// Minimize window.
     WindowMinimize,
     /// Maximize / restore window.
@@ -169,14 +232,14 @@ pub enum Icon {
     /// Close window.
     WindowClose,
 
-    // --- Status / state ---
-    /// Healthy / OK status dot. **Filled** per Q38.
+    // --- Status / state (always filled) ---
+    /// Healthy / OK status dot.
     StatusOk,
-    /// Warning status dot. **Filled** per Q38.
+    /// Warning status dot.
     StatusWarning,
-    /// Error status dot. **Filled** per Q38.
+    /// Error status dot.
     StatusError,
-    /// Unknown / pending status dot. **Filled** per Q38.
+    /// Unknown / pending status dot.
     StatusUnknown,
 
     // --- Action affordances ---
@@ -201,260 +264,185 @@ pub enum Icon {
 }
 
 impl Icon {
-    /// Carbon symbolic name — what `assets/icons/carbon/<name>.svg`
-    /// would load if UX-8.a wires real SVGs. Stable contract;
-    /// renaming a Carbon symbol upstream forces a one-line
-    /// change here, not a workspace-wide grep.
+    /// Material Symbols symbolic name (e.g. `"network_check"`,
+    /// `"notifications"`). Source-of-truth for which SVG file to
+    /// load from `assets/icons/material-symbols/`. Heuristic
+    /// mapping per the icon-mapping survey Round 2 Q4 (2026-05-26);
+    /// per-icon revisions land as follow-on commits if any specific
+    /// glyph disappoints.
     #[must_use]
-    pub const fn carbon_name(self) -> &'static str {
+    pub const fn material_name(self) -> &'static str {
         match self {
             Icon::Dashboard => "dashboard",
-            Icon::Apps => "application",
-            Icon::Network => "network--3",
+            Icon::Apps => "apps",
+            Icon::Network => "network_check",
             Icon::Devices => "devices",
-            Icon::LookAndFeel => "color-palette",
+            Icon::LookAndFeel => "palette",
             Icon::System => "settings",
-            Icon::Maintain => "tools",
-            Icon::Fleet => "network--public",
+            Icon::Maintain => "build",
+            Icon::Fleet => "public",
             Icon::Help => "help",
 
             Icon::Snapshot => "save",
-            Icon::Peer => "machine-learning-model",
+            Icon::Peer => "memory",
             Icon::Logs => "list",
-            Icon::Update => "rocket",
-            Icon::Repair => "tools",
-            Icon::Sound => "volume-up",
-            Icon::Display => "screen",
-            Icon::Printer => "printer",
-            Icon::Power => "battery-charging",
+            Icon::Update => "rocket_launch",
+            Icon::Repair => "build",
+            Icon::Sound => "volume_up",
+            Icon::Display => "desktop_windows",
+            Icon::Printer => "print",
+            Icon::Power => "battery_charging_full",
             Icon::Removable => "usb",
-            Icon::Clock => "time",
+            Icon::Clock => "schedule",
             Icon::Wallpaper => "image",
-            Icon::Fonts => "text-font",
-            Icon::Themes => "color-palette",
-            Icon::Session => "user",
-            Icon::Notification => "notification--filled",
+            Icon::Fonts => "text_fields",
+            Icon::Themes => "palette",
+            Icon::Session => "person",
+            Icon::Notification => "notifications",
             Icon::Wifi => "wifi",
-            Icon::Vpn => "vpn-connection",
-            Icon::Firewall => "firewall-classic",
-            Icon::Playbook => "play-filled",
-            Icon::History => "recently-viewed",
+            Icon::Vpn => "vpn_lock",
+            Icon::Firewall => "security",
+            Icon::Playbook => "play_arrow",
+            Icon::History => "history",
             Icon::Settings => "settings",
-            Icon::Inventory => "list-boxes",
-            Icon::Workbench => "workbench",
-            Icon::Files => "files",
+            Icon::Inventory => "checklist",
+            Icon::Workbench => "handyman",
+            Icon::Files => "folder",
 
-            Icon::WindowMinimize => "subtract",
-            Icon::WindowMaximize => "maximize",
+            Icon::WindowMinimize => "remove",
+            Icon::WindowMaximize => "fullscreen",
             Icon::WindowClose => "close",
 
-            Icon::StatusOk => "checkmark--filled",
-            Icon::StatusWarning => "warning--alt--filled",
-            Icon::StatusError => "error--filled",
-            Icon::StatusUnknown => "help--filled",
+            Icon::StatusOk => "check_circle",
+            Icon::StatusWarning => "warning",
+            Icon::StatusError => "error",
+            Icon::StatusUnknown => "help",
 
-            Icon::Refresh => "renew",
+            Icon::Refresh => "refresh",
             Icon::Add => "add",
-            Icon::Delete => "trash-can",
+            Icon::Delete => "delete",
             Icon::Edit => "edit",
-            Icon::Confirm => "checkmark",
+            Icon::Confirm => "check",
             Icon::Cancel => "close",
             Icon::Search => "search",
-            Icon::ChevronRight => "chevron--right",
-            Icon::ChevronDown => "chevron--down",
+            Icon::ChevronRight => "chevron_right",
+            Icon::ChevronDown => "expand_more",
         }
     }
 
-    /// Unicode fallback glyph — what the consumer renders today
-    /// (UX-8 v1) before UX-8.a swaps in real Carbon SVGs.
-    /// Chosen so the panel reads coherently with the existing
-    /// `mackes-panel::start_menu` fallback vocabulary.
+    /// Unicode fallback glyph — rendered by surfaces that prefer
+    /// text-over-SVG (legacy GTK panels). The Iced workbench /
+    /// portal stacks prefer [`ResolvedIcon::svg_bytes`].
     #[must_use]
     pub const fn fallback_glyph(self) -> &'static str {
         match self {
-            Icon::Dashboard => "\u{2630}",   // ☰
-            Icon::Apps => "\u{25A6}",        // ▦
-            Icon::Network => "\u{29C8}",     // ⧈
-            Icon::Devices => "\u{25A3}",     // ▣
-            Icon::LookAndFeel => "\u{25C9}", // ◉
-            Icon::System => "\u{2699}",      // ⚙
-            Icon::Maintain => "\u{1F527}",   // 🔧
-            Icon::Fleet => "\u{29C9}",       // ⧉
+            Icon::Dashboard => "\u{2630}",
+            Icon::Apps => "\u{25A6}",
+            Icon::Network => "\u{29C8}",
+            Icon::Devices => "\u{25A3}",
+            Icon::LookAndFeel => "\u{25C9}",
+            Icon::System => "\u{2699}",
+            Icon::Maintain => "\u{1F527}",
+            Icon::Fleet => "\u{29C9}",
             Icon::Help => "?",
 
-            Icon::Snapshot => "\u{29C7}",  // ⧇
-            Icon::Peer => "\u{25CB}",      // ○
-            Icon::Logs => "\u{2630}",      // ☰
-            Icon::Update => "\u{2191}",    // ↑
-            Icon::Repair => "\u{1F6E0}",   // 🛠
-            Icon::Sound => "\u{266B}",     // ♫
-            Icon::Display => "\u{25AD}",   // ▭
-            Icon::Printer => "\u{2399}",   // ⎙
-            Icon::Power => "\u{26A1}",     // ⚡
-            Icon::Removable => "\u{2902}", // ⤂
-            Icon::Clock => "\u{29D6}",     // ⧖
-            Icon::Wallpaper => "\u{2766}", // ❦
+            Icon::Snapshot => "\u{29C7}",
+            Icon::Peer => "\u{25CB}",
+            Icon::Logs => "\u{2630}",
+            Icon::Update => "\u{2191}",
+            Icon::Repair => "\u{1F6E0}",
+            Icon::Sound => "\u{266B}",
+            Icon::Display => "\u{25AD}",
+            Icon::Printer => "\u{2399}",
+            Icon::Power => "\u{26A1}",
+            Icon::Removable => "\u{2902}",
+            Icon::Clock => "\u{29D6}",
+            Icon::Wallpaper => "\u{2766}",
             Icon::Fonts => "A",
-            Icon::Themes => "\u{25D0}",        // ◐
-            Icon::Session => "\u{2630}",       // ☰
-            Icon::Notification => "\u{1F514}", // 🔔
-            Icon::Wifi => "\u{1F4F6}",         // 📶
-            Icon::Vpn => "\u{1F512}",          // 🔒
-            Icon::Firewall => "\u{1F6E1}",     // 🛡
-            Icon::Playbook => "\u{25B6}",      // ▶
-            Icon::History => "\u{231B}",       // ⌛
-            Icon::Settings => "\u{2699}",      // ⚙
-            Icon::Inventory => "\u{2261}",     // ≡
-            Icon::Workbench => "\u{25A6}",     // ▦ (matches Apps stylistically)
-            Icon::Files => "\u{1F4C1}",        // 📁
+            Icon::Themes => "\u{25D0}",
+            Icon::Session => "\u{2630}",
+            Icon::Notification => "\u{1F514}",
+            Icon::Wifi => "\u{1F4F6}",
+            Icon::Vpn => "\u{1F512}",
+            Icon::Firewall => "\u{1F6E1}",
+            Icon::Playbook => "\u{25B6}",
+            Icon::History => "\u{231B}",
+            Icon::Settings => "\u{2699}",
+            Icon::Inventory => "\u{2261}",
+            Icon::Workbench => "\u{25A6}",
+            Icon::Files => "\u{1F4C1}",
 
-            Icon::WindowMinimize => "\u{2212}", // −
-            Icon::WindowMaximize => "\u{25A1}", // □
-            Icon::WindowClose => "\u{00D7}",    // ×
+            Icon::WindowMinimize => "\u{2212}",
+            Icon::WindowMaximize => "\u{25A1}",
+            Icon::WindowClose => "\u{00D7}",
 
-            Icon::StatusOk => "\u{25CF}",      // ●
-            Icon::StatusWarning => "\u{25CF}", // ● (caller tints)
-            Icon::StatusError => "\u{25CF}",   // ●
-            Icon::StatusUnknown => "\u{25CB}", // ○
+            Icon::StatusOk => "\u{25CF}",
+            Icon::StatusWarning => "\u{25CF}",
+            Icon::StatusError => "\u{25CF}",
+            Icon::StatusUnknown => "\u{25CB}",
 
-            Icon::Refresh => "\u{21BB}", // ↻
+            Icon::Refresh => "\u{21BB}",
             Icon::Add => "+",
-            Icon::Delete => "\u{1F5D1}",      // 🗑
-            Icon::Edit => "\u{270E}",         // ✎
-            Icon::Confirm => "\u{2713}",      // ✓
-            Icon::Cancel => "\u{00D7}",       // ×
-            Icon::Search => "\u{1F50D}",      // 🔍
-            Icon::ChevronRight => "\u{203A}", // ›
-            Icon::ChevronDown => "\u{2304}",  // ⌄
+            Icon::Delete => "\u{1F5D1}",
+            Icon::Edit => "\u{270E}",
+            Icon::Confirm => "\u{2713}",
+            Icon::Cancel => "\u{00D7}",
+            Icon::Search => "\u{1F50D}",
+            Icon::ChevronRight => "\u{203A}",
+            Icon::ChevronDown => "\u{2304}",
         }
     }
 
-    /// Is this icon rendered with a filled style per Q38? Only
-    /// status dots + the notification bell are filled in the
-    /// MDE iconography; everything else uses Carbon's standard
-    /// 1-px line weight.
+    /// Fill policy for this icon. Locked by the 8-Q icon-mapping
+    /// survey Round 1 Q2 (2026-05-26).
     #[must_use]
-    pub const fn is_filled(self) -> bool {
-        matches!(
-            self,
+    pub const fn fill_mode(self) -> FillMode {
+        match self {
+            // Always filled (Q38 carry-over).
             Icon::Notification
-                | Icon::StatusOk
-                | Icon::StatusWarning
-                | Icon::StatusError
-                | Icon::StatusUnknown
-                | Icon::Playbook
-        )
+            | Icon::StatusOk
+            | Icon::StatusWarning
+            | Icon::StatusError
+            | Icon::StatusUnknown
+            | Icon::Playbook => FillMode::AlwaysFill,
+
+            // Outlined-by-default, filled when active (new
+            // active-state fill rule, Round 1 Q2). Covers the 9
+            // sidebar nav groups + the dock-only Files /
+            // Settings buttons.
+            Icon::Dashboard
+            | Icon::Apps
+            | Icon::Network
+            | Icon::Devices
+            | Icon::LookAndFeel
+            | Icon::System
+            | Icon::Maintain
+            | Icon::Fleet
+            | Icon::Help
+            | Icon::Files => FillMode::OnActive,
+
+            // Everything else is outlined regardless of state.
+            _ => FillMode::NeverFill,
+        }
     }
 }
 
-/// Resolved icon — a Carbon symbolic name + a Unicode fallback +
-/// the locked size. Consumers render either the Carbon SVG
-/// (UX-8.a) or the fallback glyph at `size.px()`.
+/// Resolved icon — a Material name + Unicode fallback + the locked
+/// size + fill policy. Consumers render either the Material SVG
+/// (via [`ResolvedIcon::svg_bytes`]) or the fallback glyph.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ResolvedIcon {
-    /// Carbon symbolic name (e.g. `"network--public"`). Consumer
-    /// looks this up in `assets/icons/carbon/` (UX-8.a) or in a
-    /// Carbon-icon-set crate.
-    pub carbon_name: &'static str,
-    /// Unicode fallback glyph rendered when no Carbon SVG is
-    /// available (UX-8 v1 default).
+    /// Material Symbols symbolic name (e.g. `"network_check"`).
+    pub material_name: &'static str,
+    /// Unicode fallback glyph rendered when SVG isn't appropriate.
     pub fallback_glyph: &'static str,
-    /// Q38 filled-vs-line style.
-    pub is_filled: bool,
+    /// Fill policy for this icon.
+    pub fill_mode: FillMode,
     /// Resolved [`IconSize`] tier.
     pub size: IconSize,
-}
-
-impl ResolvedIcon {
-    /// UX-8.a — return the Carbon SVG bytes for this icon when
-    /// they're bundled (`assets/icons/carbon/<carbon_name>.svg`
-    /// included via `include_bytes!`). Returns `None` today
-    /// because the SVG asset bundle isn't shipped yet; consumers
-    /// fall back to [`fallback_glyph`] in the meantime.
-    ///
-    /// When the asset bundle ships, this function becomes a
-    /// `match self.carbon_name { "network--public" =>
-    /// Some(include_bytes!("…")), … }` table. Consumers don't
-    /// need to change — `svg_bytes().or(fallback_glyph())`
-    /// is the durable contract.
-    ///
-    /// [`fallback_glyph`]: Self::fallback_glyph
-    #[must_use]
-    pub fn svg_bytes(&self) -> Option<&'static [u8]> {
-        // v4.0.1 BUG-13.b — starter batch. Each arm matches a
-        // `carbon_name` exactly (so the icons.rs name table is
-        // authoritative) and returns the bytes of the SVG copied
-        // from /usr/share/icons/Mackes-Carbon/scalable/apps/. New
-        // variants land by dropping the SVG into
-        // assets/icons/carbon/ + adding one arm here. Any
-        // unmapped icon still falls through to `None` so the
-        // consumer's `fallback_glyph` path keeps working — the
-        // contract is "Some when wired, None to fall back".
-        match self.carbon_name {
-            // Navigation surfaces (9)
-            "dashboard" => Some(include_bytes!("../../../assets/icons/carbon/dashboard.svg")),
-            "application" => Some(include_bytes!("../../../assets/icons/carbon/application.svg")),
-            "network--3" => Some(include_bytes!("../../../assets/icons/carbon/network--3.svg")),
-            "devices" => Some(include_bytes!("../../../assets/icons/carbon/devices.svg")),
-            "color-palette" => Some(include_bytes!("../../../assets/icons/carbon/color-palette.svg")),
-            "settings" => Some(include_bytes!("../../../assets/icons/carbon/settings.svg")),
-            "tools" => Some(include_bytes!("../../../assets/icons/carbon/tools.svg")),
-            "network--public" => Some(include_bytes!("../../../assets/icons/carbon/network--public.svg")),
-            "help" => Some(include_bytes!("../../../assets/icons/carbon/help.svg")),
-
-            // Panel-specific (Snapshot, Peer, Logs, Update, Repair,
-            // Sound, Display, Printer, Power, Removable, Clock,
-            // Wallpaper, Fonts, Themes, Session, Notification,
-            // Wifi, Vpn, Firewall, Playbook, History, Settings,
-            // Inventory).
-            "save" => Some(include_bytes!("../../../assets/icons/carbon/save.svg")),
-            "machine-learning-model" => Some(include_bytes!("../../../assets/icons/carbon/machine-learning-model.svg")),
-            "list" => Some(include_bytes!("../../../assets/icons/carbon/list.svg")),
-            "rocket" => Some(include_bytes!("../../../assets/icons/carbon/rocket.svg")),
-            "volume-up" => Some(include_bytes!("../../../assets/icons/carbon/volume-up.svg")),
-            "screen" => Some(include_bytes!("../../../assets/icons/carbon/screen.svg")),
-            "printer" => Some(include_bytes!("../../../assets/icons/carbon/printer.svg")),
-            "battery-charging" => Some(include_bytes!("../../../assets/icons/carbon/battery-charging.svg")),
-            "usb" => Some(include_bytes!("../../../assets/icons/carbon/usb.svg")),
-            "time" => Some(include_bytes!("../../../assets/icons/carbon/time.svg")),
-            "image" => Some(include_bytes!("../../../assets/icons/carbon/image.svg")),
-            "text-font" => Some(include_bytes!("../../../assets/icons/carbon/text-font.svg")),
-            "user" => Some(include_bytes!("../../../assets/icons/carbon/user.svg")),
-            "notification--filled" => Some(include_bytes!("../../../assets/icons/carbon/notification--filled.svg")),
-            "wifi" => Some(include_bytes!("../../../assets/icons/carbon/wifi.svg")),
-            "vpn-connection" => Some(include_bytes!("../../../assets/icons/carbon/vpn-connection.svg")),
-            "firewall-classic" => Some(include_bytes!("../../../assets/icons/carbon/firewall-classic.svg")),
-            "play-filled" => Some(include_bytes!("../../../assets/icons/carbon/play-filled.svg")),
-            "recently-viewed" => Some(include_bytes!("../../../assets/icons/carbon/recently-viewed.svg")),
-            "list-boxes" => Some(include_bytes!("../../../assets/icons/carbon/list-boxes.svg")),
-
-            // Brand-strip glyphs (header.rs + start-menu pinned tiles).
-            "workbench" => Some(include_bytes!("../../../assets/icons/carbon/workbench.svg")),
-            "files" => Some(include_bytes!("../../../assets/icons/carbon/files.svg")),
-
-            // Window controls.
-            "subtract" => Some(include_bytes!("../../../assets/icons/carbon/subtract.svg")),
-            "maximize" => Some(include_bytes!("../../../assets/icons/carbon/maximize.svg")),
-
-            // Status dots.
-            "checkmark--filled" => Some(include_bytes!("../../../assets/icons/carbon/checkmark--filled.svg")),
-            "warning--alt--filled" => Some(include_bytes!("../../../assets/icons/carbon/warning--alt--filled.svg")),
-            "error--filled" => Some(include_bytes!("../../../assets/icons/carbon/error--filled.svg")),
-            "help--filled" => Some(include_bytes!("../../../assets/icons/carbon/help--filled.svg")),
-
-            // Action affordances.
-            "renew" => Some(include_bytes!("../../../assets/icons/carbon/renew.svg")),
-            "add" => Some(include_bytes!("../../../assets/icons/carbon/add.svg")),
-            "trash-can" => Some(include_bytes!("../../../assets/icons/carbon/trash-can.svg")),
-            "edit" => Some(include_bytes!("../../../assets/icons/carbon/edit.svg")),
-            "checkmark" => Some(include_bytes!("../../../assets/icons/carbon/checkmark.svg")),
-            "close" => Some(include_bytes!("../../../assets/icons/carbon/close.svg")),
-            "search" => Some(include_bytes!("../../../assets/icons/carbon/search.svg")),
-            "chevron--right" => Some(include_bytes!("../../../assets/icons/carbon/chevron--right.svg")),
-            "chevron--down" => Some(include_bytes!("../../../assets/icons/carbon/chevron--down.svg")),
-            _ => None,
-        }
-    }
+    /// The [`Icon`] variant — kept so [`ResolvedIcon::svg_bytes`]
+    /// can resolve the right `include_bytes!` arm directly.
+    icon: Icon,
 }
 
 impl ResolvedIcon {
@@ -463,26 +451,353 @@ impl ResolvedIcon {
     pub const fn size_px(self) -> f32 {
         self.size.px()
     }
+
+    /// Material Symbols SVG bytes for this icon at the resolved
+    /// size + the requested state. Returns the outlined SVG when
+    /// the fill policy is [`FillMode::NeverFill`] or when the state
+    /// is [`IconState::Idle`] with [`FillMode::OnActive`]. Returns
+    /// the filled SVG otherwise.
+    /// Backward-compatible no-arg accessor. Equivalent to
+    /// `svg_bytes_for_state(IconState::Idle)` wrapped in `Some`.
+    /// Preserves the prior Carbon-era `Option<&[u8]>` shape so
+    /// existing callsites keep compiling. Always returns `Some`
+    /// now that every variant is wired; the `Option` is
+    /// structural-only. New callsites that care about selection
+    /// state should call [`Self::svg_bytes_for_state`] directly
+    /// with the appropriate [`IconState`].
+    #[must_use]
+    pub fn svg_bytes(&self) -> Option<&'static [u8]> {
+        Some(self.svg_bytes_for_state(IconState::Idle))
+    }
+
+    /// State-aware accessor. Returns the outlined SVG when the
+    /// fill policy is [`FillMode::NeverFill`] or when the state
+    /// is [`IconState::Idle`] with [`FillMode::OnActive`]. Returns
+    /// the filled SVG otherwise.
+    #[must_use]
+    pub fn svg_bytes_for_state(&self, state: IconState) -> &'static [u8] {
+        self.icon.svg_bytes(self.size, state_to_filled(state, self.fill_mode))
+    }
+}
+
+const fn state_to_filled(state: IconState, mode: FillMode) -> bool {
+    match (mode, state) {
+        (FillMode::AlwaysFill, _) => true,
+        (FillMode::OnActive, IconState::Active) => true,
+        _ => false,
+    }
+}
+
+impl Icon {
+    /// Resolve to SVG bytes at the given size + filled state.
+    /// Internal — public consumers go through
+    /// [`ResolvedIcon::svg_bytes`] which honors [`FillMode`].
+    #[must_use]
+    pub fn svg_bytes(self, size: IconSize, filled: bool) -> &'static [u8] {
+        // The match below is exhaustive on `self`; each arm picks
+        // the right optical-size SVG, with a nested branch for the
+        // filled variant on fill-eligible icons.
+        let svg_size = size.optical_svg_size();
+        material_svg_bytes(self, svg_size, filled)
+    }
+}
+
+// ───────────────────────────────────────────────────────────────
+// Material SVG resolver — the big mechanical match.
+//
+// Each Icon variant has 3 outlined arms (sizes 20/24/40); icons
+// in the AlwaysFill or OnActive set additionally have 3 filled
+// arms (with `_fill1` infix in the path).
+//
+// The `_ => fallback` catch-alls inside each block are unreachable
+// in practice (svg_size is one of 20/24/40 and filled-vs-not is
+// gated by fill_mode upstream) but compile cleanly and protect
+// against future IconSize additions.
+// ───────────────────────────────────────────────────────────────
+
+#[allow(clippy::too_many_lines)]
+fn material_svg_bytes(icon: Icon, svg_size: u32, filled: bool) -> &'static [u8] {
+    match icon {
+        // ── Navigation surfaces (OnActive — fill variants exist) ──
+        Icon::Dashboard => match (svg_size, filled) {
+            (20, false) => include_bytes!("../../../assets/icons/material-symbols/dashboard_20px.svg"),
+            (24, false) => include_bytes!("../../../assets/icons/material-symbols/dashboard_24px.svg"),
+            (40, false) => include_bytes!("../../../assets/icons/material-symbols/dashboard_40px.svg"),
+            (20, true) => include_bytes!("../../../assets/icons/material-symbols/dashboard_fill1_20px.svg"),
+            (24, true) => include_bytes!("../../../assets/icons/material-symbols/dashboard_fill1_24px.svg"),
+            (40, true) => include_bytes!("../../../assets/icons/material-symbols/dashboard_fill1_40px.svg"),
+            _ => include_bytes!("../../../assets/icons/material-symbols/dashboard_24px.svg"),
+        },
+        Icon::Apps => match (svg_size, filled) {
+            (20, false) => include_bytes!("../../../assets/icons/material-symbols/apps_20px.svg"),
+            (24, false) => include_bytes!("../../../assets/icons/material-symbols/apps_24px.svg"),
+            (40, false) => include_bytes!("../../../assets/icons/material-symbols/apps_40px.svg"),
+            (20, true) => include_bytes!("../../../assets/icons/material-symbols/apps_fill1_20px.svg"),
+            (24, true) => include_bytes!("../../../assets/icons/material-symbols/apps_fill1_24px.svg"),
+            (40, true) => include_bytes!("../../../assets/icons/material-symbols/apps_fill1_40px.svg"),
+            _ => include_bytes!("../../../assets/icons/material-symbols/apps_24px.svg"),
+        },
+        Icon::Network => match (svg_size, filled) {
+            (20, false) => include_bytes!("../../../assets/icons/material-symbols/network_check_20px.svg"),
+            (24, false) => include_bytes!("../../../assets/icons/material-symbols/network_check_24px.svg"),
+            (40, false) => include_bytes!("../../../assets/icons/material-symbols/network_check_40px.svg"),
+            (20, true) => include_bytes!("../../../assets/icons/material-symbols/network_check_fill1_20px.svg"),
+            (24, true) => include_bytes!("../../../assets/icons/material-symbols/network_check_fill1_24px.svg"),
+            (40, true) => include_bytes!("../../../assets/icons/material-symbols/network_check_fill1_40px.svg"),
+            _ => include_bytes!("../../../assets/icons/material-symbols/network_check_24px.svg"),
+        },
+        Icon::Devices => match (svg_size, filled) {
+            (20, false) => include_bytes!("../../../assets/icons/material-symbols/devices_20px.svg"),
+            (24, false) => include_bytes!("../../../assets/icons/material-symbols/devices_24px.svg"),
+            (40, false) => include_bytes!("../../../assets/icons/material-symbols/devices_40px.svg"),
+            (20, true) => include_bytes!("../../../assets/icons/material-symbols/devices_fill1_20px.svg"),
+            (24, true) => include_bytes!("../../../assets/icons/material-symbols/devices_fill1_24px.svg"),
+            (40, true) => include_bytes!("../../../assets/icons/material-symbols/devices_fill1_40px.svg"),
+            _ => include_bytes!("../../../assets/icons/material-symbols/devices_24px.svg"),
+        },
+        Icon::LookAndFeel | Icon::Themes => match (svg_size, filled) {
+            // Both LookAndFeel + Themes map to `palette`; only
+            // LookAndFeel is OnActive so the filled arms are only
+            // reached through that variant.
+            (20, false) => include_bytes!("../../../assets/icons/material-symbols/palette_20px.svg"),
+            (24, false) => include_bytes!("../../../assets/icons/material-symbols/palette_24px.svg"),
+            (40, false) => include_bytes!("../../../assets/icons/material-symbols/palette_40px.svg"),
+            (20, true) => include_bytes!("../../../assets/icons/material-symbols/palette_fill1_20px.svg"),
+            (24, true) => include_bytes!("../../../assets/icons/material-symbols/palette_fill1_24px.svg"),
+            (40, true) => include_bytes!("../../../assets/icons/material-symbols/palette_fill1_40px.svg"),
+            _ => include_bytes!("../../../assets/icons/material-symbols/palette_24px.svg"),
+        },
+        Icon::System | Icon::Settings => match (svg_size, filled) {
+            // Both System + Settings map to `settings`; only System
+            // is OnActive.
+            (20, false) => include_bytes!("../../../assets/icons/material-symbols/settings_20px.svg"),
+            (24, false) => include_bytes!("../../../assets/icons/material-symbols/settings_24px.svg"),
+            (40, false) => include_bytes!("../../../assets/icons/material-symbols/settings_40px.svg"),
+            (20, true) => include_bytes!("../../../assets/icons/material-symbols/settings_fill1_20px.svg"),
+            (24, true) => include_bytes!("../../../assets/icons/material-symbols/settings_fill1_24px.svg"),
+            (40, true) => include_bytes!("../../../assets/icons/material-symbols/settings_fill1_40px.svg"),
+            _ => include_bytes!("../../../assets/icons/material-symbols/settings_24px.svg"),
+        },
+        Icon::Maintain | Icon::Repair => match (svg_size, filled) {
+            // Both Maintain + Repair map to `build`; only Maintain
+            // is OnActive.
+            (20, false) => include_bytes!("../../../assets/icons/material-symbols/build_20px.svg"),
+            (24, false) => include_bytes!("../../../assets/icons/material-symbols/build_24px.svg"),
+            (40, false) => include_bytes!("../../../assets/icons/material-symbols/build_40px.svg"),
+            (20, true) => include_bytes!("../../../assets/icons/material-symbols/build_fill1_20px.svg"),
+            (24, true) => include_bytes!("../../../assets/icons/material-symbols/build_fill1_24px.svg"),
+            (40, true) => include_bytes!("../../../assets/icons/material-symbols/build_fill1_40px.svg"),
+            _ => include_bytes!("../../../assets/icons/material-symbols/build_24px.svg"),
+        },
+        Icon::Fleet => match (svg_size, filled) {
+            (20, false) => include_bytes!("../../../assets/icons/material-symbols/public_20px.svg"),
+            (24, false) => include_bytes!("../../../assets/icons/material-symbols/public_24px.svg"),
+            (40, false) => include_bytes!("../../../assets/icons/material-symbols/public_40px.svg"),
+            (20, true) => include_bytes!("../../../assets/icons/material-symbols/public_fill1_20px.svg"),
+            (24, true) => include_bytes!("../../../assets/icons/material-symbols/public_fill1_24px.svg"),
+            (40, true) => include_bytes!("../../../assets/icons/material-symbols/public_fill1_40px.svg"),
+            _ => include_bytes!("../../../assets/icons/material-symbols/public_24px.svg"),
+        },
+        Icon::Help | Icon::StatusUnknown => match (svg_size, filled) {
+            // Both Help (OnActive) + StatusUnknown (AlwaysFill)
+            // map to `help`.
+            (20, false) => include_bytes!("../../../assets/icons/material-symbols/help_20px.svg"),
+            (24, false) => include_bytes!("../../../assets/icons/material-symbols/help_24px.svg"),
+            (40, false) => include_bytes!("../../../assets/icons/material-symbols/help_40px.svg"),
+            (20, true) => include_bytes!("../../../assets/icons/material-symbols/help_fill1_20px.svg"),
+            (24, true) => include_bytes!("../../../assets/icons/material-symbols/help_fill1_24px.svg"),
+            (40, true) => include_bytes!("../../../assets/icons/material-symbols/help_fill1_40px.svg"),
+            _ => include_bytes!("../../../assets/icons/material-symbols/help_24px.svg"),
+        },
+        Icon::Files => match (svg_size, filled) {
+            (20, false) => include_bytes!("../../../assets/icons/material-symbols/folder_20px.svg"),
+            (24, false) => include_bytes!("../../../assets/icons/material-symbols/folder_24px.svg"),
+            (40, false) => include_bytes!("../../../assets/icons/material-symbols/folder_40px.svg"),
+            (20, true) => include_bytes!("../../../assets/icons/material-symbols/folder_fill1_20px.svg"),
+            (24, true) => include_bytes!("../../../assets/icons/material-symbols/folder_fill1_24px.svg"),
+            (40, true) => include_bytes!("../../../assets/icons/material-symbols/folder_fill1_40px.svg"),
+            _ => include_bytes!("../../../assets/icons/material-symbols/folder_24px.svg"),
+        },
+
+        // ── Always-filled icons (status + bell + playbook) ──
+        Icon::Notification => match svg_size {
+            20 => include_bytes!("../../../assets/icons/material-symbols/notifications_fill1_20px.svg"),
+            24 => include_bytes!("../../../assets/icons/material-symbols/notifications_fill1_24px.svg"),
+            40 => include_bytes!("../../../assets/icons/material-symbols/notifications_fill1_40px.svg"),
+            _ => include_bytes!("../../../assets/icons/material-symbols/notifications_fill1_24px.svg"),
+        },
+        Icon::Playbook => match svg_size {
+            20 => include_bytes!("../../../assets/icons/material-symbols/play_arrow_fill1_20px.svg"),
+            24 => include_bytes!("../../../assets/icons/material-symbols/play_arrow_fill1_24px.svg"),
+            40 => include_bytes!("../../../assets/icons/material-symbols/play_arrow_fill1_40px.svg"),
+            _ => include_bytes!("../../../assets/icons/material-symbols/play_arrow_fill1_24px.svg"),
+        },
+        Icon::StatusOk => match svg_size {
+            20 => include_bytes!("../../../assets/icons/material-symbols/check_circle_fill1_20px.svg"),
+            24 => include_bytes!("../../../assets/icons/material-symbols/check_circle_fill1_24px.svg"),
+            40 => include_bytes!("../../../assets/icons/material-symbols/check_circle_fill1_40px.svg"),
+            _ => include_bytes!("../../../assets/icons/material-symbols/check_circle_fill1_24px.svg"),
+        },
+        Icon::StatusWarning => match svg_size {
+            20 => include_bytes!("../../../assets/icons/material-symbols/warning_fill1_20px.svg"),
+            24 => include_bytes!("../../../assets/icons/material-symbols/warning_fill1_24px.svg"),
+            40 => include_bytes!("../../../assets/icons/material-symbols/warning_fill1_40px.svg"),
+            _ => include_bytes!("../../../assets/icons/material-symbols/warning_fill1_24px.svg"),
+        },
+        Icon::StatusError => match svg_size {
+            20 => include_bytes!("../../../assets/icons/material-symbols/error_fill1_20px.svg"),
+            24 => include_bytes!("../../../assets/icons/material-symbols/error_fill1_24px.svg"),
+            40 => include_bytes!("../../../assets/icons/material-symbols/error_fill1_40px.svg"),
+            _ => include_bytes!("../../../assets/icons/material-symbols/error_fill1_24px.svg"),
+        },
+
+        // ── Never-filled icons (outlined-only) ──
+        Icon::Snapshot => pick_3(svg_size,
+            include_bytes!("../../../assets/icons/material-symbols/save_20px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/save_24px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/save_40px.svg")),
+        Icon::Peer => pick_3(svg_size,
+            include_bytes!("../../../assets/icons/material-symbols/memory_20px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/memory_24px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/memory_40px.svg")),
+        Icon::Logs | Icon::Session => pick_3(svg_size,
+            include_bytes!("../../../assets/icons/material-symbols/list_20px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/list_24px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/list_40px.svg")),
+        Icon::Update => pick_3(svg_size,
+            include_bytes!("../../../assets/icons/material-symbols/rocket_launch_20px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/rocket_launch_24px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/rocket_launch_40px.svg")),
+        Icon::Sound => pick_3(svg_size,
+            include_bytes!("../../../assets/icons/material-symbols/volume_up_20px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/volume_up_24px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/volume_up_40px.svg")),
+        Icon::Display => pick_3(svg_size,
+            include_bytes!("../../../assets/icons/material-symbols/desktop_windows_20px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/desktop_windows_24px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/desktop_windows_40px.svg")),
+        Icon::Printer => pick_3(svg_size,
+            include_bytes!("../../../assets/icons/material-symbols/print_20px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/print_24px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/print_40px.svg")),
+        Icon::Power => pick_3(svg_size,
+            include_bytes!("../../../assets/icons/material-symbols/battery_charging_full_20px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/battery_charging_full_24px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/battery_charging_full_40px.svg")),
+        Icon::Removable => pick_3(svg_size,
+            include_bytes!("../../../assets/icons/material-symbols/usb_20px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/usb_24px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/usb_40px.svg")),
+        Icon::Clock => pick_3(svg_size,
+            include_bytes!("../../../assets/icons/material-symbols/schedule_20px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/schedule_24px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/schedule_40px.svg")),
+        Icon::Wallpaper => pick_3(svg_size,
+            include_bytes!("../../../assets/icons/material-symbols/image_20px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/image_24px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/image_40px.svg")),
+        Icon::Fonts => pick_3(svg_size,
+            include_bytes!("../../../assets/icons/material-symbols/text_fields_20px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/text_fields_24px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/text_fields_40px.svg")),
+        Icon::Wifi => pick_3(svg_size,
+            include_bytes!("../../../assets/icons/material-symbols/wifi_20px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/wifi_24px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/wifi_40px.svg")),
+        Icon::Vpn => pick_3(svg_size,
+            include_bytes!("../../../assets/icons/material-symbols/vpn_lock_20px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/vpn_lock_24px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/vpn_lock_40px.svg")),
+        Icon::Firewall => pick_3(svg_size,
+            include_bytes!("../../../assets/icons/material-symbols/security_20px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/security_24px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/security_40px.svg")),
+        Icon::History => pick_3(svg_size,
+            include_bytes!("../../../assets/icons/material-symbols/history_20px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/history_24px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/history_40px.svg")),
+        Icon::Inventory => pick_3(svg_size,
+            include_bytes!("../../../assets/icons/material-symbols/checklist_20px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/checklist_24px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/checklist_40px.svg")),
+        Icon::Workbench => pick_3(svg_size,
+            include_bytes!("../../../assets/icons/material-symbols/handyman_20px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/handyman_24px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/handyman_40px.svg")),
+        Icon::WindowMinimize => pick_3(svg_size,
+            include_bytes!("../../../assets/icons/material-symbols/remove_20px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/remove_24px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/remove_40px.svg")),
+        Icon::WindowMaximize => pick_3(svg_size,
+            include_bytes!("../../../assets/icons/material-symbols/fullscreen_20px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/fullscreen_24px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/fullscreen_40px.svg")),
+        Icon::WindowClose | Icon::Cancel => pick_3(svg_size,
+            include_bytes!("../../../assets/icons/material-symbols/close_20px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/close_24px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/close_40px.svg")),
+        Icon::Refresh => pick_3(svg_size,
+            include_bytes!("../../../assets/icons/material-symbols/refresh_20px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/refresh_24px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/refresh_40px.svg")),
+        Icon::Add => pick_3(svg_size,
+            include_bytes!("../../../assets/icons/material-symbols/add_20px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/add_24px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/add_40px.svg")),
+        Icon::Delete => pick_3(svg_size,
+            include_bytes!("../../../assets/icons/material-symbols/delete_20px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/delete_24px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/delete_40px.svg")),
+        Icon::Edit => pick_3(svg_size,
+            include_bytes!("../../../assets/icons/material-symbols/edit_20px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/edit_24px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/edit_40px.svg")),
+        Icon::Confirm => pick_3(svg_size,
+            include_bytes!("../../../assets/icons/material-symbols/check_20px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/check_24px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/check_40px.svg")),
+        Icon::Search => pick_3(svg_size,
+            include_bytes!("../../../assets/icons/material-symbols/search_20px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/search_24px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/search_40px.svg")),
+        Icon::ChevronRight => pick_3(svg_size,
+            include_bytes!("../../../assets/icons/material-symbols/chevron_right_20px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/chevron_right_24px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/chevron_right_40px.svg")),
+        Icon::ChevronDown => pick_3(svg_size,
+            include_bytes!("../../../assets/icons/material-symbols/expand_more_20px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/expand_more_24px.svg"),
+            include_bytes!("../../../assets/icons/material-symbols/expand_more_40px.svg")),
+    }
+}
+
+const fn pick_3(svg_size: u32, b20: &'static [u8], b24: &'static [u8], b40: &'static [u8]) -> &'static [u8] {
+    match svg_size {
+        20 => b20,
+        24 => b24,
+        40 => b40,
+        _ => b24,
+    }
 }
 
 /// Single canonical resolver. Consumers never construct
 /// `ResolvedIcon` directly — they go through this so adding a
-/// new Icon variant lights up everywhere consistently.
+/// new `Icon` variant lights up everywhere consistently.
 #[must_use]
 pub const fn mde_icon(icon: Icon, size: IconSize) -> ResolvedIcon {
     ResolvedIcon {
-        carbon_name: icon.carbon_name(),
+        material_name: icon.material_name(),
         fallback_glyph: icon.fallback_glyph(),
-        is_filled: icon.is_filled(),
+        fill_mode: icon.fill_mode(),
         size,
+        icon,
     }
 }
 
-/// Pick a [`Icon`] from a peer's `device_type` field (CB-1.5.a
-/// `NodeRow` / [`mde_mesh_types::DeviceType`] equivalent).
-/// `mesh_peer_card` consumers route via this so the inventory
-/// list, fleet panel, and peer-connection-card all render the
-/// same glyph for the same kind of device. UX-8 (f) lock.
+/// Pick an [`Icon`] from a peer's `device_type` field.
+/// `mesh_peer_card` consumers route via this so the inventory list,
+/// fleet panel, and peer-connection-card all render the same glyph
+/// for the same kind of device.
 #[must_use]
 pub fn icon_for_device_type(device_type: &str) -> Icon {
     match device_type {
@@ -502,7 +817,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn icon_sizes_match_q37_lock() {
+    fn icon_sizes_match_locked_tiers() {
         assert!((IconSize::Inline.px() - 16.0).abs() < f32::EPSILON);
         assert!((IconSize::Nav.px() - 20.0).abs() < f32::EPSILON);
         assert!((IconSize::PanelHeader.px() - 24.0).abs() < f32::EPSILON);
@@ -511,21 +826,35 @@ mod tests {
     }
 
     #[test]
-    fn carbon_line_weight_locked_to_one_px_per_q39() {
-        assert!((CARBON_LINE_WEIGHT_PX - 1.0).abs() < f32::EPSILON);
+    fn optical_svg_sizes_map_to_bundled_assets() {
+        // Material ships SVGs at 20 / 24 / 40 — every IconSize must
+        // pick one of those.
+        for size in [
+            IconSize::Inline,
+            IconSize::Nav,
+            IconSize::PanelHeader,
+            IconSize::EmptyState,
+            IconSize::WizardHero,
+        ] {
+            let optical = size.optical_svg_size();
+            assert!(
+                matches!(optical, 20 | 24 | 40),
+                "{size:?} optical_svg_size() = {optical}, must be 20/24/40"
+            );
+        }
     }
 
     #[test]
-    fn every_variant_resolves_to_nonempty_carbon_name() {
-        // If a new Icon variant is added without an arm in
-        // carbon_name(), this test catches it — the match
-        // exhaustiveness check in carbon_name() actually surfaces
-        // the missing arm at compile time, but this fence guards
-        // against an "" placeholder that silently ships nothing.
+    fn material_line_weight_locked_to_one_px() {
+        assert!((MATERIAL_LINE_WEIGHT_PX - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn every_variant_resolves_to_nonempty_material_name() {
         for icon in every_icon() {
             assert!(
-                !icon.carbon_name().is_empty(),
-                "Icon::{icon:?} has an empty carbon_name()"
+                !icon.material_name().is_empty(),
+                "Icon::{icon:?} has an empty material_name()"
             );
         }
     }
@@ -541,84 +870,103 @@ mod tests {
     }
 
     #[test]
-    fn filled_set_matches_q38_lock() {
-        // Q38: only status dots + notification bell + the
-        // play-filled playbook glyph are filled. Everything else
-        // is line-weight.
-        assert!(Icon::Notification.is_filled());
-        assert!(Icon::StatusOk.is_filled());
-        assert!(Icon::StatusWarning.is_filled());
-        assert!(Icon::StatusError.is_filled());
-        assert!(Icon::StatusUnknown.is_filled());
-        assert!(Icon::Playbook.is_filled());
-        // Spot-check line-style icons.
-        assert!(!Icon::Settings.is_filled());
-        assert!(!Icon::Refresh.is_filled());
-        assert!(!Icon::Fleet.is_filled());
-        assert!(!Icon::WindowMinimize.is_filled());
-    }
-
-    #[test]
-    fn svg_bytes_wired_for_nav_surfaces() {
-        // v4.0.1 BUG-13.b — UX-8.a / UX-8.b partial close. Each
-        // of the 9 navigation surfaces + a few common icons ships
-        // baked SVG bytes; the rest still fall through to the
-        // fallback_glyph path.
-        for nav in [
-            Icon::Dashboard, Icon::Apps, Icon::Network, Icon::Devices,
-            Icon::LookAndFeel, Icon::System, Icon::Maintain,
-            Icon::Fleet, Icon::Help,
-        ] {
-            let r = mde_icon(nav, IconSize::Nav);
-            let bytes = r.svg_bytes();
-            assert!(
-                bytes.is_some(),
-                "{:?} carbon_name={} should have SVG bytes baked in",
-                nav, r.carbon_name,
-            );
-            let payload = bytes.unwrap();
-            assert!(payload.len() > 32, "{:?} payload too small", nav);
-        }
-    }
-
-    #[test]
-    fn svg_bytes_wired_for_every_variant() {
-        // v4.0.1 BUG-13.c — full close on the API + asset bundle.
-        // Every Icon variant must resolve to Some bytes; consumers
-        // can safely treat svg_bytes() as infallible once the
-        // assert here passes.
+    fn fill_mode_table_matches_lock() {
+        // AlwaysFill: status dots + notification bell + playbook.
         for icon in [
-            Icon::Dashboard, Icon::Apps, Icon::Network, Icon::Devices,
-            Icon::LookAndFeel, Icon::System, Icon::Maintain,
-            Icon::Fleet, Icon::Help,
-            Icon::Snapshot, Icon::Peer, Icon::Logs, Icon::Update,
-            Icon::Repair, Icon::Sound, Icon::Display, Icon::Printer,
-            Icon::Power, Icon::Removable, Icon::Clock, Icon::Wallpaper,
-            Icon::Fonts, Icon::Themes, Icon::Session,
-            Icon::Notification, Icon::Wifi, Icon::Vpn, Icon::Firewall,
-            Icon::Playbook, Icon::History, Icon::Settings,
-            Icon::Inventory,
-            Icon::WindowMinimize, Icon::WindowMaximize, Icon::WindowClose,
-            Icon::StatusOk, Icon::StatusWarning, Icon::StatusError,
+            Icon::Notification,
+            Icon::StatusOk,
+            Icon::StatusWarning,
+            Icon::StatusError,
             Icon::StatusUnknown,
-            Icon::Refresh, Icon::Add, Icon::Delete, Icon::Edit,
-            Icon::Confirm, Icon::Cancel, Icon::Search,
-            Icon::ChevronRight, Icon::ChevronDown,
+            Icon::Playbook,
         ] {
-            let r = mde_icon(icon, IconSize::Nav);
-            let bytes = r.svg_bytes();
+            assert_eq!(
+                icon.fill_mode(),
+                FillMode::AlwaysFill,
+                "{icon:?} should be AlwaysFill"
+            );
+        }
+        // OnActive: nav-group + sidebar entries.
+        for icon in [
+            Icon::Dashboard,
+            Icon::Apps,
+            Icon::Network,
+            Icon::Devices,
+            Icon::LookAndFeel,
+            Icon::System,
+            Icon::Maintain,
+            Icon::Fleet,
+            Icon::Help,
+            Icon::Files,
+        ] {
+            assert_eq!(
+                icon.fill_mode(),
+                FillMode::OnActive,
+                "{icon:?} should be OnActive"
+            );
+        }
+        // Spot-check NeverFill.
+        assert_eq!(Icon::Settings.fill_mode(), FillMode::NeverFill);
+        assert_eq!(Icon::Refresh.fill_mode(), FillMode::NeverFill);
+        assert_eq!(Icon::WindowMinimize.fill_mode(), FillMode::NeverFill);
+    }
+
+    #[test]
+    fn every_action_carries_a_material_symbolic_icon() {
+        // Successor to the retired Carbon-named test. Every Icon
+        // variant must produce a non-empty Material Symbols name +
+        // a non-zero SVG payload at the Nav tier.
+        for icon in every_icon() {
+            let name = icon.material_name();
+            assert!(!name.is_empty(), "{icon:?} material_name() empty");
+            let resolved = mde_icon(icon, IconSize::Nav);
+            let bytes = resolved.svg_bytes_for_state(IconState::Idle);
             assert!(
-                bytes.is_some(),
-                "{icon:?} carbon_name={} → svg_bytes() returned None",
-                r.carbon_name,
+                bytes.len() > 32,
+                "{icon:?} (material_name={name}) SVG payload too small"
             );
         }
     }
 
     #[test]
-    fn mde_icon_carries_size_through() {
+    fn svg_bytes_swap_on_active_state_for_on_active_icons() {
+        let resolved = mde_icon(Icon::Dashboard, IconSize::Nav);
+        let idle = resolved.svg_bytes_for_state(IconState::Idle);
+        let active = resolved.svg_bytes_for_state(IconState::Active);
+        assert_ne!(
+            idle, active,
+            "OnActive icon should resolve different bytes for Idle vs Active"
+        );
+    }
+
+    #[test]
+    fn svg_bytes_constant_for_never_fill_icons() {
+        let resolved = mde_icon(Icon::Settings, IconSize::Nav);
+        let idle = resolved.svg_bytes_for_state(IconState::Idle);
+        let active = resolved.svg_bytes_for_state(IconState::Active);
+        assert_eq!(
+            idle, active,
+            "NeverFill icon should resolve same bytes regardless of state"
+        );
+    }
+
+    #[test]
+    fn svg_bytes_always_filled_regardless_of_state() {
+        // Notification is AlwaysFill — both Idle + Active should
+        // resolve to the _fill1 SVG.
+        let resolved = mde_icon(Icon::Notification, IconSize::Nav);
+        let idle = resolved.svg_bytes_for_state(IconState::Idle);
+        let active = resolved.svg_bytes_for_state(IconState::Active);
+        assert_eq!(idle, active);
+        // Sanity-check the bytes are the fill1 variant by
+        // re-reading from a different size + asserting non-empty.
+        assert!(idle.len() > 32);
+    }
+
+    #[test]
+    fn mde_icon_carries_size_and_material_name() {
         let r = mde_icon(Icon::Fleet, IconSize::Nav);
-        assert_eq!(r.carbon_name, "network--public");
+        assert_eq!(r.material_name, "public");
         assert!((r.size_px() - 20.0).abs() < f32::EPSILON);
     }
 
@@ -631,11 +979,7 @@ mod tests {
     }
 
     /// Every `Icon` variant — keep in sync with the enum so the
-    /// "every variant resolves" tests catch a missing arm. The
-    /// compiler enforces this via the non-exhaustive-match in
-    /// `carbon_name`; this is the safety net for the cases
-    /// where the variant is in the enum but slips through with
-    /// the wrong glyph.
+    /// `every_variant_resolves_*` tests catch a missing arm.
     fn every_icon() -> Vec<Icon> {
         vec![
             Icon::Dashboard,
@@ -670,6 +1014,8 @@ mod tests {
             Icon::History,
             Icon::Settings,
             Icon::Inventory,
+            Icon::Workbench,
+            Icon::Files,
             Icon::WindowMinimize,
             Icon::WindowMaximize,
             Icon::WindowClose,

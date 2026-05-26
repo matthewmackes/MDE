@@ -18,9 +18,9 @@
 //!
 //! | Size    | Dimensions  | Icon                                  | Used by                |
 //! |---------|-------------|---------------------------------------|------------------------|
-//! | Small   | 160 × 72 px | 28 px Carbon, leading (left of text)  | Workbench inline lists |
-//! | Medium  | 180 × 100 px| 40 px Carbon, top (above title)       | mde-files grid view    |
-//! | Large   | 200 × 140 px| 48 px Carbon, top (above title)       | Start menu grid        |
+//! | Small   | 160 × 72 px | 28 px Material Symbol, leading (left of text)  | Workbench inline lists |
+//! | Medium  | 180 × 100 px| 40 px Material Symbol, top (above title)       | mde-files grid view    |
+//! | Large   | 200 × 140 px| 48 px Material Symbol, top (above title)       | Start menu grid        |
 //!
 //! Corner radius is **12 px** for Object Cards — an intentional
 //! break from the 4 px Classic ChromeOS rule, justified by the
@@ -124,7 +124,7 @@ pub enum CardState {
 /// emits the Iced widget tree.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ObjectCard {
-    /// Optional Carbon icon. When `None`, the renderer paints a
+    /// Optional Material Symbols icon. When `None`, the renderer paints a
     /// blank slot at the spec's icon size (keeps card geometry
     /// stable across icon-bearing + icon-less rows).
     pub icon: Option<Icon>,

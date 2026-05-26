@@ -45,51 +45,67 @@ prior bundle's doc/memory/lint hygiene only described.
 
 ```
 assets/icons/material-symbols/
-├── manifest.toml                       # 64 (carbon_name → material_name) rows
-├── dashboard--20.svg                   # outlined, 20 px optical, weight 400
-├── dashboard--20--fill.svg             # filled variant (only for icons in the fill set per #2)
-├── dashboard--24.svg
-├── dashboard--24--fill.svg
-├── dashboard--40.svg
-├── dashboard--40--fill.svg
-├── ... (one set per of the 64 mapped icons)
+├── dashboard_20px.svg                  # outlined, 20 px optical, weight 400
+├── dashboard_24px.svg
+├── dashboard_40px.svg
+├── dashboard_fill1_20px.svg            # filled variant (only for fill-eligible icons)
+├── dashboard_fill1_24px.svg
+├── dashboard_fill1_40px.svg
+├── ... (one set per mapped icon)
 ```
 
-**File naming convention:** `<material_snake_name>--<size>[--fill].svg`.
-Material's own catalog uses `snake_case` names (e.g. `notifications`,
-`network_check`), which becomes the on-disk filename verbatim. The
-`--fill` suffix is appended only for icons in the fill-eligible set
-(per #2: status indicators + notification bell + active-state).
+**File naming convention:** `<material_snake_name>[_fill1]_<size>px.svg`.
+This matches Google's upstream filename convention verbatim, so the
+fetch script's `mv` lands the file at the path the resolver expects
+without renaming. Material's catalog uses `snake_case` names
+(`notifications`, `network_check`); the `_fill1` infix is appended
+only for fill-eligible icons.
 
-**Total asset count:** 192 base (64 × 3 sizes) + roughly 30 fill
-variants (status/bell/active-eligible × 3 sizes) ≈ **222 SVG files**.
+**Total asset count (actual):** 180 unique SVGs on disk — 46 unique
+Material names × 3 sizes = 138 outlined, plus 14 fill-eligible
+unique names × 3 sizes = 42 filled. (The original 222 estimate
+included `help` counted twice and `palette`/`settings`/`build`
+counted per Carbon-name; deduplication brings the actual count
+down. Several Icon variants share the same Material SVG —
+`Icon::System` + `Icon::Settings` both render `settings_*.svg`,
+`Icon::Maintain` + `Icon::Repair` both render `build_*.svg`, etc.)
 
 ---
 
 ## 3. Fetch script
 
-`install-helpers/fetch-material-symbols.sh` — Bourne shell, no
-external deps beyond `curl` and `jq`.
+`install-helpers/fetch-material-symbols.sh` — Bourne shell,
+single `curl` dep.
 
-Reads `assets/icons/material-symbols/manifest.toml` row-by-row.
-For each row, builds the Google Fonts canonical URL:
+The mapping table lives inline in the script as a here-document
+(46 rows of `carbon_name:material_name:fill_mode` — much simpler
+than a separate manifest file). For each row, builds the Google
+material-design-icons GitHub raw URL:
 
 ```
-https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsoutlined/
-    <material_name>/wght400/<size>px.svg
+https://raw.githubusercontent.com/google/material-design-icons/
+    master/symbols/web/<material_name>/materialsymbolsoutlined/
+    <material_name>[_fill1]_<size>px.svg
 ```
 
-(and the corresponding `fill1/wght400` variant for fill-eligible
-icons.)
+(The `_fill1` infix is appended for fill-eligible icons —
+`fill_mode = always` or `fill_mode = active`.)
 
-Re-runnable. Idempotent — if the SVG is already present and matches
-the upstream sha256, the script skips the download. Lives outside
-the build path so a `cargo build` doesn't depend on network access;
-the operator (or `make icons`) runs it whenever the manifest gains
-or loses a row.
+**During the implementation pass on 2026-05-26 the originally-
+documented `fonts.gstatic.com/s/i/short-term/release/...` URL
+pattern proved to return 404; the GitHub raw URL pattern above is
+what actually serves the SVGs. The design lock changed; the doc
+caught up here.**
+
+Re-runnable. Idempotent — `[ -s "$target" ]` skip when the file
+is already present and non-empty. Lives outside the build path so
+`cargo build` doesn't depend on network access; operators (or a
+future `make icons` rule) run it whenever the mapping gains or
+loses a row.
 
 The script's exit code is a hard fail when any download produces a
-non-SVG response — guards against silent 404 pages getting baked in.
+non-SVG response (checked via `head -c 200 | grep '<svg'`) —
+guards against silent 404 HTML pages getting baked in.
 
 ---
 

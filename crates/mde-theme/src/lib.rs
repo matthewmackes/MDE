@@ -68,7 +68,8 @@ pub use components::{
 };
 pub use density::Density;
 pub use icons::{
-    icon_for_device_type, mde_icon, Icon, IconSize, ResolvedIcon, CARBON_LINE_WEIGHT_PX,
+    icon_for_device_type, mde_icon, FillMode, Icon, IconSize, IconState, ResolvedIcon,
+    MATERIAL_LINE_WEIGHT_PX,
 };
 pub use motion::{Easing, Motion, PANEL_MOUNT_TRANSLATE_Y_PX, PULSE_MAX_SCALE};
 pub use palette::Palette;

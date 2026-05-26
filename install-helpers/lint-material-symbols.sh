@@ -26,7 +26,12 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
 SCAN_INCLUDES='--include=*.rs --include=*.py --include=*.css --include=*.desktop'
-SCAN_PATHS='crates/mde-applets/ crates/mde-portal/ crates/mde-files/ crates/mde-workbench/ crates/mde-popover/ crates/mde-panel/ crates/mde-peer-card/ crates/mde-drawer/ crates/mde-wizard/ crates/mde-session/ data/css/ data/applications/'
+# EPIC-UI-MATERIAL.lint-scope (2026-05-26) — `crates/mde-theme/`
+# added once `EPIC-UI-MATERIAL.svg-swap` rewrote `icons.rs` from
+# Carbon `include_bytes!` baking to Material Symbols. Until that
+# swap landed this path was silently excluded (the design doc
+# called this out as the hidden Carbon surface the lint missed).
+SCAN_PATHS='crates/mde-applets/ crates/mde-portal/ crates/mde-files/ crates/mde-workbench/ crates/mde-popover/ crates/mde-panel/ crates/mde-peer-card/ crates/mde-drawer/ crates/mde-wizard/ crates/mde-session/ crates/mde-theme/ data/css/ data/applications/'
 
 # Allow-listed path prefixes. Net-new Carbon references inside
 # these are tolerated as historical / retiring code.

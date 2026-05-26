@@ -21,7 +21,7 @@ use iced::widget::{column, container, row, text, Column, Space};
 use iced::{alignment, Background, Border, Color, Element, Length, Padding, Shadow as IcedShadow};
 
 use mde_theme::{
-    mde_icon, CardSize, CardState, IconPlacement, IconSize, ObjectCard, Palette,
+    mde_icon, CardSize, CardState, IconPlacement, IconSize, IconState, ObjectCard, Palette,
     CARD_CORNER_RADIUS, CARD_DISABLED_OPACITY, CARD_FOCUS_OUTLINE_OFFSET,
     CARD_FOCUS_OUTLINE_WIDTH, CARD_HOVER_OVERLAY_ALPHA, CARD_PADDING,
     CARD_SELECTED_BORDER_WIDTH, CARD_SELECTED_OVERLAY_ALPHA, CARD_SHADOW_DEFAULT_ALPHA,
@@ -67,9 +67,9 @@ pub fn object_card<'a, Message: 'a>(
     let card_state = card.state;
 
     // ---- icon slot ---------------------------------------------
-    // Match `panel_chrome::empty_state`'s icon-resolve idiom:
-    // prefer baked Carbon SVG, fall back to the Unicode glyph
-    // when svg_bytes() is None (the BUG-13 safety net pattern).
+    // Material Symbols SVG bytes (EPIC-UI-MATERIAL.svg-swap). Cards
+    // in `CardState::Selected` thread `IconState::Active` so nav-group
+    // icons render filled; everything else renders outlined.
     let icon_slot: Element<'a, Message> = if let Some(icon) = card.icon {
         let icon_px = card_size.icon_size();
         // Pick the IconSize tier whose px is nearest the spec
@@ -80,23 +80,21 @@ pub fn object_card<'a, Message: 'a>(
             CardSize::Small => IconSize::Nav,
             CardSize::Medium | CardSize::Large => IconSize::EmptyState,
         };
+        let icon_state = match card_state {
+            CardState::Selected => IconState::Active,
+            _ => IconState::Idle,
+        };
         let resolved = mde_icon(icon, tier);
-        if let Some(svg_bytes) = resolved.svg_bytes() {
-            use iced::widget::svg as widget_svg;
-            let muted = palette.text.into_iced_color();
-            widget_svg(widget_svg::Handle::from_memory(svg_bytes))
-                .width(Length::Fixed(icon_px))
-                .height(Length::Fixed(icon_px))
-                .style(move |_t: &iced::Theme, _s: widget_svg::Status| widget_svg::Style {
-                    color: Some(muted),
-                })
-                .into()
-        } else {
-            text(resolved.fallback_glyph)
-                .size(icon_px)
-                .color(palette.text.into_iced_color())
-                .into()
-        }
+        let svg_bytes = resolved.svg_bytes_for_state(icon_state);
+        use iced::widget::svg as widget_svg;
+        let muted = palette.text.into_iced_color();
+        widget_svg(widget_svg::Handle::from_memory(svg_bytes))
+            .width(Length::Fixed(icon_px))
+            .height(Length::Fixed(icon_px))
+            .style(move |_t: &iced::Theme, _s: widget_svg::Status| widget_svg::Style {
+                color: Some(muted),
+            })
+            .into()
     } else {
         Space::new(
             Length::Fixed(card_size.icon_size()),
