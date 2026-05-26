@@ -94,6 +94,16 @@ struct Args {
     /// disk. Used by the `--dry-run-from-env` bench gate.
     #[clap(long)]
     dry_run_from_env: bool,
+
+    /// BUS-4.3 — skip the Bus dual-write. Default behavior is
+    /// to also shell out to `mde-bus publish mon/<class> ...`
+    /// after the JSONL write, so MON alerts surface through
+    /// Bus subscribers AND the legacy `~/.local/share/mde/alerts/`
+    /// JSONL consumers. `--no-bus` disables the dual-write for
+    /// debugging or for environments where `mde-bus` isn't
+    /// installed yet (pre-enrollment peer).
+    #[clap(long)]
+    no_bus: bool,
 }
 
 /// MON-3 — deterministic ULID derived from
@@ -268,7 +278,116 @@ fn main() -> std::io::Result<()> {
         })?;
     let path = write_event(&event, &output_dir)?;
     println!("{}", path.display());
+
+    // BUS-4.3 — dual-write to the Bus so MON alerts surface
+    // through the priority-tiered surface dispatcher (status
+    // strip on `high`, Theater on `urgent`) in addition to the
+    // legacy alerts/ JSONL consumers. Best-effort: if `mde-bus`
+    // isn't on PATH (pre-enrollment / dev box without the RPM
+    // installed) we log + continue. The JSONL is durably stored
+    // regardless, and a later `mde-alert-emit` run on the same
+    // unique_id is a no-op anyway (deterministic ULID).
+    if !args.no_bus {
+        publish_to_bus(&event);
+    }
+
     Ok(())
+}
+
+/// Map a Netdata `category` (`NETDATA_ALARM_CHART_CONTEXT`)
+/// to a Bus topic under the `mon/*` namespace. Per BUS-1.6's
+/// 12-topic seed lock, the four canonical mon topics are
+/// `mon/cpu` / `mon/memory` / `mon/disk` / `mon/network`;
+/// Nebula + Gluster contexts route to dedicated `mon/nebula`
+/// / `mon/gluster` topics that auto-create on first publish
+/// (Round 3 self-serve creation lock).
+///
+/// Pure helper — exposed for unit tests.
+#[must_use]
+pub fn bus_topic_for(category: &str) -> String {
+    let mut parts = category.split('.');
+    let prefix = parts.next().filter(|s| !s.is_empty()).unwrap_or("system");
+    match prefix {
+        "nebula" => "mon/nebula".to_string(),
+        "gluster" | "glusterfs" => "mon/gluster".to_string(),
+        "mackesd" => "mon/mackesd".to_string(),
+        "system" => {
+            let sub = parts.next().unwrap_or("misc");
+            match sub {
+                "cpu" => "mon/cpu".to_string(),
+                "ram" | "memory" | "mem" => "mon/memory".to_string(),
+                "disk" | "io" => "mon/disk".to_string(),
+                "net" | "network" | "interface" => "mon/network".to_string(),
+                _ => "mon/system".to_string(),
+            }
+        }
+        other => format!("mon/{other}"),
+    }
+}
+
+/// Map Netdata's `NETDATA_ALARM_STATUS` severity to a Bus
+/// priority string. `CRITICAL` → urgent (Theater takeover),
+/// `WARNING` → high (status-strip + sound), `CLEAR` → default
+/// (just the tray entry — the resolve is informational).
+/// Anything unrecognized → default (safe fallback).
+#[must_use]
+pub fn bus_priority_for(severity: &str) -> &'static str {
+    match severity.to_ascii_uppercase().as_str() {
+        "CRITICAL" | "CRIT" | "EMERGENCY" => "urgent",
+        "WARNING" | "WARN" => "high",
+        "CLEAR" | "OK" | "INFO" => "default",
+        _ => "default",
+    }
+}
+
+/// Shell out to `mde-bus publish` to surface this alert
+/// through the Bus surface dispatcher. Best-effort: every
+/// failure path logs to stderr + returns Ok-equivalent so
+/// the JSONL write is the authoritative outcome.
+fn publish_to_bus(event: &AlertEvent) {
+    let topic = bus_topic_for(&event.category);
+    let priority = bus_priority_for(&event.severity);
+    let title = format!("{}: {}", event.host, event.alert);
+    let body = if event.chart_url.is_empty() {
+        event.summary.clone()
+    } else {
+        format!("{}\n\n{}", event.summary, event.chart_url)
+    };
+    let result = std::process::Command::new("mde-bus")
+        .args([
+            "publish",
+            &topic,
+            "--priority",
+            priority,
+            "--title",
+            &title,
+            "--body-flag",
+            &body,
+            // --no-broker means "persist + audit only, don't
+            // shell to ntfy". The bus daemon's broker may not
+            // be up yet (pre-enrollment); persistence still
+            // catches the event so the surface dispatcher
+            // sees it through the file tree.
+            "--no-broker",
+        ])
+        .status();
+    match result {
+        Ok(status) if status.success() => {}
+        Ok(status) => {
+            eprintln!(
+                "mde-alert-emit: mde-bus publish to {topic} exited {} — alert recorded in JSONL only",
+                status
+                    .code()
+                    .map(|c| c.to_string())
+                    .unwrap_or_else(|| "?".to_string())
+            );
+        }
+        Err(e) => {
+            eprintln!(
+                "mde-alert-emit: mde-bus binary not invocable ({e}) — alert recorded in JSONL only"
+            );
+        }
+    }
 }
 
 #[cfg(test)]
@@ -406,6 +525,49 @@ mod tests {
         let body = std::fs::read_to_string(&path).expect("read");
         let parsed: AlertEvent = serde_json::from_str(&body).expect("parse");
         assert_eq!(parsed, event);
+    }
+
+    // BUS-4.3 — Bus topic + priority mapping helpers.
+
+    #[test]
+    fn bus_topic_for_routes_system_subcategories() {
+        assert_eq!(bus_topic_for("system.cpu"), "mon/cpu");
+        assert_eq!(bus_topic_for("system.ram"), "mon/memory");
+        assert_eq!(bus_topic_for("system.memory"), "mon/memory");
+        assert_eq!(bus_topic_for("system.disk"), "mon/disk");
+        assert_eq!(bus_topic_for("system.io"), "mon/disk");
+        assert_eq!(bus_topic_for("system.network"), "mon/network");
+        assert_eq!(bus_topic_for("system.interface"), "mon/network");
+        assert_eq!(bus_topic_for("system.misc"), "mon/system");
+    }
+
+    #[test]
+    fn bus_topic_for_routes_dedicated_prefixes() {
+        assert_eq!(bus_topic_for("nebula.process"), "mon/nebula");
+        assert_eq!(bus_topic_for("gluster.heal"), "mon/gluster");
+        assert_eq!(bus_topic_for("glusterfs.heal"), "mon/gluster");
+        assert_eq!(bus_topic_for("mackesd.workers"), "mon/mackesd");
+    }
+
+    #[test]
+    fn bus_topic_for_unknown_prefix_falls_to_mon_other() {
+        assert_eq!(bus_topic_for("kdc.session"), "mon/kdc");
+        assert_eq!(bus_topic_for(""), "mon/system");
+    }
+
+    #[test]
+    fn bus_priority_for_maps_severity_classes() {
+        assert_eq!(bus_priority_for("CRITICAL"), "urgent");
+        assert_eq!(bus_priority_for("critical"), "urgent");
+        assert_eq!(bus_priority_for("crit"), "urgent");
+        assert_eq!(bus_priority_for("WARNING"), "high");
+        assert_eq!(bus_priority_for("warn"), "high");
+        assert_eq!(bus_priority_for("CLEAR"), "default");
+        assert_eq!(bus_priority_for("OK"), "default");
+        assert_eq!(bus_priority_for("INFO"), "default");
+        // Unknown → default (safe fallback)
+        assert_eq!(bus_priority_for("MAGENTA"), "default");
+        assert_eq!(bus_priority_for(""), "default");
     }
 
     #[test]

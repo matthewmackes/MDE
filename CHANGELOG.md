@@ -5,6 +5,21 @@ unreleased; tag versions get a date when they ship.
 
 ## Unreleased — v1.0 MackesDE for Workgroups (rebrand cut)
 
+**BUS-4.3 — MON Netdata alerts dual-write to Bus (2026-05-26)**
+- `mde-alert-emit` now publishes every alert through the Bus
+  in addition to writing the legacy `~/.local/share/mde/alerts/
+  <ulid>.json` JSONL. `system.cpu` routes to `mon/cpu`,
+  `nebula.process` to `mon/nebula`, etc.
+- `CRITICAL` severity → Bus `urgent` priority (Theater takeover
+  surface); `WARNING` → `high` (status-strip + sound); `CLEAR`
+  → `default` (tray entry only).
+- Shell-out path uses `mde-bus publish --no-broker` so the
+  message reaches the persistence layer + audit log even on
+  pre-enrollment peers where ntfy isn't running yet.
+- Failures are non-fatal — the JSONL stays the authoritative
+  store. `--no-bus` CLI flag disables the dual-write entirely
+  for tests / pre-RPM environments.
+
 **BUS-7.1 — per-peer JSONL audit log (v6.x Mackes Bus, 2026-05-26)**
 - New `crates/mde-bus/src/audit.rs` ships an append-only audit
   log at `~/.local/share/mde/bus/audit/<YYYY-MM-DD>.jsonl`. Each
