@@ -243,10 +243,6 @@ def _build_nav(state: MackesState, navigate: Callable[[str], None]) -> List[NavG
         from mackes.workbench.network.mesh_health import MeshHealthPanel
         return _wrap_in_scroller(MeshHealthPanel())
 
-    def _mesh_performance():
-        from mackes.workbench.network.mesh_performance import MeshPerformancePanel
-        return _wrap_in_scroller(MeshPerformancePanel())
-
     # NF-5.5 (v2.5 Nebula fabric): MeshVpnPanel retired with
     # the underlying Tailscale/Headscale Python tree. Mesh
     # state lives in `mesh_control` (which got its Nebula
@@ -282,9 +278,6 @@ def _build_nav(state: MackesState, navigate: Callable[[str], None]) -> List[NavG
         def _f_health():
             from mackes.workbench.network.mesh_health import MeshHealthPanel
             return MeshHealthPanel()
-        def _f_perf():
-            from mackes.workbench.network.mesh_performance import MeshPerformancePanel
-            return MeshPerformancePanel()
         # NF-5.5 (v2.5): _f_meshvpn retired — the underlying
         # MeshVpnPanel + its Tailscale/Headscale dependencies
         # retire as part of the wholesale v1.x-Python sweep.
@@ -299,7 +292,6 @@ def _build_nav(state: MackesState, navigate: Callable[[str], None]) -> List[NavG
             return FirewallPanel()
         return _build_subnav_container([
             ("mesh_health",      "Mesh Health",      _f_health),
-            ("mesh_performance", "Mesh Performance", _f_perf),
             ("mesh_ssh",         "Mesh SSH",         _f_meshssh),
             ("mesh_services",    "Mesh Services",    _f_services),
             ("firewall",         "Firewall",         _f_firewall),
@@ -1223,7 +1215,6 @@ _LEGACY_KEY_MAP = {
     "apps_install": "apps", "apps_remove": "apps", "apps_installed": "apps",
     "app_sources": "app_sources",
     "mesh_health": "mesh_health",
-    "mesh_performance": "mesh_performance",
     "drift": "maintain", "update": "maintain", "fonts": "maintain",
     "resources": "maintain", "health": "maintain", "deps": "maintain",
     "logs": "maintain", "repair": "maintain", "reset": "maintain",

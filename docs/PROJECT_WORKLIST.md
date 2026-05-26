@@ -933,7 +933,7 @@ locked work appears under **Active** with `[ ] Open`.
 
 #### Wave 2 — Workbench panel retirement (gateway for Wave 3)
 
-- [ ] **DEAD-2.3: v5.1 — Delete `mackes/workbench/network/mesh_performance.py` panel + sidebar nav item**
+- [✓] **DEAD-2.3: v5.1 — Delete `mackes/workbench/network/mesh_performance.py` panel + sidebar nav item**
   **As** the v5.1 cleanup pass,
   **I want** to delete the Mesh Performance Workbench panel (Datapath / MTU+GSO / Probes / Discovery / Relay / Metrics),
   **so that** the gateway-consumer of 5 retirement targets (`mesh_fs`, `mesh_fs_fuse`, `mesh_mdns`, `mesh_wol`, `mesh_metrics`) is removed first, unblocking Wave 3. The canonical metrics surface in v2.6+ is Netdata's web UI (chart URLs already stamped into alert events per MON-3); the Datapath/MTU knobs are auto-tuned by `nebula_supervisor` + glusterd defaults; the Discovery row is owned by `mdns.rs` worker; the Relay row is dead (DERP retired in v2.5).

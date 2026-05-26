@@ -23,6 +23,13 @@ all in-flight epics ship together per Q91 maximum-scope lock. See
 - Deleted `mackes/mesh_thumbnailer.py` — Tumbler thumbnailer for mesh
   clipboard/notification files. Replaced by
   `crates/mackesd/src/workers/thumbnailer.rs` (Rust).
+- Deleted `mackes/workbench/network/mesh_performance.py` — Mesh
+  Performance Workbench panel (Datapath / MTU+GSO / Probes /
+  Discovery / Relay / Metrics). Retired; metrics surface is Netdata
+  web UI (chart URLs in alerts) + Workbench Mesh Storage panel
+  (GF-8.2). The sidebar's "Mesh Performance" nav row and the
+  unified `mesh_control` notebook's "Performance" tab are removed
+  in the same change. Unblocks Wave 3 (DEAD-2.4..2.7 + DEAD-2.10).
 
 **Scope tightening (EPIC-MASTER-3)**
 - Fleet cap reduced from 16 to **8 peers** (Q3 of the 100-Q

@@ -1,11 +1,11 @@
 """Unified Mesh Control Panel (Phase 12.8.1).
 
-Replaces the seven standalone mesh panels (`mesh_health`, `mesh_join`,
-`mesh_performance`, `mesh_services`, `mesh_ssh`, `mesh_topology`,
-`mesh_vpn`) with one tabbed surface. The legacy panels stay importable
-so the sidebar's quick-jump links keep working during the 1.x → 2.x
-deprecation window; this panel is the canonical entry point starting
-in v1.1.x and the only mesh surface in v2.0.0.
+Replaces the six standalone mesh panels (`mesh_health`, `mesh_join`,
+`mesh_services`, `mesh_ssh`, `mesh_topology`, `mesh_vpn`) with one
+tabbed surface. The legacy panels stay importable so the sidebar's
+quick-jump links keep working during the 1.x → 2.x deprecation
+window; this panel is the canonical entry point starting in v1.1.x
+and the only mesh surface in v2.0.0.
 
 Per `docs/PROJECT_WORKLIST.md` Phase 12.8.1, each tab reads through
 `mackesd_core::mesh::*` via `mackes.mackesd_bridge` (shell-out today;
@@ -36,7 +36,6 @@ TABS: list[tuple[str, str, str, str]] = [
     # surfaces in the Health + Topology tabs (rewritten for
     # Nebula by NF-11.x).
     ("ssh",          "SSH",           "mackes.workbench.network.mesh_ssh",          "MeshSshPanel"),
-    ("performance",  "Performance",   "mackes.workbench.network.mesh_performance",  "MeshPerformancePanel"),
     ("join",         "Join",          "mackes.workbench.network.mesh_join",         "MeshJoinPanel"),
     ("pending",      "Pending",       "mackes.workbench.network.mesh_pending",      "MeshPendingPanel"),
     ("history",      "History",       "mackes.workbench.network.mesh_history",      "MeshHistoryPanel"),
