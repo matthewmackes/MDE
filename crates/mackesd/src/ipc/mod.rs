@@ -27,6 +27,7 @@
 // rest of the crate's missing_docs hygiene stays loud.
 #![allow(missing_docs)]
 
+pub mod bus_bridge;
 pub mod files;
 pub mod fleet;
 // GF-2.2 (v5.0.0) — dev.mackes.MDE.Gluster.Status surface.

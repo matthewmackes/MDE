@@ -140,6 +140,18 @@ impl NotificationsService {
         let id: i64 = guard
             .query_row("SELECT last_insert_rowid()", [], |r| r.get(0))
             .unwrap_or(1);
+        // Release the SQLite lock BEFORE the Bus bridge spawn so
+        // we don't tie up the mutex across the tokio::spawn
+        // boundary.
+        drop(guard);
+        // BUS-4.4 — bridge to Mackes Bus. Fire-and-forget shell
+        // out so the FDO client's Notify() return doesn't wait
+        // on our publish. Pre-enrollment peers (no mde-bus
+        // binary) log + continue; the FDO delivery path is
+        // unaffected either way.
+        crate::ipc::bus_bridge::publish_to_bus_async(
+            app_name, summary, body, urgency,
+        );
         u32::try_from(id).unwrap_or(1)
     }
 

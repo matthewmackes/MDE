@@ -5,6 +5,20 @@ unreleased; tag versions get a date when they ship.
 
 ## Unreleased — v1.0 MackesDE for Workgroups (rebrand cut)
 
+**BUS-4.4 — FDO notifications bridge to Bus (2026-05-26)**
+- Every `org.freedesktop.Notifications.Notify` call mackesd
+  receives now also publishes to `fdo/<sanitized-app>` on the
+  Mackes Bus. FDO clients (notify-send, libnotify, etc.) still
+  get the native desktop notification — the bridge is additive.
+- Fire-and-forget shell-out (`tokio::spawn` of
+  `mde-bus publish --no-broker`) so the FDO client's return
+  path isn't blocked on the publish. Pre-enrollment peers (no
+  `mde-bus` binary) log + continue.
+- App-name sanitization: lowercase + hyphenate + collapse runs
+  + strip edges. `Slack` → `slack`, `Org.Gnome.Calendar` →
+  `org-gnome-calendar`.
+- Urgency → priority: 0 → min, 1 → default, 2 → urgent.
+
 **BUS-4.3 — MON Netdata alerts dual-write to Bus (2026-05-26)**
 - `mde-alert-emit` now publishes every alert through the Bus
   in addition to writing the legacy `~/.local/share/mde/alerts/
