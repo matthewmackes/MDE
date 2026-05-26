@@ -442,9 +442,9 @@ call-end lifecycle, never at install or login.
 
 #### BUS-3: Webhooks + adapters
 
-- [ ] **BUS-3.1: Expose ntfy's webhook publisher on Nebula-only port.** Nebula source-IP is the only authentication. Scope: ntfy config + firewall rule. Files: `data/ntfy/server.yml.tmpl`, `data/firewall/mackes-bus.rules`. Exit: POST to `https://$peer:8444/<topic>` from inside mesh publishes; same POST from outside is dropped. Test: from-mesh + from-outside curl tests.
-- [ ] **BUS-3.2: YAML transform-rules engine at `~/.config/mde/bus-hooks.yaml`.** Match path / headers / body; extract fields; publish to topic with priority. Thin Rust shim in mded consumes inbound webhooks, evaluates YAML, calls ntfy publish API. Scope: rule parser + matcher + publisher. Files: `crates/mde-bus/src/hooks/{mod,parser,match}.rs`, `data/bus/hooks.yaml.tmpl`. Exit: shipped sample rule for GitHub `push` event publishes to `gh/push` topic with parsed `repo` + `branch`. Test: per-adapter unit tests with recorded payloads.
-- [ ] **BUS-3.3: GitHub adapter** — push / PR / issue / release events → `gh/*` topics. Files: `crates/mde-bus/src/hooks/github.rs`, `data/bus/hooks/github.yaml`. Exit: bench test with replayed GitHub webhook payload publishes correct topic. Test: payload snapshot.
+- [>] **BUS-3.1: Expose ntfy's webhook publisher on Nebula-only port.** *(session=opus-47-2026-05-26-ship-H)* Nebula source-IP is the only authentication. Scope: ntfy config + firewall rule. Files: `data/ntfy/server.yml.tmpl`, `data/firewall/mackes-bus.rules`. Exit: POST to `https://$peer:8444/<topic>` from inside mesh publishes; same POST from outside is dropped. Test: from-mesh + from-outside curl tests.
+- [>] **BUS-3.2: YAML transform-rules engine at `~/.config/mde/bus-hooks.yaml`.** *(session=opus-47-2026-05-26-ship-H)* Match path / headers / body; extract fields; publish to topic with priority. Thin Rust shim in mded consumes inbound webhooks, evaluates YAML, calls ntfy publish API. Scope: rule parser + matcher + publisher. Files: `crates/mde-bus/src/hooks/{mod,parser,match}.rs`, `data/bus/hooks.yaml.tmpl`. Exit: shipped sample rule for GitHub `push` event publishes to `gh/push` topic with parsed `repo` + `branch`. Test: per-adapter unit tests with recorded payloads.
+- [>] **BUS-3.3: GitHub adapter** — *(session=opus-47-2026-05-26-ship-H)* push / PR / issue / release events → `gh/*` topics. Files: `crates/mde-bus/src/hooks/github.rs`, `data/bus/hooks/github.yaml`. Exit: bench test with replayed GitHub webhook payload publishes correct topic. Test: payload snapshot.
 - [ ] **BUS-3.4: Gitea adapter** — push / PR / issue events → `gitea/*` topics. Files: `crates/mde-bus/src/hooks/gitea.rs`, `data/bus/hooks/gitea.yaml`. Exit + Test: as BUS-3.3.
 - [ ] **BUS-3.5: Sonarr/Radarr adapter** — download / grab / failure → `media/*` topics. Files: `crates/mde-bus/src/hooks/sonarr.rs`, `data/bus/hooks/sonarr.yaml`. Exit + Test: as BUS-3.3.
 - [ ] **BUS-3.6: UPS/NUT adapter** — grid loss / battery low / shutdown imminent → `power/*` topics. Files: `crates/mde-bus/src/hooks/nut.rs`, `data/bus/hooks/nut.yaml`. Exit + Test: as BUS-3.3.
@@ -1304,7 +1304,7 @@ call-end lifecycle, never at install or login.
     - [ ] `grep -rln "python3 -m mackes\|subprocess::Command::new.*python" crates/mackesd/` returns zero matches.
     - [ ] All previously-subprocess-driven behaviors covered by Rust unit + integration tests.
 
-- [ ] **EPIC-RETIRE-PY-WORKBENCH: Retire `mackes/workbench/` Python GTK tree; all panels migrate to Iced `mde-workbench`** *(Q49)*
+- [>] **EPIC-RETIRE-PY-WORKBENCH: Retire `mackes/workbench/` Python GTK tree; all panels migrate to Iced `mde-workbench`** *(Q49)* *(session=opus-47-2026-05-26-ship-H — audit shipped; sub-tasks below sequence the drain)*
   **As** the v1.0 cut,
   **I want** the v1.x Python workbench retired entirely,
   **so that** only `mde-workbench` (Iced/Rust) renders Workbench panels.
@@ -1313,6 +1313,38 @@ call-end lifecycle, never at install or login.
     - [ ] GF-8.2 (Mesh Storage panel) + GF-17.10 (focus-mode editor) — and any other new-panel tasks — re-target to the Iced tree.
     - [ ] `mackes/app.py` removes the GTK workbench window invocation; entry point becomes `mde-workbench` binary.
     - [ ] `make test-nodeps` passes; UI snapshot tests verify panel coverage.
+
+- [✓] **EPIC-RETIRE-PY-WORKBENCH.audit: Walk the 74 Python files + classify each against Iced parity.** *(shipped 2026-05-26 — session=opus-47-2026-05-26-ship-H; new `docs/EPIC-RETIRE-PY-WORKBENCH-audit.md` carries the parity matrix + 5 buckets: A=43 ported (Iced equivalent ready, retire-immediate), B=3 retired-by-other-epic (mesh_ssh / qnm / boot_login go away with NF-21.x / EPIC-RETIRE-QNM / DM-5), C=5 GTK-chrome (sidebar_window / toasts / welcome_banner / window / dashboard vanish with the GTK retirement), D=1 not-a-panel helper (mesh_topology_render — cairo helper used only by the GTK panel), E=11 genuine port gaps (display / keyboard / mouse / appearance / panel-layout / debloat / dependencies / reset-to-preset / uninstall / mesh-health / workspaces). 52 of 74 files can retire WITHOUT new port work; 11 sub-tasks below cover the gaps. Iced parity verified by spot-check (datetime.rs is 2x its Python equivalent in LOC, firewall.rs 2x — real ports, not placeholders).)*
+
+- [ ] **EPIC-RETIRE-PY-WORKBENCH.delete-ported: Delete the 43 Bucket-A Python files + their wiring.** Each file's Iced equivalent already ships in `crates/mde-workbench/src/panels/`. Per-file Iced parity verified at delete-time by reading both. Acceptance: `mackes/workbench/` loses 43 .py files; `mackes/workbench/__init__.py` + `mackes/app.py` references to the deleted modules go with them; `make test-nodeps` green; `make lint` green; ruff clean; module-import smoke on every consumer still passes.
+
+- [ ] **EPIC-RETIRE-PY-WORKBENCH.delete-superseded: Delete the 3 Bucket-B Python files (mesh_ssh / qnm / boot_login).** Each panel's concept is being retired by a parallel epic — no Iced port is needed. Acceptance: 3 .py files deleted; the parent retirement epics (NF-21.x cascade, EPIC-RETIRE-QNM, DM-5) carry a worklist back-reference to this commit.
+
+- [ ] **EPIC-RETIRE-PY-WORKBENCH.delete-chrome: After delete-ported + delete-superseded + all .port-* tasks close, delete the 5 Bucket-C files + 1 Bucket-D file + the 11 infra files + `mackes/app.py`'s GTK window invocation.** This is the closing commit of the EPIC — `mackes/workbench/` directory removed entirely; `mackes-shell` binary's entry point points at `mde-workbench` per the parent acceptance line. Acceptance: `find mackes/workbench/ -type f` returns empty; `python3 -m mackes.app` runs without trying to import `mackes.workbench.*`; `make test-nodeps` green.
+
+  *(11 port-task sub-bullets below, one per Bucket-E gap. Each ships as its own bundle; three are flagged with `(pre-port audit required)` because the Iced workbench may already cover them under a differently-named panel.)*
+
+- [ ] **EPIC-RETIRE-PY-WORKBENCH.port-display: Port `mackes/workbench/devices/display.py` (single-display tweaks) to an Iced panel.** This is the per-display config surface (vs `displays.py` plural, which has `displays.rs`). Verify scope vs `displays.rs` at port-time — single + multi-display configuration may merge into one panel.
+
+- [ ] **EPIC-RETIRE-PY-WORKBENCH.port-keyboard: Port `mackes/workbench/devices/keyboard.py` (keyboard layout + repeat-rate) to an Iced panel.** No Iced equivalent exists; cover XKB layout picker + repeat-rate + repeat-delay sliders + sticky-keys/slow-keys accessibility toggles to match the Python surface.
+
+- [ ] **EPIC-RETIRE-PY-WORKBENCH.port-mouse: Port `mackes/workbench/devices/mouse.py` (mouse + touchpad config) to an Iced panel.** Cover acceleration + handedness + tap-to-click + scroll-direction toggles.
+
+- [ ] **EPIC-RETIRE-PY-WORKBENCH.port-appearance: Port `mackes/workbench/look_and_feel/appearance.py` (color/density preset picker) to an Iced panel.** Likely small — surfaces the preset chooser the existing `themes.rs` + `fonts.rs` panels don't cover. Verify at port-time whether the lock 2026-05-26 (Classic ChromeOS visual + Roboto + Indigo) means this panel's choices collapse to a single read-only display.
+
+- [ ] **EPIC-RETIRE-PY-WORKBENCH.port-panel-layout: Port `mackes/workbench/look_and_feel/panel.py` (panel layout chooser) to an Iced panel.** *(pre-port audit required)* — the v6.0 mde-portal lock retires the standalone panel concept (Dock IS Portal collapsed). This task may collapse to a deletion if the v6.0 mde-portal lock supersedes the panel-layout chooser entirely. Audit before porting.
+
+- [ ] **EPIC-RETIRE-PY-WORKBENCH.port-debloat: Port `mackes/workbench/maintain/debloat.py` (optional-package uninstall surface) to an Iced panel.** Cover the curated debloat list + the per-package toggle + the dry-run preview.
+
+- [ ] **EPIC-RETIRE-PY-WORKBENCH.port-dependencies: Port `mackes/workbench/maintain/dependencies.py` (RPM dep visualization) to an Iced panel.** Tree-of-packages view. Verify whether v2.0+ keeps this surface or punts to `dnf` shell-out in `mde-workbench`'s logs panel.
+
+- [ ] **EPIC-RETIRE-PY-WORKBENCH.port-reset-to-preset: Port `mackes/workbench/maintain/reset_to_preset.py` ("Restore my preset" button) to an Iced panel.** Single-button surface; likely lands as a section inside `mde-workbench`'s existing `repair.rs` rather than its own panel.
+
+- [ ] **EPIC-RETIRE-PY-WORKBENCH.port-uninstall: Port `mackes/workbench/maintain/uninstall.py` to an Iced panel.** *(pre-port audit required)* — the Iced tree already has `apps_remove.rs`. If the concepts overlap, retire `uninstall.py` as a Bucket-A dupe and update this audit. Otherwise port the gap (likely the "uninstall the whole MDE bundle" path, which is distinct from per-app remove).
+
+- [ ] **EPIC-RETIRE-PY-WORKBENCH.port-mesh-health: Port `mackes/workbench/network/mesh_health.py` (per-peer health dashboard) to an Iced panel.** *(pre-port audit required)* — the Iced tree's `mesh_topology.rs` may already render per-peer health; verify scope before porting. If `mesh_topology.rs` covers the surface, retire `mesh_health.py` as a Bucket-A dupe.
+
+- [ ] **EPIC-RETIRE-PY-WORKBENCH.port-workspaces: Port `mackes/workbench/system/workspaces.py` (i3 workspace picker) to an Iced panel.** Cover the workspace-list view + per-workspace label/output assignment. Likely a small panel; may fold into `window_manager.rs`.
 
 - [ ] **EPIC-RETIRE-DBUS: Migrate every MDE-internal D-Bus surface to Bus action/reply topics** *(Q20 + Q96)*
   **As** the platform,
