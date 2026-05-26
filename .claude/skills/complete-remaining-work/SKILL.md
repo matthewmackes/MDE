@@ -1,7 +1,13 @@
 ---
 name: complete-remaining-work
-description: Execute remaining project tasks from the canonical worklist with aggressive parallelization, completeness-first implementation, and explicit tech-debt capture. Use when the user asks to continue work, complete remaining steps, move quickly, bundle tasks, or proceed without repeated confirmation. Ported verbatim from map2-audio — the policy is project-agnostic.
+description: "[RETIRED 2026-05-25 per Q87] Use `ship` instead — it absorbs this skill's parallelization + completeness rules verbatim. This skill body is retained for slash-name back-compat."
 ---
+
+> **RETIRED 2026-05-25 by Q87 of the 100-Q tightening survey.**
+> Skill catalog consolidated to 3 (`plan` / `ship` / `release`).
+> Use **`ship`** instead — it absorbs this skill's parallelization
+> + completeness rules verbatim. This body is retained for
+> slash-name back-compat.
 
 # Complete Remaining Work
 

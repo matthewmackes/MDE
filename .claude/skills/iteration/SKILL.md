@@ -1,7 +1,17 @@
 ---
 name: iteration
-description: Long-running autonomous loop that grinds the canonical worklist to "only hardware bench testing remains" — but ALWAYS begins with a worklist rescue pass that finds dead modules, re-cues misleading [✓] entries, surfaces mockup-only "shipped" features, scans for "lands in a follow-up" / "wired in Phase N" / "deferred to" markers (both in code comments AND in user-visible `text("…")` strings), audits design notes for incomplete ideas, and adds wiring tasks before any new code lands. New worklist items land as user stories (As/I want/so that + bench-observable acceptance) with Carbon Icon Set as the locked iconography source. Standing authorizations include commit anytime, best-choice decisions, scope/design improvements, new tasks, chrome upgrades. Use when the user says "iterate", "ship the worklist", "complete the build", "keep going until done", "rescue the worklist", "audit worklist for overlooked items", "find unwired modules", "find dead modules", "find mockup-only features", "audit design notes for incomplete ideas", "evaluate the design criteria", or sets a /goal that demands worklist exhaustion. Sister skills: [[autonomous-worker]] (single-task version), [[complete-remaining-work]] (parallelization policy), [[mackes-worklist-management]] (worklist schema).
+description: "[RETIRED 2026-05-25 per Q87] Use `plan` for the rescue-pass + N-Q surveys, or `ship` for the autonomous loop. This skill body is retained for slash-name back-compat — both halves are now embedded in the two successors."
 ---
+
+> **RETIRED 2026-05-25 by Q87 of the 100-Q tightening survey.**
+> Skill catalog consolidated to 3 (`plan` / `ship` / `release`).
+>
+> - **Worklist rescue pass** (front of every old `iteration`
+>   invocation) → moved to **`plan`** as its audit method.
+> - **Long-running autonomous loop** (the main `iteration` body)
+>   → moved to **`ship`** as its default mode.
+>
+> This body is retained for slash-name back-compat.
 
 # Iteration
 

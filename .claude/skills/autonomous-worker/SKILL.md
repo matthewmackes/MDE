@@ -1,7 +1,12 @@
 ---
 name: autonomous-worker
-description: Autonomously process the canonical worklist — pick the next open task, implement it fully, validate, and mark it done — looping until the worklist is clear or a blocker requires human authorization. Use when the user says "start autonomous mode", "run worklist", "continue autonomously", "execute", or "ship the worklist".
+description: "[RETIRED 2026-05-25 per Q87] Use `ship` instead — it absorbs this skill's single-task autonomy loop. This skill body is retained for slash-name back-compat."
 ---
+
+> **RETIRED 2026-05-25 by Q87 of the 100-Q tightening survey.**
+> Skill catalog consolidated to 3 (`plan` / `ship` / `release`).
+> Use **`ship`** instead. This body is retained for slash-name
+> back-compat.
 
 # Autonomous Worker
 

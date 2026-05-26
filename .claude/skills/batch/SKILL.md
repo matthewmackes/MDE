@@ -1,7 +1,13 @@
 ---
 name: batch
-description: Group-and-execute mode for the worklist. `/batch` alone batches every remaining non-hardware item into the largest sensible commit-sized bundles; `/batch "<scope>"` filters to items whose worklist body or section header matches the scope string (e.g. "all front end work" → NF-10..NF-18, "all CA work" → NF-2.x, "all wizard work" → NF-7.x + NF-14.x). Each bundle ships as a single commit with verification observed-green before push. Use when the user wants to fan a category of tasks across one focused push instead of the open-ended `iterate` loop. Sister skills: [[iteration]] (the open-ended loop), [[complete-remaining-work]] (parallelization policy), [[mackes-worklist-management]] (worklist schema + status legend).
+description: "[RETIRED 2026-05-25 per Q87] Use `ship \"<scope>\"` instead — `ship` absorbs the batch-by-scope filter. This skill body is retained for slash-name back-compat."
 ---
+
+> **RETIRED 2026-05-25 by Q87 of the 100-Q tightening survey.**
+> Skill catalog consolidated to 3 (`plan` / `ship` / `release`).
+> Use **`ship "<scope>"`** instead — `ship` absorbs the
+> batch-by-scope filter (`ship "all UX work"`, `ship "NF-2.x"`).
+> This body is retained for slash-name back-compat.
 
 # Batch
 

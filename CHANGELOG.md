@@ -39,6 +39,16 @@ all in-flight epics ship together per Q91 maximum-scope lock. See
   `disable-gateway` CLI subcommands removed. `Recommends: caddy`
   dropped from the RPM spec.
 
+**Skill catalog consolidated to 3 (EPIC-PROC-SKILLS-3)**
+- `plan` — design + N-Q survey + worklist rescue + lift design-doc
+  actions to worklist.
+- `ship` — autonomous worklist drain (parallel bundles, pre-commit
+  gates, dual-remote push, session-id coordination).
+- `release` — `cut release X.Y.Z` 7-step shorthand + HW bench gate.
+- Retired: `mackes-worklist-management`, `complete-remaining-work`,
+  `autonomous-worker`, `iteration`, `batch`. Bodies retained for
+  slash-name back-compat; descriptions updated to `[RETIRED]` (Q87).
+
 **Pre-commit lint gates added (EPIC-PROC-LINT)**
 - `install-helpers/lint-dbus-shape.sh` — catches net-new MDE-internal
   `#[interface]` blocks; pre-existing services snapshot-allow-listed;

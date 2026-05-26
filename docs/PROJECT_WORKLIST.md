@@ -1466,13 +1466,15 @@ locked work appears under **Active** with `[ ] Open`.
     - [✓] Memory `feedback_hardware_testing_epic` amended: description rewritten; AMENDMENT block at top of body explains "HW still doesn't block individual feature commits, but DOES block the cut itself"; original 2026-05-20 lock retained below as still applicable to per-commit gating.
     - [✓] Memory `feedback_push_commit_auth` expanded per Q83: standing auth now covers `make rpm` + full §0.6 7-step shorthand once operator types `cut release X.Y.Z` (but `cut release` invocation itself stays operator-typed, and HW bench items must be green before execution).
 
-- [ ] **EPIC-PROC-SKILLS-3: Consolidate `.claude/skills/` to 3 — `plan` / `ship` / `release`** *(Q87)*
+- [✓] **EPIC-PROC-SKILLS-3: Consolidate `.claude/skills/` to 3 — `plan` / `ship` / `release`** *(Q87)* *(shipped 2026-05-25 — session=opus-cw-2026-05-25-23:50)*
   **As** the operator,
   **I want** three clear slash skills covering design + execution + release,
   **so that** the skill catalog stays memorable + each maps to a known verb.
   **Acceptance** (each bench-observable):
-    - [ ] New skills: `plan` (absorbs design/survey/audit/iteration/autonomous-worker/complete-remaining-work/batch); `ship` (drains the worklist queue); `release` (cut + push + tag flow).
-    - [ ] Old skills retire with a comment redirecting to the new home.
+    - [✓] New `.claude/skills/plan/SKILL.md`: absorbs `mackes-worklist-management` (worklist schema) + the design-thinking / rescue-pass / N-Q survey portions of `iteration` + the planning portions of `autonomous-worker`. Covers triggers (design / survey / audit / lift), method (survey-then-design-doc-then-worklist), rescue pass (dead modules / misleading [✓] / mockup-only / deferred markers), authority hierarchy (per CLAUDE.md §0.14), worklist schema (per Q86 session-id + Q78 EPIC-NNN).
+    - [✓] New `.claude/skills/ship/SKILL.md`: absorbs `autonomous-worker` (single-task loop) + `complete-remaining-work` (parallelization policy) + `iteration` (loop part) + `batch` (named-scope filtering). Covers 10-step workflow, parallel-bundle standard, parallel-session coordination (per Q70 + Q86), standing authorizations (per Q83), when-to-stop loop conditions.
+    - [✓] New `.claude/skills/release/SKILL.md`: NEW skill. Codifies the §0.6 `cut release X.Y.Z` 7-step shorthand + the new §0.15 HW bench gate (refuses to run if HW items targeting the release are still `[ ]` Open). Standing auth per Q83 covers the full shorthand once operator types the trigger.
+    - [✓] Old skills (`mackes-worklist-management`, `complete-remaining-work`, `autonomous-worker`, `iteration`, `batch`) — frontmatter description rewritten to `[RETIRED 2026-05-25 per Q87] Use <successor>...`; body gains a redirect block at the top. Bodies retained for slash-name back-compat (existing operator habits keep working).
 
 - [✓] **EPIC-PROC-HIERARCHY: Document authority hierarchy in CLAUDE.md** *(Q67)* *(shipped 2026-05-25 — session=opus-cw-2026-05-25-23:40)*
   **As** the platform,

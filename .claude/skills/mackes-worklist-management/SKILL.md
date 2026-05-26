@@ -1,7 +1,17 @@
 ---
 name: mackes-worklist-management
-description: Enforce a single canonical project worklist with strict task schema, status tracking, and restart-safe handoffs. Use when planning, executing, or reporting project work; when adding new ideas, bugs, or features; when coordinating parallel subtasks across AI threads/humans; and when the user asks to apply the Cortex AL worklist rule. Adapted from map2-audio for the mackes-shell project.
+description: "[RETIRED 2026-05-25 per Q87] Use `plan` for the worklist schema + planning, or `ship` for execution. This skill body is retained for slash-name back-compat — its content is now embedded in the two successors."
 ---
+
+> **RETIRED 2026-05-25 by Q87 of the 100-Q tightening survey.**
+> Skill catalog consolidated to 3 (`plan` / `ship` / `release`).
+>
+> - **Planning + worklist schema** → use **`plan`** instead.
+> - **Execution + status updates** → use **`ship`** instead.
+>
+> This body is retained for slash-name back-compat (existing
+> automations + bookmarked operator habits keep working) but
+> new operator usage should route to `plan` / `ship`.
 
 # Mackes Shell — Worklist Management
 
