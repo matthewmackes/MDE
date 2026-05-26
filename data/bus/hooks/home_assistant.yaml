@@ -1,0 +1,42 @@
+# BUS-3.7 — Home Assistant adapter rule set.
+#
+# HA's "Webhook" integration POSTs to a configured URL when an
+# automation's webhook action fires. Point your HA automation at:
+#
+#   http://<peer-overlay-ip>:8444/hooks/home_assistant
+#
+# The body is operator-defined in the automation YAML. The
+# canonical shape this rule set expects is the Bus contract
+# documented in `docs/help/bus-hooks.md` (event / automation /
+# detail / entity / state / area / severity).
+#
+# Two event types ship: automation_triggered (info), alert
+# (high severity).
+
+adapters:
+
+  home_assistant:
+    rules:
+
+      - name: ha-automation-fired
+        match:
+          event: automation_triggered
+        publish:
+          topic: home/automation
+          priority: default
+          title: "{{ automation_name }}"
+          body: |
+            {{ automation_detail }}
+
+      - name: ha-alert
+        match:
+          event: alert
+        publish:
+          topic: home/alert
+          priority: high
+          title: "Home alert: {{ automation_name }}"
+          body: |
+            Severity: {{ severity }}
+            Entity: {{ entity }} ({{ area }}) → {{ state }}
+
+            {{ automation_detail }}

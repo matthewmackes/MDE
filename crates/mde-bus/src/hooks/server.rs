@@ -47,8 +47,10 @@ use thiserror::Error;
 use tokio::task::JoinHandle;
 
 use super::config::{ConfigError, HooksConfig};
+use super::generic::GenericAdapter;
 use super::gitea::GiteaAdapter;
 use super::github::GitHubAdapter;
+use super::home_assistant::HomeAssistantAdapter;
 use super::matcher::{match_request, Adapter, MatchError};
 use super::nut::NutAdapter;
 use super::sonarr::SonarrAdapter;
@@ -211,6 +213,8 @@ fn register_builtin_adapters() -> std::collections::BTreeMap<String, Box<dyn Ada
     map.insert("gitea".to_string(), Box::new(GiteaAdapter));
     map.insert("sonarr".to_string(), Box::new(SonarrAdapter));
     map.insert("nut".to_string(), Box::new(NutAdapter));
+    map.insert("home_assistant".to_string(), Box::new(HomeAssistantAdapter));
+    map.insert("generic".to_string(), Box::new(GenericAdapter));
     map
 }
 

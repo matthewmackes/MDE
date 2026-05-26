@@ -5,6 +5,21 @@ unreleased; tag versions get a date when they ship.
 
 ## Unreleased — v1.0 MackesDE for Workgroups (rebrand cut)
 
+**BUS-3.7 — Home Assistant + generic-JSON adapters (v6.x Mackes Bus, 2026-05-26)**
+- `HomeAssistantAdapter` dispatches on the JSON body's `event`
+  field and supports two event types: `automation_triggered`
+  (default priority → home/automation) and `alert` (high
+  priority → home/alert, includes entity/area/state).
+- `GenericAdapter` is the catch-all: any JSON object body has its
+  top-level string/number/bool fields lifted to template
+  variables. Nested objects + arrays are skipped (use a typed
+  adapter for those). Operators narrow with `match.field.<key>`
+  predicates.
+- **BUS-3 webhooks lane complete** — 7/7 sub-tasks shipped end-
+  to-end: webhook ingress on Nebula-only port 8444, YAML
+  transform-rules engine, and six built-in adapters (GitHub,
+  Gitea, Sonarr/Radarr, UPS/NUT, Home Assistant, generic JSON).
+
 **BUS-3.6 — UPS / NUT adapter (v6.x Mackes Bus, 2026-05-26)**
 - `NutAdapter` dispatches on the JSON body's `event` field. NUT
   has no built-in webhook poster, so the canonical pattern is

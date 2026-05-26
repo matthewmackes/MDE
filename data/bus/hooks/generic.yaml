@@ -1,0 +1,42 @@
+# BUS-3.7 — Generic-JSON adapter rule set.
+#
+# Catch-all for one-off webhook posters that don't fit the typed
+# adapters (github/gitea/sonarr/nut/home_assistant). The body
+# MUST be a JSON object; every top-level string/number/bool
+# becomes a template variable. Nested objects + arrays are
+# skipped — use a typed adapter for those.
+#
+# Point any source at:
+#
+#   http://<peer-overlay-ip>:8444/hooks/generic
+#
+# Suggested body envelope:
+#
+#   { "event": "<source>", "source": "<id>", "message": "<text>",
+#     "priority": "default" }
+#
+# Two starter rules below: a default catch-all ("generic/<event>")
+# and a higher-priority "alert" path that operators can narrow on
+# via match.field.
+
+adapters:
+
+  generic:
+    rules:
+
+      - name: generic-alert
+        match:
+          field:
+            event: alert
+        publish:
+          topic: misc/alert
+          priority: high
+          title: "{{ source }}"
+          body: "{{ message }}"
+
+      - name: generic-ping
+        publish:
+          topic: misc/ping
+          priority: default
+          title: "{{ source }}"
+          body: "{{ message }}"
