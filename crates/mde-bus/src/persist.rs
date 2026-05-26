@@ -263,6 +263,27 @@ impl Persist {
         Ok(out)
     }
 
+    /// Return every topic that has at least one indexed
+    /// message. Used by `mde-bus tail` to expand wildcard
+    /// patterns against the known-topic set.
+    ///
+    /// # Errors
+    /// [`PersistError::Sql`] on query failure.
+    pub fn list_topics(&self) -> Result<Vec<String>, PersistError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT DISTINCT topic FROM messages ORDER BY topic")
+            .map_err(|e| PersistError::Sql(format!("prepare list_topics: {e}")))?;
+        let rows = stmt
+            .query_map([], |r| r.get::<_, String>(0))
+            .map_err(|e| PersistError::Sql(format!("query list_topics: {e}")))?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r.map_err(|e| PersistError::Sql(format!("decode: {e}")))?);
+        }
+        Ok(out)
+    }
+
     /// Total message count — useful for tests + the
     /// `mde-bus history --count` verb (BUS-1.8 will wire).
     ///

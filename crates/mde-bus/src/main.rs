@@ -1,64 +1,29 @@
-//! `mde-bus` binary — first foundation pass (BUS-1.1 + BUS-1.6 + BUS-1.10).
+//! `mde-bus` binary — entry point that parses CLI args and
+//! dispatches to per-verb implementations in
+//! [`mde_bus::cli::*`].
 //!
-//! This entry point ships END-TO-END per §0.12: it is invocable, it
-//! does real work for every subcommand it advertises, and the
-//! `daemon` mode actually runs an idle loop that responds to
-//! shutdown signals. Subsequent BUS-1.* tasks layer broker
-//! supervision (BUS-1.2), mDNS (BUS-1.3), persistence (BUS-1.4),
-//! subscription manifest (BUS-1.7), and the full publish/tail
-//! verbs (BUS-1.8) on top.
+//! Subcommands (one module each — see `crates/mde-bus/src/cli/`):
 //!
-//! Subcommands available in this pass:
-//! - `mde-bus daemon` — initialise registry + seed defaults + idle.
-//! - `mde-bus topic list` — print every known topic to stdout.
-//! - `mde-bus render <template>` — render a Tera template against
-//!   the live mesh variables (BUS-1.10 acceptance exit).
+//! - `mde-bus daemon` — long-lived bus daemon (broker + mDNS +
+//!   subs watcher + webhooks listener). The default when no
+//!   subcommand is given.
+//! - `mde-bus publish` — publish a message to a topic.
+//! - `mde-bus tail` — follow messages on a topic.
+//! - `mde-bus sub` / `mde-bus mute` — manage per-peer
+//!   subscription + mute patterns.
+//! - `mde-bus history` — print stored messages on a topic.
+//! - `mde-bus topic` — list / match topics in the registry.
+//! - `mde-bus render` — render a Tera template against mesh
+//!   variables.
 //!
 //! Use `RUST_LOG=mde_bus=debug,info` for verbose tracing.
 
 use std::time::Duration;
 
-use clap::{Parser, Subcommand};
+use clap::Parser;
 
+use mde_bus::cli::{Cli, Cmd};
 use mde_bus::{broker, discovery, hooks, seed, subs, template::Renderer, topic::Registry};
-
-#[derive(Parser, Debug)]
-#[command(
-    name = "mde-bus",
-    version,
-    about = "Mackes Bus — mesh-wide notification + clipboard pub/sub bus"
-)]
-struct Cli {
-    /// Subcommand. When omitted, behaves as `daemon`.
-    #[command(subcommand)]
-    cmd: Option<Cmd>,
-}
-
-#[derive(Subcommand, Debug)]
-enum Cmd {
-    /// Run the bus daemon. Seeds default topics on first launch,
-    /// then idles. Exits cleanly on SIGINT / SIGTERM.
-    Daemon,
-    /// Topic operations.
-    Topic {
-        #[command(subcommand)]
-        op: TopicOp,
-    },
-    /// Render a Tera template against live mesh variables and print
-    /// the result. Useful for `mde-bus publish --template …` plumbing
-    /// and for debugging mesh-variable resolution from the CLI.
-    Render {
-        /// The template body. Use single quotes in the shell to
-        /// avoid `{{` getting eaten.
-        template: String,
-    },
-}
-
-#[derive(Subcommand, Debug)]
-enum TopicOp {
-    /// Print every known topic, one per line.
-    List,
-}
 
 fn init_tracing() {
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
@@ -78,8 +43,13 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.cmd.unwrap_or(Cmd::Daemon) {
         Cmd::Daemon => run_daemon().await,
-        Cmd::Topic { op } => run_topic(op),
         Cmd::Render { template } => run_render(&template),
+        Cmd::Publish(args) => mde_bus::cli::publish::run(args).await,
+        Cmd::Tail(args) => mde_bus::cli::tail::run(args).await,
+        Cmd::Sub { op } => mde_bus::cli::sub::run(op).await,
+        Cmd::Mute { op } => mde_bus::cli::mute::run(op).await,
+        Cmd::History(args) => mde_bus::cli::history::run(args).await,
+        Cmd::Topic { op } => mde_bus::cli::topic::run(op),
     }
 }
 
@@ -338,18 +308,6 @@ fn hostname_for_discovery() -> String {
         }
     }
     "mde-bus".to_string()
-}
-
-fn run_topic(op: TopicOp) -> anyhow::Result<()> {
-    let reg = build_seeded_registry()?;
-    match op {
-        TopicOp::List => {
-            for t in reg.iter() {
-                println!("{}\t{:?}\t{}", t.name, t.priority_default, t.description);
-            }
-        }
-    }
-    Ok(())
 }
 
 fn run_render(template: &str) -> anyhow::Result<()> {

@@ -5,6 +5,26 @@ unreleased; tag versions get a date when they ship.
 
 ## Unreleased — v1.0 MackesDE for Workgroups (rebrand cut)
 
+**BUS-1.8 — `mde-bus` CLI binary (v6.x Mackes Bus, 2026-05-26)**
+- New `crates/mde-bus/src/cli/` submodule centralises every
+  operator-facing subcommand: `publish`, `tail`, `sub`, `mute`,
+  `history`, `topic`, plus the existing `daemon` + `render`.
+- `mde-bus publish <topic> <body>` accepts three publish forms:
+  positional, `--body-flag`, or piped stdin. Always writes
+  through the BUS-1.4 SQLite index FIRST (durable record), then
+  attempts the ntfy POST — broker failures don't lose the
+  message. Operator sees the ULID in stdout for retry.
+- `mde-bus tail <pattern>` follows messages on a topic (or
+  wildcard pattern) by polling the index every 250 ms. Use
+  `--count N` for last-N-and-exit mode without follow.
+- `mde-bus sub add|remove|list` and `mde-bus mute add|remove|list`
+  manage the per-peer `subs.yaml` atomically. Edits land within
+  ~100 ms via the BUS-1.7 SubsWatcher.
+- `mde-bus history <topic>` prints stored messages on a topic
+  with optional `--since <ulid>` cursor + `--count N` limit.
+- `mde-bus topic list` (existing) + new `mde-bus topic match
+  <pattern>` for wildcard previews.
+
 **BUS-1.4 — message persistence (v6.x Mackes Bus, 2026-05-26)**
 - New `crates/mde-bus/src/persist.rs` ships the per-topic JSON
   file tree (authoritative store at
