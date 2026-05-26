@@ -184,12 +184,16 @@ impl PlaybooksPanel {
     }
 }
 
-/// Resolve the active QNM-Shared playbooks root. Matches the
-/// Phase 1.3.0 lock: `$QNM_SHARED_ROOT/.qnm-sync/playbooks/roles`,
-/// falling back to `~/QNM-Shared/.qnm-sync/playbooks/roles` when
-/// the env var isn't set.
+/// Resolve the active MDE-Workgroup (formerly QNM-Shared) playbooks
+/// root. EPIC-RETIRE-QNM Phase C (2026-05-26): env-var precedence is
+/// now `MDE_WORKGROUP_ROOT` (canonical, Q77) > `QNM_SHARED_ROOT`
+/// (back-compat); falls back to `~/QNM-Shared/.qnm-sync/playbooks/roles`
+/// when neither var is set. Matches the Phase 1.3.0 lock.
 fn playbooks_root() -> PathBuf {
-    let base = std::env::var("QNM_SHARED_ROOT").map(PathBuf::from).ok();
+    let base = std::env::var("MDE_WORKGROUP_ROOT")
+        .or_else(|_| std::env::var("QNM_SHARED_ROOT"))
+        .map(PathBuf::from)
+        .ok();
     let base = base.unwrap_or_else(|| {
         std::env::var("HOME")
             .map(|h| PathBuf::from(h).join("QNM-Shared"))

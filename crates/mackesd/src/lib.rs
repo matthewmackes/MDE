@@ -131,11 +131,25 @@ pub fn default_db_path() -> std::path::PathBuf {
     std::path::PathBuf::from("/var/lib/mde/mded.db")
 }
 
-/// Default QNM-Shared sync root. Heartbeats + link telemetry land at
-/// `<root>/<peer>/mackesd/{heartbeat,links}.json`; the leader lock is
-/// `<root>/.mackesd-leader.lock`.
+/// Default MDE-Workgroup coordination root (formerly QNM-Shared).
+/// Heartbeats + link telemetry land at
+/// `<root>/<peer>/mackesd/{heartbeat,links}.json`; the leader lock
+/// is `<root>/.mackesd-leader.lock`.
+///
+/// EPIC-RETIRE-QNM Phase C (2026-05-26, Q14 + Q77 of the 100-Q
+/// tightening survey): env-var precedence is now `MDE_WORKGROUP_ROOT`
+/// (canonical) > `QNM_SHARED_ROOT` (back-compat); both are read so
+/// existing systemd drop-ins / shell profiles keep working through
+/// the rename. The default path stays `~/QNM-Shared` (legacy installs
+/// still use it; v5+ installs additionally have `~/.mde-mesh/`
+/// gluster-mounted per GF-4.1 / Q21). The function name stays
+/// `default_qnm_shared_root` for back-compat — symbol-level rename
+/// is EPIC-RETIRE-QNM Phase B.
 #[must_use]
 pub fn default_qnm_shared_root() -> std::path::PathBuf {
+    if let Ok(root) = std::env::var("MDE_WORKGROUP_ROOT") {
+        return std::path::PathBuf::from(root);
+    }
     if let Ok(root) = std::env::var("QNM_SHARED_ROOT") {
         return std::path::PathBuf::from(root);
     }

@@ -5,6 +5,17 @@ unreleased; tag versions get a date when they ship.
 
 ## Unreleased — v1.0 MackesDE for Workgroups (rebrand cut)
 
+**DM-6 — shared design-tokens dir (2026-05-26)**
+- New `/usr/share/mde/theme/{tokens.css,greeter.css}` install path.
+  `greeter.css` `@import`s `tokens.css` so a single hex change in
+  the shared tokens ripples to the greeter alongside the panel +
+  Workbench. No symlinks (per the lock — rpm verification
+  breaks on dangling symlinks).
+- regreet's `[appearance] style` now points at the shared
+  greeter.css; the standalone `data/regreet/regreet.css` shipped
+  in DM-3 retires (its content moves to `data/css/greeter.css`
+  with the `@import` prefix added).
+
 **Display manager: LightDM → greetd + regreet (DM-3 + DM-5 + DM-8, 2026-05-26)**
 - The greeter is now greetd hosted by cage with regreet as the
   GTK4 UI. Boot-theater → greeter → desktop reads as one
