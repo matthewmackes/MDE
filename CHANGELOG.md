@@ -39,6 +39,14 @@ all in-flight epics ship together per Q91 maximum-scope lock. See
   `disable-gateway` CLI subcommands removed. `Recommends: caddy`
   dropped from the RPM spec.
 
+**Pre-commit lint gates added (EPIC-PROC-LINT)**
+- `install-helpers/lint-dbus-shape.sh` — catches net-new MDE-internal
+  `#[interface]` blocks; pre-existing services snapshot-allow-listed;
+  shrinks as EPIC-RETIRE-DBUS migrates each to Bus (Q12 + Q20 + Q96).
+- `install-helpers/lint-material-symbols.sh` — catches net-new Carbon
+  icon references; retiring code allow-listed (Q43 + Q97).
+- CLAUDE.md §0.7 expanded to **9 pre-commit gates**.
+
 **Process locks landed (EPIC-PROC-*)**
 - CLAUDE.md §0.8 expanded to **8 DoD gates** — added 8th: security
   review on new public ports / D-Bus methods / `{{exec}}` templates

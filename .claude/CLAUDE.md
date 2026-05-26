@@ -160,6 +160,28 @@ Before every commit, when applicable:
    prefix; retraction-comment lines (NF-N.M / GF-N.M / RD-N /
    KDC2-N tags, or "retired"/"legacy"/"superseded" verbs) and
    pure `//` / `#` comment lines are also allow-listed.
+8. **D-Bus shape lint** (added 2026-05-25 per Q12 + Q20 + Q96 +
+   EPIC-PROC-LINT): `install-helpers/lint-dbus-shape.sh` (if
+   any `crates/*/src/*.rs` is touched). Catches net-new
+   `#[interface]` blocks in MDE-internal services. Per Q20 + Q96
+   the canonical IPC for MDE-internal control is Bus
+   (`action/<domain>/<verb>` for commands, `reply/<ulid>` for
+   responses, domain topics for events); D-Bus retires entirely
+   by 1.0 except for FDO interop (`org.freedesktop.*`). Pre-
+   existing services are snapshot-allow-listed at gate-install
+   time; the allow-list shrinks as EPIC-RETIRE-DBUS migrates
+   each service.
+9. **Material Symbols icon lint** (added 2026-05-25 per Q43 +
+   Q97 + EPIC-PROC-LINT): `install-helpers/lint-material-symbols.sh`
+   (if any `crates/mde-*/src/`, `data/css/`, or
+   `data/applications/*.desktop` is touched). Catches net-new
+   Carbon icon references (`carbon-<name>`, `@carbon/icons`,
+   `bx--`, `cds--`). Per Q43, Material Symbols replaces
+   Carbon; per Q97 migration must finish before 1.0. The
+   icon set asset directory (`data/icons/Mackes-Carbon/`), the
+   v1.x Python workbench (retiring per Q49), the legacy GTK
+   panel, and the panel's icon_mapper.rs (target of
+   EPIC-UI-MATERIAL) are allow-listed.
 
 If a pre-commit hook fails, the commit did **not** happen — fix the
 issue, re-stage, and create a **new** commit. Never `--amend` in that

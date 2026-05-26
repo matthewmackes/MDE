@@ -1420,14 +1420,15 @@ locked work appears under **Active** with `[ ] Open`.
 
 #### EPIC-PROC (process + tooling)
 
-- [ ] **EPIC-PROC-LINT: Add 2 new pre-commit gates — D-Bus method shape + Material Symbols** *(Q63)*
+- [✓] **EPIC-PROC-LINT: Add 2 new pre-commit gates — D-Bus method shape + Material Symbols** *(Q63)* *(shipped 2026-05-25 — session=opus-cw-2026-05-25-23:45)*
   **As** the §0.7 gates,
   **I want** lint catches for D-Bus typed args + Material Symbols icon references,
   **so that** Q12 + Q43 commitments enforce automatically.
   **Acceptance** (each bench-observable):
-    - [ ] `install-helpers/lint-dbus-shape.sh` written + wired into §0.7.
-    - [ ] `install-helpers/lint-material-symbols.sh` written + wired into §0.7.
-    - [ ] CLAUDE.md §0.7 updated to list 9 gates total.
+    - [✓] `install-helpers/lint-dbus-shape.sh` written + executable + green against current tree (allow-list snapshots the 14 pre-existing `#[interface]` services; shrinks as EPIC-RETIRE-DBUS migrates each).
+    - [✓] `install-helpers/lint-material-symbols.sh` written + executable + green against current tree (allow-list covers Mackes-Carbon asset dir + retiring python workbench + legacy GTK panel + the panel icon_mapper.rs which is the EPIC-UI-MATERIAL migration target).
+    - [✓] CLAUDE.md §0.7 updated: now lists 9 gates (added §0.7.8 D-Bus shape + §0.7.9 Material Symbols).
+    - [✓] Comment-prefix regex anchored against grep's `:linenum:` injection (not source start) so docstring + `//!` Rust outer-doc + `///` Rust inner-doc lines aren't false-positives.
 
 - [✓] **EPIC-PROC-DOD: Add 8th DoD gate — security review for new public ports / D-Bus methods / `{{exec}}` templates** *(Q64)* *(shipped 2026-05-25 — session=opus-cw-2026-05-25-23:40)*
   **As** the §0.8 Definition of Done,
