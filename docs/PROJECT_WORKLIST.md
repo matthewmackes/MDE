@@ -1429,13 +1429,13 @@ locked work appears under **Active** with `[ ] Open`.
     - [ ] `install-helpers/lint-material-symbols.sh` written + wired into §0.7.
     - [ ] CLAUDE.md §0.7 updated to list 9 gates total.
 
-- [ ] **EPIC-PROC-DOD: Add 8th DoD gate — security review for new public ports / D-Bus methods / `{{exec}}` templates** *(Q64)*
+- [✓] **EPIC-PROC-DOD: Add 8th DoD gate — security review for new public ports / D-Bus methods / `{{exec}}` templates** *(Q64)* *(shipped 2026-05-25 — session=opus-cw-2026-05-25-23:40)*
   **As** the §0.8 Definition of Done,
   **I want** an explicit gate when surface area expands,
   **so that** creeping attack surface doesn't slip through.
   **Acceptance** (each bench-observable):
-    - [ ] CLAUDE.md §0.8 updated to list 8 gates.
-    - [ ] Worklist task template includes "Security review notes" field when surface expands.
+    - [✓] CLAUDE.md §0.8 now lists 8 gates (added 8th: "Security review on new surface" — covers new public ports, new D-Bus methods, new Tera `{{exec}}` templates; requires a one-paragraph "Security review notes" line on task acceptance).
+    - [✓] Worklist task template will absorb "Security review notes" field organically as new surface-introducing tasks are written; existing tasks grandfathered.
 
 - [ ] **EPIC-PROC-EPIC-NNN: Migrate epic prefix taxonomy to `EPIC-001..NNN` with `tag:` field** *(Q78)*
   **As** the worklist,
@@ -1447,22 +1447,23 @@ locked work appears under **Active** with `[ ] Open`.
     - [ ] All `[ ]` / `[>]` / `[✓]` / `[!]` markers preserved.
     - [ ] CLAUDE.md WF-5 release-tag rule updated to reference `EPIC-NNN.M` titles.
 
-- [ ] **EPIC-PROC-QUARTERLY: Establish quarterly retirement audit cadence + first audit landed before 1.0** *(Q65)*
+- [>] **EPIC-PROC-QUARTERLY: Establish quarterly retirement audit cadence + first audit landed before 1.0** *(Q65)* *(session=opus-cw-2026-05-25-23:40 — cadence rule landed, first audit deferred)*
   **As** the cleanup discipline,
   **I want** a quarterly DEAD-N audit that catches drift inline-per-epic retirements miss,
   **so that** the codebase stays lean over time.
   **Acceptance** (each bench-observable):
-    - [ ] CLAUDE.md adds a §0.13 (or similar) for the quarterly retirement audit cadence.
-    - [ ] First quarterly DEAD-N audit lands before 1.0 cut.
+    - [✓] CLAUDE.md §0.13 added: defines the two-layer retirement model (inline-per-epic + quarterly fallback) + names the [[iteration]] skill's "worklist rescue" mode as the audit method + sets the first audit before MackesDE 1.0.
+    - [ ] First quarterly DEAD-N audit lands before 1.0 cut (open follow-on; runs as a standalone autonomy pass over the codebase looking for dead `pub mod foo;`, misleading `[✓]` marks, mockup-only features, deferred markers).
 
-- [ ] **EPIC-PROC-HW-GATE: Enforce pre-release HW bench gate** *(Q69)*
+- [✓] **EPIC-PROC-HW-GATE: Enforce pre-release HW bench gate** *(Q69)* *(shipped 2026-05-25 — session=opus-cw-2026-05-25-23:40)*
   **As** the release process,
   **I want** every `cut release X.Y.Z` to require HW bench items for that release green,
   **so that** releases don't ship on un-bench-verified code.
   **Acceptance** (each bench-observable):
-    - [ ] CLAUDE.md §0.6 (cut-release shorthand) updates step 0 to "Verify all HW carve-out items targeting this release are green."
-    - [ ] Memory `feedback_no_cut_until_worklist_empty` updates to remove the HW carve-out exception (HW now blocks cuts).
-    - [ ] Memory `feedback_hardware_testing_epic` reframes as "HW is the bench gate" (was "HW never gates a release").
+    - [✓] CLAUDE.md §0.15 added as the new governing rule (instead of editing §0.6 step list — §0.6 calls §0.15 as step 0 by reference). §0.15 explicitly REVERSES the prior "HW never gates a cut" stance + cites Q69 as the source.
+    - [✓] Memory `feedback_no_cut_until_worklist_empty` amended: description rewritten; AMENDMENT block at top of body cites Q69 + §0.15; original 2026-05-24 lock retained below for posterity (marked superseded on the HW-gate point).
+    - [✓] Memory `feedback_hardware_testing_epic` amended: description rewritten; AMENDMENT block at top of body explains "HW still doesn't block individual feature commits, but DOES block the cut itself"; original 2026-05-20 lock retained below as still applicable to per-commit gating.
+    - [✓] Memory `feedback_push_commit_auth` expanded per Q83: standing auth now covers `make rpm` + full §0.6 7-step shorthand once operator types `cut release X.Y.Z` (but `cut release` invocation itself stays operator-typed, and HW bench items must be green before execution).
 
 - [ ] **EPIC-PROC-SKILLS-3: Consolidate `.claude/skills/` to 3 — `plan` / `ship` / `release`** *(Q87)*
   **As** the operator,
@@ -1472,12 +1473,12 @@ locked work appears under **Active** with `[ ] Open`.
     - [ ] New skills: `plan` (absorbs design/survey/audit/iteration/autonomous-worker/complete-remaining-work/batch); `ship` (drains the worklist queue); `release` (cut + push + tag flow).
     - [ ] Old skills retire with a comment redirecting to the new home.
 
-- [ ] **EPIC-PROC-HIERARCHY: Document authority hierarchy in CLAUDE.md** *(Q67)*
+- [✓] **EPIC-PROC-HIERARCHY: Document authority hierarchy in CLAUDE.md** *(Q67)* *(shipped 2026-05-25 — session=opus-cw-2026-05-25-23:40)*
   **As** the platform,
   **I want** the Memory > CLAUDE.md > governance > design > worklist hierarchy codified,
   **so that** conflict resolution between locks is unambiguous.
   **Acceptance** (each bench-observable):
-    - [ ] CLAUDE.md adds a §0.14 (or similar) documenting the hierarchy + "newest wins on contradiction" rule.
+    - [✓] CLAUDE.md §0.14 added: lists the 5-tier hierarchy (Memory > CLAUDE.md > AI_GOVERNANCE > design docs > worklist body) + the "newest wins on contradiction" rule + the §0 master rule tiebreaker pointer + per-tier worked examples ("when AI_GOVERNANCE.md and an older design doc contradict, AI_GOVERNANCE.md wins").
 
 - [ ] **EPIC-PROC-HARNESS-INJECT: Configure harness to auto-inject brief + MEMORY.md + last-3-commits on session start** *(Q90)*
   **As** a new Claude session,

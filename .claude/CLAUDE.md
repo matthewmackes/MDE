@@ -189,8 +189,18 @@ A worklist task is not `[✓] Done` until **every** gate passes:
    caught — 22 misleading `[✓]` entries shipped helpers + tests but
    left the wiring dead, costing 4 user-visible bugs and an emergency
    integration sweep. See [[V3_RUNTIME_INTEGRATION_AUDIT]].
+8. **Security review on new surface** (added 2026-05-25 per Q64 of the
+   100-Q tightening survey + EPIC-PROC-DOD) — when a task introduces
+   a new public port, a new D-Bus method, or a new Tera template that
+   uses `{{exec}}`, leave a one-paragraph "Security review notes" line
+   on the task acceptance covering: (a) the surface (port number /
+   D-Bus path / template scope), (b) what reaches it (Nebula-only?
+   FDO-only? Mesh passcode required?), (c) whether the surface fits
+   the open-mesh / flat-trust directive or violates it. No code review
+   process — Claude self-flags. The gate fails if the task body
+   introduces new surface area without the notes line.
 
-Writing code alone never satisfies Done. If gates 1–7 aren't confirmed,
+Writing code alone never satisfies Done. If gates 1–8 aren't confirmed,
 the task stays `[>] In Progress` with a note on which gate is incomplete.
 
 ### 0.9 Destructive operations require explicit authorization
@@ -307,6 +317,73 @@ done signal never appears.
 This rule supersedes "looks done if the tests pass" — passing
 tests on an unreachable module is exactly the failure mode v3.x
 exposed.
+
+### 0.13 Quarterly retirement audit (Q65, 2026-05-25)
+
+The retirement queue (DEAD-N epics) operates in two layers:
+
+1. **Inline-per-epic** — every new epic explicitly names what it
+   makes obsolete and retires it in the same cut (NF-5.1 + BUS-4
+   precedent; BUS replaced GF-17 in one cut, gluster replaced the
+   SSHFS-of-peer-dirs model alongside its own GF-* worklist).
+2. **Quarterly fallback audit** — every three months, a fresh
+   DEAD-N epic captures what the inline layer missed. The audit
+   pass is the [[iteration]] skill's "worklist rescue" mode
+   applied to retirement: scan for dead modules (`pub mod foo;`
+   with zero external refs), misleading `[✓]` marks where the
+   wiring didn't land, mockup-only "shipped" features, and
+   deferred markers (`lands in a follow-up`, `wired in Phase N`,
+   `deferred to`).
+
+This rule replaces "retirement happens when we notice" — the
+quarterly cadence is the forcing function. Calendar trigger:
+first audit lands before the MackesDE for Workgroups 1.0 cut;
+subsequent every-3-months.
+
+### 0.14 Authority hierarchy (Q67, 2026-05-25)
+
+When two locks contradict, the newer one wins silently. The
+hierarchy for "which doc is canonical" on a given topic:
+
+1. **Memory** (`~/.claude/projects/.../memory/*.md`) — operator's
+   live preferences + cross-session continuity. Highest authority.
+2. **`.claude/CLAUDE.md`** — operational rulebook (this file).
+3. **`docs/AI_GOVERNANCE.md`** — platform identity + architectural
+   compass (locked 2026-05-25 via the 100-Q tightening survey).
+4. **`docs/design/*.md`** — per-epic design locks.
+5. **`docs/PROJECT_WORKLIST.md`** body — actionable task state.
+
+When in doubt: §0 master rule from `docs/AI_GOVERNANCE.md`
+("Secure, Simple, Centerless Workgroup"). When AI_GOVERNANCE.md
+and an older design doc contradict, AI_GOVERNANCE.md wins
+(newer). When memory and AI_GOVERNANCE.md contradict, memory
+wins (highest tier + likely newer). When CLAUDE.md is silent
+on something, fall through to AI_GOVERNANCE.md.
+
+### 0.15 Pre-release HW bench gate (Q69, 2026-05-25)
+
+**REVERSES** the previous "HW carve-out items never gate a cut"
+rule from [[feedback_no_cut_until_worklist_empty]] +
+[[feedback_hardware_testing_epic]]. Per Q69 of the 100-Q
+tightening survey:
+
+> Each `cut release X.Y.Z` requires the HW bench items targeting
+> that release to be run + green on operator hardware before the
+> cut proceeds.
+
+§0.6 cut-release shorthand step 0 (new): "Verify all HW carve-
+out items tagged for this release in `docs/PROJECT_WORKLIST.md`
+are `[✓]` with operator-confirmed bench results."
+
+HW items still don't block individual feature commits (commits
+ship as the worklist task completes); they block the **release**
+itself. The HW backlog becomes the operator's last-mile
+checklist before tagging.
+
+This rule supersedes the previous "HW carve-out never blocks
+cuts" framing in `.claude/CLAUDE.md` §0.7 + the two memory
+files; both should be amended to reference §0.15 as the new
+governing rule.
 
 ---
 

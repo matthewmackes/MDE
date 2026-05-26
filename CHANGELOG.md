@@ -39,6 +39,25 @@ all in-flight epics ship together per Q91 maximum-scope lock. See
   `disable-gateway` CLI subcommands removed. `Recommends: caddy`
   dropped from the RPM spec.
 
+**Process locks landed (EPIC-PROC-*)**
+- CLAUDE.md §0.8 expanded to **8 DoD gates** — added 8th: security
+  review on new public ports / D-Bus methods / `{{exec}}` templates
+  (Q64 + EPIC-PROC-DOD).
+- CLAUDE.md §0.13 added — **quarterly retirement audit** as the
+  fallback to inline-per-epic retirement (Q65 + EPIC-PROC-QUARTERLY).
+- CLAUDE.md §0.14 added — **authority hierarchy** (Memory >
+  CLAUDE.md > AI_GOVERNANCE > design > worklist; newest wins on
+  contradiction; Q67 + EPIC-PROC-HIERARCHY).
+- CLAUDE.md §0.15 added — **pre-release HW bench gate**. REVERSES
+  the prior "HW carve-out never gates a cut" rule; each
+  `cut release X.Y.Z` requires HW items for that release to be
+  green (Q69 + EPIC-PROC-HW-GATE).
+- Memory amendments: `feedback_no_cut_until_worklist_empty` +
+  `feedback_hardware_testing_epic` reflect §0.15;
+  `feedback_push_commit_auth` expanded per Q83 (standing auth covers
+  `make rpm` + the §0.6 7-step shorthand once operator types
+  `cut release`).
+
 ## Unreleased — v4.0 Nebula fabric rebuild
 
 (Operator-locked 2026-05-24: v4.0 is the target release for
