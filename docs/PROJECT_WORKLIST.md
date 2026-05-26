@@ -360,6 +360,195 @@ call-end lifecycle, never at install or login.
 
 ---
 
+### EPIC-TUNING-25Q — 25-question tuning survey aftermath (locked 2026-05-26)
+
+> **Authority:** `docs/design/2026-05-26-25Q-tuning-survey.md`.
+> Operator-issued lift of §0.16 platform feature lock for this scope.
+> The 25-question survey advanced four operator goals: complete
+> releases, no stubs / no coming-soon, world-class design (Material
+> Design only), build autonomously when possible. Locks captured
+> in the design doc; actionable items lifted below.
+>
+> **Sequencing:** items numbered roughly in execution order to
+> minimize cascading breakage. /ship may drain autonomously per
+> Q14 standing-auth expansion (excluding visual commits which keep
+> the Q6 cite-required gate per commit).
+
+- [ ] **TUNE-1: TUNE-MEMORY-ARCHIVE — memory directory hygiene.**
+  **As** the AI design partner reading memory at session start,
+  **I want** superseded memory files moved to `memory/archive/`,
+  **so that** the live load path stays focused on current operator preferences.
+  **Acceptance** (each bench-observable):
+    - [ ] New `~/.claude/projects/-home-mm-Desktop-files-mackes-shell/memory/archive/` directory created.
+    - [ ] All AI_GOVERNANCE.md §14 superseded files moved (Carbon icons, Object Card 12 px, 16-peer fleet, QNM-Shared coord, GF-17 notification bus, 3-mode focus catalog, mackes-shell naming, v12.x release IDs, HW carve-out original lock).
+    - [ ] Each archived file gains a `SUPERSEDED YYYY-MM-DD by [[new]]` banner at top.
+    - [ ] MEMORY.md index drops the archived entries; adds a single "Archived memories: see memory/archive/" line at the bottom.
+    - [ ] Verified: AI partner reading MEMORY.md in a fresh session sees only live preferences.
+
+- [ ] **TUNE-2: TUNE-LINT-13 — `lint-no-stubs.sh` (pre-commit gate #13).**
+  **As** the platform's anti-stub discipline,
+  **I want** automated detection of `todo!()`/`unimplemented!()`/deferral-language commit messages,
+  **so that** §0.12 enforcement doesn't depend on AI partners self-policing.
+  **Acceptance**:
+    - [ ] New `install-helpers/lint-no-stubs.sh` blocks commits containing `todo!()`, `unimplemented!()`, `panic!("not yet")`, `panic!("todo")`.
+    - [ ] Scans commit messages for `wired later`, `phase 2`, `follow-up ships`, `stub for now`, `lands in N`, `deferred to`.
+    - [ ] CLAUDE.md §0.7 updates: gate count rises to 13.
+    - [ ] Snapshot-allow-list captures any pre-existing violations at lint-introduction.
+    - [ ] Lint clean on full repo before merge.
+
+- [ ] **TUNE-3: TUNE-LINT-14 — `lint-runtime-reachability.sh` (gate #14).**
+  **As** the platform's runtime-reachability discipline,
+  **I want** automated detection of dead `pub mod foo;` declarations,
+  **so that** §0.8 gate 7 doesn't depend on manual grep.
+  **Acceptance**:
+    - [ ] New `install-helpers/lint-runtime-reachability.sh` walks every `pub mod foo;` in `crates/*/src/lib.rs` + `crates/*/src/*/mod.rs`.
+    - [ ] Greps for at least one external `foo::` reference; blocks commit on zero hits.
+    - [ ] Runs only on commits touching `mod.rs` or `lib.rs` (skip-fast path).
+    - [ ] CLAUDE.md §0.7 updates: gate count rises to 14.
+    - [ ] Snapshot-allow-list documented if existing dead modules survive (none expected — v3.x audit closed them).
+
+- [ ] **TUNE-4: TUNE-LINT-15 — `lint-design-doc-sync.sh` (gate #15).**
+  **As** the platform's design-doc-to-worklist discipline,
+  **I want** every `docs/design/<epic>.md` edit to require a paired `docs/PROJECT_WORKLIST.md` edit,
+  **so that** design-doc actions never sit un-lifted.
+  **Acceptance**:
+    - [ ] New `install-helpers/lint-design-doc-sync.sh` refuses commit when `docs/design/*.md` changed and `docs/PROJECT_WORKLIST.md` did not.
+    - [ ] CLAUDE.md §0.7 updates: gate count rises to 15.
+    - [ ] Tested: commit touching only `docs/design/new-epic.md` fails; commit touching both succeeds.
+
+- [ ] **TUNE-5: TUNE-LINT-6E — extend `lint-voice.sh` with coming-soon list.**
+  **As** the user-visible-strings side of §0.12,
+  **I want** voice-tone to catch `coming soon` / `TBD` / `WIP` / `placeholder` / `not yet implemented` / `experimental` / `beta` / `alpha` / `preview` / `early access` / `soon™`,
+  **so that** AI partners + operators can't ship aspirational language in user-visible strings.
+  **Acceptance**:
+    - [ ] Forbidden-strings list extends with the 11 patterns above.
+    - [ ] Documented Wayland-protocol exception: `unstable-v1` survives.
+    - [ ] Voice lint clean on full repo before merge.
+    - [ ] Updated `docs/design/voice-and-tone.md` documents the new patterns + Wayland exception.
+
+- [ ] **TUNE-6: TUNE-AUTONOMY — CLAUDE.md §0.3/0.10/0.13/0.15/0.16/0.17 amendments.**
+  **As** the platform's autonomy contract,
+  **I want** the §0 rulebook to reflect the 25-Q survey's autonomy expansions,
+  **so that** AI partners reading the rulebook see the current contract.
+  **Acceptance**:
+    - [ ] §0.3 amended: strict per-file `git add -- <file>` staging discipline; auto-rebase on push reject; auto-resolve CHANGELOG/worklist conflicts.
+    - [ ] §0.10 amended: auto-fix anything, no retry cap (with soft-escape after detection of same-fix-same-failure 3×).
+    - [ ] §0.13 amended: continuous retirement audit on every /ship cycle replaces quarterly cadence.
+    - [ ] §0.15 amended: per-bullet HW acceptance checklist required.
+    - [ ] §0.16 amended: standing auth for all §11 epics (excluding HW-*); no session budget; mid-flight survey-lift recording template.
+    - [ ] §0.17 amended: cross-reference `make pre-cut-check` hard block per Q11+Q12.
+
+- [ ] **TUNE-7: TUNE-CUT-PRECHECK — `make pre-cut-check` + hard-block flow.**
+  **As** the §0.17 NO INCOMPLETE RELEASES enforcement,
+  **I want** the cut-release shorthand to refuse when any §11 roadmap item is open,
+  **so that** the lock applies at release-time mechanically.
+  **Acceptance**:
+    - [ ] New `install-helpers/pre-cut-check.sh` greps the worklist for each §11 epic prefix.
+    - [ ] Makefile target `pre-cut-check` invokes the script.
+    - [ ] §0.6 cut-release flow gains a new step 0: `make pre-cut-check` must exit 0.
+    - [ ] No operator override path (hard block per Q12).
+    - [ ] Documents how to amend Q91 if scope needs revision.
+
+- [ ] **TUNE-8: TUNE-HW-CHECKLIST — per-bullet HW acceptance.**
+  **As** the §0.15 HW bench gate,
+  **I want** every HW-* task's acceptance bullets to require individual `[✓]` confirmation,
+  **so that** cut-release can verify granular bench coverage mechanically.
+  **Acceptance**:
+    - [ ] Worklist schema doc updated: HW-* tasks use per-bullet `[ ]`/`[✓]` toggles (already current format; formalize).
+    - [ ] pre-cut-check (TUNE-7) extends to verify every HW-* acceptance bullet for the target release is `[✓]`.
+    - [ ] Tested: cut with one HW bullet open fails; cut with all bullets `[✓]` proceeds.
+
+- [ ] **TUNE-9: TUNE-LINT-11 — `lint-visual-citation.sh` (gate #11).**
+  **As** the world-class-design enforcement layer,
+  **I want** every visual commit to cite a `docs/design/<spec>.md` section + a Material 3 reference target,
+  **so that** autonomous AI visual work stays grounded in the locked aesthetic.
+  **Acceptance**:
+    - [ ] New `install-helpers/lint-visual-citation.sh` scans commit messages on commits touching `crates/mde-*/src/*.rs` + `data/css/*.css`.
+    - [ ] Required format: `Cite: <doc>.md §X.Y; ref: <Material 3 target>` in commit body.
+    - [ ] Accepted reference targets: Apple System Settings / Linear / Raycast / Arc / Vercel dashboard / Cursor.
+    - [ ] CLAUDE.md §0.7 updates: gate count rises to 11 (between public-port + design-tokens).
+    - [ ] Citation template added to /ship skill body.
+
+- [ ] **TUNE-10: TUNE-LINT-12 — `lint-design-tokens.sh` (gate #12).**
+  **As** the design-system cohesion enforcement,
+  **I want** automated detection of hardcoded design tokens,
+  **so that** colors/durations/fonts/sizes always reference canonical tokens.
+  **Acceptance**:
+    - [ ] Flags hex literals (`#1d1d1f`, `Color::from_rgb(...)`, `rgb(...)`) outside `data/css/tokens.css` + `crates/mde-theme/`.
+    - [ ] Flags duration literals (`300ms`, `0.5s`, `Duration::from_millis(X)` where X ≠ 150) outside `data/css/motion-vocabulary.css`.
+    - [ ] Flags font names (`Roboto`, `Intel One Mono`) outside `crates/mde-theme/`.
+    - [ ] Flags row-height literals (`28px`, `24px`, `32px`) outside density constants.
+    - [ ] Snapshot-allow-list captures pre-existing violations at lint-introduction.
+    - [ ] CLAUDE.md §0.7 updates: gate count rises to 12.
+
+- [ ] **TUNE-11: TUNE-CAP-ENFORCE — birthright 8-peer cap + override flag.**
+  **As** the platform's Q3 cap discipline,
+  **I want** birthright pairing to refuse the 9th peer by default,
+  **so that** the locked sizing applies at runtime, not just on paper.
+  **Acceptance**:
+    - [ ] Birthright pairing reads the current peer count from the Nebula CA's signed-cert list.
+    - [ ] At 9th peer attempt, prints clear error: `MackesDE for Workgroups is sized for up to 8 peers (Q3 lock). Run mackes-cli pair --override-cap to bypass; document the exception in docs/design/cap-overrides.md.`
+    - [ ] `--override-cap` flag bypasses the check and logs to the audit topic.
+    - [ ] New `docs/design/cap-overrides.md` documents the override audit format.
+    - [ ] Tested: 9th pair without flag fails; with flag succeeds + appears in audit.
+
+- [ ] **TUNE-12: TUNE-SECURITY-POSTURE — `docs/design/security-posture.md`.**
+  **As** the platform's MAC posture documentation,
+  **I want** an explicit lock document for "Fedora targeted + user-UID only" as the deliberate choice,
+  **so that** §11.5 of the AI_PLATFORM_REFERENCE briefing closes + future security reviewers see a stated posture.
+  **Acceptance**:
+    - [ ] New `docs/design/security-posture.md` covers: Fedora targeted SELinux as the policy base, user-UID isolation as the process model, Nebula's `CAP_NET_ADMIN` scoped via `nebula_t`, the flat-trust threat model rationale, intra-mesh boundary list (bind-scope + Nebula transport encryption + passcode).
+    - [ ] Cross-referenced from AI_GOVERNANCE.md §7 + §13.
+    - [ ] AI_PLATFORM_REFERENCE.md §11.5 updated: gap → closed.
+
+- [ ] **TUNE-13: TUNE-RETIRE-Q92 — drop VoIP spinout plan.**
+  **As** the platform's "Simple" master-rule alignment,
+  **I want** the v4.1 voice-video spinout to `mde-voice` repo retired,
+  **so that** post-1.0 strategy stays single-repo.
+  **Acceptance**:
+    - [ ] AI_GOVERNANCE.md §11 post-1.0 list amended: "VoIP spinout" line retires.
+    - [ ] Memory file [[project_v6_0_mde_portal]] R12 + Q92 cross-references annotated SUPERSEDED.
+    - [ ] No new `mde-voice` repo creation tasks remain in worklist.
+
+- [ ] **TUNE-14: TUNE-RETIRE-CARBON — final Carbon-anywhere sweep.**
+  **As** the Q1+Q2 Material-only lock,
+  **I want** any residual Carbon references (icon-mapping fallback paths, design-doc historical text not banner-marked, etc.) audited + retired,
+  **so that** the platform stays single-design-system clean.
+  **Acceptance**:
+    - [ ] `grep -rin "carbon" crates/ data/ docs/` returns only documented historical-context lines.
+    - [ ] `docs/design/icon-mapping.md` annotated SUPERSEDED if Material Symbols covers all needed icons.
+    - [ ] AI_PLATFORM_REFERENCE.md §1.2 + §10.5 updated to reflect single-design-system stance.
+
+- [ ] **TUNE-15: BUS-7.7-FED — federation pairing UX (new epic).**
+  **As** the §0.17 + Q24 commit that federation ships complete in 1.0,
+  **I want** a full federation pairing flow designed + shipped before 1.0 cuts,
+  **so that** Q35 + Q55 locks aren't aspirational.
+  **Acceptance** (each bench-observable; design + ship together):
+    - [ ] New `docs/design/v1.0-federation-pairing.md` covers OOB passcode protocol + symmetric subscribe-only grant model + Nebula CA cross-sign protocol.
+    - [ ] Workbench accept-pair UI in `crates/mde-workbench/src/panels/mesh/federation/` (text-typed mesh-A passcode → mesh-B passcode handshake → confirmation screen).
+    - [ ] Federation grant config at `~/.local/share/mde/bus/federation.yaml`.
+    - [ ] Federation audit log entries land in the existing audit topic.
+    - [ ] Federated peers DON'T count against the 8-peer cap (Q22); displayed with distinct icon variant + "external mesh" badge in Peer Card.
+    - [ ] AI_GOVERNANCE.md §11 1.0 roadmap item gains "BUS-7.7-FED complete".
+    - [ ] HW bench: cross-mesh subscribe round-trip verified on operator's hardware.
+
+- [ ] **TUNE-16: PHONE-NEBULA-PEER — phone gets full Nebula peer-hood (new epic).**
+  **As** the Q23 reopening of Q58,
+  **I want** the phone elevated from "beside the mesh" to a full Nebula peer with limited GFS access,
+  **so that** cross-device continuity extends to the operator's mobile device.
+  **Acceptance** (each bench-observable):
+    - [ ] New `docs/design/v1.0-phone-nebula-peer.md` covers the Q23 model + the R1 risk-mitigation choice (Option A: Bus + Nebula service access only; GFS via KDC2 drop-folder, FUSE-on-Android deferred to 1.1).
+    - [ ] Nebula Android client bundled into the KDC2 app.
+    - [ ] Birthright pairing extension: a phone-pair UI in mde-workbench → mints phone cert under the mesh CA → installs Nebula config on phone.
+    - [ ] Phone counts as a peer for the Q22 cap (4 desktops + 1 phone = 5 of 8).
+    - [ ] Phone publishes/subscribes to Bus topics over Nebula (using mde-bus binary or shell-out replacement).
+    - [ ] Phone subscribes to `fdo/#` for cross-peer notifications.
+    - [ ] KDC2 stays as the battery-aware optimization layer (clipboard + SMS + battery + mpris).
+    - [ ] Voice-and-tone: phone is labeled "Mesh peer (phone)" in UI.
+    - [ ] HW bench: operator's phone joins mesh + publishes test message + receives Bus notification.
+
+---
+
 ### v6.x BUS-1..7 — Mackes Bus (locked 2026-05-25 via 104-Q poll across 26 rounds)
 
 > **v6.x = Mackes Bus** — single mesh-wide notification + clipboard

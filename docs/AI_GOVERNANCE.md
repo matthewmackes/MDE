@@ -263,7 +263,7 @@ MackesDE for Workgroups 1.0 ships when ALL of these are green:
 
 | # | Scope item | Source |
 |---|---|---|
-| 1 | **BUS-1..7** fully shipped (foundation + surfaces + webhooks + migration + clipboard + advanced routing + federation/audit) | Q91 |
+| 1 | **BUS-1..7** fully shipped (foundation + surfaces + webhooks + migration + clipboard + advanced routing + federation/audit + BUS-7.7-FED federation UX) | Q91 + Q24 (25-Q) |
 | 2 | **GF-17 retired** (BUS-4.2 hard cut) | Q91 |
 | 3 | **DEAD-2 fully drained** (mesh-module retirement queue clean) | Q91 |
 | 4 | **CR-*** ChromeOS Classic visual retrofit complete | Q91 |
@@ -272,19 +272,23 @@ MackesDE for Workgroups 1.0 ships when ALL of these are green:
 | 7 | **D-Bus → Bus migration complete** (only FDO interop survives) | Q96 |
 | 8 | **Material Symbols pivot complete** (Carbon icons gone from user-visible code) | Q97 |
 | 9 | **4 presets implemented** (ChromeOS Classic L/D + Ableton 12 L/D) | Q79 |
-| 10 | **Fleet cap update** — design docs + code reflect 8-peer cap (was 16) | Q3 |
+| 10 | **Fleet cap update** — design docs + code reflect 8-peer cap (was 16); birthright hard-limit + `--override-cap` flag | Q3 + Q22 (25-Q) |
 | 11 | **INST-*** completed (installation manager) | Q98 |
 | 12 | **DM-*** completed (greetd + regreet display manager) | Q98 |
 | 13 | **Caddy gateway retired** | Q10 |
 | 14 | **QNM-Shared term retired** (renamed to MDE-Workgroup throughout) | Q14 + Q77 |
-| 15 | **Operator's full 8-peer fleet HW bench green** | Q98 |
+| 15 | **Operator's full 8-peer fleet HW bench green** (per-bullet acceptance per 25-Q Q13) | Q98 + Q13 (25-Q) |
+| 16 | **EPIC-TUNING-25Q completed** — 16 tuning tasks from the 2026-05-26 25-Q survey: 5 new pre-commit gates (#11-#15), pre-cut-check + hard-block, autonomy amendments, cap enforcement, security-posture doc, Carbon final sweep, phone Nebula peer-hood, federation UX | 25-Q (2026-05-26) |
+| 17 | **PHONE-NEBULA-PEER** — phone elevated from "beside the mesh" to full Nebula peer (Q23 reopens Q58) | Q23 (25-Q) |
+| 18 | **Security posture documented** (`docs/design/security-posture.md`) — Fedora targeted + user-UID stance | Q25 (25-Q) |
 
 **Post-1.0:**
 - Continuous main; tag minor versions annually (1.1, 1.2, …)
-- **VoIP spinout to `mde-voice` repo** (deferred from Q8; revisit at 1.1)
+- **VoIP stays in core forever** (Q21 of 25-Q retired Q92's `mde-voice` spinout plan)
 - AIR-* music continues in core
-- Quarterly DEAD-N retirement audits
+- **Continuous retirement audit on every /ship cycle** (Q20 of 25-Q replaces quarterly cadence)
 - Quarterly skill curation
+- FUSE-on-Android for phone GFS mount (deferred from PHONE-NEBULA-PEER per Q23 R1 risk note)
 
 ---
 
