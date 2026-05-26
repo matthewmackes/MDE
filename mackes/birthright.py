@@ -10,7 +10,7 @@ addition to the v1.0.x xfconf-only apply pipeline:
   2. apply_fonts               — install Red Hat Text + Mono via dnf
   3. apply_apps                — install preset.apps.install / remove preset.apps.remove_bloat
   4. apply_panel_layout        — write the Mackes default xfce4-panel layout
-  5. apply_plymouth            — install + activate the Mackes Plymouth boot theme
+  5. apply_plymouth            — install + activate the MackesDE Plymouth boot theme
   6. apply_dnf_update          — dnf upgrade -y --refresh (full system update)
   7. apply_third_party_repos   — install fedora-workstation-repositories (Chrome, RPM Fusion, etc.)
   8. apply_flathub             — add the Flathub flatpak remote (per-user)
@@ -449,39 +449,38 @@ def apply_panel_layout(_preset: Preset) -> List[str]:
 
 
 # ---------------------------------------------------------------------------
-# 5. Plymouth — install Mackes boot theme and set default
+# 5. Plymouth — install MackesDE boot theme and set default
 # ---------------------------------------------------------------------------
+#
+# Theme renamed `mackes` → `mde` on 2026-05-25 per the 100-Q rebrand
+# (Q71 + Q73: code-internal name is "MDE"). New design: black field +
+# white Material card + stacked Mackes DE logo + Material-blue
+# indeterminate progress (Mackes DE Bootsplash.html design lock).
+# Old `mackes` theme dir retired from the repo in the same commit;
+# upgrade path leaves any pre-existing `/usr/share/plymouth/themes/
+# mackes/` in place but no longer activates it.
 
 
-_PLYMOUTH_DEST = Path("/usr/share/plymouth/themes/mackes")
+_PLYMOUTH_DEST = Path("/usr/share/plymouth/themes/mde")
 
 
 def apply_plymouth(_preset: Preset) -> List[str]:
-    """Install + activate the Mackes Plymouth boot theme.
+    """Install + activate the MackesDE Plymouth boot theme.
 
-    Theme source: data/plymouth/mackes/ (shipped by the RPM).
-    Activation: plymouth-set-default-theme mackes -R (regenerates initrd).
+    Theme source: data/plymouth/mde/ (shipped by the RPM).
+    Activation: plymouth-set-default-theme mde -R (regenerates initrd).
     """
     actions: List[str] = []
     if shutil.which("plymouth-set-default-theme") is None:
         actions.append("plymouth: plymouth not installed — skipping")
         return actions
 
-    src = _find_data("plymouth", "mackes")
+    src = _find_data("plymouth", "mde")
     if src is None:
-        actions.append("plymouth: source missing in data/plymouth/mackes — skipping")
+        actions.append("plymouth: source missing in data/plymouth/mde — skipping")
         return actions
 
-    # If logo file is missing in source, copy from branding/
-    logo_src = src / "logo.png"
-    if not logo_src.exists():
-        b = _branding("MACKES-XFCE-LOGO.png")
-        if b is not None:
-            rc, out = _run_root(["cp", str(b), str(logo_src)], timeout=15)
-            if rc == 0:
-                actions.append("plymouth: copied logo from branding/")
-
-    # Copy theme to /usr/share/plymouth/themes/mackes (root)
+    # Copy theme to /usr/share/plymouth/themes/mde (root)
     if _PLYMOUTH_DEST.exists() and _newer_than(_PLYMOUTH_DEST, src):
         actions.append(f"plymouth: theme already installed at {_PLYMOUTH_DEST} (up to date)")
     else:
@@ -497,11 +496,11 @@ def apply_plymouth(_preset: Preset) -> List[str]:
     # Activate theme + rebuild initrd
     actions.append("plymouth: activating theme + regenerating initrd (this may take ~30s)…")
     rc, out = _run_root(
-        ["plymouth-set-default-theme", "mackes", "-R"],
+        ["plymouth-set-default-theme", "mde", "-R"],
         timeout=300,
     )
     if rc == 0:
-        actions.append("plymouth: theme set to 'mackes'; initrd regenerated")
+        actions.append("plymouth: theme set to 'mde'; initrd regenerated")
     else:
         last = out.strip().splitlines()[-1] if out.strip() else f"rc={rc}"
         actions.append(f"plymouth: theme activation failed: {last}")

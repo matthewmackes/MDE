@@ -69,17 +69,21 @@ def _check_fonts() -> BirthrightItem:
 
 
 def _check_plymouth() -> BirthrightItem:
-    theme_dir = Path("/usr/share/plymouth/themes/mackes")
+    # Theme renamed `mackes` → `mde` on 2026-05-25 per the 100-Q rebrand
+    # (Q71 + Q73 code-internal name). Old `mackes` theme is no longer
+    # shipped; existing installs may still have the dir but it's not
+    # what we activate against.
+    theme_dir = Path("/usr/share/plymouth/themes/mde")
     active = False
     if shutil.which("plymouth-set-default-theme"):
         try:
             r = subprocess.run(["plymouth-set-default-theme"],
                                 capture_output=True, text=True, timeout=4)
-            active = "mackes" in (r.stdout or "")
+            active = "mde" in (r.stdout or "")
         except (OSError, subprocess.TimeoutExpired):
             pass
     return BirthrightItem(
-        key="plymouth", name="Mackes Plymouth boot theme",
+        key="plymouth", name="MackesDE Plymouth boot theme",
         detail="Re-run Setup Wizard → Boot splash step",
         ok=(theme_dir.is_dir() and active),
     )

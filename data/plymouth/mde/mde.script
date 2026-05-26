@@ -1,0 +1,173 @@
+// MackesDE for Workgroups — Plymouth boot splash.
+//
+// Source design: Mackes DE Bootsplash.html (operator-shipped 2026-05-25,
+// implemented per the 100-Q tightening survey + Q41 ChromeOS Classic
+// visual lock + Q43 Material Symbols + Q44 Roboto + Material colour
+// palette from the design HTML).
+//
+// Layout (1280x720 design stage, scaled to any screen):
+//
+//   - Background: solid black (#000) — full screen.
+//   - Card: white (#FFF), 1120x660, centred, 2 px radius (no GPU →
+//     drawn as a solid rectangle with no anti-aliased corners; the
+//     subtle radius the HTML uses isn't visible at boot resolution).
+//   - Logo: data/plymouth/mde/logo.png (logo-stacked-900.png from the
+//     design pack — eyebrow + MACKES DE wordmark + 'for WORKGROUPS' +
+//     rockstar Tux). Scaled to 80 % of card width, centred ~40 % from
+//     card top.
+//   - Stamp: 4 small coloured squares (red / amber / green / blue) top-
+//     right inside the card.
+//   - Progress bar: Material blue (#2196F3) on Material grey-300
+//     (#E0E0E0), 3 px tall, pinned 30 px above card bottom. Indeterminate
+//     slide animation — 30 % wide fill traverses the bar over 1.8 s,
+//     loops.
+//
+// Plymouth notes:
+//   - "script" plugin runs Refresh fn at ~30 fps; we use the call count
+//     as a frame counter for the slide animation.
+//   - Typography (eyebrow / MACKES DE / for WORKGROUPS) lives inside the
+//     pre-rendered logo PNG — Plymouth has no Roboto Heavy 120 px font.
+//   - Boot-progress callback (Plymouth.SetBootProgressFunction) is not
+//     used: the design specifies an indeterminate slide, not a real
+//     progress fill.
+
+# ------------------------------------------------------------------ bg
+Window.SetBackgroundTopColor (0.0, 0.0, 0.0);
+Window.SetBackgroundBottomColor (0.0, 0.0, 0.0);
+
+screen_w = Window.GetWidth ();
+screen_h = Window.GetHeight ();
+
+# ---------------------------------------------------------------- card
+# Card is 1120x660 at the 1280x720 design stage. Scale uniformly to
+# the largest size that fits the screen with 80 px margin on each side.
+DESIGN_STAGE_W = 1280.0;
+DESIGN_STAGE_H = 720.0;
+DESIGN_CARD_W  = 1120.0;
+DESIGN_CARD_H  = 660.0;
+
+scale_w = (screen_w - 160) / DESIGN_STAGE_W;
+scale_h = (screen_h - 160) / DESIGN_STAGE_H;
+scale = scale_w;
+if (scale_h < scale) { scale = scale_h; }
+if (scale < 0.4)     { scale = 0.4;    } # don't crush past readable
+if (scale > 1.5)     { scale = 1.5;    } # don't bloat past 4K design intent
+
+card_w = DESIGN_CARD_W * scale;
+card_h = DESIGN_CARD_H * scale;
+card_x = (screen_w - card_w) / 2;
+card_y = (screen_h - card_h) / 2;
+
+card.sprite = Sprite (Rectangle (1.0, 1.0, 1.0, 1.0).Scale (card_w, card_h));
+card.sprite.SetPosition (card_x, card_y, 0);
+
+# Subtle card shadow — a darker rect offset 0/8 px behind the card.
+shadow.sprite = Sprite (Rectangle (0.0, 0.0, 0.0, 0.35).Scale (card_w + 12, card_h + 12));
+shadow.sprite.SetPosition (card_x - 6, card_y + 6, -1);
+
+# ---------------------------------------------------------------- logo
+# logo-stacked-900.png is 900 px wide. Scale to 80 % of card width.
+logo.image  = Image ("logo.png");
+target_logo_w = card_w * 0.80;
+logo_scale  = target_logo_w / logo.image.GetWidth ();
+target_logo_h = logo.image.GetHeight () * logo_scale;
+logo.scaled = logo.image.Scale (target_logo_w, target_logo_h);
+logo.sprite = Sprite (logo.scaled);
+
+# Centre horizontally; sit ~38 % from the card's top (matches design).
+logo_x = card_x + (card_w - target_logo_w) / 2;
+logo_y = card_y + (card_h * 0.38) - (target_logo_h / 2);
+logo.sprite.SetPosition (logo_x, logo_y, 1);
+
+# --------------------------------------------------------------- stamp
+# 4 coloured squares (10x10 each in the design @ 1280x720 stage), 6 px
+# gap, anchored 24 px top / 28 px right inside the card. Scale with card.
+stamp_dot   = 10 * scale;
+stamp_gap   = 6 * scale;
+stamp_total = stamp_dot * 4 + stamp_gap * 3;
+stamp_x     = card_x + card_w - 28 * scale - stamp_total;
+stamp_y     = card_y + 24 * scale;
+
+stamp_red    = Sprite (Rectangle (0.957, 0.263, 0.212, 1.0).Scale (stamp_dot, stamp_dot));
+stamp_amber  = Sprite (Rectangle (1.000, 0.757, 0.027, 1.0).Scale (stamp_dot, stamp_dot));
+stamp_green  = Sprite (Rectangle (0.298, 0.686, 0.314, 1.0).Scale (stamp_dot, stamp_dot));
+stamp_blue   = Sprite (Rectangle (0.129, 0.588, 0.953, 1.0).Scale (stamp_dot, stamp_dot));
+
+stamp_red.SetPosition   (stamp_x + 0 * (stamp_dot + stamp_gap), stamp_y, 1);
+stamp_amber.SetPosition (stamp_x + 1 * (stamp_dot + stamp_gap), stamp_y, 1);
+stamp_green.SetPosition (stamp_x + 2 * (stamp_dot + stamp_gap), stamp_y, 1);
+stamp_blue.SetPosition  (stamp_x + 3 * (stamp_dot + stamp_gap), stamp_y, 1);
+
+# ------------------------------------------------------------ progress
+# Bar lives 30 px above card bottom (design coords), full width minus
+# 64 px L/R padding, 3 px tall. Background = MD grey-300 (#E0E0E0);
+# fill = MD blue (#2196F3).
+bar_pad_x = 64 * scale;
+bar_h     = 3  * scale;
+if (bar_h < 2) { bar_h = 2; }
+bar_w  = card_w - bar_pad_x * 2;
+bar_x  = card_x + bar_pad_x;
+bar_y  = card_y + card_h - 30 * scale - bar_h;
+
+bar_bg = Sprite (Rectangle (0.878, 0.878, 0.878, 1.0).Scale (bar_w, bar_h));
+bar_bg.SetPosition (bar_x, bar_y, 1);
+
+# Slide-fill: 30 % of bar width. Position updates each refresh.
+fill_w = bar_w * 0.30;
+fill_image  = Rectangle (0.129, 0.588, 0.953, 1.0).Scale (fill_w, bar_h);
+fill_sprite = Sprite (fill_image);
+fill_sprite.SetPosition (bar_x, bar_y, 2);
+
+# Frame counter for the slide animation.
+fill_phase = 0.0;
+SLIDE_PERIOD_FRAMES = 54.0;  # 30 fps × 1.8 s ≈ 54 frames per loop.
+
+fun refresh_callback () {
+  # Advance phase; wrap [0, 1).
+  fill_phase = fill_phase + (1.0 / SLIDE_PERIOD_FRAMES);
+  if (fill_phase >= 1.0) { fill_phase = fill_phase - 1.0; }
+
+  # CSS keyframe approximates `translateX(-100%) → translateX(280%)`.
+  # Map fill_phase [0,1) to fill X in [bar_x - fill_w, bar_x + bar_w].
+  travel = bar_w + fill_w;
+  fill_x = bar_x - fill_w + travel * fill_phase;
+  fill_sprite.SetPosition (fill_x, bar_y, 2);
+}
+Plymouth.SetRefreshFunction (refresh_callback);
+
+# -------------------------------------------------------------- prompts
+# Password-prompt support for full-disk encryption / user unlock.
+# Render a centred text input below the card.
+
+status = "normal";
+
+fun display_password_callback (prompt, bullets) {
+  status = "password";
+  # Plymouth's bullets parameter is the count; render dots.
+  bullet_str = "";
+  i = 0;
+  while (i < bullets) {
+    bullet_str = bullet_str + "●";
+    i = i + 1;
+  }
+  prompt_image = Image.Text (prompt + " " + bullet_str, 1.0, 1.0, 1.0);
+  prompt_sprite = Sprite (prompt_image);
+  prompt_x = (screen_w - prompt_image.GetWidth ()) / 2;
+  prompt_y = card_y + card_h + 24 * scale;
+  prompt_sprite.SetPosition (prompt_x, prompt_y, 3);
+}
+Plymouth.SetDisplayPasswordFunction (display_password_callback);
+
+fun display_normal_callback () {
+  status = "normal";
+}
+Plymouth.SetDisplayNormalFunction (display_normal_callback);
+
+fun message_callback (text) {
+  msg_image = Image.Text (text, 0.878, 0.878, 0.878);
+  msg_sprite = Sprite (msg_image);
+  msg_x = (screen_w - msg_image.GetWidth ()) / 2;
+  msg_y = card_y + card_h + 8 * scale;
+  msg_sprite.SetPosition (msg_x, msg_y, 3);
+}
+Plymouth.SetMessageFunction (message_callback);

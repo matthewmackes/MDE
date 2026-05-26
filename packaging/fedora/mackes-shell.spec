@@ -102,9 +102,16 @@ Requires:       openssh-server
 # enumeration goes through swayipc-async (Phase E rewrite)
 # or `swaymsg -t get_tree` subprocess (today).
 
-# Plymouth boot splash — Mackes ships its own theme (data/plymouth/mackes/)
+# Plymouth boot splash — MackesDE for Workgroups ships its own theme
+# at data/plymouth/mde/ (Material card + stacked-logo + indeterminate
+# blue progress bar, per `Mackes DE Bootsplash.html` design lock
+# 2026-05-25). The "script" plugin (plymouth-plugin-script) is the
+# canonical Plymouth backend on Fedora 44+ and is what `mde.script`
+# targets — pulled explicitly so the theme renders rather than
+# silently falling back to BGRT.
 Requires:       plymouth
 Requires:       plymouth-scripts
+Requires:       plymouth-plugin-script
 
 # Flatpak — birthright wizard adds the Flathub remote per-user
 Recommends:     flatpak
@@ -510,11 +517,13 @@ install -m 0644 data/themes/MDE-Dark/qt6ct/colors/MDE-Dark.conf \
 install -d %{buildroot}%{_datadir}/icons
 cp -r data/icons/Black-Sun     %{buildroot}%{_datadir}/icons/
 cp -r data/icons/Mackes-Carbon %{buildroot}%{_datadir}/icons/
-# Plymouth Mackes boot theme — installed but NOT activated at %post; the
+# Plymouth MackesDE boot theme — installed but NOT activated at %post; the
 # wizard's birthright step (mackes.birthright.apply_plymouth) activates it
 # only when the user opts in (initrd rebuild is heavy and disruptive).
+# Theme directory renamed mackes/ → mde/ per the 2026-05-25 100-Q rebrand
+# (Q71 + Q73: code-internal name is "MDE"); old `mackes` theme dir retired.
 install -d %{buildroot}%{_datadir}/plymouth/themes
-cp -r data/plymouth/mackes %{buildroot}%{_datadir}/plymouth/themes/
+cp -r data/plymouth/mde %{buildroot}%{_datadir}/plymouth/themes/
 # v2.0.0 cut: C panel-plugin install steps retired (see %build).
 cp -r data/grub           %{buildroot}%{_datadir}/%{name}/data/
 cp    data/media-services.yaml %{buildroot}%{_datadir}/%{name}/data/
@@ -1203,11 +1212,11 @@ fi
 %dir %{_sysconfdir}/mde
 %dir %{_sysconfdir}/mde/connect
 %config(noreplace) %{_sysconfdir}/mde/connect/policy.toml
-# Plymouth Mackes boot theme. Stays in base because Plymouth
+# Plymouth MackesDE boot theme. Stays in base because Plymouth
 # can render on TTY-only lighthouse boxes (themes are inert
 # until activated; activation happens in the wizard's
 # birthright step which is gated on the full profile).
-%{_datadir}/plymouth/themes/mackes/
+%{_datadir}/plymouth/themes/mde/
 
 %files desktop
 # INST-1 (v2.7, 2026-05-25) — every Wayland-stack GUI binary

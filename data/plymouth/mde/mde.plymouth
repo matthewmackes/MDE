@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=MackesDE for Workgroups
+Description=Boot splash for MackesDE for Workgroups — black field, white Material card, stacked Mackes DE logo, Material-blue indeterminate progress.
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/mde
+ScriptFile=/usr/share/plymouth/themes/mde/mde.script
