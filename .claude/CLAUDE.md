@@ -194,6 +194,33 @@ Before every commit, when applicable:
     voice config defaults, port-availability probes, Nebula
     listeners themselves) are snapshot-allow-listed with
     inline rationale comments in the script.
+11. **Visual-citation lint** (planned 2026-05-26 per Q6 + TUNE-9
+    of the 25-Q tuning survey): `install-helpers/lint-visual-citation.sh`
+    (if any `crates/mde-*/src/*.rs` or `data/css/*.css` is
+    touched). Every visual commit must cite a `docs/design/<spec>.md`
+    section + name a Material 3 reference target (Apple System
+    Settings / Linear / Raycast / Arc / Vercel dashboard / Cursor)
+    via a `Cite: <doc>.md §X.Y; ref: <target>` line in the commit
+    body. Land via TUNE-9.
+12. **Design-tokens lint** (planned 2026-05-26 per Q7 + TUNE-10):
+    `install-helpers/lint-design-tokens.sh` catches hardcoded
+    hex literals, duration literals, font names, row-height
+    literals outside the canonical token files
+    (`data/css/tokens.css`, `data/css/motion-vocabulary.css`,
+    `crates/mde-theme/`). Snapshot-allow-listed for pre-existing
+    violations. Land via TUNE-10.
+13. **No-stubs lint** (added 2026-05-26 per Q8 of the 25-Q
+    tuning survey + TUNE-2): `install-helpers/lint-no-stubs.sh`
+    (if any `crates/*.rs` is touched). Catches net-new `todo!()`,
+    `unimplemented!()`, `panic!("not yet …")`, `panic!("todo …")`,
+    `panic!("not implemented …")` in committed Rust code. The
+    voice-tone lint (#6, extended in TUNE-5) catches the user-
+    visible string side ("coming soon" / "TBD" / "WIP" / …).
+    Together they enforce §0.12 + 25-Q Q8 + Q9 lock by automation
+    rather than self-policing. Test-path heuristic (`/tests/` and
+    `*_tests.rs`) excluded so test fixtures can use placeholders.
+    Snapshot allow-list empty at lint introduction — no pre-
+    existing violations.
 
 If a pre-commit hook fails, the commit did **not** happen — fix the
 issue, re-stage, and create a **new** commit. Never `--amend` in that
