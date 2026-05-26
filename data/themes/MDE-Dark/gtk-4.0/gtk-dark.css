@@ -1,0 +1,9 @@
+/* MDE-Dark — explicit dark alias.
+ *
+ * GTK4 looks up `gtk-dark.css` when `gtk-application-prefer-dark-theme`
+ * is true. We ship only one variant for now (Carbon palette is always
+ * dark per the v2.6 visual lock), so the dark alias forwards to the
+ * main gtk.css. The Round 3 dark/light toggle will replace this file
+ * with the light-variant palette.
+ */
+@import url("gtk.css");

@@ -495,6 +495,18 @@ cp -r data/themes/Shiki-Statler %{buildroot}%{_datadir}/themes/
 # fresh `dnf install mde && reboot` lands the in-house brand
 # stripe instead of the third-party Orchis fallback.
 cp -r data/themes/Mackes-Dark   %{buildroot}%{_datadir}/themes/
+# Portal-37 — MDE-Dark GTK4 + GTK3 theme. Matches Portal visual
+# identity (Carbon-inspired pastel-on-charcoal + indigo accent +
+# Intel One Mono). mde-session's theme_pump writes
+# ~/.config/gtk-{3,4}.0/settings.ini → gtk-theme-name=MDE-Dark on
+# every login so freshly-launched GTK apps inherit it.
+cp -r data/themes/MDE-Dark      %{buildroot}%{_datadir}/themes/
+# Portal-37 — Qt6 color scheme. mde-session's theme_pump points
+# qt6ct.conf at this file via color_scheme_path so Qt6 apps blend
+# with the GTK4 surfaces.
+install -d %{buildroot}%{_datadir}/qt6ct/colors
+install -m 0644 data/themes/MDE-Dark/qt6ct/colors/MDE-Dark.conf \
+    %{buildroot}%{_datadir}/qt6ct/colors/MDE-Dark.conf
 install -d %{buildroot}%{_datadir}/icons
 cp -r data/icons/Black-Sun     %{buildroot}%{_datadir}/icons/
 cp -r data/icons/Mackes-Carbon %{buildroot}%{_datadir}/icons/
@@ -1266,6 +1278,9 @@ fi
 %{_datadir}/themes/Orchis-Dark/
 %{_datadir}/themes/Shiki-Statler/
 %{_datadir}/themes/Mackes-Dark/
+# Portal-37 — runtime app theme + Qt6 color scheme.
+%{_datadir}/themes/MDE-Dark/
+%{_datadir}/qt6ct/colors/MDE-Dark.conf
 # Vendored icon themes — same reason.
 %{_datadir}/icons/Black-Sun/
 %{_datadir}/icons/Mackes-Carbon/

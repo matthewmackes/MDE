@@ -1,0 +1,92 @@
+/* MDE-Dark — GTK3 compatibility shim.
+ *
+ * Most MDE surfaces are Iced + GTK4; this file exists so a GTK3 app
+ * pointed at MDE-Dark via `gtk-theme-name` still receives the
+ * Carbon palette + indigo accent. Adopts the same named-color set
+ * as gtk-4.0/gtk.css so libadwaita-compatible apps inherit
+ * correctly.
+ *
+ * For the LightDM greeter, the historical Mackes-Dark theme stays
+ * the active one — its panel-stripe + greeter selectors are tuned
+ * for that surface. MDE-Dark is the runtime app theme.
+ */
+
+@define-color mde_bg_deep   #202124;
+@define-color mde_bg_card   #292a2d;
+@define-color mde_bg_hover  #35363a;
+@define-color mde_bg_active #3c4043;
+@define-color mde_fg_text   #e8eaed;
+@define-color mde_fg_muted  #9aa0a6;
+@define-color mde_fg_faint  #5f6368;
+@define-color mde_accent    #5b6af5;
+@define-color mde_border    alpha(white, 0.08);
+
+@define-color theme_bg_color           @mde_bg_deep;
+@define-color theme_fg_color           @mde_fg_text;
+@define-color theme_base_color         @mde_bg_card;
+@define-color theme_text_color         @mde_fg_text;
+@define-color theme_selected_bg_color  @mde_accent;
+@define-color theme_selected_fg_color  @mde_fg_text;
+@define-color insensitive_bg_color     @mde_bg_card;
+@define-color insensitive_fg_color     @mde_fg_faint;
+@define-color borders                  @mde_border;
+
+window, .background {
+    background-color: @mde_bg_deep;
+    color: @mde_fg_text;
+}
+
+headerbar, .titlebar {
+    background-color: @mde_bg_card;
+    color: @mde_fg_text;
+    border-bottom: 1px solid @mde_border;
+    box-shadow: none;
+}
+
+button {
+    background-color: @mde_bg_card;
+    color: @mde_fg_text;
+    border: 1px solid @mde_border;
+    border-radius: 4px;
+    padding: 5px 12px;
+}
+
+button:hover { background-color: @mde_bg_hover; }
+button:active, button:checked { background-color: @mde_bg_active; }
+
+button.suggested-action,
+button.default {
+    background-color: @mde_accent;
+    color: @mde_fg_text;
+    border-color: @mde_accent;
+}
+
+entry {
+    background-color: @mde_bg_card;
+    color: @mde_fg_text;
+    border: 1px solid @mde_border;
+    border-radius: 4px;
+    padding: 6px 10px;
+    caret-color: @mde_accent;
+}
+
+entry:focus {
+    border-color: @mde_accent;
+    box-shadow: inset 0 -2px 0 0 @mde_accent;
+}
+
+selection, *:selected, *:focus:selected {
+    background-color: @mde_accent;
+    color: @mde_fg_text;
+}
+
+popover, menu {
+    background-color: @mde_bg_card;
+    color: @mde_fg_text;
+    border: 1px solid @mde_border;
+    border-radius: 6px;
+    padding: 4px;
+}
+
+menuitem { color: @mde_fg_text; padding: 6px 12px; border-radius: 3px; }
+menuitem:hover { background-color: @mde_bg_hover; }

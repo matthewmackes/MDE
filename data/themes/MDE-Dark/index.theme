@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=X-GNOME-Metatheme
+Name=MDE-Dark
+Comment=Mackes Desktop Environment — pastel-on-charcoal theme. Carbon palette + Classic ChromeOS surface + indigo accent. Intel One Mono system-wide.
+Encoding=UTF-8
+
+[X-GNOME-Metatheme]
+GtkTheme=MDE-Dark
+MetacityTheme=MDE-Dark
+IconTheme=Mackes-Carbon
+CursorTheme=Adwaita
+ButtonLayout=:close
+FontName=Intel One Mono 10

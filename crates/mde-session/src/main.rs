@@ -26,6 +26,7 @@
 mod autostart;
 mod lock;
 mod session;
+mod theme_pump;
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -101,6 +102,14 @@ async fn main() -> anyhow::Result<()> {
         .with_target(false)
         .init();
     tracing::info!("mde-session: starting");
+
+    // 0. Portal-37 — apply the MDE-Dark + Intel One Mono settings to
+    //    every GTK / Qt6 config file the pump owns before
+    //    autostarted apps come up. Idempotent; never fatal.
+    let changed = theme_pump::apply();
+    if !changed.is_empty() {
+        tracing::info!(count = changed.len(), "theme-pump: settings refreshed");
+    }
 
     // 1. Read autostart entries the user has explicitly enabled and
     //    spawn each as a detached child. Hidden=true overlays

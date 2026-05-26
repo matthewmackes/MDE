@@ -1,0 +1,380 @@
+/*
+ * MDE-Dark — GTK4 theme matching Portal visual identity.
+ *
+ * Ships at /usr/share/themes/MDE-Dark/gtk-4.0/gtk.css and is selected
+ * by the GTK4 settings stack via `gtk-theme-name = "MDE-Dark"` (set by
+ * `mde-portal::theme_pump` on every login).
+ *
+ * Palette is the Classic ChromeOS / Carbon lock locked
+ * 2026-05-24 in `project_chromeos_classic_visual_lock`:
+ *
+ *   --mde-bg-deep    #202124   surface 0 — window background
+ *   --mde-bg-card    #292a2d   surface 1 — cards / popovers
+ *   --mde-bg-hover   #35363a   surface 2 — row hover
+ *   --mde-bg-active  #3c4043   surface 3 — pressed / selected idle
+ *   --mde-fg-text    #e8eaed   primary text
+ *   --mde-fg-muted   #9aa0a6   secondary / placeholder text
+ *   --mde-fg-faint   #5f6368   disabled / chrome
+ *   --mde-accent     #5b6af5   indigo — focus + selection + suggested action
+ *   --mde-border     rgba(255,255,255,0.08)
+ *   --mde-divider    rgba(255,255,255,0.04)
+ *
+ * Typography:
+ *   GtkFontName    "Intel One Mono 10"   (locked by Portal-3)
+ *   monospace      "Intel One Mono 10"
+ *
+ * The theme keeps the widget surface deliberately narrow — primary
+ * + accent + focus + hover for the widgets GTK4 apps commonly use.
+ * libadwaita-themed apps inherit named colors via @define-color; the
+ * dark/light variant resolution is handled by Adw.StyleManager (we
+ * ship only the dark variant; light is generated symmetrically when
+ * the Round 3 dark/light toggle lands).
+ */
+
+@define-color mde_bg_deep   #202124;
+@define-color mde_bg_card   #292a2d;
+@define-color mde_bg_hover  #35363a;
+@define-color mde_bg_active #3c4043;
+@define-color mde_fg_text   #e8eaed;
+@define-color mde_fg_muted  #9aa0a6;
+@define-color mde_fg_faint  #5f6368;
+@define-color mde_accent    #5b6af5;
+@define-color mde_border    alpha(white, 0.08);
+@define-color mde_divider   alpha(white, 0.04);
+
+/* libadwaita named-color bridge — apps that pull from the GTK
+ * `@theme_*` palette pick up the Carbon surfaces automatically. */
+@define-color theme_bg_color           @mde_bg_deep;
+@define-color theme_fg_color           @mde_fg_text;
+@define-color theme_base_color         @mde_bg_card;
+@define-color theme_text_color         @mde_fg_text;
+@define-color theme_selected_bg_color  @mde_accent;
+@define-color theme_selected_fg_color  @mde_fg_text;
+@define-color theme_unfocused_bg_color @mde_bg_deep;
+@define-color theme_unfocused_fg_color @mde_fg_muted;
+@define-color insensitive_bg_color     @mde_bg_card;
+@define-color insensitive_fg_color     @mde_fg_faint;
+@define-color borders                  @mde_border;
+@define-color unfocused_borders        @mde_border;
+@define-color accent_color             @mde_accent;
+@define-color accent_bg_color          @mde_accent;
+@define-color accent_fg_color          @mde_fg_text;
+@define-color destructive_color        #ea4335;
+@define-color destructive_bg_color     #ea4335;
+@define-color success_color            #34a853;
+@define-color warning_color            #fbbc04;
+@define-color error_color              #ea4335;
+@define-color view_bg_color            @mde_bg_card;
+@define-color view_fg_color            @mde_fg_text;
+@define-color window_bg_color          @mde_bg_deep;
+@define-color window_fg_color          @mde_fg_text;
+@define-color headerbar_bg_color       @mde_bg_card;
+@define-color headerbar_fg_color       @mde_fg_text;
+@define-color headerbar_border_color   @mde_border;
+@define-color popover_bg_color         @mde_bg_card;
+@define-color popover_fg_color         @mde_fg_text;
+@define-color card_bg_color            @mde_bg_card;
+@define-color card_fg_color            @mde_fg_text;
+@define-color sidebar_bg_color         @mde_bg_deep;
+@define-color sidebar_fg_color         @mde_fg_text;
+
+/* ───────────────────────── Base ──────────────────────────── */
+
+window,
+.background {
+    background-color: @mde_bg_deep;
+    color: @mde_fg_text;
+}
+
+label {
+    color: @mde_fg_text;
+}
+
+.dim-label, label.dim-label {
+    color: @mde_fg_muted;
+}
+
+/* ───────────────────────── Headerbar ───────────────────── */
+
+headerbar, .titlebar {
+    background-color: @mde_bg_card;
+    color: @mde_fg_text;
+    border-bottom: 1px solid @mde_border;
+    box-shadow: none;
+    min-height: 36px;
+    padding: 0 6px;
+}
+
+headerbar .title, .titlebar .title {
+    color: @mde_fg_text;
+    font-weight: 500;
+}
+
+/* ───────────────────────── Buttons ──────────────────────── */
+
+button {
+    background-color: @mde_bg_card;
+    color: @mde_fg_text;
+    border: 1px solid @mde_border;
+    border-radius: 4px;
+    padding: 5px 12px;
+    box-shadow: none;
+    transition: background-color 120ms ease;
+}
+
+button:hover {
+    background-color: @mde_bg_hover;
+}
+
+button:active,
+button:checked {
+    background-color: @mde_bg_active;
+    color: @mde_fg_text;
+}
+
+button.suggested-action,
+button.default {
+    background-color: @mde_accent;
+    color: @mde_fg_text;
+    border-color: @mde_accent;
+}
+
+button.suggested-action:hover,
+button.default:hover {
+    background-color: shade(@mde_accent, 1.10);
+}
+
+button.destructive-action {
+    background-color: #ea4335;
+    color: @mde_fg_text;
+    border-color: #ea4335;
+}
+
+button.flat {
+    background: transparent;
+    border-color: transparent;
+}
+
+button.flat:hover {
+    background-color: @mde_bg_hover;
+}
+
+button:disabled,
+button:insensitive {
+    color: @mde_fg_faint;
+    background-color: @mde_bg_card;
+    border-color: @mde_border;
+}
+
+/* ───────────────────────── Entry / input ────────────────── */
+
+entry, textview, .view {
+    background-color: @mde_bg_card;
+    color: @mde_fg_text;
+    border: 1px solid @mde_border;
+    border-radius: 4px;
+    padding: 6px 10px;
+    caret-color: @mde_accent;
+}
+
+entry:focus, entry:focus-within {
+    border-color: @mde_accent;
+    box-shadow: inset 0 -2px 0 0 @mde_accent;
+}
+
+entry placeholder {
+    color: @mde_fg_muted;
+}
+
+/* ───────────────────────── Selection ────────────────────── */
+
+selection,
+*:selected,
+*:focus:selected,
+text selection {
+    background-color: @mde_accent;
+    color: @mde_fg_text;
+}
+
+/* ───────────────────────── Popover / menu ───────────────── */
+
+popover, popover > contents, menu, .menu {
+    background-color: @mde_bg_card;
+    color: @mde_fg_text;
+    border: 1px solid @mde_border;
+    border-radius: 6px;
+    padding: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+}
+
+menuitem, .menuitem,
+modelbutton {
+    color: @mde_fg_text;
+    background: transparent;
+    padding: 6px 12px;
+    border-radius: 3px;
+}
+
+menuitem:hover, .menuitem:hover,
+modelbutton:hover {
+    background-color: @mde_bg_hover;
+}
+
+menuitem:disabled, .menuitem:disabled {
+    color: @mde_fg_faint;
+}
+
+separator, .separator {
+    background-color: @mde_divider;
+    min-height: 1px;
+    margin: 4px 0;
+}
+
+/* ───────────────────────── Scrollbar ────────────────────── */
+
+scrollbar, scrollbar.vertical, scrollbar.horizontal {
+    background: transparent;
+    padding: 2px;
+}
+
+scrollbar slider {
+    background-color: alpha(white, 0.18);
+    border-radius: 6px;
+    min-width: 6px;
+    min-height: 6px;
+}
+
+scrollbar slider:hover {
+    background-color: alpha(white, 0.32);
+}
+
+/* ───────────────────────── Switch / check / radio ───────── */
+
+switch {
+    background-color: @mde_bg_active;
+    border-radius: 11px;
+    min-width: 32px;
+    min-height: 18px;
+    border: 1px solid @mde_border;
+}
+
+switch:checked {
+    background-color: @mde_accent;
+    border-color: @mde_accent;
+}
+
+switch slider {
+    background-color: @mde_fg_text;
+    border-radius: 9px;
+    margin: 1px;
+    min-width: 14px;
+    min-height: 14px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+checkbutton check, radiobutton radio {
+    background-color: @mde_bg_card;
+    border: 1px solid @mde_border;
+    border-radius: 3px;
+    min-width: 14px;
+    min-height: 14px;
+}
+
+checkbutton check:checked,
+radiobutton radio:checked {
+    background-color: @mde_accent;
+    border-color: @mde_accent;
+    color: @mde_fg_text;
+}
+
+/* ───────────────────────── Lists / row ──────────────────── */
+
+list, .view {
+    background-color: @mde_bg_deep;
+    color: @mde_fg_text;
+}
+
+row, listview > row {
+    background-color: transparent;
+    color: @mde_fg_text;
+    padding: 6px 8px;
+    border-radius: 4px;
+    transition: background-color 120ms ease;
+}
+
+row:hover, listview > row:hover {
+    background-color: @mde_bg_hover;
+}
+
+row:selected, listview > row:selected {
+    background-color: @mde_accent;
+    color: @mde_fg_text;
+}
+
+/* ───────────────────────── Notebook tabs ────────────────── */
+
+notebook header {
+    background-color: @mde_bg_card;
+    border-bottom: 1px solid @mde_border;
+}
+
+notebook tab {
+    color: @mde_fg_muted;
+    background: transparent;
+    padding: 6px 12px;
+    border-bottom: 2px solid transparent;
+}
+
+notebook tab:checked {
+    color: @mde_fg_text;
+    border-bottom-color: @mde_accent;
+}
+
+notebook tab:hover {
+    color: @mde_fg_text;
+}
+
+/* ───────────────────────── Tooltip ──────────────────────── */
+
+tooltip {
+    background-color: @mde_bg_deep;
+    color: @mde_fg_text;
+    border: 1px solid @mde_border;
+    border-radius: 4px;
+    padding: 4px 8px;
+}
+
+/* ───────────────────────── Spinner / progress ──────────── */
+
+spinner {
+    color: @mde_accent;
+}
+
+progressbar > trough {
+    background-color: @mde_bg_hover;
+    border-radius: 6px;
+}
+
+progressbar > trough > progress {
+    background-color: @mde_accent;
+    border-radius: 6px;
+}
+
+/* ───────────────────────── Sidebar / pane ───────────────── */
+
+.sidebar,
+.navigation-sidebar {
+    background-color: @mde_bg_deep;
+    color: @mde_fg_text;
+    border-right: 1px solid @mde_border;
+}
+
+.sidebar row, .navigation-sidebar row {
+    padding: 8px 12px;
+    border-radius: 4px;
+}
+
+.sidebar row:selected,
+.navigation-sidebar row:selected {
+    background-color: @mde_accent;
+}
