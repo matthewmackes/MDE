@@ -1630,13 +1630,15 @@ call-end lifecycle, never at install or login.
     - [ ] `mackesd_state_backup` worker uploads to configured targets after writing the mesh-local copy.
     - [ ] Workbench System > Backup panel exposes the config.
 
-- [ ] **EPIC-SEC-PUBLIC-PORT-LINT: Lint script catches accidental public-port binds** *(Q60)*
+- [✓] **EPIC-SEC-PUBLIC-PORT-LINT: Lint script catches accidental public-port binds** *(Q60)* *(shipped 2026-05-26 — session=opus-cw-2026-05-26-02:00)*
   **As** the security model,
   **I want** lint to catch any new code that binds a port outside the allow-list (4242/UDP + 443/TCP),
   **so that** lighthouse public surface doesn't grow accidentally.
   **Acceptance** (each bench-observable):
-    - [ ] `install-helpers/lint-public-ports.sh` written + wired into CI.
-    - [ ] Lint scans for `bind\(.*0\.0\.0\.0\|.*ListenAddress.*0\.0\.0\.0\|.*EXPOSE`-style patterns + allow-lists the 2 declared ports.
+    - [✓] `install-helpers/lint-public-ports.sh` written + executable + wired into CLAUDE.md §0.7 as gate #10.
+    - [✓] Lint scans for `bind\(.*0\.0\.0\.0`, `bind\(.*\[::\]`, `ListenAddress\s+0\.0\.0\.0`, `BindAddress=0\.0\.0\.0`, `^EXPOSE\s+`, and bare `"0\.0\.0\.0"` string literals in `crates/`, `mackes/`, `data/` (.rs, .py, .toml, .yaml, .yml, .conf, .service file extensions). Comment-prefix filter anchored against grep's `:linenum:` injection (matches established lint pattern). Pre-existing 10 binds snapshot-allow-listed with inline rationale comments (WoL broadcast — RFC 2153, voice mesh_bind_address placeholder, LAN-discovery probe, wizard port-availability probe, voice config tests, Nebula listeners themselves).
+    - [✓] Runs clean against current tree; net-new public binds outside the allow-list trigger the gate.
+    - [✓] CLAUDE.md §0.7 now lists 10 pre-commit gates total (was 9).
 
 #### EPIC-SCOPE (scope clarifications)
 

@@ -182,6 +182,18 @@ Before every commit, when applicable:
    v1.x Python workbench (retiring per Q49), the legacy GTK
    panel, and the panel's icon_mapper.rs (target of
    EPIC-UI-MATERIAL) are allow-listed.
+10. **Public-port-bind lint** (added 2026-05-26 per Q60 +
+    EPIC-SEC-PUBLIC-PORT-LINT): `install-helpers/lint-public-ports.sh`
+    (if any source/config file is touched). Catches net-new
+    listeners binding `0.0.0.0` / `[::]` / `EXPOSE` outside the
+    locked allow-list. Per Q60 of the 100-Q survey, the only
+    public ports MDE peers expose are **UDP/4242** (Nebula
+    overlay) + **TCP/443** (Nebula HTTPS-tunnel fallback on
+    lighthouses); every other listener must bind on the Nebula
+    overlay interface. Pre-existing public binds (WoL broadcast,
+    voice config defaults, port-availability probes, Nebula
+    listeners themselves) are snapshot-allow-listed with
+    inline rationale comments in the script.
 
 If a pre-commit hook fails, the commit did **not** happen — fix the
 issue, re-stage, and create a **new** commit. Never `--amend` in that
