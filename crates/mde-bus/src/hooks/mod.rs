@@ -37,6 +37,7 @@ pub mod config;
 pub mod gitea;
 pub mod github;
 pub mod matcher;
+pub mod nut;
 pub mod publisher;
 pub mod server;
 pub mod sonarr;

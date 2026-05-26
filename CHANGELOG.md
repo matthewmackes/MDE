@@ -5,6 +5,18 @@ unreleased; tag versions get a date when they ship.
 
 ## Unreleased — v1.0 MackesDE for Workgroups (rebrand cut)
 
+**BUS-3.6 — UPS / NUT adapter (v6.x Mackes Bus, 2026-05-26)**
+- `NutAdapter` dispatches on the JSON body's `event` field. NUT
+  has no built-in webhook poster, so the canonical pattern is
+  upssched.conf → external script → curl with a Bus-shaped JSON
+  body.
+- Five canonical events covered: ONBATT, LOWBATT, ONLINE,
+  SHUTDOWN, COMMBAD. Template variables: ups_name, ups_ts,
+  ups_status, battery_charge, runtime_human.
+- `data/bus/hooks/nut.yaml` priority-tiers the rules — ONBATT +
+  COMMBAD = high, LOWBATT + SHUTDOWN = urgent (Theater takeover
+  + wallpaper stripe + phone push per BUS-2.1), ONLINE = default.
+
 **BUS-3.5 — Sonarr / Radarr adapter (v6.x Mackes Bus, 2026-05-26)**
 - `SonarrAdapter` dispatches on the JSON body's `eventType` field
   (the upstream Servarr "Connect" notifications don't ship a

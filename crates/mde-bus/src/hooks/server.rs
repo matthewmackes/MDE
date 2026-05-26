@@ -50,6 +50,7 @@ use super::config::{ConfigError, HooksConfig};
 use super::gitea::GiteaAdapter;
 use super::github::GitHubAdapter;
 use super::matcher::{match_request, Adapter, MatchError};
+use super::nut::NutAdapter;
 use super::sonarr::SonarrAdapter;
 use super::publisher::{publish_to_ntfy, PublisherError};
 
@@ -209,6 +210,7 @@ fn register_builtin_adapters() -> std::collections::BTreeMap<String, Box<dyn Ada
     map.insert("github".to_string(), Box::new(GitHubAdapter));
     map.insert("gitea".to_string(), Box::new(GiteaAdapter));
     map.insert("sonarr".to_string(), Box::new(SonarrAdapter));
+    map.insert("nut".to_string(), Box::new(NutAdapter));
     map
 }
 

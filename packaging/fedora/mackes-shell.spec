@@ -712,6 +712,8 @@ install -D -m 0644 data/bus/hooks/gitea.yaml \
     %{buildroot}%{_datadir}/mde/bus/hooks/gitea.yaml
 install -D -m 0644 data/bus/hooks/sonarr.yaml \
     %{buildroot}%{_datadir}/mde/bus/hooks/sonarr.yaml
+install -D -m 0644 data/bus/hooks/nut.yaml \
+    %{buildroot}%{_datadir}/mde/bus/hooks/nut.yaml
 
 # BUS-3.1 (v6.x Mackes Bus) — firewalld service definition for
 # the two Bus ports (8443/tcp ntfy + 8444/tcp webhooks). Operator

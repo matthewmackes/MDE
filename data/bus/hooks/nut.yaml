@@ -1,0 +1,70 @@
+# BUS-3.6 — UPS / NUT adapter rule set.
+#
+# NUT (Network UPS Tools) doesn't ship a built-in webhook poster;
+# the canonical pattern is `upssched.conf` → external shell script
+# → `curl -X POST -d '{...}' http://<peer-overlay-ip>:8444/hooks/nut`.
+# An example shell wrapper ships at
+# /usr/share/mde/bus/hooks/nut-poster.sh.example for operators to
+# adapt.
+#
+# Five canonical UPS events ship: ONBATT (grid loss),
+# LOWBATT (battery low), ONLINE (grid restored),
+# SHUTDOWN (shutdown imminent), COMMBAD (comms lost).
+
+adapters:
+
+  nut:
+    rules:
+
+      - name: ups-grid-loss
+        match:
+          event: ONBATT
+        publish:
+          topic: power/grid-loss
+          priority: high
+          title: "{{ ups_name }} on battery"
+          body: |
+            Grid lost at {{ ups_ts }}.
+            Battery: {{ battery_charge }}% — runtime {{ runtime_human }}
+
+      - name: ups-low-battery
+        match:
+          event: LOWBATT
+        publish:
+          topic: power/low-battery
+          priority: urgent
+          title: "{{ ups_name }} battery low!"
+          body: |
+            Low-battery threshold reached at {{ ups_ts }}.
+            Battery: {{ battery_charge }}% — runtime {{ runtime_human }}
+
+      - name: ups-shutdown
+        match:
+          event: SHUTDOWN
+        publish:
+          topic: power/shutdown
+          priority: urgent
+          title: "{{ ups_name }} shutdown imminent"
+          body: |
+            UPS-driven shutdown signalled at {{ ups_ts }}.
+            Save your work.
+
+      - name: ups-online
+        match:
+          event: ONLINE
+        publish:
+          topic: power/grid-restored
+          priority: default
+          title: "{{ ups_name }} back on grid"
+          body: |
+            Grid power restored at {{ ups_ts }}.
+
+      - name: ups-comm-bad
+        match:
+          event: COMMBAD
+        publish:
+          topic: power/comm-lost
+          priority: high
+          title: "{{ ups_name }} comms lost"
+          body: |
+            NUT lost contact with the UPS at {{ ups_ts }}.
