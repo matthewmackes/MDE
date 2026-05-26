@@ -486,7 +486,9 @@ call-end lifecycle, never at install or login.
     - [ ] CLAUDE.md §0.7 updates: gate count rises to 11 (between public-port + design-tokens).
     - [ ] Citation template added to /ship skill body.
 
-- [ ] **TUNE-10: TUNE-LINT-12 — `lint-design-tokens.sh` (gate #12).**
+- [✓] **TUNE-10: TUNE-LINT-12 — `lint-design-tokens.sh` (gate #12).** *(shipped 2026-05-26 — session=opus-47-2026-05-26-ship-W; new `install-helpers/lint-design-tokens.sh` (~95 LOC) + `install-helpers/lint-design-tokens.allowlist` (~153 lines incl. header + 139 entries). Catches hardcoded hex literals (`#1d1d1f` etc.) + `Color::from_rgb(...)` calls in active visual code outside canonical token files. Exempt files: `crates/mde-theme/`, `data/css/tokens.css`, `data/css/motion-vocabulary.css`, `data/css/greeter.css`. Rust attribute false-positive filter (`#[derive]` / `#[cfg]` / `#[allow]` / etc. stripped). Snapshot allow-list captures 139 pre-existing entries from mde-applets, mde-panel, mde-workbench, mde-portal, mde-card. Cleanup tracked under EPIC-UI-MATERIAL.token-sweep (the allow-list shrinks as each entry ports to the canonical token files). Duration + font enforcement deferred — the Color::from_rgb + hex literals are the highest-leverage catches first. CLAUDE.md §0.7 gate #12 documented. Lint runtime: ~5s on full active-visual-code surface. Clean.)*
+
+- [ ] **TUNE-10.b: design-token allow-list cleanup follow-on** *(opens 2026-05-26 from TUNE-10 allow-list)*. 139 pre-existing hardcoded design tokens need migration to canonical token files. Inventory at `install-helpers/lint-design-tokens.allowlist`. Cleanup via EPIC-UI-MATERIAL.token-sweep — each commit ports a small batch of references to `crates/mde-theme/` constants OR `data/css/tokens.css` vars + drops the matching allow-list lines. Visual surface so TUNE-9 cite-required gate #11 applies per commit. Pre-1.0 scope per §11 roadmap item #4 ("CR-* ChromeOS Classic visual retrofit complete" — implies tokens cohere).
   **As** the design-system cohesion enforcement,
   **I want** automated detection of hardcoded design tokens,
   **so that** colors/durations/fonts/sizes always reference canonical tokens.

@@ -247,13 +247,24 @@ Before every commit, when applicable:
     Settings / Linear / Raycast / Arc / Vercel dashboard / Cursor)
     via a `Cite: <doc>.md §X.Y; ref: <target>` line in the commit
     body. Land via TUNE-9.
-12. **Design-tokens lint** (planned 2026-05-26 per Q7 + TUNE-10):
-    `install-helpers/lint-design-tokens.sh` catches hardcoded
-    hex literals, duration literals, font names, row-height
-    literals outside the canonical token files
+12. **Design-tokens lint** (added 2026-05-26 per Q7 of the 25-Q
+    tuning survey + TUNE-10): `install-helpers/lint-design-tokens.sh`
+    (if any `crates/mde-*/src/*.rs` or `data/css/*.css` is touched).
+    Catches net-new hardcoded hex literals (`#1d1d1f`,
+    `Color::from_rgb(...)`) outside the canonical token files
     (`data/css/tokens.css`, `data/css/motion-vocabulary.css`,
-    `crates/mde-theme/`). Snapshot-allow-listed for pre-existing
-    violations. Land via TUNE-10.
+    `data/css/greeter.css`, `crates/mde-theme/`). Snapshot
+    allow-list at `install-helpers/lint-design-tokens.allowlist`
+    captures 139 pre-existing token-drift entries at lint
+    introduction (file:line refs across mde-applets, mde-panel,
+    mde-workbench, mde-portal, etc.). Cleanup tracked under
+    EPIC-UI-MATERIAL.token-sweep; the allow-list shrinks as each
+    entry ports to the canonical token files. Filters out Rust
+    attribute syntax (`#[derive]` / `#[cfg]` / `#[allow]`) so
+    they don't false-positive on the hex regex. Duration + font
+    enforcement deferred to a follow-on iteration — the
+    Color::from_rgb + hex literals are the highest-leverage
+    catches first.
 13. **No-stubs lint** (added 2026-05-26 per Q8 of the 25-Q
     tuning survey + TUNE-2): `install-helpers/lint-no-stubs.sh`
     (if any `crates/*.rs` is touched). Catches net-new `todo!()`,
