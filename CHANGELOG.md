@@ -5,6 +5,21 @@ unreleased; tag versions get a date when they ship.
 
 ## Unreleased — v1.0 MackesDE for Workgroups (rebrand cut)
 
+**Memory hygiene (EPIC-UI-CARDS partial + EPIC-UI-PALETTE follow-on, 2026-05-26)**
+- Memory `project_object_card_pattern` gets a SUPERSESSION NOTICE
+  + new "Spec (2026-05-25 supersession — Q42)" section: the 12 px
+  Object Card corner + M3 shadow break is RETIRED; cards conform
+  to the platform 4 px rule. Content-model rule (Object vs row)
+  unchanged. Historical 12 px spec retained for archeology.
+- Memory `project_ux_polish_locks` gets a SUPERSESSION NOTICE block
+  listing the 6 UX-50-Q visual-token locks superseded by the 100-Q
+  survey (direction / palette / typography / icons / density /
+  motion). Process locks (FU-* + WF-* + sequencing) retained.
+- `data/css/` audit: confirmed zero Object-Card 12 px hits in CSS
+  (switch + tag pills at 12 px are functional shapes, kept).
+  Iced `crates/mde-card/` radius update deferred to the
+  parallel-session crate's next touch.
+
 **Fleet-cap code refs (EPIC-MASTER-3.code, 2026-05-26)**
 - All 8 in-code "16-peer" references updated to "8-peer" per Q3.
   Every hit was a doc-comment (timing estimate, scope mention, or

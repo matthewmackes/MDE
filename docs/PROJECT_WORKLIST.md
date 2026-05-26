@@ -1357,14 +1357,15 @@ call-end lifecycle, never at install or login.
     - [ ] Memory `project_ux_polish_locks` + iteration skill body updated to lock Material Symbols.
     - [ ] Voice-and-tone lint vocabulary updated.
 
-- [ ] **EPIC-UI-CARDS: Conform Object Card 12 px corners to 4 px platform rule** *(Q42)*
+- [>] **EPIC-UI-CARDS: Conform Object Card 12 px corners to 4 px platform rule** *(Q42)* *(session=opus-cw-2026-05-26-00:50 — memory supersession block landed; CSS audit confirmed no 12px-card hits in data/css/ (only switch + tag pills at 12px which are functional shapes); mde-card crate radius left to the parallel session owning that crate)*
   **As** the visual identity,
   **I want** cards to use the 4 px corner radius like every other surface,
   **so that** the platform's radius scale is consistent.
   **Acceptance** (each bench-observable):
-    - [ ] Every `radius: 12` in `data/css/` + `crates/mde-*/src/` reduced to `radius: 4`.
-    - [ ] Memory `project_object_card_pattern` updated to retire the 12 px outlier.
-    - [ ] Visual snapshot tests refresh under the new radius.
+    - [✓] `data/css/` audit: `border-radius: 12px` hits are only in `tokens.css:334` (switch track radius — functional, kept) + `carbon-layout.css:257` (`.mackes-tag` pill radius — functional, kept). No Object-Card-specific 12 px CSS rules to change.
+    - [✓] Memory `project_object_card_pattern` updated 2026-05-26: top-of-file SUPERSESSION NOTICE block + new "Spec (2026-05-25 supersession — Q42)" section at end documenting the 4 px replacement with full token table (Material Symbols icon, Roboto/Intel-One-Mono typography, Q45 palette). Historical 12 px spec block retained inline for archeology.
+    - [ ] **Open follow-on (EPIC-UI-CARDS.crate):** `crates/mde-card/src/` (parallel-session crate, Portal-31) needs radius `12 → 4` if it currently hardcodes 12. Picked up by whichever session next touches that crate — the memory supersession is the spec source.
+    - [ ] **Open follow-on (EPIC-UI-CARDS.snapshots):** Visual snapshot tests refresh once UX-23 lands (HW-gated per the existing carve-out).
 
 - [✓] **EPIC-UI-PALETTE: Lock pure ChromeOS Classic palette (#202124-class) + Material You indigo** *(Q45)* *(shipped 2026-05-26 — session=opus-cw-2026-05-26-00:05)*
   **As** the visual identity,
@@ -1373,7 +1374,7 @@ call-end lifecycle, never at install or login.
   **Acceptance** (each bench-observable):
     - [✓] `data/css/tokens.css` `@define-color mackes_accent` changed from `#2b9af3` (PF6 blue) to `#4285f4` (Material You indigo / Google Blue 500) with inline lock comment citing Q45.
     - [✓] Charcoal surface palette already at Classic ChromeOS values (`#202124`/`#2d2e30`/`#3c4043`) — pre-existing from CR-1; no edit needed.
-    - [ ] Memory `project_ux_polish_locks` update deferred to a follow-on (low-priority; the lock supersession is already documented in AI_GOVERNANCE.md §14 supersession table).
+    - [✓] Memory `project_ux_polish_locks` updated 2026-05-26: description rewritten to flag the 100-Q tightening survey supersession + a SUPERSESSION NOTICE block at top of body listing the 6 superseded UX-50-Q locks (direction → Classic ChromeOS per Q41; palette → Material You indigo per Q45; typography → Roboto + Intel One Mono per Q44; icons → Material Symbols per Q43; density → 3-mode CSS variants per Q46; motion → 150ms ease-out per Q47). Process locks (FU-* + WF-* + sequencing) explicitly retained.
     - [ ] Visual snapshot tests deferred to UX-23 (HW-gated) per existing carve-out.
 
 - [✓] **EPIC-UI-FONTS: Lock Roboto (body) + Intel One Mono (code); retire Roboto Mono, Geologica, IBM Plex Mono** *(Q44)* *(shipped 2026-05-26 — session=opus-cw-2026-05-26-00:05)*
