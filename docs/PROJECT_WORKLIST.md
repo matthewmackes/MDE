@@ -72,14 +72,30 @@ locked work appears under **Active** with `[ ] Open`.
 >
 > No new features, no new epics, no new survey-locked scope, no new
 > design docs that grow the surface. The items below are the
-> **complete release backlog** (324 active as of 2026-05-26).
-> Allowed during the lock: bug fixes, polish, scope-reducing
-> refactors (R11-style), worklist hygiene, retirement audits, HW
-> bench work, release-prep, and completing already-locked tasks
-> end-to-end. The lock lifts when the next named release cuts via
-> `cut release X.Y.Z`. See `.claude/CLAUDE.md` §0.16 +
-> [[feedback_platform_feature_locked]] for full rule + trigger
-> phrases that should be refused.
+> **complete release backlog**. Allowed during the lock: bug fixes,
+> polish, scope-reducing refactors (R11-style), worklist hygiene,
+> retirement audits, HW bench work, release-prep, and completing
+> already-locked tasks end-to-end. The lock lifts when the next
+> named release cuts via `cut release X.Y.Z`. See
+> `.claude/CLAUDE.md` §0.16 + [[feedback_platform_feature_locked]]
+> for full rule + trigger phrases that should be refused.
+>
+> **Standing exceptions (2026-05-26):**
+>
+> 1. **BUS-1..BUS-7 build authorized** — /ship may drain BUS-*
+>    autonomously without per-bundle confirmation.
+> 2. **R11 stale-section re-locks completed 2026-05-26** —
+>    v4.1.0 Voice & Video, v4.2.0 Voice PBX, and GF-17 sections
+>    retired in place (folded into VOIP-* + BUS-*).
+> 3. **HW bench gate deferred to RC-completion** — §0.15 cut gate
+>    still applies, but operator runs HW-1..HW-4 once the queue is
+>    drained (right before cut), not per-bundle.
+>
+> **Net-new additions during the lock window** (each is an
+> operator-issued, recorded lift):
+>
+> - **2026-05-26 — VOIP-21** (Mesh-side Vitelity sub-account
+>   administration UI under VoIP Settings).
 
 > **Active section status (2026-05-21 — post-iteration):**
 >
@@ -242,6 +258,17 @@ call-end lifecycle, never at install or login.
 - [ ] **VOIP-18: Multi-mesh SIP-over-Matrix bridge — DEFERRED past 1.0** (R11 reframes R9-Q18). Without Kamailio there's no per-peer SIP server to host `matrix-appservice-voip`. Reinstating requires either single-gateway-peer asymmetry (one peer runs the bridge, breaking centerlessness) or an alternative federation mechanism (e.g., Matrix-native VoIP without SIP bridging). Open question — not 1.0 scope.
 - [ ] **VOIP-19: NAT traversal** — Nebula UDP-hole-punching intra-mesh + PJSIP SIP UDP/TLS with rport + STUN for external Vitelity registration (R9-Q19).
 - [ ] **VOIP-20: Active call edge visualization** on globe (R8-Q85) — living purple edge + phone-glyph midpoint + audio-sync pulse + 1Hz throb; same for any SIP client activity.
+- [ ] **VOIP-21: Mesh-side Vitelity sub-account administration UI under VoIP Settings** *(operator-issued lock-lift 2026-05-26 — see feature-lock banner above)* — net-new Control-layer surface that lets the operator administer every peer's Vitelity sub-account from one Mesh-aware pane, complementing the per-peer creds VOIP-2 provisions at Birthright time. Replaces what v4.1.0 VV-7a + VV-13 would have covered (now retired in place per R11). Sub-tasks:
+  - **VOIP-21.a: Sub-account inventory view** — list every peer's Vitelity sub-account as an Object Card (per [[project_object_card_pattern]]). Card fields: peer hostname, account number / SIP URI, registration status (registered/expired/never), last-registered-at, SimRing-membership flag. Read state from a new mesh-shared file `<gluster_mesh_home>/voip/<peer>/status.json` (non-secret state only; creds stay local in `~/.config/mde/voip/vitelity.toml` per VOIP-2). Refresh on Bus topic `voip/registration/<peer>`.
+  - **VOIP-21.b: Add / remove / rotate sub-account flow** — modal launched from a card's Actions menu. "Add" prompts for Vitelity admin creds (one-time, never stored), creates the sub-account via Vitelity REST API, writes the resulting creds to the target peer's `vitelity.toml` via a Bus-published command (`voip/admin/<peer>/provision`). "Remove" deletes the sub-account on Vitelity-side + removes the toml on the peer. "Rotate" regenerates the SIP password + re-registers. All three operations log to `~/.local/share/mde/activity/admin/<iso8601>-<hash>.json` per the v6.0 activity-as-files pattern.
+  - **VOIP-21.c: SimRing hunt-group editor** — read current SimRing membership via Vitelity REST API; render each peer's sub-account as a drag-to-reorder card list inside the hunt-group; add / remove / reorder writes back through the API. Local cache mirrors the API state for offline-readable display; reconciles on every Bus `voip/admin/<peer>/simring-changed` event.
+  - **VOIP-21.d: Mesh-shared status emit** — small mded hook in the existing PJSIP registration callback (VOIP-1) that writes the non-secret status to `<gluster_mesh_home>/voip/<peer>/status.json` on every state transition (registered / expired / failed) + publishes `voip/registration/<peer>` on Bus. GlusterFS replicates the status file fleet-wide so VOIP-21.a renders fresh state for every peer without polling each one.
+  - **Acceptance** (each bench-observable):
+    - [ ] Adding a Vitelity sub-account on peer A via VOIP-21.b lands creds on peer A's `vitelity.toml`, peer A's PJSIP re-registers within 10 s, and every peer's VOIP-21.a inventory reflects the new account within 30 s (GFS-sync + Bus event).
+    - [ ] Removing a sub-account drops it from Vitelity + every peer's inventory.
+    - [ ] SimRing reorder on peer B propagates to Vitelity-side via API; the next inbound call follows the new order.
+    - [ ] No Vitelity creds ever appear in any `<gluster_mesh_home>/voip/<peer>/status.json`; the file contains only non-secret state.
+  - **Design lock:** the spec lives inline above; if a larger design doc is warranted before implementation begins, branch off `docs/design/v6.0-mde-portal.md` §3.4. No new design doc lifts the feature lock — the spec lives where the worklist task lives.
 
 #### MESH-* — mesh-view subsystem (R7 + R8, ~100 decisions, 5 subgroups)
 
@@ -764,9 +791,18 @@ call-end lifecycle, never at install or login.
     - [ ] Bench (single split-brain): user sees the gluster_worker per-file toast (with `keep-mine` / `keep-theirs` / `open-diff` actions). Netdata's 30 s window doesn't fire because the gluster_worker LWW resolver clears it before 30 s.
     - [ ] Bench (100 split-brains): user sees the GF-16.3 coalesced toast immediately + the Netdata summary toast at the 30 s mark (different urgency + shape, intentional — the summary catches the case where gluster_worker's LWW can't clear in time).
 
-### GF-17.1..GF-17.11: v5.1 — Mesh notification bus + focus modes (locked 2026-05-25 via 5-Q survey) — SUPERSEDED by v6.x BUS-4.2 hard cut
+### GF-17.1..GF-17.11: v5.1 — Mesh notification bus + focus modes (locked 2026-05-25 via 5-Q survey) — RETIRED 2026-05-26 (superseded by v6.x BUS-4.2)
 
-> **SUPERSEDED 2026-05-25:** the v6.x Mackes Bus epic (see "v6.x BUS-1..7" section above) hard-cuts GF-17 in BUS-4.2. Tasks below retain their current state for historical context; on the BUS-4.2 commit they convert to `[~]` Retired with a link back to BUS-4.2. Focus modes are replaced by single-DND + per-topic mute/snooze (Round 6 of the 104-Q poll).
+> **RETIRED 2026-05-26 per operator-issued re-lock OK** (the
+> 2026-05-25 SUPERSEDED banner deferred the actual retirement to
+> "on the BUS-4.2 commit"; this is that retirement, executed early
+> now that BUS-1..7 is build-authorized). Every GF-17.* item below
+> is marked `[✓] retired 2026-05-26` with a link to its BUS-* successor.
+> Focus modes are replaced by single-DND + per-topic mute/snooze
+> (Round 6 of the 104-Q poll). The original supersession decision
+> is preserved verbatim below.
+>
+> **Original SUPERSEDED 2026-05-25 banner:** the v6.x Mackes Bus epic (see "v6.x BUS-1..7" section above) hard-cuts GF-17 in BUS-4.2. Tasks retain their current state for historical context; on the BUS-4.2 commit they convert to `[~]` Retired with a link back to BUS-4.2. Focus modes are replaced by single-DND + per-topic mute/snooze (Round 6 of the 104-Q poll).
 >
 > **Design lock:** `docs/design/v5.1-notification-bus.md`.
 > **5-Q locks:** (1) scope-driven fanout (fleet→Aggregator, peer→Origin,
@@ -787,7 +823,7 @@ call-end lifecycle, never at install or login.
 
 - [✓] **GF-17.1: Design doc `docs/design/v5.1-notification-bus.md` captures the 5-Q locks + architecture + acceptance** *(shipped 2026-05-25 in the same commit that introduces this worklist section — locks the schema + class fanout table + glob semantics + router pipeline; cross-refs `docs/design/v5.0.0-gluster-mesh-home.md` for the QNM-Shared replication baseline; mentions out-of-scope items so v5.2 readers know what's deferred.)*
 
-- [ ] **GF-17.2: notification.json schema + hard-cut path migration in `mde-alert-emit`**
+- [✓] (retired 2026-05-26 — see section header SUPERSEDED note) **GF-17.2: notification.json schema + hard-cut path migration in `mde-alert-emit`**
   **As** the alert-emit binary,
   **I want** to write events to `<qnm_root>/<self>/mackesd/notifications/<ulid>.json` with the v5.1 schema,
   **so that** alerts mesh-replicate via QNM-Shared instead of being trapped in `~/.local/share/`.
@@ -801,7 +837,7 @@ call-end lifecycle, never at install or login.
 
 #### Attendance + roaming (Move 1)
 
-- [ ] **GF-17.3: Attendance publisher in mded — writes `<qnm_root>/<self>/mackesd/attendance.json` every 30 s**
+- [✓] (retired 2026-05-26 — see section header SUPERSEDED note) **GF-17.3: Attendance publisher in mded — writes `<qnm_root>/<self>/mackesd/attendance.json` every 30 s**
   **As** every peer's mded,
   **I want** to publish my idle + lock state on a 30 s cadence,
   **so that** the alert router can elect the attended peer for routing decisions.
@@ -812,7 +848,7 @@ call-end lifecycle, never at install or login.
     - [ ] Spawned in `run_serve()` between gluster_worker + nebula_https_listener with `RestartPolicy::Always`.
     - [ ] Bench: on a sway desktop, after 60 s `cat <qnm_root>/<self>/mackesd/attendance.json` returns the expected fields; type on the keyboard → next tick `last_input_unix_s` updates to within 30 s of now.
 
-- [ ] **GF-17.4: Pure-fn `elect_attended` + roaming-grace scan in `alert_router`**
+- [✓] (retired 2026-05-26 — see section header SUPERSEDED note) **GF-17.4: Pure-fn `elect_attended` + roaming-grace scan in `alert_router`**
   **As** the alert router on any peer,
   **I want** to elect the lowest-idle unlocked peer as attended + scan unseen events when this peer becomes attended,
   **so that** notifications follow the user across peer transitions with a 15-min grace window.
@@ -825,7 +861,7 @@ call-end lifecycle, never at install or login.
 
 #### Router rename + dispatch (Move 2)
 
-- [ ] **GF-17.5: Rename `alert_relay` → `alert_router`; scan all peers' notification dirs**
+- [✓] (retired 2026-05-26 — see section header SUPERSEDED note) **GF-17.5: Rename `alert_relay` → `alert_router`; scan all peers' notification dirs**
   **As** the unified router,
   **I want** to read every peer's `<qnm_root>/<peer>/mackesd/notifications/*.json`, not just my own,
   **so that** mesh-replicated alerts surface on every peer that should fire them.
@@ -836,7 +872,7 @@ call-end lifecycle, never at install or login.
     - [ ] Local NotificationsService DB write happens always (per design § 3.6) so the history panel sees every event regardless of whether `notify-send` fires on this peer.
     - [ ] Existing 11 tests update for the rename; 4 new tests cover cross-peer scan (3 peer dirs each with 1 event → router sees all 3; dedupe across replays; missing peer dir → silent skip).
 
-- [ ] **GF-17.6: Fanout dispatch + class fanout default table in `alert_router`**
+- [✓] (retired 2026-05-26 — see section header SUPERSEDED note) **GF-17.6: Fanout dispatch + class fanout default table in `alert_router`**
   **As** the router,
   **I want** to dispatch each event to the correct peer(s) per its `fanout` field (or the class default if absent),
   **so that** fleet events fire on the aggregator, peer events fire at origin, user events follow the attended peer, and security events fan to all.
@@ -848,7 +884,7 @@ call-end lifecycle, never at install or login.
     - [ ] 12+ unit tests cover every (fanout, role-played) pair + the default table.
     - [ ] Bench (3-peer fleet): trigger `gluster_quorum_lost` → only aggregator peer fires; trigger `workstation.thermal` on peer-A → only peer-A fires; trigger `security.audit` → all 3 fire; trigger `voice.call` → only attended peer fires.
 
-- [ ] **GF-17.7: `thread_id` coalescing + `ttl_unix_s` pruning in router**
+- [✓] (retired 2026-05-26 — see section header SUPERSEDED note) **GF-17.7: `thread_id` coalescing + `ttl_unix_s` pruning in router**
   **As** the router,
   **I want** to collapse same-thread events into one growing toast + unlink TTL-expired events,
   **so that** conflict-storms produce one coalesced toast and the notifications dir doesn't grow unbounded.
@@ -860,7 +896,7 @@ call-end lifecycle, never at install or login.
 
 #### Focus modes (Move 3)
 
-- [ ] **GF-17.8: focus-profile.json schema + glob matcher + router filter**
+- [✓] (retired 2026-05-26 — see section header SUPERSEDED note) **GF-17.8: focus-profile.json schema + glob matcher + router filter**
   **As** the router,
   **I want** to consult the active focus mode's allow/block class globs before firing,
   **so that** each peer surfaces only the notification classes its current mode cares about.
@@ -872,7 +908,7 @@ call-end lifecycle, never at install or login.
     - [ ] Router invokes `is_allowed(active_mode, event.class, dnd_state())` after fanout dispatch decides this peer should fire; only fires `notify-send` if `Allow`. DB write happens regardless.
     - [ ] Bench: set focus to `off` → trigger `voice.call` → no toast, history DB row written; set focus to `quiet` → trigger `voice.call` → toast fires; trigger `gluster.heal` → no toast.
 
-- [ ] **GF-17.9: Portal status-zone focus glyph + click-cycle**
+- [✓] (retired 2026-05-26 — see section header SUPERSEDED note) **GF-17.9: Portal status-zone focus glyph + click-cycle**
   **As** the operator,
   **I want** a visible glyph for my current focus mode in the Portal status zone + click to cycle modes,
   **so that** I always know what's filtering my notifications + can change it without opening Workbench.
@@ -884,7 +920,7 @@ call-end lifecycle, never at install or login.
     - [ ] (Optional follow-on, deferred GF-17.9.b) Mesh-Wallpaper per-peer focus glyph on each globe marker.
     - [ ] Bench: start Portal → see `view-filled` glyph (default work); click → glyph cycles to `notification-off` (quiet); cycle again → `notification-off-filled` (off); `cat focus-profile.json` reflects each transition within one Portal tick.
 
-- [ ] **GF-17.10: Workbench Notifications focus-mode editor panel**
+- [✓] (retired 2026-05-26 — see section header SUPERSEDED note) **GF-17.10: Workbench Notifications focus-mode editor panel**
   **As** the operator,
   **I want** a Workbench panel to view + edit my focus mode profile (allow/block class lists, pierce DND rules),
   **so that** I can tune what each mode admits without hand-editing JSON.
@@ -895,7 +931,7 @@ call-end lifecycle, never at install or login.
     - [ ] Edits write to `<qnm_root>/<self>/mackesd/focus-profile.json` via `mde-config` helper; router picks up via inotify or next tick.
     - [ ] Bench: open Workbench → Notifications → Focus Modes → click `quiet` radio → `focus-profile.json` `active_mode` becomes `quiet` within 5 s; add a class to `quiet`'s allow_classes → file reflects + router admits that class on the next event.
 
-- [ ] **GF-17.11: Birthright role-default focus assignment**
+- [✓] (retired 2026-05-26 — see section header SUPERSEDED note) **GF-17.11: Birthright role-default focus assignment**
   **As** the birthright wizard,
   **I want** to write the role-appropriate focus profile on first install,
   **so that** lighthouses are silent by default and every other peer surfaces all classes (uniform-work per Q4).
@@ -7623,16 +7659,42 @@ Every actionable item lifted from `docs/design/` + the still-open
 items from the prior worklist. Grouped by area for readability;
 all are equally tracked.
 
-### v4.1.0 Voice & Video epic (re-locked 2026-05-24 after Asterisk→Kamailio swap) — TARGET REVISED: 1.0 / spinout re-evaluated at 1.1 per Q94
+### v4.1.0 Voice & Video epic — SUPERSEDED by R11 PJSIP-direct architecture (retired 2026-05-26)
 
-> **AMENDED 2026-05-25 by Q8 + Q94 of the 100-Q tightening survey.**
-> Original Q8 lock said "spin out VoIP to `mde-voice` repo
-> immediately"; Q94 (later same-session, supersedes per Q67)
-> softened to "ships in 1.0; spinout re-evaluated at 1.1."
-> No worklist task body changes — the items still ship as
-> originally specified, but the target release is now
-> **MackesDE for Workgroups 1.0** + the spinout decision is
-> a 1.1 task tracked under EPIC-SCOPE-VOIP-DEFER.
+> **RETIRED 2026-05-26 per R11 lock + operator-issued re-lock OK.**
+> The 10 v4.0 VV-* items below were sized around the Kamailio-per-
+> peer architecture that R11 (2026-05-26) explicitly retired. Their
+> work folds into the v6.0 mde-portal VOIP-* worklist:
+>
+> - **VV-5 + VV-6** (PJSIP FFI crate + safe wrapper) → prerequisite
+>   of VOIP-1 (PJSIP multi-account configuration). Work is implicit
+>   in VOIP-1.
+> - **VV-7a** (Workbench Voice management surface) → VOIP-21
+>   (Mesh-side Vitelity sub-account admin) replaces it. Workbench
+>   itself is being retired under EPIC-RETIRE-PY-WORKBENCH per Q49.
+> - **VV-7b** (Voice/Video Client HUD) → VOIP-7 (PJSIP-based dialer
+>   + Portal-full overlay).
+> - **VV-8** (PipeWire capture + portal camera) → VOIP-13 (PipeWire
+>   role-based audio routing).
+> - **VV-9** (presence subscription mesh) → Kamailio-dependent; R11
+>   removes the SIP server, so presence moves to a Bus-topic
+>   subscription mechanism. **Cut from 1.0 scope; no replacement
+>   task yet** — re-scope post-release if presence is needed.
+> - **VV-10** (SIP MESSAGE chat + local SQLite history) → Kamailio
+>   msilo dependency gone. Intra-mesh chat is not in R11 scope.
+>   **Cut from 1.0 scope.** External chat handled by VOIP-11 SMS.
+> - **VV-13** (Vitelity sub-account + DID configuration UI) →
+>   directly superseded by **VOIP-21** (the operator-added task
+>   above).
+> - **VV-14** (Vitelity REGISTER + inbound/outbound routes) →
+>   superseded by VOIP-1 + VOIP-2 (direct PJSIP-to-Vitelity per
+>   peer; no Kamailio inter-tie).
+> - **VV-15** (16-peer Docker fixture for acceptance) → HW-* epic
+>   tracks bench fixtures separately; folded into HW carve-out.
+>
+> Items below stay in the worklist for archeological clarity but
+> are marked `[✓] retired 2026-05-26`. Don't actively work them —
+> ship the corresponding VOIP-* task instead.
 
 
 
@@ -7907,7 +7969,7 @@ the v4.2.0 epic with the rest of the PBX feature set.)*
     Kamailio-idiomatic approach. Net result: same operator
     semantics, simpler dialog accounting, no CDR doubling.
 
-- [ ] **v4.0: VV-5 PJSIP FFI crate `mde-voice-pjsip-sys` (Tier 1 platform) [HW carve-out]** *(HW carve-out tagged 2026-05-24 per `feedback_no_cut_until_worklist_empty.md`: PJSIP FFI crate needs libpjsip-dev on the build host + bindgen + the bench gate is making a real SIP call against a live `pjsua` instance. Doesn't gate the cut.)*
+- [✓] (retired 2026-05-26 — see section header) **v4.0: VV-5 PJSIP FFI crate `mde-voice-pjsip-sys` (Tier 1 platform) [HW carve-out]** *(HW carve-out tagged 2026-05-24 per `feedback_no_cut_until_worklist_empty.md`: PJSIP FFI crate needs libpjsip-dev on the build host + bindgen + the bench gate is making a real SIP call against a live `pjsua` instance. Doesn't gate the cut.)*
 
   **As** a developer of the embedded client,
   **I want** `bindgen`-generated Rust bindings to system
@@ -7932,7 +7994,7 @@ the v4.2.0 epic with the rest of the PBX feature set.)*
     explicitly accepted as a future-phase concern (see design
     doc §13 risk table).
 
-- [ ] **v4.0: VV-6 safe Rust wrapper `mde-voice-client` (Tier 1 platform) [HW carve-out]** *(HW carve-out tagged 2026-05-24 per `feedback_no_cut_until_worklist_empty.md`: depends on VV-5; safe-wrapper acceptance needs a live PJSIP runtime to exercise the unsafe-FFI surface. Doesn't gate the cut.)*
+- [✓] (retired 2026-05-26 — see section header) **v4.0: VV-6 safe Rust wrapper `mde-voice-client` (Tier 1 platform) [HW carve-out]** *(HW carve-out tagged 2026-05-24 per `feedback_no_cut_until_worklist_empty.md`: depends on VV-5; safe-wrapper acceptance needs a live PJSIP runtime to exercise the unsafe-FFI surface. Doesn't gate the cut.)*
 
   **As** the embedded client author,
   **I want** an async-friendly safe wrapper over the FFI
@@ -7951,7 +8013,7 @@ the v4.2.0 epic with the rest of the PBX feature set.)*
     `docker compose`-spawned Kamailio + RTPengine fixture.
   - [ ] `cargo clippy -- -D warnings` is clean.
 
-- [ ] **v4.0: VV-7a Workbench Voice — backend management surface (Tier 1 chrome) [HW carve-out]** *(HW carve-out tagged 2026-05-24 per `feedback_no_cut_until_worklist_empty.md`: Workbench Voice management surface needs VV-6's live PJSIP wrapper to surface meaningful state. Doesn't gate the cut.)*
+- [✓] (retired 2026-05-26 — see section header) **v4.0: VV-7a Workbench Voice — backend management surface (Tier 1 chrome) [HW carve-out]** *(HW carve-out tagged 2026-05-24 per `feedback_no_cut_until_worklist_empty.md`: Workbench Voice management surface needs VV-6's live PJSIP wrapper to surface meaningful state. Doesn't gate the cut.)*
 
   *(Scope split locked 2026-05-24: the original VV-7 covered
   both backend administration AND the call/video client; per
@@ -8007,7 +8069,7 @@ the v4.2.0 epic with the rest of the PBX feature set.)*
     Phase-12 lifecycle; the panel never writes Kamailio cfg
     directly.
 
-- [ ] **v4.0: VV-7b Voice/Video Client — slide-from-bottom HUD (Tier 1 chrome) [HW carve-out]** *(HW carve-out tagged 2026-05-24 per `feedback_no_cut_until_worklist_empty.md`: Voice/Video Client HUD needs VV-6 + VV-8 (PipeWire capture) live to drive any actual call UI. Doesn't gate the cut.)*
+- [✓] (retired 2026-05-26 — see section header) **v4.0: VV-7b Voice/Video Client — slide-from-bottom HUD (Tier 1 chrome) [HW carve-out]** *(HW carve-out tagged 2026-05-24 per `feedback_no_cut_until_worklist_empty.md`: Voice/Video Client HUD needs VV-6 + VV-8 (PipeWire capture) live to drive any actual call UI. Doesn't gate the cut.)*
 
   *(New task — split from original VV-7 on 2026-05-24 per
   operator directive "the slide-in interface is for the client
@@ -8071,7 +8133,7 @@ the v4.2.0 epic with the rest of the PBX feature set.)*
     `microphone`, `microphone--off`, `video`, `video--off`,
     `pause`, `chevron--down`.
 
-- [ ] **v4.0: VV-8 PipeWire capture / playback + portal camera (Tier 1 chrome) [HW carve-out]** *(HW carve-out tagged 2026-05-24 per `feedback_no_cut_until_worklist_empty.md`: PipeWire capture / playback + portal-camera acceptance needs live audio devices + a working compositor + xdg-desktop-portal. Doesn't gate the cut.)*
+- [✓] (retired 2026-05-26 — see section header) **v4.0: VV-8 PipeWire capture / playback + portal camera (Tier 1 chrome) [HW carve-out]** *(HW carve-out tagged 2026-05-24 per `feedback_no_cut_until_worklist_empty.md`: PipeWire capture / playback + portal-camera acceptance needs live audio devices + a working compositor + xdg-desktop-portal. Doesn't gate the cut.)*
 
   **As** the operator,
   **I want** the embedded client to capture audio from the
@@ -8094,7 +8156,7 @@ the v4.2.0 epic with the rest of the PBX feature set.)*
   - [ ] Headphone-hotplug test: call active, plug headphones
     → audio reroutes within 2 s with no call drop.
 
-- [ ] **v4.0: VV-9 presence subscription mesh (Tier 1 platform) [HW carve-out]** *(HW carve-out tagged 2026-05-24 per `feedback_no_cut_until_worklist_empty.md`: presence subscription mesh needs Kamailio's presence modules loaded + 16 live peers PUBLISHing. Doesn't gate the cut.)*
+- [✓] (retired 2026-05-26 — see section header) **v4.0: VV-9 presence subscription mesh (Tier 1 platform) [HW carve-out]** *(HW carve-out tagged 2026-05-24 per `feedback_no_cut_until_worklist_empty.md`: presence subscription mesh needs Kamailio's presence modules loaded + 16 live peers PUBLISHing. Doesn't gate the cut.)*
 
   **As** the operator,
   **I want** every peer's embedded PJSIP client to PUBLISH
@@ -8118,7 +8180,7 @@ the v4.2.0 epic with the rest of the PBX feature set.)*
     chip wired to a new `mackesd_core::voice::presence()`
     read.
 
-- [ ] **v4.0: VV-10 SIP MESSAGE chat + local SQLite history (Tier 2 chrome) [HW carve-out]** *(HW carve-out tagged 2026-05-24 per `feedback_no_cut_until_worklist_empty.md`: SIP MESSAGE chat needs live Kamailio + PJSIP (1s LAN-direct round-trip + msilo offline-delivery). Doesn't gate the cut.)*
+- [✓] (retired 2026-05-26 — see section header) **v4.0: VV-10 SIP MESSAGE chat + local SQLite history (Tier 2 chrome) [HW carve-out]** *(HW carve-out tagged 2026-05-24 per `feedback_no_cut_until_worklist_empty.md`: SIP MESSAGE chat needs live Kamailio + PJSIP (1s LAN-direct round-trip + msilo offline-delivery). Doesn't gate the cut.)*
 
   **As** the operator,
   **I want** to send text chat to any peer via SIP MESSAGE
@@ -8148,7 +8210,7 @@ Voice PBX epic on 2026-05-24 — see the next section. Both
 require a media-server pick that's deliberately deferred so
 v4.1.0 can ship Kamailio + RTPengine + 1:1 calls cleanly.)*
 
-- [ ] **v4.0: VV-13 Vitelity sub-account + DID configuration UI (Tier 1 chrome) [HW carve-out]** *(HW carve-out tagged 2026-05-24 per `feedback_no_cut_until_worklist_empty.md`: Vitelity sub-account + DID configuration UI needs a real Vitelity sub-account + REST API for CID-verification. Doesn't gate the cut.)*
+- [✓] (retired 2026-05-26 — see section header) **v4.0: VV-13 Vitelity sub-account + DID configuration UI (Tier 1 chrome) [HW carve-out]** *(HW carve-out tagged 2026-05-24 per `feedback_no_cut_until_worklist_empty.md`: Vitelity sub-account + DID configuration UI needs a real Vitelity sub-account + REST API for CID-verification. Doesn't gate the cut.)*
 
   **As** the operator,
   **I want** a Workbench Voice → Vitelity panel where I enter
@@ -8178,7 +8240,7 @@ v4.1.0 can ship Kamailio + RTPengine + 1:1 calls cleanly.)*
   - [ ] All changes go through the existing pending-changes
     inbox before applying.
 
-- [ ] **v4.0: VV-14 Vitelity REGISTER + inbound / outbound routes (Tier 1 platform) [HW carve-out]** *(HW carve-out tagged 2026-05-24 per `feedback_no_cut_until_worklist_empty.md`: Vitelity REGISTER + inbound/outbound routes need a real Vitelity SIP trunk + live Kamailio. Doesn't gate the cut.)*
+- [✓] (retired 2026-05-26 — see section header) **v4.0: VV-14 Vitelity REGISTER + inbound / outbound routes (Tier 1 platform) [HW carve-out]** *(HW carve-out tagged 2026-05-24 per `feedback_no_cut_until_worklist_empty.md`: Vitelity REGISTER + inbound/outbound routes need a real Vitelity SIP trunk + live Kamailio. Doesn't gate the cut.)*
 
   **As** the operator,
   **I want** each peer's Kamailio to maintain an outbound TLS
@@ -8216,7 +8278,7 @@ v4.1.0 can ship Kamailio + RTPengine + 1:1 calls cleanly.)*
     state to VV-7a's Backend panel + the status-cluster
     chip.
 
-- [ ] **v4.0: VV-15 acceptance drill harness + 16-peer Docker fixture (Tier 2 testing) [HW carve-out]**
+- [✓] (retired 2026-05-26 — see section header) **v4.0: VV-15 acceptance drill harness + 16-peer Docker fixture (Tier 2 testing) [HW carve-out]**
 
   *(Hardware-Testing-epic carve-out per `feedback_no_cut_until_worklist_empty.md` — the 8 acceptance drills require a live 16-peer Docker fixture + a real Vitelity SIP trunk + actual Kamailio + RTPengine + PJSIP runtime; the harness IS bench-test infrastructure by design. Doesn't gate the cut.)*
 
@@ -8239,11 +8301,30 @@ v4.1.0 can ship Kamailio + RTPengine + 1:1 calls cleanly.)*
   - [ ] CI gate: `.github/workflows/ci.yml` adds a
     `voice-acceptance` job gated on changed paths.
 
-### v4.2.0 Voice PBX epic (locked 2026-05-24) — TARGET REVISED: 1.0 / spinout re-evaluated at 1.1 per Q94
+### v4.2.0 Voice PBX epic — SUPERSEDED by R11 PJSIP-direct architecture (retired 2026-05-26)
 
-> **AMENDED 2026-05-25 by Q8 + Q94 of the 100-Q tightening survey.**
-> Same as v4.1.0 above: ships in 1.0; spinout to a future
-> `mde-voice` repo re-evaluated at 1.1 per EPIC-SCOPE-VOIP-DEFER.
+> **RETIRED 2026-05-26 per R11 lock + operator-issued re-lock OK.**
+> The 5 v4.0 VV-PBX-* items below were Kamailio-PBX-dependent.
+> R11 removes the Kamailio PBX entirely:
+>
+> - **VV-PBX-1** (pick + integrate media server) → folds into
+>   **VOIP-9** (ephemeral mediasoup container spawned per-call by
+>   best-uplink peer). Media-server role retained, lifecycle
+>   inverted (per-call, not always-on).
+> - **VV-PBX-2** (conference rooms + recording) → VOIP-9 covers
+>   group calls; VOIP-10 covers per-peer recording.
+> - **VV-PBX-3** (voicemail per peer) → VOIP-6 covers Vitelity
+>   voicemail-to-mesh-home.
+> - **VV-PBX-4** (music-on-hold + intercom / page) → Kamailio
+>   features; not in R11 scope. **Cut from 1.0 scope; no
+>   replacement task** — re-evaluate post-release.
+> - **VV-PBX-5** (ring groups + IVR + group chat) → ring groups
+>   partially covered by VOIP-5 Vitelity SimRing; IVR is a
+>   Kamailio feature, not in R11; group chat is not in R11 scope.
+>   **Cut from 1.0 scope.**
+>
+> Items below stay in the worklist for archeological clarity but
+> are marked `[✓] retired 2026-05-26`. Don't actively work them.
 
 
 
@@ -8268,7 +8349,7 @@ picks that media server and adds the features back.
 3. **Recording storage policy** — local per-peer disk only, or
    mesh-fs replicated.
 
-- [!] **v4.0: VV-PBX-1 pick + integrate media server (Tier 1 platform)**
+- [✓] (retired 2026-05-26 — see section header) **v4.0: VV-PBX-1 pick + integrate media server (Tier 1 platform)**
 
   **As** the maintainer,
   **I want** a single locked pick for the v4.2.0 media server +
@@ -8288,7 +8369,7 @@ picks that media server and adds the features back.
   - [ ] Smoke test: a single peer reaches a conference room
     via the media server's loopback endpoint.
 
-- [!] **v4.0: VV-PBX-2 conference rooms + recording (Tier 2 chrome)**
+- [✓] (retired 2026-05-26 — see section header) **v4.0: VV-PBX-2 conference rooms + recording (Tier 2 chrome)**
 
   *(Moved from v4.1.0 VV-11 on 2026-05-24.)*
 
@@ -8313,7 +8394,7 @@ picks that media server and adds the features back.
   - [ ] Conference mode added to the VV-7b slide-up modal —
     the sixth render mode the original VV-7b design listed.
 
-- [!] **v4.0: VV-PBX-3 voicemail per peer (Tier 2 chrome)**
+- [✓] (retired 2026-05-26 — see section header) **v4.0: VV-PBX-3 voicemail per peer (Tier 2 chrome)**
 
   *(Moved from v4.1.0 VV-12 on 2026-05-24.)*
 
@@ -8333,7 +8414,7 @@ picks that media server and adds the features back.
   - [ ] Greeting recorder works from the panel — records via
     the same PipeWire capture path as the embedded client.
 
-- [!] **v4.0: VV-PBX-4 music-on-hold + intercom / page (Tier 2 chrome)**
+- [✓] (retired 2026-05-26 — see section header) **v4.0: VV-PBX-4 music-on-hold + intercom / page (Tier 2 chrome)**
 
   **As** the operator,
   **I want** caller-on-hold music + `Page()`-equivalent
@@ -8350,7 +8431,7 @@ picks that media server and adds the features back.
   - [ ] Workbench Voice → Page panel: peer multi-select +
     Page button; their HUD auto-answers speaker-only.
 
-- [!] **v4.0: VV-PBX-5 ring groups + IVR + group chat (Tier 2 chrome)**
+- [✓] (retired 2026-05-26 — see section header) **v4.0: VV-PBX-5 ring groups + IVR + group chat (Tier 2 chrome)**
 
   **As** the operator,
   **I want** the per-DID `ring-group` / `ivr` modes that VV-13

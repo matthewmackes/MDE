@@ -469,6 +469,28 @@ tag pushed via the `cut release` flow per §0.6 — most likely 1.0,
 but applies to any intermediate cut). Post-release the operator
 may re-lock or open a new scoping window explicitly.
 
+**Standing exceptions (2026-05-26):**
+
+Three carve-outs from the lock are in effect through the next cut:
+
+1. **BUS-1..BUS-7 build authorized** — /ship may drain BUS-*
+   autonomously. See [[project_v6_x_mackes_bus]].
+2. **R11 stale-section re-locks completed 2026-05-26** —
+   v4.1.0 Voice & Video, v4.2.0 Voice PBX, and GF-17 sections
+   retired in place (folded into VOIP-* + BUS-*).
+3. **HW bench gate deferred to RC-completion** — §0.15 still
+   requires operator-confirmed bench, but the operator's stated
+   plan is to run HW-1..HW-4 once the queue is fully drained
+   (right before the cut), not per-bundle. The cut-release
+   shorthand step 0 still gates the actual cut on bench-green.
+
+**Net-new additions during the lock window:**
+
+- **2026-05-26 — VOIP-21** (Mesh-side Vitelity sub-account
+  administration UI under VoIP Settings). Operator-issued lift,
+  recorded in [[feedback_platform_feature_locked]]. Lock re-
+  engaged immediately after.
+
 **Why this rule:** the active worklist already represents 324
 items across 15+ epics. Continuing to add scope while draining is
 the failure mode that produced the v3.x dead-module audit. The
