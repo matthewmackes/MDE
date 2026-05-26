@@ -972,7 +972,7 @@ locked work appears under **Active** with `[ ] Open`.
     - [ ] `make test-nodeps` passes; `make lint` clean.
     - [ ] CHANGELOG entry cites `wol.rs` as the canonical WoL surface.
 
-- [ ] **DEAD-2.6: v5.1 — Delete `mackes/mesh_metrics.py` (superseded by Netdata MON-* path)** *(depends on DEAD-2.3)*
+- [✓] **DEAD-2.6: v5.1 — Delete `mackes/mesh_metrics.py` (superseded by Netdata MON-* path)** *(depends on DEAD-2.3)*
   **As** the v5.1 cleanup pass,
   **I want** to delete the Prometheus exporter for mesh metrics,
   **so that** the codebase echoes the DEAD-1 pattern (`metrics_flush.rs` retired 2026-05-25) — Netdata is the canonical metrics path per v2.6 MON-1..MON-5 lock; Prometheus is no longer the metrics protocol. DEAD-2.3 retires the gateway consumer (mesh_performance.py); `tests/test_mesh_metrics.py` consumer also retires.

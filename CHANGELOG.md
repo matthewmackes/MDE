@@ -35,6 +35,12 @@ all in-flight epics ship together per Q91 maximum-scope lock. See
   `crates/mackesd/src/workers/mdns.rs` (Rust worker spawned by
   `mackesd run_serve`). DEAD-2.3 retired the sole external
   consumer, so the python module is unreachable.
+- Deleted `mackes/mesh_metrics.py` + `tests/test_mesh_metrics.py`
+  — Python Prometheus exporter for mesh metrics. The canonical
+  metrics + alerting path is now `crates/mackesd` (worker
+  `netdata_aggregator.rs`, MON-* lock) + `data/netdata/health.d/
+  *.conf`. Prometheus is retired from MDE-platform metrics; Netdata
+  is the single source.
 
 **Scope tightening (EPIC-MASTER-3)**
 - Fleet cap reduced from 16 to **8 peers** (Q3 of the 100-Q
