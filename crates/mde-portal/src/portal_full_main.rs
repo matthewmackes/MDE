@@ -262,6 +262,15 @@ enum Message {
     /// match is active. Fires `HubTagClicked(match)` to activate
     /// the focused card + clears the buffer.
     HubTypeAheadActivate,
+    /// Portal-17.b.activate — operator clicked a cascade-column
+    /// member entry. The String payload carries the rendered
+    /// label (`format_cascade_member(member)`) for logging +
+    /// downstream activation; the handler logs + clears the
+    /// cascade stack (visual confirmation the click registered).
+    /// Per-target activation (App → spawn, Workspace → focus,
+    /// Peer → mesh nav, …) lands in Portal-17.b.activate.targets
+    /// once each target surface is wired.
+    HubCascadeMemberClicked(String),
     /// Portal-18.b — Edit-tag modal name field edited.
     EditTagNameChanged(String),
     /// Portal-18.b — Edit-tag modal group_color field edited.
@@ -403,6 +412,15 @@ fn update(state: &mut PortalFull, msg: Message) -> Task<Message> {
             } else {
                 find_typeahead_match(&state.hub_typeahead_buffer, &state.user_tags)
             };
+        }
+        Message::HubCascadeMemberClicked(label) => {
+            // Portal-17.b.activate — log + clear the cascade so
+            // the operator sees the click register. Per-target
+            // activation is the .targets follow-on once each
+            // surface (sway focus, app spawn, mesh nav, container
+            // shell) is wired.
+            tracing::info!(%label, "portal-full: cascade member clicked");
+            state.hub_cascade_stack.clear();
         }
         Message::HubTypeAheadActivate => {
             // Enter on a matched tag → activate as if clicked.
@@ -714,11 +732,14 @@ fn build_hub_cascade_columns(state: &PortalFull) -> Element<'_, Message> {
         match cascade_members_for_tag(tag_name, &state.user_tags) {
             Some(members) if !members.is_empty() => {
                 for member in members {
+                    let label = format_cascade_member(member);
+                    let label_for_msg = label.clone();
                     rows.push(
-                        text(format_cascade_member(member))
-                            .size(11.0)
-                            .color(FG_DIM)
-                            .into(),
+                        iced::widget::mouse_area(
+                            text(label).size(11.0).color(FG_DIM),
+                        )
+                        .on_press(Message::HubCascadeMemberClicked(label_for_msg))
+                        .into(),
                     );
                 }
             }
@@ -1788,6 +1809,29 @@ mod tests {
         }];
         let members = cascade_members_for_tag("Dev", &user_tags).unwrap();
         assert_eq!(members.len(), 2);
+    }
+
+    #[test]
+    fn cascade_member_clicked_clears_stack() {
+        let mut state = PortalFull::default();
+        state.hub_cascade_stack.push("Dev".to_string());
+        state.hub_cascade_stack.push("Personal".to_string());
+        let _ = update(
+            &mut state,
+            Message::HubCascadeMemberClicked("App: foot".to_string()),
+        );
+        assert!(state.hub_cascade_stack.is_empty());
+    }
+
+    #[test]
+    fn cascade_member_clicked_with_empty_stack_is_noop() {
+        let mut state = PortalFull::default();
+        // No stack — handler shouldn't panic + state stays clean.
+        let _ = update(
+            &mut state,
+            Message::HubCascadeMemberClicked("Workspace #5".to_string()),
+        );
+        assert!(state.hub_cascade_stack.is_empty());
     }
 
     #[test]
