@@ -54,6 +54,40 @@ pub enum AuditOp {
         #[arg(long, default_value_t = false)]
         json: bool,
     },
+    /// Print the count of audit entries matching the same set of
+    /// filters as `list`. Useful for monitoring + dashboards
+    /// where the full list would be too noisy ("how many urgent
+    /// publishes happened today?"). Default output is a bare
+    /// decimal integer; `--json` switches to a JSON object so
+    /// `jq` pipes can stay symmetric with `list --json`.
+    Count {
+        /// Override the bus_root path.
+        #[arg(long)]
+        bus_root: Option<PathBuf>,
+        /// Filter: only entries whose publisher matches this
+        /// string exactly.
+        #[arg(long)]
+        publisher: Option<String>,
+        /// Filter: only entries whose topic matches this MQTT-
+        /// style pattern.
+        #[arg(long)]
+        topic: Option<String>,
+        /// Filter: only entries at this priority.
+        #[arg(long)]
+        priority: Option<String>,
+        /// Filter: keep only entries whose ISO timestamp's date
+        /// portion is >= this value.
+        #[arg(long)]
+        since_date: Option<String>,
+        /// Filter: keep only entries whose ISO timestamp's date
+        /// portion is <= this value.
+        #[arg(long)]
+        until_date: Option<String>,
+        /// Emit a JSON object `{"count": N}` instead of the bare
+        /// integer. Symmetric with `list --json` for jq pipelines.
+        #[arg(long, default_value_t = false)]
+        json: bool,
+    },
 }
 
 fn resolve_bus_root(arg: Option<PathBuf>) -> Result<PathBuf> {
@@ -139,6 +173,33 @@ pub fn run(op: AuditOp) -> Result<()> {
                         e.ts_iso, e.publisher, e.topic, e.priority, e.ulid,
                     );
                 }
+            }
+        }
+        AuditOp::Count {
+            bus_root,
+            publisher,
+            topic,
+            priority,
+            since_date,
+            until_date,
+            json,
+        } => {
+            let root = resolve_bus_root(bus_root)?;
+            let entries = audit::read_entries(&root)
+                .with_context(|| format!("read audit at {}", root.display()))?;
+            let filtered = apply_filters(
+                &entries,
+                publisher.as_deref(),
+                topic.as_deref(),
+                priority.as_deref(),
+                since_date.as_deref(),
+                until_date.as_deref(),
+            );
+            let n = filtered.len();
+            if json {
+                println!("{{\"count\":{n}}}");
+            } else {
+                println!("{n}");
             }
         }
     }
@@ -289,6 +350,35 @@ mod tests {
         assert_eq!(kept.len(), 3);
         assert_eq!(kept[0].ulid, "u2");
         assert_eq!(kept[2].ulid, "u4");
+    }
+
+    #[test]
+    fn count_verb_runs_on_empty_dir() {
+        let tmp = std::env::temp_dir().join(format!("mde-bus-audit-cli-count-{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        // Default (no filters, plain output) — should just print 0.
+        let r = run(AuditOp::Count {
+            bus_root: Some(tmp.clone()),
+            publisher: None,
+            topic: None,
+            priority: None,
+            since_date: None,
+            until_date: None,
+            json: false,
+        });
+        assert!(r.is_ok());
+        // JSON path too.
+        let r = run(AuditOp::Count {
+            bus_root: Some(tmp.clone()),
+            publisher: None,
+            topic: None,
+            priority: None,
+            since_date: None,
+            until_date: None,
+            json: true,
+        });
+        assert!(r.is_ok());
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[test]
