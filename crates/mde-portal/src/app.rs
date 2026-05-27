@@ -275,6 +275,11 @@ pub enum Message {
     /// window; rendered as a priority-tinted pill near the host
     /// segment.
     BusAnnounceSegment(BusAnnounceSegment),
+    /// Portal-14.a (R4-Q22): 33-ms typewriter reveal tick. No
+    /// state change in the handler — the message exists solely
+    /// to invalidate the view so char-by-char reveal animates
+    /// smoothly. Handled as a no-op.
+    TypewriterTick,
     /// User clicked a workspace cell — focus it via swayipc (R3-Q23).
     FocusWorkspace(String),
     /// User clicked `+` — switch to the next unused workspace number.
@@ -672,6 +677,14 @@ impl iced_layershell::Application for DockApp {
                     self.recent_pulses.drain(..overflow);
                 }
             }
+            Message::TypewriterTick => {
+                // Portal-14.a (R4-Q22): no-op handler. The
+                // message's purpose is to invalidate the view
+                // so `typewriter_visible_text` recomputes
+                // against a fresh `now` per render. Iced's
+                // render loop coalesces these against the
+                // wgpu vsync rate.
+            }
             Message::BusAnnounceSegment(segment) => {
                 // BUS-2.2.a: record the breadcrumb + sweep expired
                 // entries. Cap at 8 (Dock breadcrumb has limited
@@ -872,6 +885,12 @@ impl iced_layershell::Application for DockApp {
             crate::workspace::bus_announce_subscription(),
             crate::workspace::bus_clipboard_subscription(),
             crate::workspace::bus_peer_topics_subscription(),
+            // Portal-14.a (R4-Q22) — typewriter reveal tick.
+            // Fires every 33 ms unconditionally; the renderer
+            // computes per-segment reveal at frame time. Cheap +
+            // smooth enough; the iced runtime coalesces multiple
+            // ticks per frame to wgpu's vsync rate.
+            typewriter_tick_subscription(),
             clock_subscription(),
             snapshot_subscription(),
             status_subscription(),
@@ -1013,6 +1032,26 @@ fn marquee_subscription() -> Subscription<Message> {
             loop {
                 tokio::time::sleep(std::time::Duration::from_millis(20)).await;
                 yield Message::MarqueeTick;
+            }
+        },
+    )
+}
+
+/// Portal-14.a (R4-Q22) — typewriter reveal tick. Fires every
+/// 33 ms to drive char-by-char re-renders of breadcrumb segments
+/// + urgent-pulse pills. The tick handler is a no-op state-wise;
+/// it exists solely to invalidate the view so the renderer
+/// recomputes `typewriter_visible_text` against the new `now`.
+fn typewriter_tick_subscription() -> Subscription<Message> {
+    Subscription::run_with_id(
+        "mde-portal-typewriter-tick",
+        async_stream::stream! {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_millis(
+                    crate::typewriter::TICK_INTERVAL_MS,
+                ))
+                .await;
+                yield Message::TypewriterTick;
             }
         },
     )
@@ -1160,11 +1199,20 @@ fn build_urgent_pulse_segments<'a>(app: &DockApp) -> Element<'a, Message> {
     let tier_red = Color { r: 0.95, g: 0.20, b: 0.20, a: 1.0 };
     let mut pills: Vec<Element<'a, Message>> = Vec::new();
     for pulse in alive {
-        let label = if pulse.app_id.is_empty() {
+        let full_label = if pulse.app_id.is_empty() {
             "urgent".to_string()
         } else {
             pulse.app_id.clone()
         };
+        // Portal-14.a (R4-Q22) — char-by-char reveal from
+        // pulse.spawned_at at the platform's 60 chars/sec.
+        let label = crate::typewriter::typewriter_visible_text(
+            &full_label,
+            pulse.spawned_at,
+            now,
+            crate::typewriter::DEFAULT_CHARS_PER_SEC,
+        )
+        .to_string();
         let con_id = pulse.con_id;
         pills.push(
             mouse_area(
@@ -1213,7 +1261,18 @@ fn build_bus_announce_segments<'a>(app: &DockApp) -> Element<'a, Message> {
     }
     let mut pills: Vec<Element<'a, Message>> = Vec::new();
     for segment in alive {
-        let label = format_bus_segment_label(segment);
+        let full_label = format_bus_segment_label(segment);
+        // Portal-14.a (R4-Q22, 2026-05-27) — typewriter reveal at
+        // 60 chars/sec from segment.spawned_at. Surfaces the
+        // "this just arrived" affordance; consumer-side cost is
+        // a slice-of-target operation per frame.
+        let label = crate::typewriter::typewriter_visible_text(
+            &full_label,
+            segment.spawned_at,
+            now,
+            crate::typewriter::DEFAULT_CHARS_PER_SEC,
+        )
+        .to_string();
         let tint = bus_segment_color(segment.topic, &segment.priority);
         pills.push(
             container(text(label).size(11.0).color(Color::WHITE))

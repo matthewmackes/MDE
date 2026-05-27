@@ -33,6 +33,10 @@ pub mod dbus;
 pub mod fonts;
 // Portal-9.a — sysfs status polling (battery / network / backlight).
 pub mod status;
+// Portal-14.a (R4-Q22, 2026-05-27) — typewriter reveal primitive.
+// Pure helpers consumed by BUS-2.2 + Portal-57.c + future breadcrumb
+// segments to char-by-char-reveal new content.
+pub mod typewriter;
 // Portal-35 — `mde://` URI scheme parser + action dispatcher.
 pub mod uri;
 // Portal-5 — swayipc workspace integration.
