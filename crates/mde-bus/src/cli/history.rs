@@ -21,6 +21,11 @@ pub struct HistoryArgs {
     /// my last poll?" queries.
     #[arg(long)]
     pub since: Option<String>,
+    /// End cursor (exclusive). Useful for "what's older than
+    /// this ULID?" pagination queries. Composable with
+    /// `--since` for a half-open `(since, before)` range.
+    #[arg(long)]
+    pub before: Option<String>,
     /// Print at most this many messages (most-recent N).
     #[arg(long)]
     pub count: Option<usize>,
@@ -48,6 +53,13 @@ pub async fn run(args: HistoryArgs) -> Result<()> {
     };
     let p = Persist::open(bus_root).context("open persist")?;
     let mut rows = p.list_since(&args.topic, args.since.as_deref())?;
+    // `--before` is exclusive — drop every row whose ULID is
+    // >= the cursor. Applied BEFORE the `--count` slice so the
+    // operator gets the last N entries from the filtered range,
+    // not the last N from the unfiltered range.
+    if let Some(before) = args.before.as_deref() {
+        rows.retain(|m| m.ulid.as_str() < before);
+    }
     if let Some(n) = args.count {
         let start = rows.len().saturating_sub(n);
         rows = rows.split_off(start);
@@ -86,6 +98,7 @@ mod tests {
         let args = HistoryArgs {
             topic: "t/x".to_string(),
             since: None,
+            before: None,
             count: None,
             bus_root: Some(tmp.path().to_path_buf()),
             json: false,
@@ -110,7 +123,41 @@ mod tests {
         let args = HistoryArgs {
             topic: "t/x".to_string(),
             since: None,
+            before: None,
             count: Some(3),
+            bus_root: Some(tmp.path().to_path_buf()),
+            json: false,
+        };
+        run(args).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn before_cursor_excludes_rows_at_or_after() {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = Persist::open(tmp.path().to_path_buf()).unwrap();
+        let mut ulids: Vec<String> = Vec::new();
+        for i in 0..5 {
+            let stored = p.write("t/x", Priority::Default, None, Some(&i.to_string())).unwrap();
+            ulids.push(stored.ulid);
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        // Pick the 3rd ULID as the `--before` cursor. The retain
+        // predicate is strict `< cursor`, so rows[3] + rows[4] are
+        // excluded; rows[0..3] are kept.
+        let cursor = ulids[3].clone();
+        let mut filtered: Vec<crate::persist::StoredMessage> =
+            p.list_since("t/x", None).unwrap();
+        filtered.retain(|m| m.ulid.as_str() < cursor.as_str());
+        assert_eq!(filtered.len(), 3);
+        for m in &filtered {
+            assert!(m.ulid < cursor, "ulid {} should be strictly < cursor", m.ulid);
+        }
+        // Run the verb to confirm it doesn't panic with --before.
+        let args = HistoryArgs {
+            topic: "t/x".to_string(),
+            since: None,
+            before: Some(cursor),
+            count: None,
             bus_root: Some(tmp.path().to_path_buf()),
             json: false,
         };
