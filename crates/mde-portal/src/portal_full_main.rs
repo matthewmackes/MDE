@@ -122,6 +122,31 @@ struct PortalFull {
     /// `HubTagRightClicked`; cleared on any menu-action message
     /// or on `HubMenuDismissed` (click-elsewhere / Escape).
     hub_right_click_target: Option<String>,
+    /// Portal-18.b — in-flight Edit-tag modal state. `None` when
+    /// no modal is open; `Some(form)` while the operator edits.
+    /// Set by `HubMenuEditTag`, cleared on Save / Cancel.
+    editing_tag: Option<EditTagForm>,
+}
+
+/// Portal-18.b — Edit-tag modal form state. Seeded from the
+/// current tag-store entry when the modal opens; in-flight
+/// edits land back on the store via `SaveTagEdit`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EditTagForm {
+    /// Name of the tag being edited. Renaming is allowed; the
+    /// SaveTagEdit handler validates the new name against the
+    /// rest of the store (rejects collisions, empties).
+    pub name: String,
+    /// Original name at modal-open time. Used by save to find
+    /// the existing tag entry to mutate (since `name` may have
+    /// been edited).
+    pub original_name: String,
+    /// CSS hex color (`#42be65` or `#abc` shorthand). Empty
+    /// string clears the tint (None on save).
+    pub group_color: String,
+    /// Default layout (`splith` / `splitv` / `tabbed` /
+    /// `stacked`) or empty string for "no preference."
+    pub default_layout: String,
 }
 
 impl Default for PortalFull {
@@ -137,6 +162,7 @@ impl Default for PortalFull {
             layer: Layer::default(),
             user_tags,
             hub_right_click_target: None,
+            editing_tag: None,
         }
     }
 }
@@ -178,6 +204,18 @@ enum Message {
     /// Portal-51. Captures the current workspace into a
     /// template card tagged with the current tag.
     HubMenuSaveAsTemplate(String),
+    /// Portal-18.b — Edit-tag modal name field edited.
+    EditTagNameChanged(String),
+    /// Portal-18.b — Edit-tag modal group_color field edited.
+    EditTagColorChanged(String),
+    /// Portal-18.b — Edit-tag modal default_layout selection.
+    EditTagLayoutChanged(String),
+    /// Portal-18.b — operator clicked Save. Writes the form
+    /// back to the tag store + closes the modal.
+    SaveTagEdit,
+    /// Portal-18.b — operator clicked Cancel or pressed Escape.
+    /// Discards the form + closes the modal.
+    CancelTagEdit,
 }
 
 // ── Update ────────────────────────────────────────────────────────────────────
@@ -213,14 +251,19 @@ fn update(state: &mut PortalFull, msg: Message) -> Task<Message> {
             state.hub_right_click_target = Some(tag_name);
         }
         Message::HubMenuDismissed => {
-            tracing::debug!("portal-full: Hub right-click menu dismissed");
+            // Portal-17.c / Portal-18.b — single dismissal path
+            // for Escape: clear the right-click menu AND any
+            // open Edit-tag modal. Either may be active when
+            // Escape fires; this handler is the union close.
+            tracing::debug!("portal-full: Hub right-click menu / Edit-tag modal dismissed");
             state.hub_right_click_target = None;
+            state.editing_tag = None;
         }
         Message::HubMenuEditTag(tag_name) => {
-            // Portal-17.c → Portal-18.b modal hand-off. Portal-18.b
-            // is blocked on its own implementation; for now log
-            // so the bench observation is verifiable.
-            tracing::info!(%tag_name, "portal-full: HubMenu → EditTag (Portal-18.b modal)");
+            // Portal-17.c → Portal-18.b. Open the Edit-tag modal
+            // seeded with the named tag's current values.
+            tracing::info!(%tag_name, "portal-full: HubMenu → EditTag (Portal-18.b modal opens)");
+            state.editing_tag = Some(seed_edit_form(&state.user_tags, &tag_name));
             state.hub_right_click_target = None;
         }
         Message::HubMenuLayoutChooser(tag_name) => {
@@ -239,8 +282,130 @@ fn update(state: &mut PortalFull, msg: Message) -> Task<Message> {
             tracing::info!(%tag_name, "portal-full: HubMenu → SaveAsTemplate (Portal-51 hand-off)");
             state.hub_right_click_target = None;
         }
+        Message::EditTagNameChanged(value) => {
+            if let Some(form) = state.editing_tag.as_mut() {
+                form.name = value;
+            }
+        }
+        Message::EditTagColorChanged(value) => {
+            if let Some(form) = state.editing_tag.as_mut() {
+                form.group_color = value;
+            }
+        }
+        Message::EditTagLayoutChanged(value) => {
+            if let Some(form) = state.editing_tag.as_mut() {
+                form.default_layout = value;
+            }
+        }
+        Message::SaveTagEdit => {
+            if let Some(form) = state.editing_tag.take() {
+                match commit_tag_edit(&form) {
+                    Ok(()) => {
+                        // Refresh in-memory snapshot so the Hub
+                        // grid reflects the saved changes.
+                        if let Ok(store) = mackes_mesh_types::TagStore::load_default() {
+                            state.user_tags = store.tags;
+                        }
+                        tracing::info!(name = %form.name, "portal-full: tag edit saved");
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, name = %form.name, "portal-full: tag edit save failed");
+                    }
+                }
+            }
+        }
+        Message::CancelTagEdit => {
+            tracing::debug!("portal-full: tag edit cancelled");
+            state.editing_tag = None;
+        }
     }
     Task::none()
+}
+
+/// Portal-18.b — seed the Edit-tag form from the live in-memory
+/// snapshot. System-tag entries (which don't exist in the
+/// user-tag store) get an empty form with the system name
+/// pre-filled; saving will create the tag.
+fn seed_edit_form(user_tags: &[mackes_mesh_types::Tag], target: &str) -> EditTagForm {
+    let existing = user_tags.iter().find(|t| t.name == target);
+    EditTagForm {
+        name: target.to_string(),
+        original_name: target.to_string(),
+        group_color: existing
+            .and_then(|t| t.group_color.clone())
+            .unwrap_or_default(),
+        default_layout: existing
+            .and_then(|t| t.default_layout.clone())
+            .unwrap_or_default(),
+    }
+}
+
+/// Portal-18.b — commit the in-flight EditTagForm to the tag
+/// store. Atomic save via `TagStore::save_default`. Handles
+/// rename (original_name → form.name) by removing the original
+/// + adding the renamed entry.
+fn commit_tag_edit(form: &EditTagForm) -> Result<(), mackes_mesh_types::TagStoreError> {
+    let mut store = mackes_mesh_types::TagStore::load_default()?;
+    let trimmed_name = form.name.trim().to_string();
+    if trimmed_name.is_empty() {
+        // Reject empty rename — surface as a DuplicateName error
+        // for consistency with TagStore::add's reject path.
+        return Err(mackes_mesh_types::TagStoreError::DuplicateName(String::new()));
+    }
+    // Find-and-mutate, or rename, or create.
+    let same_name = trimmed_name == form.original_name;
+    let group_color = if form.group_color.trim().is_empty() {
+        None
+    } else {
+        Some(form.group_color.trim().to_string())
+    };
+    let default_layout = if form.default_layout.trim().is_empty() {
+        None
+    } else {
+        Some(form.default_layout.trim().to_string())
+    };
+    if same_name {
+        if let Some(tag) = store.find_by_name_mut(&form.original_name) {
+            tag.group_color = group_color;
+            tag.default_layout = default_layout;
+        } else {
+            // Original name doesn't exist (system tag or fresh
+            // create) — append a new Manual tag.
+            store.add(mackes_mesh_types::Tag {
+                name: trimmed_name,
+                flavor: mackes_mesh_types::TagFlavor::Manual,
+                members: Vec::new(),
+                group_color,
+                preferred_output: None,
+                default_layout,
+                autostart: Vec::new(),
+            })?;
+        }
+    } else {
+        // Rename path — take the existing entry's members +
+        // autostart so they survive the rename, then write
+        // back under the new name.
+        let preserved = store
+            .find_by_name(&form.original_name)
+            .map(|t| (t.flavor.clone(), t.members.clone(), t.preferred_output.clone(), t.autostart.clone()));
+        store.remove(&form.original_name);
+        let (flavor, members, preferred_output, autostart) = preserved.unwrap_or_else(|| (
+            mackes_mesh_types::TagFlavor::Manual,
+            Vec::new(),
+            None,
+            Vec::new(),
+        ));
+        store.add(mackes_mesh_types::Tag {
+            name: trimmed_name,
+            flavor,
+            members,
+            group_color,
+            preferred_output,
+            default_layout,
+            autostart,
+        })?;
+    }
+    store.save_default()
 }
 
 // ── View ──────────────────────────────────────────────────────────────────────
@@ -290,6 +455,11 @@ fn view(state: &PortalFull) -> Element<'_, Message> {
 /// + cascade expansion + type-ahead ship as Portal-17.b..d.
 fn build_hub_layer(state: &PortalFull) -> Element<'_, Message> {
     use iced::widget::row;
+    // Portal-18.b — if a tag edit is in flight, show the modal
+    // instead of the grid. Save / Cancel return to the grid.
+    if state.editing_tag.is_some() {
+        return build_edit_tag_modal(state);
+    }
     let mut system_row: Vec<Element<'_, Message>> = Vec::new();
     for &name in SYSTEM_TAGS {
         system_row.push(hub_tag_card(name, None));
@@ -349,6 +519,113 @@ fn hub_tag_card<'a>(name: &str, group_color: Option<&str>) -> Element<'a, Messag
     )
     .on_press(Message::HubTagClicked(name_for_left))
     .on_right_press(Message::HubTagRightClicked(name_for_right))
+    .into()
+}
+
+/// Portal-18.b — Edit-tag modal layout-selection options.
+/// Mirrors the four-layout set the design lock recognises for
+/// `default_layout`. The empty-string row is "no preference"
+/// (clears the field on save).
+pub const EDIT_TAG_LAYOUT_OPTIONS: &[&str] = &[
+    "",
+    "splith",
+    "splitv",
+    "tabbed",
+    "stacked",
+];
+
+/// Portal-18.b — modal view: name input + color input + layout
+/// chooser + Save / Cancel buttons. Placed inline within the
+/// Hub layer view; `build_hub_layer` swaps to this when
+/// `editing_tag.is_some()`.
+fn build_edit_tag_modal(state: &PortalFull) -> Element<'_, Message> {
+    use iced::widget::{button, row, text_input};
+    let Some(form) = state.editing_tag.as_ref() else {
+        return iced::widget::Space::new(0.0, 0.0).into();
+    };
+    let name_field = text_input("Tag name (e.g. Dev)", &form.name)
+        .on_input(Message::EditTagNameChanged)
+        .size(14.0)
+        .padding(iced::Padding::from([8, 10]));
+    let color_field = text_input("Group color (e.g. #42be65)", &form.group_color)
+        .on_input(Message::EditTagColorChanged)
+        .size(14.0)
+        .padding(iced::Padding::from([8, 10]));
+    // Layout picker — render as a row of buttons; the selected
+    // option gets the indigo accent so the choice is visible.
+    let mut layout_row: Vec<Element<'_, Message>> = Vec::new();
+    for option in EDIT_TAG_LAYOUT_OPTIONS {
+        let is_selected = form.default_layout == *option;
+        let label = if option.is_empty() { "no default" } else { *option };
+        let option_owned = option.to_string();
+        let bg = if is_selected {
+            Color { r: 0.357, g: 0.416, b: 0.961, a: 1.0 }
+        } else {
+            Color { r: 0.16, g: 0.17, b: 0.19, a: 1.0 }
+        };
+        layout_row.push(
+            button(text(label).size(12.0).color(Color::WHITE))
+                .on_press(Message::EditTagLayoutChanged(option_owned))
+                .style(move |_theme: &Theme, _status| iced::widget::button::Style {
+                    background: Some(iced::Background::Color(bg)),
+                    text_color: Color::WHITE,
+                    border: iced::Border {
+                        radius: iced::border::Radius::from(6.0),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                })
+                .into(),
+        );
+    }
+    let actions = row![
+        button(text("Apply").size(13.0).color(Color::WHITE))
+            .on_press(Message::SaveTagEdit)
+            .style(|_theme: &Theme, _status| iced::widget::button::Style {
+                background: Some(iced::Background::Color(Color { r: 0.357, g: 0.416, b: 0.961, a: 1.0 })),
+                text_color: Color::WHITE,
+                border: iced::Border {
+                    radius: iced::border::Radius::from(6.0),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }),
+        button(text("Cancel").size(13.0).color(Color::WHITE))
+            .on_press(Message::CancelTagEdit)
+            .style(|_theme: &Theme, _status| iced::widget::button::Style {
+                background: Some(iced::Background::Color(Color { r: 0.30, g: 0.30, b: 0.34, a: 1.0 })),
+                text_color: Color::WHITE,
+                border: iced::Border {
+                    radius: iced::border::Radius::from(6.0),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }),
+    ]
+    .spacing(8);
+    container(
+        column![
+            text(format!("Edit tag — {}", form.original_name)).size(16.0).color(FG),
+            text("Name").size(12.0).color(FG_DIM),
+            name_field,
+            text("Group color").size(12.0).color(FG_DIM),
+            color_field,
+            text("Default layout").size(12.0).color(FG_DIM),
+            row(layout_row).spacing(6).wrap(),
+            actions,
+        ]
+        .spacing(8),
+    )
+    .style(|_theme: &Theme| iced::widget::container::Style {
+        background: Some(iced::Background::Color(Color { r: 0.16, g: 0.17, b: 0.19, a: 1.0 })),
+        border: iced::Border {
+            radius: iced::border::Radius::from(10.0),
+            ..Default::default()
+        },
+        ..Default::default()
+    })
+    .padding(iced::Padding::from([16, 16]))
+    .width(Length::Fill)
     .into()
 }
 
@@ -473,7 +750,11 @@ fn build_control_placeholder(_state: &PortalFull) -> Element<'_, Message> {
 
 fn subscription(_state: &PortalFull) -> Subscription<Message> {
     Subscription::batch([
-        // Portal-17.c — Escape dismisses an open right-click menu.
+        // Portal-17.c / Portal-18.b — Escape dismisses an open
+        // right-click menu OR an open Edit-tag modal. The
+        // HubMenuDismissed handler clears both states, so a
+        // single fn-pointer keyboard subscription covers both
+        // cases (no closure capture required).
         iced::keyboard::on_key_press(|key, _modifiers| {
             use iced::keyboard::{key::Named, Key};
             if matches!(key, Key::Named(Named::Escape)) {
@@ -755,5 +1036,128 @@ mod tests {
         let g = (CHARCOAL.g * 255.0).round() as u8;
         let b = (CHARCOAL.b * 255.0).round() as u8;
         assert_eq!((r, g, b), (32, 33, 36), "#202124 charcoal");
+    }
+
+    // ── Portal-18.b — Edit-tag modal ─────────────────────────
+
+    #[test]
+    fn edit_tag_layout_options_lock_matches_design() {
+        // Locked set: empty (no preference) + the 4 sway layouts
+        // the design doc names for default_layout.
+        assert_eq!(
+            EDIT_TAG_LAYOUT_OPTIONS,
+            &["", "splith", "splitv", "tabbed", "stacked"],
+        );
+    }
+
+    #[test]
+    fn seed_edit_form_for_unknown_tag_is_blank() {
+        let form = seed_edit_form(&[], "Dev");
+        assert_eq!(form.name, "Dev");
+        assert_eq!(form.original_name, "Dev");
+        assert_eq!(form.group_color, "");
+        assert_eq!(form.default_layout, "");
+    }
+
+    #[test]
+    fn seed_edit_form_pre_fills_known_tag() {
+        let tags = vec![mackes_mesh_types::Tag {
+            name: "Dev".to_string(),
+            flavor: mackes_mesh_types::TagFlavor::Manual,
+            members: Vec::new(),
+            group_color: Some("#42be65".to_string()),
+            preferred_output: None,
+            default_layout: Some("tabbed".to_string()),
+            autostart: Vec::new(),
+        }];
+        let form = seed_edit_form(&tags, "Dev");
+        assert_eq!(form.name, "Dev");
+        assert_eq!(form.original_name, "Dev");
+        assert_eq!(form.group_color, "#42be65");
+        assert_eq!(form.default_layout, "tabbed");
+    }
+
+    #[test]
+    fn hub_menu_edit_tag_opens_modal() {
+        let mut state = PortalFull::default();
+        state.hub_right_click_target = Some("Dev".to_string());
+        let _ = update(&mut state, Message::HubMenuEditTag("Dev".to_string()));
+        assert!(state.editing_tag.is_some(), "modal must open");
+        assert!(
+            state.hub_right_click_target.is_none(),
+            "right-click menu must dismiss when modal opens",
+        );
+        let form = state.editing_tag.as_ref().unwrap();
+        assert_eq!(form.original_name, "Dev");
+    }
+
+    #[test]
+    fn edit_tag_name_changed_updates_form() {
+        let mut state = PortalFull::default();
+        state.editing_tag = Some(EditTagForm {
+            name: "Dev".to_string(),
+            original_name: "Dev".to_string(),
+            group_color: String::new(),
+            default_layout: String::new(),
+        });
+        let _ = update(&mut state, Message::EditTagNameChanged("Dev2".to_string()));
+        let form = state.editing_tag.as_ref().unwrap();
+        assert_eq!(form.name, "Dev2");
+        assert_eq!(form.original_name, "Dev", "original_name is immutable");
+    }
+
+    #[test]
+    fn edit_tag_color_changed_updates_form() {
+        let mut state = PortalFull::default();
+        state.editing_tag = Some(EditTagForm {
+            name: "Dev".to_string(),
+            original_name: "Dev".to_string(),
+            group_color: String::new(),
+            default_layout: String::new(),
+        });
+        let _ = update(&mut state, Message::EditTagColorChanged("#42be65".to_string()));
+        assert_eq!(state.editing_tag.as_ref().unwrap().group_color, "#42be65");
+    }
+
+    #[test]
+    fn edit_tag_layout_changed_updates_form() {
+        let mut state = PortalFull::default();
+        state.editing_tag = Some(EditTagForm {
+            name: "Dev".to_string(),
+            original_name: "Dev".to_string(),
+            group_color: String::new(),
+            default_layout: String::new(),
+        });
+        let _ = update(&mut state, Message::EditTagLayoutChanged("tabbed".to_string()));
+        assert_eq!(state.editing_tag.as_ref().unwrap().default_layout, "tabbed");
+    }
+
+    #[test]
+    fn cancel_tag_edit_clears_form() {
+        let mut state = PortalFull::default();
+        state.editing_tag = Some(EditTagForm {
+            name: "Dev".to_string(),
+            original_name: "Dev".to_string(),
+            group_color: String::new(),
+            default_layout: String::new(),
+        });
+        let _ = update(&mut state, Message::CancelTagEdit);
+        assert!(state.editing_tag.is_none());
+    }
+
+    #[test]
+    fn escape_dismisses_open_edit_modal() {
+        // HubMenuDismissed is the union close — handles both
+        // right-click menu + Edit modal. This test guards the
+        // Escape path for Portal-18.b.
+        let mut state = PortalFull::default();
+        state.editing_tag = Some(EditTagForm {
+            name: "Dev".to_string(),
+            original_name: "Dev".to_string(),
+            group_color: String::new(),
+            default_layout: String::new(),
+        });
+        let _ = update(&mut state, Message::HubMenuDismissed);
+        assert!(state.editing_tag.is_none());
     }
 }

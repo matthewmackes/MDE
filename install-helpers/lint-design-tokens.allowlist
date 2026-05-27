@@ -92,15 +92,22 @@ crates/mde-portal/src/app.rs:2396
 crates/mde-portal/src/app.rs:2401
 crates/mde-portal/src/app.rs:2405
 crates/mde-portal/src/app.rs:3285
-crates/mde-portal/src/portal_full_main.rs:248
-# Portal-17.c menu-overlay Color struct literals (2026-05-27)
-crates/mde-portal/src/portal_full_main.rs:619
-crates/mde-portal/src/portal_full_main.rs:630
-crates/mde-portal/src/portal_full_main.rs:631
-crates/mde-portal/src/portal_full_main.rs:641
-crates/mde-portal/src/portal_full_main.rs:642
-# Portal-17.a Hub tag-card default tint + hex-parser test fixtures (2026-05-27)
-crates/mde-portal/src/portal_full_main.rs:757
+# Portal-17.a/.c + Portal-18.b — docstring hex examples, charcoal
+# const docstring, hex-parser tests, Edit-tag form #42be65 fixtures
+# (re-anchored 2026-05-27 after Portal-18.b modal landed).
+crates/mde-portal/src/portal_full_main.rs:144
+crates/mde-portal/src/portal_full_main.rs:413
+crates/mde-portal/src/portal_full_main.rs:550
+crates/mde-portal/src/portal_full_main.rs:900
+crates/mde-portal/src/portal_full_main.rs:911
+crates/mde-portal/src/portal_full_main.rs:912
+crates/mde-portal/src/portal_full_main.rs:922
+crates/mde-portal/src/portal_full_main.rs:923
+crates/mde-portal/src/portal_full_main.rs:1038
+crates/mde-portal/src/portal_full_main.rs:1068
+crates/mde-portal/src/portal_full_main.rs:1076
+crates/mde-portal/src/portal_full_main.rs:1118
+crates/mde-portal/src/portal_full_main.rs:1119
 crates/mde-wizard/src/pages/preset.rs:12
 crates/mde-wizard/src/pages/preset.rs:18
 crates/mde-wizard/src/pages/preset.rs:24
