@@ -12,8 +12,8 @@ use crate::audit;
 /// CLI sub-verbs for `mde-bus audit`.
 #[derive(Subcommand, Debug)]
 pub enum AuditOp {
-    /// Print every audit entry from oldest to newest. Optionally
-    /// limit to the last N entries via `--tail N`.
+    /// Print audit entries from oldest to newest. Optional
+    /// filters narrow the output before `--tail` truncates.
     List {
         /// Override the bus_root path.
         #[arg(long)]
@@ -21,6 +21,20 @@ pub enum AuditOp {
         /// Print only the last N entries (most recent). 0 = all.
         #[arg(long, default_value_t = 0)]
         tail: usize,
+        /// Filter: only entries whose publisher matches this
+        /// string exactly. e.g. `--publisher github` shows only
+        /// webhook publishes via the GitHub adapter.
+        #[arg(long)]
+        publisher: Option<String>,
+        /// Filter: only entries whose topic matches this MQTT-
+        /// style pattern (`+` single-level, `#` multi-level).
+        /// e.g. `--topic 'mon/#'` shows every monitoring publish.
+        #[arg(long)]
+        topic: Option<String>,
+        /// Filter: only entries at this priority (`min` /
+        /// `default` / `high` / `urgent`). Case-sensitive lower.
+        #[arg(long)]
+        priority: Option<String>,
     },
 }
 
@@ -32,17 +46,49 @@ fn resolve_bus_root(arg: Option<PathBuf>) -> Result<PathBuf> {
         .ok_or_else(|| anyhow!("no $HOME / $XDG_DATA_HOME — pass --bus-root"))
 }
 
+/// Pure-fn — apply the three CLI filters (publisher / topic /
+/// priority) to a flat slice of audit entries. Each filter is
+/// `Option<&str>`; `None` means "don't filter on this field." The
+/// returned Vec contains references into the input slice — no
+/// allocation per kept entry.
+#[must_use]
+pub fn apply_filters<'a>(
+    entries: &'a [audit::AuditEntry],
+    publisher: Option<&str>,
+    topic_pattern: Option<&str>,
+    priority: Option<&str>,
+) -> Vec<&'a audit::AuditEntry> {
+    entries
+        .iter()
+        .filter(|e| publisher.is_none_or(|p| e.publisher == p))
+        .filter(|e| topic_pattern.is_none_or(|pat| crate::wildcard::matches(pat, &e.topic)))
+        .filter(|e| priority.is_none_or(|p| e.priority == p))
+        .collect()
+}
+
 /// Execute the `audit` verb. Read-only.
 pub fn run(op: AuditOp) -> Result<()> {
     match op {
-        AuditOp::List { bus_root, tail } => {
+        AuditOp::List {
+            bus_root,
+            tail,
+            publisher,
+            topic,
+            priority,
+        } => {
             let root = resolve_bus_root(bus_root)?;
             let entries = audit::read_entries(&root)
                 .with_context(|| format!("read audit at {}", root.display()))?;
-            let slice: &[_] = if tail == 0 || tail >= entries.len() {
-                &entries[..]
+            let filtered = apply_filters(
+                &entries,
+                publisher.as_deref(),
+                topic.as_deref(),
+                priority.as_deref(),
+            );
+            let slice: &[_] = if tail == 0 || tail >= filtered.len() {
+                &filtered[..]
             } else {
-                &entries[entries.len() - tail..]
+                &filtered[filtered.len() - tail..]
             };
             for e in slice {
                 println!(
@@ -59,12 +105,90 @@ pub fn run(op: AuditOp) -> Result<()> {
 mod tests {
     use super::*;
 
+    fn entry(publisher: &str, topic: &str, priority: &str, ulid: &str) -> audit::AuditEntry {
+        audit::AuditEntry {
+            publisher: publisher.to_string(),
+            ts_iso: "2026-05-27T12:00:00Z".to_string(),
+            topic: topic.to_string(),
+            priority: priority.to_string(),
+            ulid: ulid.to_string(),
+        }
+    }
+
     #[test]
     fn list_with_missing_dir_returns_ok_empty() {
         let tmp = std::env::temp_dir().join(format!("mde-bus-audit-cli-empty-{}", std::process::id()));
         std::fs::create_dir_all(&tmp).unwrap();
-        let r = run(AuditOp::List { bus_root: Some(tmp.clone()), tail: 0 });
+        let r = run(AuditOp::List {
+            bus_root: Some(tmp.clone()),
+            tail: 0,
+            publisher: None,
+            topic: None,
+            priority: None,
+        });
         assert!(r.is_ok());
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn filter_publisher_keeps_only_matching() {
+        let entries = vec![
+            entry("github", "fleet/announce", "default", "u1"),
+            entry("fedora", "fleet/announce", "default", "u2"),
+            entry("github", "mon/cpu", "high", "u3"),
+        ];
+        let kept = apply_filters(&entries, Some("github"), None, None);
+        assert_eq!(kept.len(), 2);
+        assert_eq!(kept[0].ulid, "u1");
+        assert_eq!(kept[1].ulid, "u3");
+    }
+
+    #[test]
+    fn filter_topic_wildcard_keeps_only_matches() {
+        let entries = vec![
+            entry("fedora", "mon/cpu", "default", "u1"),
+            entry("fedora", "mon/disk", "default", "u2"),
+            entry("fedora", "fleet/announce", "default", "u3"),
+        ];
+        let kept = apply_filters(&entries, None, Some("mon/#"), None);
+        assert_eq!(kept.len(), 2);
+        assert_eq!(kept[0].ulid, "u1");
+        assert_eq!(kept[1].ulid, "u2");
+    }
+
+    #[test]
+    fn filter_priority_keeps_only_exact_match() {
+        let entries = vec![
+            entry("fedora", "t", "default", "u1"),
+            entry("fedora", "t", "high", "u2"),
+            entry("fedora", "t", "urgent", "u3"),
+        ];
+        let kept = apply_filters(&entries, None, None, Some("urgent"));
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].ulid, "u3");
+    }
+
+    #[test]
+    fn filter_chain_combines_three_predicates() {
+        let entries = vec![
+            entry("github", "mon/cpu", "default", "u1"),
+            entry("github", "mon/cpu", "high", "u2"),
+            entry("fedora", "mon/cpu", "high", "u3"),
+            entry("github", "fleet/announce", "high", "u4"),
+        ];
+        // Want github + mon/* + high → u2 only.
+        let kept = apply_filters(&entries, Some("github"), Some("mon/#"), Some("high"));
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].ulid, "u2");
+    }
+
+    #[test]
+    fn filter_no_predicates_returns_everything() {
+        let entries = vec![
+            entry("a", "t1", "default", "u1"),
+            entry("b", "t2", "high", "u2"),
+        ];
+        let kept = apply_filters(&entries, None, None, None);
+        assert_eq!(kept.len(), 2);
     }
 }
