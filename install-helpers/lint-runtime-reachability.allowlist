@@ -2,7 +2,6 @@ crates/mackesd/src/transport/mod.rs:mesh_shunt
 crates/mackesd/src/workers/mod.rs:media_sync
 crates/mackesd/src/workers/mod.rs:perf
 crates/mackesd/src/workers/mod.rs:remmina_sync
-crates/mackesd/src/workers/mod.rs:thumbnailer
 crates/mde-workbench/src/panels/mod.rs:apps_install
 crates/mde-workbench/src/panels/mod.rs:apps_installed
 crates/mde-workbench/src/panels/mod.rs:apps_remove

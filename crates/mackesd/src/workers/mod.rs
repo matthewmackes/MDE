@@ -171,7 +171,12 @@ pub mod sshd_overlay_bind;
 pub mod firewall_preset;
 pub mod stun_gather;
 pub mod subprocess_tick;
-pub mod thumbnailer;
+// thumbnailer retired 2026-05-26 (TUNE-3.b): the worker module
+// shelled out to `mackes/mesh_thumbnailer.py` which already
+// retired with EPIC-RETIRE-PY-WORKBENCH; Thunar / GTK thumbnail
+// dispatch is irrelevant in the v2.0+ Wayland-only sway + mde-
+// files (Cosmic Files fork) stack. No live consumer of the pure
+// helpers existed in tree.
 // VV-2 (v4.1.0) — voice-config worker that owns the
 // /var/lib/mackesd/voice-desired.json document + triggers
 // `systemctl try-reload-or-restart` on kamailio-mde +
