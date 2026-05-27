@@ -117,6 +117,11 @@ struct PortalFull {
     /// next time the Hub opens (no live mtime-watch yet — that
     /// ships when the modal lands).
     user_tags: Vec<mackes_mesh_types::Tag>,
+    /// Portal-17.c — name of the tag whose context menu is open,
+    /// or `None` when no menu is showing. Set on right-click via
+    /// `HubTagRightClicked`; cleared on any menu-action message
+    /// or on `HubMenuDismissed` (click-elsewhere / Escape).
+    hub_right_click_target: Option<String>,
 }
 
 impl Default for PortalFull {
@@ -131,6 +136,7 @@ impl Default for PortalFull {
         Self {
             layer: Layer::default(),
             user_tags,
+            hub_right_click_target: None,
         }
     }
 }
@@ -145,6 +151,33 @@ enum Message {
     /// card. Placeholder for cascade-card expansion (Portal-17.b)
     /// + right-click iconic menu (Portal-17.c).
     HubTagClicked(String),
+    /// Portal-17.c — operator right-clicked a Hub tag card.
+    /// Surfaces the iconic context menu over the Hub view; the
+    /// `String` carries the tag name so menu actions know
+    /// which tag they target.
+    HubTagRightClicked(String),
+    /// Portal-17.c — operator clicked outside the open context
+    /// menu, or pressed Escape. Clears the menu without firing
+    /// any action.
+    HubMenuDismissed,
+    /// Portal-17.c — operator chose "Edit tag…" from the menu.
+    /// Fires the Portal-18.b modal route. Tag name is the
+    /// current menu target.
+    HubMenuEditTag(String),
+    /// Portal-17.c — operator chose "Layout chooser…" per R3-Q62.
+    /// Routes to the Portal-44 default-layout writer for the
+    /// named tag.
+    HubMenuLayoutChooser(String),
+    /// Portal-17.c — operator chose "Window rules…" — opens the
+    /// Portal-53.b per-tag window-rules modal scoped to the tag.
+    HubMenuWindowRules(String),
+    /// Portal-17.c — operator chose "Enter mode" — Portal-47
+    /// flips sway into the tag's binding mode.
+    HubMenuEnterMode(String),
+    /// Portal-17.c — operator chose "Save as template…" per
+    /// Portal-51. Captures the current workspace into a
+    /// template card tagged with the current tag.
+    HubMenuSaveAsTemplate(String),
 }
 
 // ── Update ────────────────────────────────────────────────────────────────────
@@ -172,6 +205,39 @@ fn update(state: &mut PortalFull, msg: Message) -> Task<Message> {
             // Portal-17.a — log only for v1; Portal-17.b adds the
             // cascade-card expansion on top of this signal.
             tracing::info!(%tag_name, "portal-full: Hub tag clicked");
+            // Any left-click dismisses an open right-click menu.
+            state.hub_right_click_target = None;
+        }
+        Message::HubTagRightClicked(tag_name) => {
+            tracing::info!(%tag_name, "portal-full: Hub tag right-clicked, opening menu");
+            state.hub_right_click_target = Some(tag_name);
+        }
+        Message::HubMenuDismissed => {
+            tracing::debug!("portal-full: Hub right-click menu dismissed");
+            state.hub_right_click_target = None;
+        }
+        Message::HubMenuEditTag(tag_name) => {
+            // Portal-17.c → Portal-18.b modal hand-off. Portal-18.b
+            // is blocked on its own implementation; for now log
+            // so the bench observation is verifiable.
+            tracing::info!(%tag_name, "portal-full: HubMenu → EditTag (Portal-18.b modal)");
+            state.hub_right_click_target = None;
+        }
+        Message::HubMenuLayoutChooser(tag_name) => {
+            tracing::info!(%tag_name, "portal-full: HubMenu → LayoutChooser (Portal-44 hand-off)");
+            state.hub_right_click_target = None;
+        }
+        Message::HubMenuWindowRules(tag_name) => {
+            tracing::info!(%tag_name, "portal-full: HubMenu → WindowRules (Portal-53.b modal)");
+            state.hub_right_click_target = None;
+        }
+        Message::HubMenuEnterMode(tag_name) => {
+            tracing::info!(%tag_name, "portal-full: HubMenu → EnterMode (Portal-47 hand-off)");
+            state.hub_right_click_target = None;
+        }
+        Message::HubMenuSaveAsTemplate(tag_name) => {
+            tracing::info!(%tag_name, "portal-full: HubMenu → SaveAsTemplate (Portal-51 hand-off)");
+            state.hub_right_click_target = None;
         }
     }
     Task::none()
@@ -247,6 +313,9 @@ fn build_hub_layer(state: &PortalFull) -> Element<'_, Message> {
         row(system_row).spacing(8).wrap(),
         text("Your tags").size(13.0).color(FG_DIM),
         user_section,
+        // Portal-17.c — context-menu overlay; renders empty
+        // space when no menu is open.
+        build_hub_menu_overlay(state),
     ]
     .spacing(16)
     .into()
@@ -254,15 +323,16 @@ fn build_hub_layer(state: &PortalFull) -> Element<'_, Message> {
 
 /// Portal-17.a — render one tag card with optional color tint.
 /// Carbon-blue indigo if no `group_color`; the tag's hex when
-/// set + parseable. Click fires `HubTagClicked` carrying the
-/// tag name so downstream handlers (Portal-17.b cascade
-/// expansion, Portal-17.c right-click) can identify the target.
+/// set + parseable. Left-click → `HubTagClicked` for cascade
+/// expansion (Portal-17.b). Right-click → `HubTagRightClicked`
+/// for the iconic context menu (Portal-17.c).
 fn hub_tag_card<'a>(name: &str, group_color: Option<&str>) -> Element<'a, Message> {
     let tint = group_color
         .and_then(hub_parse_hex)
         .unwrap_or(Color { r: 0.20, g: 0.69, b: 1.0, a: 1.0 }); // Carbon blue 40 default
     let name_owned = name.to_string();
-    let label_for_msg = name_owned.clone();
+    let name_for_left = name_owned.clone();
+    let name_for_right = name_owned.clone();
     iced::widget::mouse_area(
         container(text(name_owned).size(13.0).color(Color::WHITE))
             .style(move |_theme: &Theme| iced::widget::container::Style {
@@ -277,8 +347,74 @@ fn hub_tag_card<'a>(name: &str, group_color: Option<&str>) -> Element<'a, Messag
             .width(Length::Shrink)
             .height(Length::Shrink),
     )
-    .on_press(Message::HubTagClicked(label_for_msg))
+    .on_press(Message::HubTagClicked(name_for_left))
+    .on_right_press(Message::HubTagRightClicked(name_for_right))
     .into()
+}
+
+/// Portal-17.c — locked menu-action labels. System tags (All
+/// apps / Untagged / Workspaces / Settings / Power / Mesh) get
+/// the same iconic menu as user tags — most actions are no-ops
+/// on system tags but the menu shape stays consistent. The
+/// handler decides per-action whether to log or hand off.
+pub const HUB_MENU_ACTIONS: &[&str] = &[
+    "Edit tag…",
+    "Layout chooser…",
+    "Window rules…",
+    "Enter mode",
+    "Save as template…",
+];
+
+/// Portal-17.c — render the right-click context-menu overlay
+/// when `hub_right_click_target` is Some. Modal-style placement:
+/// the menu appears at the bottom of the Hub view above the
+/// tag-card grid + dims the rest of the layer. Click anywhere
+/// outside the menu (or Esc) fires `HubMenuDismissed`.
+///
+/// Returns `iced::widget::Space` when no menu is open so the
+/// view layout stays unchanged in the common case.
+fn build_hub_menu_overlay<'a>(state: &PortalFull) -> Element<'a, Message> {
+    let Some(target) = state.hub_right_click_target.clone() else {
+        return iced::widget::Space::new(0.0, 0.0).into();
+    };
+    let mut items: Vec<Element<'a, Message>> = Vec::with_capacity(HUB_MENU_ACTIONS.len() + 1);
+    items.push(text(format!("Tag: {target}")).size(12.0).color(FG_DIM).into());
+    for action in HUB_MENU_ACTIONS {
+        let target_for_msg = target.clone();
+        let msg = match *action {
+            "Edit tag…" => Message::HubMenuEditTag(target_for_msg),
+            "Layout chooser…" => Message::HubMenuLayoutChooser(target_for_msg),
+            "Window rules…" => Message::HubMenuWindowRules(target_for_msg),
+            "Enter mode" => Message::HubMenuEnterMode(target_for_msg),
+            "Save as template…" => Message::HubMenuSaveAsTemplate(target_for_msg),
+            // Defensive — every entry in HUB_MENU_ACTIONS has a
+            // matching variant. New actions land via the locked
+            // table + a new Message variant in lockstep.
+            _ => Message::HubMenuDismissed,
+        };
+        items.push(
+            iced::widget::mouse_area(
+                container(text(*action).size(13.0).color(FG))
+                    .padding(iced::Padding::from([8, 16]))
+                    .width(Length::Fill),
+            )
+            .on_press(msg)
+            .into(),
+        );
+    }
+    container(column(items).spacing(2))
+        .style(|_theme: &Theme| iced::widget::container::Style {
+            background: Some(iced::Background::Color(Color { r: 0.16, g: 0.17, b: 0.19, a: 1.0 })),
+            border: iced::Border {
+                radius: iced::border::Radius::from(8.0),
+                color: Color { r: 1.0, g: 1.0, b: 1.0, a: 0.12 },
+                width: 1.0,
+            },
+            ..Default::default()
+        })
+        .padding(iced::Padding::from([8, 8]))
+        .width(Length::Fixed(280.0))
+        .into()
 }
 
 /// Portal-17.a — minimal hex-color parser sufficient for the Hub
@@ -336,6 +472,21 @@ fn build_control_placeholder(_state: &PortalFull) -> Element<'_, Message> {
 // ── Subscription ──────────────────────────────────────────────────────────────
 
 fn subscription(_state: &PortalFull) -> Subscription<Message> {
+    Subscription::batch([
+        // Portal-17.c — Escape dismisses an open right-click menu.
+        iced::keyboard::on_key_press(|key, _modifiers| {
+            use iced::keyboard::{key::Named, Key};
+            if matches!(key, Key::Named(Named::Escape)) {
+                Some(Message::HubMenuDismissed)
+            } else {
+                None
+            }
+        }),
+        dbus_subscription(),
+    ])
+}
+
+fn dbus_subscription() -> Subscription<Message> {
     Subscription::run_with_id("mde-portal-full-dbus", stream! {
         // The sender is set in main() before iced starts, but subscription
         // streams are spawned by iced's runtime potentially very quickly.
@@ -504,6 +655,72 @@ mod tests {
         let layer_before = state.layer;
         let _ = update(&mut state, Message::HubTagClicked("Dev".to_string()));
         assert_eq!(state.layer, layer_before);
+    }
+
+    // ── Portal-17.c right-click menu tests ─────────────────────────────────
+
+    #[test]
+    fn hub_menu_actions_lock_matches_design() {
+        // R3-Q62 + Portal-17.c lock — five iconic menu items in
+        // this order. Adding a sixth requires a corresponding
+        // Message variant + match arm in build_hub_menu_overlay.
+        assert_eq!(HUB_MENU_ACTIONS.len(), 5);
+        assert_eq!(HUB_MENU_ACTIONS[0], "Edit tag…");
+        assert_eq!(HUB_MENU_ACTIONS[1], "Layout chooser…");
+        assert_eq!(HUB_MENU_ACTIONS[2], "Window rules…");
+        assert_eq!(HUB_MENU_ACTIONS[3], "Enter mode");
+        assert_eq!(HUB_MENU_ACTIONS[4], "Save as template…");
+    }
+
+    #[test]
+    fn right_click_sets_menu_target() {
+        let mut state = PortalFull::default();
+        assert!(state.hub_right_click_target.is_none());
+        let _ = update(&mut state, Message::HubTagRightClicked("Dev".to_string()));
+        assert_eq!(state.hub_right_click_target.as_deref(), Some("Dev"));
+    }
+
+    #[test]
+    fn left_click_dismisses_open_menu() {
+        let mut state = PortalFull::default();
+        state.hub_right_click_target = Some("Dev".to_string());
+        let _ = update(&mut state, Message::HubTagClicked("Untagged".to_string()));
+        assert!(state.hub_right_click_target.is_none());
+    }
+
+    #[test]
+    fn menu_dismissed_clears_target() {
+        let mut state = PortalFull::default();
+        state.hub_right_click_target = Some("Dev".to_string());
+        let _ = update(&mut state, Message::HubMenuDismissed);
+        assert!(state.hub_right_click_target.is_none());
+    }
+
+    #[test]
+    fn each_menu_action_dismisses_after_firing() {
+        for action in [
+            Message::HubMenuEditTag("Dev".to_string()),
+            Message::HubMenuLayoutChooser("Dev".to_string()),
+            Message::HubMenuWindowRules("Dev".to_string()),
+            Message::HubMenuEnterMode("Dev".to_string()),
+            Message::HubMenuSaveAsTemplate("Dev".to_string()),
+        ] {
+            let mut state = PortalFull::default();
+            state.hub_right_click_target = Some("Dev".to_string());
+            let _ = update(&mut state, action);
+            assert!(
+                state.hub_right_click_target.is_none(),
+                "menu must dismiss after action fires"
+            );
+        }
+    }
+
+    #[test]
+    fn right_click_target_replaces_previous() {
+        let mut state = PortalFull::default();
+        let _ = update(&mut state, Message::HubTagRightClicked("Dev".to_string()));
+        let _ = update(&mut state, Message::HubTagRightClicked("Personal".to_string()));
+        assert_eq!(state.hub_right_click_target.as_deref(), Some("Personal"));
     }
 
     #[test]

@@ -92,14 +92,15 @@ crates/mde-portal/src/app.rs:2396
 crates/mde-portal/src/app.rs:2401
 crates/mde-portal/src/app.rs:2405
 crates/mde-portal/src/app.rs:3285
-crates/mde-portal/src/portal_full_main.rs:182
-crates/mde-portal/src/portal_full_main.rs:540
+crates/mde-portal/src/portal_full_main.rs:248
+# Portal-17.c menu-overlay Color struct literals (2026-05-27)
+crates/mde-portal/src/portal_full_main.rs:619
+crates/mde-portal/src/portal_full_main.rs:630
+crates/mde-portal/src/portal_full_main.rs:631
+crates/mde-portal/src/portal_full_main.rs:641
+crates/mde-portal/src/portal_full_main.rs:642
 # Portal-17.a Hub tag-card default tint + hex-parser test fixtures (2026-05-27)
-crates/mde-portal/src/portal_full_main.rs:468
-crates/mde-portal/src/portal_full_main.rs:479
-crates/mde-portal/src/portal_full_main.rs:480
-crates/mde-portal/src/portal_full_main.rs:490
-crates/mde-portal/src/portal_full_main.rs:491
+crates/mde-portal/src/portal_full_main.rs:757
 crates/mde-wizard/src/pages/preset.rs:12
 crates/mde-wizard/src/pages/preset.rs:18
 crates/mde-wizard/src/pages/preset.rs:24
