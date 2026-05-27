@@ -1,17 +1,20 @@
 [Desktop Entry]
-# CB-2.1 — Wayland-session entry that LightDM / GDM / SDDM all pick
-# up from /usr/share/wayland-sessions/. The session-name string is
-# what appears in the greeter's session dropdown; the Exec must
-# point at the unified `mde-session` orchestrator (the v2.0.0
+# CB-2.1 / HYP-29 — Wayland-session entry that regreet / GDM / SDDM
+# all pick up from /usr/share/wayland-sessions/. The session-name
+# string is what appears in the greeter's session dropdown; the Exec
+# points at the unified `mde-session` orchestrator (the v2.0.0
 # replacement for the v1.x `mackes-enforce-session` autostart shim).
+# The `MDE_COMPOSITOR=hyprland` env override forces mde-session to
+# launch Hyprland (per the v6.5 hard cut) instead of the legacy
+# sway default that lingers in the source until HYP-3 retires it.
 #
 # DesktopNames=MDE so XDG-aware desktop entries
 # (`OnlyShowIn=MDE`) light up under this session.
 
-Name=Mackes Desktop Environment
+Name=MDE Hyprland
 Comment=The mesh-first Wayland desktop
-Exec=/usr/bin/mde-session
+Exec=/usr/bin/env MDE_COMPOSITOR=hyprland /usr/bin/mde-session
 TryExec=/usr/bin/mde-session
 Type=Application
 DesktopNames=MDE
-Keywords=mde;mackes;wayland;sway;mesh;
+Keywords=mde;mackes;wayland;hyprland;mesh;

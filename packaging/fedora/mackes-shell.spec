@@ -822,10 +822,12 @@ install -D -m 0644 data/systemd/90-mackes.preset \
 install -D -m 0644 data/systemd/90-mde.preset \
     %{buildroot}%{_prefix}/lib/systemd/user-preset/90-mde.preset
 
-# CB-2.1 — Wayland-session entry. LightDM / GDM / SDDM all read
-# /usr/share/wayland-sessions/ for available sessions.
-install -D -m 0644 data/wayland-sessions/mde.desktop \
-    %{buildroot}%{_datadir}/wayland-sessions/mde.desktop
+# CB-2.1 / HYP-29 — Wayland-session entry. regreet / GDM / SDDM all
+# read /usr/share/wayland-sessions/ for available sessions. The
+# v6.5 cut renames the entry to mde-hyprland.desktop with Name="MDE
+# Hyprland" + Exec env-forced to MDE_COMPOSITOR=hyprland (HYP-29).
+install -D -m 0644 data/wayland-sessions/mde-hyprland.desktop \
+    %{buildroot}%{_datadir}/wayland-sessions/mde-hyprland.desktop
 
 # CB-3.4 — comps group definition for
 # `dnf groupinstall mackes-desktop-environment`.
@@ -1380,7 +1382,7 @@ fi
 # left dangling and broke the rpm build (file-not-found in
 # BUILDROOT). Retired here as a hygiene fix.
 # Wayland session entry — only useful when a DM is on the box.
-%{_datadir}/wayland-sessions/mde.desktop
+%{_datadir}/wayland-sessions/mde-hyprland.desktop
 # v6.0 Portal-1 — mde-portal unified shell + user service.
 %{_bindir}/mde-portal
 %{_userunitdir}/mde-portal.service
