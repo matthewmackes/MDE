@@ -51,6 +51,7 @@ async fn main() -> anyhow::Result<()> {
         Cmd::History(args) => mde_bus::cli::history::run(args).await,
         Cmd::Topic { op } => mde_bus::cli::topic::run(op),
         Cmd::Dnd { op } => mde_bus::cli::dnd::run(op).await,
+        Cmd::Correlate { op } => mde_bus::cli::correlate::run(op),
     }
 }
 
