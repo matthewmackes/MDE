@@ -69,6 +69,31 @@ pub fn dispatch(msg: &StoredMessage, surfaces: &dyn Surfaces) {
     }
 }
 
+/// BUS-2.8 — dispatch with DND/quiet-hour suppression applied.
+/// When `crate::dnd::is_suppressed` returns true, the message is
+/// log-silent regardless of priority (the persist + audit paths
+/// upstream already wrote the message; this just gates routing
+/// to display surfaces). When suppression is false, falls
+/// through to the standard priority dispatch.
+///
+/// `tags` is the message's tag list (typically `[
+/// "priority=high", "source=fleet", ...]`) including any
+/// `override=dnd` bypass marker.
+pub fn dispatch_with_dnd(
+    msg: &StoredMessage,
+    state: &crate::dnd::DndState,
+    topic_hours: crate::dnd::TopicQuietHours,
+    tags: &[&str],
+    now_local_seconds: u32,
+    surfaces: &dyn Surfaces,
+) {
+    if crate::dnd::is_suppressed(state, topic_hours, tags, now_local_seconds) {
+        surfaces.log_silent(msg);
+        return;
+    }
+    dispatch(msg, surfaces);
+}
+
 /// Parse the lowercase priority string stored in the index
 /// back into the [`Priority`] enum. Unknown → `Default`.
 #[must_use]

@@ -26,6 +26,7 @@ pub mod audit;
 pub mod broker;
 pub mod cli;
 pub mod discovery;
+pub mod dnd;
 pub mod hooks;
 pub mod persist;
 pub mod retention;

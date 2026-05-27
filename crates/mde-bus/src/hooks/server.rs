@@ -55,7 +55,7 @@ use super::matcher::{match_request, Adapter, MatchError};
 use super::nut::NutAdapter;
 use super::sonarr::SonarrAdapter;
 use crate::persist::Persist;
-use crate::surface::{dispatch as dispatch_surface, LogOnlySurfaces};
+use crate::surface::{dispatch_with_dnd, LogOnlySurfaces};
 use super::publisher::{publish_to_ntfy, PublisherError};
 
 /// Default port. Mirrored from `super::DEFAULT_LISTEN_PORT` so
@@ -153,6 +153,19 @@ struct ListenerState {
     /// outbound ntfy POST so a transient broker failure doesn't
     /// lose the message.
     persist: Option<std::sync::Mutex<Persist>>,
+    /// BUS-2.8 — bus_root path for the DND state lookup. `None`
+    /// when persistence is disabled (tests); the dispatch then
+    /// uses `DndState::default()` (DND off) as the fallback.
+    bus_root: Option<PathBuf>,
+}
+
+/// BUS-2.8 — current local time as seconds-of-day [0, 86_400).
+/// Used by `dispatch_with_dnd` to evaluate per-topic quiet-hour
+/// windows. Reads the operator's local timezone via chrono::Local.
+fn current_local_seconds_of_day() -> u32 {
+    use chrono::Timelike;
+    let now = chrono::Local::now();
+    now.hour() * 3600 + now.minute() * 60 + now.second()
 }
 
 /// Start the webhook listener.
@@ -206,6 +219,7 @@ pub async fn run_listener(
             .unwrap_or_else(|_| reqwest::Client::new()),
         adapters: register_builtin_adapters(),
         persist,
+        bus_root: cfg.bus_root,
     };
     let state = Arc::new(state);
 
@@ -331,12 +345,37 @@ async fn handle_hook(
                 Some(&rendered.body),
             ) {
                 Ok(stored) => {
-                    // BUS-2.1 — fire the priority → surface
-                    // dispatcher. Until BUS-2.2..2.8 land the
-                    // real Iced surfaces, LogOnlySurfaces just
-                    // tracing-logs so the dispatch table is
-                    // observable in `journalctl -u mde-bus`.
-                    dispatch_surface(&stored, &LogOnlySurfaces);
+                    // BUS-2.1 / BUS-2.8 — fire the priority →
+                    // surface dispatcher through the DND gate.
+                    // Loads the mesh-wide DND state from the
+                    // GFS-replicated dnd.yaml at publish time
+                    // (cheap — typically a < 1 KB file). When
+                    // DND is off + the message has no quiet-
+                    // hour topic config, dispatch_with_dnd
+                    // delegates to the standard `dispatch()`.
+                    // Until BUS-2.2..2.8 land the real Iced
+                    // surfaces, LogOnlySurfaces just tracing-
+                    // logs so the dispatch table is observable
+                    // in `journalctl -u mde-bus`.
+                    let dnd_state = match state.bus_root.as_ref() {
+                        Some(root) => crate::dnd::load_default(root),
+                        None => crate::dnd::DndState::default(),
+                    };
+                    // Topic-level quiet hours aren't wired into
+                    // the hook config schema yet (BUS-2.8.topic-
+                    // hours follow-on) — pass default (no quiet
+                    // window) so only the global DND toggle
+                    // gates routing in v1.
+                    let topic_hours = crate::dnd::TopicQuietHours::default();
+                    let now_local = current_local_seconds_of_day();
+                    dispatch_with_dnd(
+                        &stored,
+                        &dnd_state,
+                        topic_hours,
+                        &[],
+                        now_local,
+                        &LogOnlySurfaces,
+                    );
                     Some(stored.ulid)
                 }
                 Err(e) => {
