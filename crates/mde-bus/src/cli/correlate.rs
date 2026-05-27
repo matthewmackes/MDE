@@ -29,6 +29,11 @@ pub enum CorrelateOp {
         /// Override the config path.
         #[arg(long)]
         config: Option<PathBuf>,
+        /// Emit JSON Lines instead of TSV. Each line is a
+        /// `{name, sources, window_seconds, emits, priority}`
+        /// object suitable for piping to `jq`.
+        #[arg(long, default_value_t = false)]
+        json: bool,
     },
     /// Print the resolved config path.
     Path,
@@ -54,19 +59,36 @@ fn resolve_config_path(arg: Option<PathBuf>) -> Result<PathBuf> {
 /// Execute the `correlate` verb. Read-only — never writes.
 pub fn run(op: CorrelateOp) -> Result<()> {
     match op {
-        CorrelateOp::List { config } => {
+        CorrelateOp::List { config, json } => {
             let path = resolve_config_path(config)?;
             let cfg = correlate::load_default(&path)
                 .with_context(|| format!("load {}", path.display()))?;
             for rule in &cfg.rules {
-                println!(
-                    "{}\t{}\t{}s\t{}\t{:?}",
-                    rule.name,
-                    rule.sources.join(","),
-                    rule.window_seconds,
-                    rule.emits,
-                    rule.priority,
-                );
+                if json {
+                    // Hand-built JSON to avoid touching the
+                    // hooks/config.rs Priority enum's serde derive
+                    // surface (it ships Deserialize only). Priority
+                    // renders as lowercase Debug — matches the YAML
+                    // input form (`priority: high` etc.).
+                    let priority_str = format!("{:?}", rule.priority).to_lowercase();
+                    let val = serde_json::json!({
+                        "name": rule.name,
+                        "sources": rule.sources,
+                        "window_seconds": rule.window_seconds,
+                        "emits": rule.emits,
+                        "priority": priority_str,
+                    });
+                    println!("{val}");
+                } else {
+                    println!(
+                        "{}\t{}\t{}s\t{}\t{:?}",
+                        rule.name,
+                        rule.sources.join(","),
+                        rule.window_seconds,
+                        rule.emits,
+                        rule.priority,
+                    );
+                }
             }
         }
         CorrelateOp::Path => {
@@ -113,7 +135,7 @@ mod tests {
         // Missing file is the most common case (operator hasn't
         // configured correlation yet) — must not error.
         let p = std::path::PathBuf::from("/nonexistent/path/bus-correlate.yaml");
-        let r = run(CorrelateOp::List { config: Some(p) });
+        let r = run(CorrelateOp::List { config: Some(p), json: false });
         assert!(r.is_ok());
     }
 
@@ -127,8 +149,11 @@ mod tests {
             "rules:\n  - name: power-outage\n    sources: [a, b]\n    window_seconds: 60\n    emits: incident/outage\n    priority: high\n",
         )
         .unwrap();
-        let r = run(CorrelateOp::List { config: Some(path) });
+        let r = run(CorrelateOp::List { config: Some(path.clone()), json: false });
         assert!(r.is_ok());
+        // Also verify --json path runs without error.
+        let r_json = run(CorrelateOp::List { config: Some(path), json: true });
+        assert!(r_json.is_ok());
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
