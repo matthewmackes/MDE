@@ -214,6 +214,10 @@ pub enum Message {
     /// to jump back. `num` is the i3/sway workspace number; the rename
     /// worker (Portal-41) preserves it even when the name is prefixed.
     PrevWorkspaceClicked(i32),
+    /// Portal-45 (R12-Q5): sway entered a non-default binding mode (or
+    /// returned to the default). `None` clears the mode segment;
+    /// `Some(name)` renders it on the far-left of the Dock.
+    ModeChanged(Option<String>),
     /// User clicked a workspace cell — focus it via swayipc (R3-Q23).
     FocusWorkspace(String),
     /// User clicked `+` — switch to the next unused workspace number.
@@ -303,6 +307,10 @@ pub struct DockApp {
     /// [`PREV_WS_SEGMENT_TTL_SECS`] seconds after this stamp. `None` =
     /// segment never spawned yet.
     last_workspace_change: Option<chrono::DateTime<chrono::Local>>,
+    /// Portal-45 (R12-Q5): current sway binding mode. `None` = default
+    /// mode (no mode segment rendered); `Some(name)` = render the
+    /// far-left `MODE: <name>` segment in the Dock breadcrumb.
+    current_sway_mode: Option<String>,
 }
 
 impl Default for DockApp {
@@ -321,6 +329,7 @@ impl Default for DockApp {
             ws_marquee_offsets: HashMap::new(),
             visited_workspaces_lru: Vec::new(),
             last_workspace_change: None,
+            current_sway_mode: None,
         }
     }
 }
@@ -458,6 +467,12 @@ impl iced_layershell::Application for DockApp {
                     crate::workspace::focus_workspace_by_num(num),
                     |_| Message::Noop,
                 );
+            }
+            Message::ModeChanged(next) => {
+                // Portal-45 (R12-Q5): sway emitted a binding-mode
+                // change. None clears the segment (back to default);
+                // Some(name) raises the far-left segment.
+                self.current_sway_mode = next;
             }
             Message::FocusWorkspace(name) => {
                 return Task::perform(
@@ -640,6 +655,7 @@ impl iced_layershell::Application for DockApp {
         Subscription::batch([
             crate::workspace::workspace_subscription(),
             crate::workspace::window_subscription(),
+            crate::workspace::mode_subscription(),
             clock_subscription(),
             snapshot_subscription(),
             status_subscription(),
@@ -652,6 +668,7 @@ impl iced_layershell::Application for DockApp {
         let bg = if theme == Theme::Dark { CHARCOAL } else { OFF_WHITE };
         let fg = if theme == Theme::Dark { Color::WHITE } else { Color::BLACK };
 
+        let mode_seg = build_mode_segment(self);
         let ws_seg = build_workspace_segment(self, fg);
         let prev_ws_seg = build_prev_workspace_segment(self, fg);
         let host_seg = build_hostname_segment(self, fg);
@@ -663,6 +680,7 @@ impl iced_layershell::Application for DockApp {
 
         container(
             row![
+                mode_seg,
                 ws_seg,
                 prev_ws_seg,
                 host_seg,
@@ -842,6 +860,53 @@ fn build_hostname_segment<'a>(app: &DockApp, fg: Color) -> Element<'a, Message> 
             .padding(Padding::from([0, 8])),
     )
     .on_press(Message::HostnameClicked)
+    .into()
+}
+
+/// Portal-45 (R12-Q5) — far-left mode segment in the Dock breadcrumb.
+///
+/// Returns an empty zero-width space when sway is in the default
+/// (no-mode) binding mode so the row layout stays flush. When a
+/// non-default mode is active, renders `MODE: <name>` in cyan
+/// against a translucent backdrop, anchored at the far-left of
+/// the strip (left of mini-tree). Sway-internal modes (`resize`,
+/// any operator-defined modes) keep the cyan default; per
+/// Portal-47's tag-modes the segment will pick up the owning tag
+/// color once that worker ships (the R12-Q21 tinting fallback is
+/// cyan until then).
+///
+/// Mode names are truncated to 24 chars with `…` so a sway config
+/// that names a mode something egregious doesn't blow out the
+/// Dock row width.
+fn build_mode_segment<'a>(app: &DockApp) -> Element<'a, Message> {
+    let Some(mode_name) = app.current_sway_mode.as_deref() else {
+        return iced::widget::Space::new(0.0, Length::Fill).into();
+    };
+    let display: String = if mode_name.chars().count() > 24 {
+        let prefix: String = mode_name.chars().take(23).collect();
+        format!("{prefix}…")
+    } else {
+        mode_name.to_string()
+    };
+    // Cyan tinted backdrop with the platform's translucency. The
+    // exact cyan is the sway-internal default for binding modes.
+    let cyan = Color { r: 0.0, g: 0.7, b: 0.85, a: 0.85 };
+    container(
+        text(format!("MODE: {display}"))
+            .size(11.0)
+            .color(Color::WHITE),
+    )
+    .style(move |_theme: &Theme| iced::widget::container::Style {
+        background: Some(iced::Background::Color(cyan)),
+        border: iced::Border {
+            radius: iced::border::Radius::from(4.0),
+            ..Default::default()
+        },
+        ..Default::default()
+    })
+    .height(Length::Fill)
+    .align_y(iced::alignment::Vertical::Center)
+    .padding(Padding::from([2, 8]))
     .into()
 }
 
@@ -2339,6 +2404,61 @@ mod tests {
         let mut app = DockApp::default();
         let _task =
             iced_layershell::Application::update(&mut app, Message::PrevWorkspaceClicked(1));
+    }
+
+    // ── Portal-45 (R12-Q5) mode-segment tests ──────────────────────────────
+
+    /// Sway emits `default` when a binding mode exits — the Dock must
+    /// translate that to `None` so the segment disappears.
+    #[test]
+    fn mode_default_clears_segment_state() {
+        let mut app = DockApp::default();
+        // Simulate sway emitting a non-default mode first.
+        let _ = iced_layershell::Application::update(
+            &mut app,
+            Message::ModeChanged(crate::workspace::mode_change_to_message("resize")),
+        );
+        assert_eq!(app.current_sway_mode.as_deref(), Some("resize"));
+        // Default mode → segment clears.
+        let _ = iced_layershell::Application::update(
+            &mut app,
+            Message::ModeChanged(crate::workspace::mode_change_to_message("default")),
+        );
+        assert!(app.current_sway_mode.is_none());
+    }
+
+    /// Non-default mode names round-trip through the pure mapper and
+    /// land in DockApp state. Mirrors the bench acceptance "enter
+    /// resize mode via legacy binding → segment appears."
+    #[test]
+    fn mode_entered_stores_name() {
+        let mut app = DockApp::default();
+        let _ = iced_layershell::Application::update(
+            &mut app,
+            Message::ModeChanged(crate::workspace::mode_change_to_message("resize")),
+        );
+        assert_eq!(app.current_sway_mode.as_deref(), Some("resize"));
+        // Switching to a different mode replaces the name in place.
+        let _ = iced_layershell::Application::update(
+            &mut app,
+            Message::ModeChanged(crate::workspace::mode_change_to_message("Dev")),
+        );
+        assert_eq!(app.current_sway_mode.as_deref(), Some("Dev"));
+    }
+
+    /// `mode_change_to_message` pure-function contract: `default` → None
+    /// for ANY casing? Spec says exact match. Lock the contract.
+    #[test]
+    fn mode_change_to_message_only_lowercase_default_clears() {
+        use crate::workspace::mode_change_to_message;
+        assert_eq!(mode_change_to_message("default"), None);
+        // Sway never emits non-lowercase "default", but if an
+        // operator names a mode "Default" / "DEFAULT" it's a
+        // legitimate non-default mode.
+        assert_eq!(mode_change_to_message("Default"), Some("Default".to_string()));
+        assert_eq!(mode_change_to_message("DEFAULT"), Some("DEFAULT".to_string()));
+        assert_eq!(mode_change_to_message(""), Some("".to_string()));
+        assert_eq!(mode_change_to_message("resize"), Some("resize".to_string()));
     }
 
     /// Portal-43 + Portal-59 interaction: focusing the parked workspace

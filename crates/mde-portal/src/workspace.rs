@@ -258,6 +258,60 @@ pub fn window_subscription() -> Subscription<Message> {
     )
 }
 
+/// Portal-45 (R12-Q5) — Iced `Subscription` that emits
+/// `Message::ModeChanged(Option<String>)` on every sway binding-mode
+/// transition. `None` for the `"default"` mode (no mode segment
+/// rendered); `Some(name)` for any other mode (segment renders with
+/// that name).
+///
+/// Reuses the two-connection retry pattern from `workspace_subscription`:
+/// the subscribe call gets its own connection; failures back off 3 s
+/// before reconnecting.
+pub fn mode_subscription() -> Subscription<Message> {
+    Subscription::run_with_id(
+        "mde-portal-mode",
+        async_stream::stream! {
+            loop {
+                let event_conn = match Connection::new().await {
+                    Ok(c) => c,
+                    Err(e) => {
+                        tracing::debug!(error = %e, "swayipc mode event connect failed; retrying in 3s");
+                        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                        continue;
+                    }
+                };
+                let mut events = match event_conn.subscribe([EventType::Mode]).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        tracing::debug!(error = %e, "mode subscribe failed; retrying in 3s");
+                        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                        continue;
+                    }
+                };
+                while let Some(event_result) = events.next().await {
+                    if let Ok(swayipc_async::Event::Mode(mode_ev)) = event_result {
+                        let next = mode_change_to_message(&mode_ev.change);
+                        yield Message::ModeChanged(next);
+                    }
+                }
+                tracing::debug!("swayipc mode event stream ended; reconnecting");
+            }
+        },
+    )
+}
+
+/// Portal-45 (R12-Q5) — pure mapping from sway's mode-change string
+/// to the `Option<String>` the Dock state expects. `"default"` →
+/// `None` (no mode); anything else → `Some(name)`. Exposed so the
+/// transition contract is independently testable.
+pub fn mode_change_to_message(change: &str) -> Option<String> {
+    if change == "default" {
+        None
+    } else {
+        Some(change.to_string())
+    }
+}
+
 /// Focus a window by container ID via a fresh swayipc connection (Portal-8.a).
 pub async fn focus_window_by_id(con_id: i64) {
     match Connection::new().await {
