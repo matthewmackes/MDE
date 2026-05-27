@@ -28,6 +28,11 @@ pub struct HistoryArgs {
     /// `<XDG_DATA_HOME>/mde/bus`).
     #[arg(long)]
     pub bus_root: Option<PathBuf>,
+    /// Emit JSON Lines instead of the tail-format summary. Each
+    /// line is a full StoredMessage object suitable for piping
+    /// to `jq`.
+    #[arg(long, default_value_t = false)]
+    pub json: bool,
 }
 
 fn default_bus_root() -> Result<PathBuf> {
@@ -48,8 +53,17 @@ pub async fn run(args: HistoryArgs) -> Result<()> {
         rows = rows.split_off(start);
     }
     for m in &rows {
-        let line = crate::cli::tail::format_line(m);
-        println!("{line}");
+        if args.json {
+            // StoredMessage derives Serialize so we can emit it
+            // directly. JSONL convention — one object per line,
+            // no pretty-print.
+            let s = serde_json::to_string(m)
+                .map_err(|e| anyhow!("serialize stored message: {e}"))?;
+            println!("{s}");
+        } else {
+            let line = crate::cli::tail::format_line(m);
+            println!("{line}");
+        }
     }
     Ok(())
 }
@@ -74,6 +88,7 @@ mod tests {
             since: None,
             count: None,
             bus_root: Some(tmp.path().to_path_buf()),
+            json: false,
         };
         run(args).await.unwrap();
     }
@@ -97,6 +112,7 @@ mod tests {
             since: None,
             count: Some(3),
             bus_root: Some(tmp.path().to_path_buf()),
+            json: false,
         };
         run(args).await.unwrap();
     }
