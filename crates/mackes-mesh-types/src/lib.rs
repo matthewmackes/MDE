@@ -25,11 +25,16 @@ pub mod peer_probe;
 // consumer of tags (Peer / Workspace / Container members reference
 // mesh-domain identifiers).
 pub mod tags;
+// Portal-18.c (v6.0 R12 lock 2026-05-26) — smart-tag predicate
+// parser + evaluator. Pure data layer; each consumer surface
+// supplies a `MembershipCtx` impl at eval time.
+pub mod tag_predicate;
 
 pub use connect::{BatterySnapshot, ConnectFacts, PairingState, PeerKind};
 pub use nebula::{NebulaFacts, NebulaRole};
 pub use peer_probe::{BusTopology, Descriptors, KernelDriver, NatClass, PeerProbe, PowerThermal};
 pub use tags::{Tag, TagFlavor, TagMember, TagStore, TagStoreError};
+pub use tag_predicate::{evaluate as evaluate_predicate, parse as parse_predicate, MembershipCtx, ParseError as PredicateParseError, Pred, StaticMembership, NAMESPACES};
 
 use serde::{Deserialize, Serialize};
 
