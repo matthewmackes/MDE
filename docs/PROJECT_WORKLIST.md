@@ -269,12 +269,12 @@ call-end lifecycle, never at install or login.
 - [ ] **VOIP-5: Vitelity SimRing + PJSIP focus filter** (R11 supersedes R9-Q5 Kamailio fork) — Vitelity-side SimRing hunt-group rings all peers' sub-accounts in parallel. Each peer's PJSIP subscribes to Bus topic `portal/focused-peer`; if `focused_peer != self`, PJSIP responds `486 Busy Here` immediately. Vitelity advances to next sub-account; the focused peer is the only one that actually answers. ULID-tiebreaker when two peers both claim focus (lower ULID wins).
 - [ ] **VOIP-6: Vitelity voicemail integration** → mesh-home `~/Documents/Voicemail/<peer>/<iso8601>.mp3` + transcript card in calls/ activity (R9-Q6).
 - [ ] **VOIP-7: PJSIP-based dialer + active call UI** as Portal-full overlay (R8-Q86, R9-Q8). Dialpad + recent-calls landing (R10-Q10).
-- [ ] **VOIP-8: Video stack** — VP9 default + H.264 fallback + AV1 opt-in + SRTP + adaptive 90p–1080p (R9-Q7).
+- [ ] **VOIP-8: Video stack** — **H.264 ONLY** (Constrained Baseline Profile, Level 3.1, `profile-level-id=42e01f`, `packetization-mode=1`) + SRTP + adaptive 90p–1080p. **AMENDED 2026-05-26 per `docs/design/v6.0-pjsip-presence-and-hud.md` §1 Lock 3 — supersedes R9-Q7 "VP9 default + H.264 fallback + AV1 opt-in"** (hardware-accel ubiquity + Vitelity-future-interop). Implementation tracked by VOIP-25.
 - [ ] **VOIP-9: Group calls via ephemeral mediasoup bridge** (R11 supersedes R9-Q9 Kamailio focus) — 1:1 calls go pure P2P PJSIP. Calls with >2 participants elect the peer with best uplink (via VOIP-4 RTT telemetry); `mded` on that peer spawns a `mediasoup` container scoped to the call (`podman run --rm` on demand, not at startup). Other participants re-INVITE to the bridge URI advertised via Bus. Container torn down on last-leave (`podman rm`). 8-participant cap preserved. This is the **only** container the VoIP stack ever spawns, and it lives strictly for the call's duration — Birthright never provisions it.
 - [ ] **VOIP-10: Per-peer recording toggle** in Customize, off by default (R9-Q10); recordings saved to `~/Documents/Call-recordings/<peer>/<iso8601>.{mka,mkv}`.
 - [ ] **VOIP-11: Vitelity SMS API** → conversational cards in calls/ activity, inline replies, mesh-synced threads (R9-Q11).
 - [ ] **VOIP-12: Contacts as universal cards** — type='contact', stored in mesh-home `~/.local/share/mde/contacts/<ulid>.json`, fully participate in tag system (R9-Q12).
-- [ ] **VOIP-13: PipeWire role-based audio routing** with context-sensitive Mod+Space PTT during calls (R9-Q13).
+- [ ] **VOIP-13: PipeWire role-based audio routing** with context-sensitive Mod+Space PTT during calls (R9-Q13). **Codec preferences locked 2026-05-26 per `docs/design/v6.0-pjsip-presence-and-hud.md` §1 Lock 2 — mesh account: Opus 48000/2 ONLY (no G.711 fallback); Vitelity account: PCMU/8000 → PCMA/8000 (Opus disabled).** Codec-priority enforcement tracked separately by VOIP-24.
 - [ ] **VOIP-14: RNNoise + WebRTC AEC3** echo cancellation + noise suppression (R9-Q14).
 - [ ] **VOIP-15: Adaptive bitrate cascade** with 'connection adapting' chip (R9-Q15).
 - [ ] **VOIP-16: 5 ringtones** + per-contact override (R9-Q16) via right-click contact card → 'Set ringtone…'.
@@ -293,6 +293,135 @@ call-end lifecycle, never at install or login.
     - [ ] SimRing reorder on peer B propagates to Vitelity-side via API; the next inbound call follows the new order.
     - [ ] No Vitelity creds ever appear in any `<gluster_mesh_home>/voip/<peer>/status.json`; the file contains only non-secret state.
   - **Design lock:** the spec lives inline above; if a larger design doc is warranted before implementation begins, branch off `docs/design/v6.0-mde-portal.md` §3.4. No new design doc lifts the feature lock — the spec lives where the worklist task lives.
+
+##### VOIP-22..VOIP-30 — PJSIP Presence + Codec + Video + Auto-Connect + mde-voice-hud (locked 2026-05-26 via Claude Design bundle import)
+
+**Design lock:** `docs/design/v6.0-pjsip-presence-and-hud.md` captures four operator-issued detail-locks on the already-locked VOIP-* epic — PJSIP Presence wired to DND + dock control, Opus-default + G.711-for-Vitelity codec lock, H.264-only video lock, Auto-Connect-at-login + all-interfaces-reflect-presence. Plus the `mde-voice-hud` Iced/wlr-layer-shell crate specification (adapted from Claude Design bundle `wR-1e6hL49u6HQnilIjAbQ`). All nine tasks below are within §11 VoIP scope (Q21 of 25-Q + Q91) and inherit §0.16 standing exception #4 build-authorization.
+
+- [ ] **VOIP-22: PJSIP Presence + Bus topic `voip/presence/<peer>`** (Lock 1 — design doc §1 Lock 1)
+  **As** a peer in the mesh,
+  **I want** mded to publish my own presence over SIP PUBLISH and subscribe to every other peer's presence over SIP SUBSCRIBE,
+  **so that** every UI surface across the platform can render a real-time pip on each peer card.
+  **Acceptance** (each bench-observable):
+    - [ ] mded at startup PUBLISHes initial presence `available` to all peers; peer rosters show A as `available` within 8 s.
+    - [ ] mded SUBSCRIBEs to every other peer's presence at startup; bus topic `voip/presence/<peer>` carries last-writer-wins state for each peer with `{state, since, note?}` payload.
+    - [ ] State map matches design doc §1 Lock 1 table (available/on-call/dnd/away/offline ↔ SIP RPID).
+    - [ ] On A's outgoing-call confirm, A's presence flips to `on-call`; reverts on hangup.
+    - [ ] On mutter session-idle ≥10 min, presence flips to `away`; reverts on resume.
+    - [ ] On mded shutdown, presence flips to `offline` (SUBSCRIBE-expiry detection on remote peers within 30 s).
+    - [ ] No surface shows a stale presence > 60 s without an explicit "stale" indicator (greyed pip + tooltip "last seen Xm ago").
+
+- [ ] **VOIP-23: DND state machine + dock pill + alerting policy** (Lock 1 — design doc §1 Lock 1 dock surface)
+  **As** an operator in the middle of focused work,
+  **I want** a single-click DND toggle in the dock that auto-rejects incoming calls AND propagates my unavailable state to every peer,
+  **so that** I can suppress all voice interruptions without quitting mded.
+  **Acceptance** (each bench-observable):
+    - [ ] Dock renders a left-of-buttons DND pill (per Portal R12 layout) reflecting `voip/presence/<self>` state.
+    - [ ] Click toggles available ↔ dnd; mded receives the toggle via Bus topic `voip/presence/<self>` (HUD/dock publishes) and PUBLISHes the new state to all peers.
+    - [ ] While DND active, mded's PJSIP `on_incoming_call` callback responds `486 Busy Here` within 200 ms; no local ring/notification plays.
+    - [ ] While DND active, Vitelity-side SimRing advances past this peer's sub-account (PJSIP `486` causes Vitelity to roll to next entry in hunt group).
+    - [ ] Every peer's dock pill for peer A flips to red within 5 s of A toggling DND on.
+    - [ ] Toggle persists across mded restart (state read from `~/.config/mde/voip/presence-state.toml`).
+
+- [ ] **VOIP-24: PJSIP build with libopus + codec priority enforcement** (Lock 2 — design doc §1 Lock 2)
+  **As** the mded build system,
+  **I want** PJSIP linked against libopus and codec priorities configured per-account,
+  **so that** mesh INVITEs offer Opus only and Vitelity INVITEs offer G.711 only.
+  **Acceptance** (each bench-observable):
+    - [ ] `packaging/fedora/mackes-shell.spec` declares `BuildRequires: opus-devel` and `Requires: opus`.
+    - [ ] PJSIP build script (`build-pjsip.sh` or equivalent) passes `--with-opus` to PJSIP `configure`.
+    - [ ] `mded voice list-codecs` (new subcommand) lists `opus/48000/2` enabled, all G.711 variants enabled.
+    - [ ] mesh account's `pjsua_acc_config.codec_priority[]` sets opus = `PJMEDIA_CODEC_PRIO_HIGHEST` (255) and disables `PCMU` + `PCMA`.
+    - [ ] Vitelity account inverts: PCMU + PCMA at highest, Opus disabled.
+    - [ ] Outgoing mesh INVITE SDP shows ONLY `m=audio <port> RTP/SAVPF 111` + `a=rtpmap:111 opus/48000/2`.
+    - [ ] Outgoing Vitelity INVITE SDP shows ONLY `m=audio <port> RTP/SAVP 0 8` + `a=rtpmap:0 PCMU/8000` + `a=rtpmap:8 PCMA/8000`.
+    - [ ] No `488 Not Acceptable Here` responses from Vitelity SBC across 24 h of test calls.
+
+- [ ] **VOIP-25: H.264-only video lock + capability gate** (Lock 3 — design doc §1 Lock 3)
+  **As** a peer initiating a video call,
+  **I want** PJSIP to advertise H.264 ONLY (no VP8/VP9/AV1 anywhere in the offer) and gracefully downgrade to audio-only if the answering peer doesn't support H.264,
+  **so that** every video call uses hardware-accelerated H.264 encode+decode end-to-end without codec-negotiation surprises.
+  **Acceptance** (each bench-observable):
+    - [ ] PJSIP video codec list at runtime contains H.264 only (verify via `pjsua_enum_codecs` log).
+    - [ ] Outgoing video INVITE SDP `m=video` line lists payload type for H.264 with `a=rtpmap:<pt> H264/90000` + `a=fmtp:<pt> profile-level-id=42e01f;packetization-mode=1`.
+    - [ ] No `VP8` / `VP9` / `AV1` codec strings appear in any outgoing or incoming SDP.
+    - [ ] Hardware encoder usage visible during a connected video call (`vainfo` shows H.264 encode session on Intel/AMD; `nvidia-smi` shows NVENC session on NVIDIA).
+    - [ ] Software fallback (x264) engages cleanly when no hardware encoder available; CPU usage < 50% single-core for 720p30 encode.
+    - [ ] Initiating video to a peer whose SDP-answer omits H.264 (force via munged answer) → HUD shows "video not available" toast within 2 s; call continues audio-only via Lock 2 codecs.
+
+- [ ] **VOIP-26: Auto-Connect at login — all peers + Vitelity** (Lock 4 — design doc §1 Lock 4)
+  **As** an operator logging into MDE,
+  **I want** mded to start PJSIP, register both my mesh + Vitelity accounts, subscribe to every peer's presence, and have all UI surfaces populated within 8 s of landing on the desktop,
+  **so that** the mesh feels persistently connected with zero manual login step.
+  **Acceptance** (each bench-observable):
+    - [ ] mded at login reads peer roster from `<gluster_mesh_home>/voip/peers.toml` (GFS-replicated); falls back to `~/.config/mde/voip/peers.toml` if GFS not yet mounted.
+    - [ ] On every successful GFS read, mded refreshes the local fallback copy (so cold-boot fallback is never stale).
+    - [ ] mded REGISTERs the mesh account (`sip:<self>@mesh.mde`) within 3 s of startup.
+    - [ ] mded REGISTERs the Vitelity account (`sip:<sub>@sip.vitelity.net`) within 5 s of startup.
+    - [ ] mded `pjsua_buddy_add` + `pjsua_buddy_subscribe_pres` for every other peer in the roster.
+    - [ ] mded PUBLISHes own initial presence `available` within 8 s.
+    - [ ] All 7 other peers render as `registered` + correct presence in every UI surface listed in design-doc §1 Lock 4 (Portal Cards, Portal dock, Workbench Mesh roster, mde-files mesh sidebar, mde-voice-hud Peers tab, Portal globe) within 8 s of login landing.
+    - [ ] No surface flashes "disconnected" or empty state during the 8-s warm-up window; surfaces show "connecting…" skeleton instead.
+
+- [ ] **VOIP-27: mde-voice-hud crate — Iced wlr-layer-shell scaffold + idle dialer** (Lock 5 — design doc §2 mde-voice-hud)
+  **As** an operator pressing Mod+P,
+  **I want** a Material-3-styled layer-shell HUD to appear anchored bottom-right with the Iced-rendered idle dialer (keypad + peers + recents tabs),
+  **so that** the call-initiation surface is reachable end-to-end with the visual fidelity of the design-bundle reference.
+  **Acceptance** (each bench-observable):
+    - [ ] `crates/mde-voice-hud/` registered as workspace member; `cargo build -p mde-voice-hud` exits 0.
+    - [ ] `cargo run -p mde-voice-hud` opens a layer-shell surface at Overlay layer, Bottom|Right anchor, 16/56 px margin, 420×720 px cozy default.
+    - [ ] Topbar renders account dot ("BT" placeholder), peer name, presence pip + "Registered · 127.0.0.1:5060" string (live data wired in VOIP-28).
+    - [ ] Display field accepts keyboard input; resolved chip renders for mesh (`1NNN`) / PSTN (`9 + E.164`) / partial / invalid cases per `resolveTarget` heuristic in design bundle `app.jsx`.
+    - [ ] Segmented tabs: Keypad / Peers / Recents — switching works; Keypad renders 3×4 grid with letters labels per design `KEYS` array.
+    - [ ] Peers tab renders 8 roster rows from Bus topic `mesh/roster` (live wire) OR a static fixture file `crates/mde-voice-hud/test-fixtures/roster.toml` when Bus isn't reachable (e.g., dev `cargo run`).
+    - [ ] Recents tab renders from `~/.local/share/mde/activity/calls/*.json` per the v6.0 activity-as-files pattern; empty-state placeholder when directory empty.
+    - [ ] Material Symbols Rounded icons render (font shipped via `data/fonts/material-symbols-rounded.ttf` or system-package).
+    - [ ] Fonts: Roboto + Roboto Mono per Q1+Q2 of 25-Q (Roboto Flex acceptable substitute if lint allows; Roboto Mono substitutes JetBrains Mono from bundle).
+    - [ ] Outside-click dismisses HUD; Escape dismisses; Mod+P toggles open/closed.
+    - [ ] `mde-voice-hud` binary added to `packaging/fedora/mackes-shell.spec` `%files` list.
+
+- [ ] **VOIP-28: mde-voice-hud — call state machine wired to Bus** (Lock 5 — design doc §2.3 Bus contracts)
+  **As** an operator dialing a peer through the HUD,
+  **I want** the HUD's view to transition idle→calling→in-call→ended as mded fires real PJSIP call events,
+  **so that** the call lifecycle is driven by actual SIP state, not mockups (per §0.12 no-stubs rule).
+  **Acceptance** (each bench-observable):
+    - [ ] Pressing Call FAB publishes `voip/call/command` with `{op: "dial", target, video?}`; mded executes the INVITE via PJSIP.
+    - [ ] HUD subscribes to `voip/call/<call-id>/state` and transitions view: `calling` on `state=calling`, `in-call` on `state=connected`, `ended` on `state=ended` (then back to `idle` after 1.4 s).
+    - [ ] Incoming INVITE from mded fires `voip/call/<id>/state` with `state=ringing` + caller meta; HUD transitions to `incoming` view (only if HUD currently open OR Mod+P pulls it up automatically per Portal-* notification policy).
+    - [ ] Accept publishes `voip/call/<id>/control` `{accept: true}`; mded sends `200 OK`.
+    - [ ] Decline publishes `{decline: true}`; mded sends `603 Decline` (or `486` when DND).
+    - [ ] Active-call grid wires: Mute → `{mute: true}`; Hold → `{hold: true}`; Keypad overlay → DTMF tones via `{dtmf: <digit>}`; Speaker → mded switches PipeWire sink role; Transfer → opens transfer-target picker.
+    - [ ] Hangup publishes `{hangup: true}`; mded sends BYE; HUD shows Ended screen for 1.4 s then returns to idle.
+    - [ ] Escape during in-call minimizes HUD to a dock call-pill (per design-doc §2.6); call continues; tapping pill restores HUD.
+
+- [ ] **VOIP-29: mde-voice-hud — routing strip + SIP log (R11-adapted)** (Lock 5 — design doc §2.1 bundle adaptations)
+  **As** an operator on an active call,
+  **I want** a horizontal hop-pill strip showing the actual R11 routing path (no retired Kamailio/rtpengine pills) plus a live SIP-trace log,
+  **so that** I can verify a call's path-through-the-mesh matches my expectation and debug stuck calls without leaving the HUD.
+  **Acceptance** (each bench-observable):
+    - [ ] Routing strip renders the R11 hop chain per design-doc §2.1 table — mesh direct: pjsip→nebula1→nebula1→pjsip (4 hops); mesh transit: 6 hops including mediasoup-bridge; Vitelity PSTN: pjsip→vitelity-edge→vitelity-sbc→pstn (4 hops).
+    - [ ] No `kamailio-mde` or `rtpengine-mde` pills appear in any hop chain (R11 retirement).
+    - [ ] Each hop pill shows IP/port under the label (e.g., `nebula1 · fd00:dada::3:5061/tls`).
+    - [ ] Live calls animate hops sequentially (90 ms stagger per pill) and arrows flow direction-of-signaling.
+    - [ ] SIP log panel labeled "pjsua · trace call" (replaces bundle's "kamcmd · trace call" — R11 tool name).
+    - [ ] SIP log streams real PJSIP log lines (subscribed from mded's `voip/call/<id>/sip-trace` Bus topic) — not the bundle's hand-rolled fake script.
+    - [ ] Line colors match the bundle: `>>` primary (outgoing), `<<` success-green (incoming), `==` warning-amber (RTPengine/media), `**` info (general).
+    - [ ] Timestamp + counter render per bundle's `fakeTs` shape, but with real wall-clock timestamps.
+
+- [ ] **VOIP-30: mde-voice-hud — mesh map overlay + active-call edge** (Lock 5 — design doc §2 mesh map)
+  **As** an operator wanting to see the call's path through the mesh visually,
+  **I want** a SVG topology overlay with peers laid in a ring around the Host, with active-call edges animating a dashed-flow direction,
+  **so that** I can spot routing oddities (e.g., a transit hop I didn't expect) at a glance.
+  **Acceptance** (each bench-observable):
+    - [ ] "Mesh map" button at top-right of routing strip opens the overlay (Iced canvas, screen-in animation 280 ms emph easing).
+    - [ ] Topology: 8 peers (Q3 cap) laid around the Host (1004) at center; ring connectivity + Host-to-all cross-links per bundle's `meshLayout` + `links` logic.
+    - [ ] Each peer node renders with presence color (available green, on-call orange, away yellow, dnd red, offline grey) sourced live from `voip/presence/<peer>`.
+    - [ ] LAN links solid; WAN links dashed.
+    - [ ] Active-call path nodes show pulsing ring; path edges animate dashed-flow per bundle's `mm-link-flow` keyframes.
+    - [ ] Foot strip renders the hop chain `<self> → [transit?] → <peer>` (or `→ PSTN` for Vitelity calls).
+    - [ ] Tapping a non-self peer dismisses the map and starts a call to that peer (publishes `voip/call/command` `{op: "dial", target}`).
+    - [ ] Close button + Escape dismiss the overlay; underlying HUD state restored.
+    - [ ] Header label reads "8-peer mesh · N online" (matches Q3 + Q22 cap; replaces bundle's "16-peer mesh" string).
 
 #### MESH-* — mesh-view subsystem (R7 + R8, ~100 decisions, 5 subgroups)
 
