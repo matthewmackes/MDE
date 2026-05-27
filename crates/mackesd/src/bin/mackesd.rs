@@ -2908,6 +2908,17 @@ fn run_serve(
         ));
         worker_names.lock().expect("worker_names mutex").push("border_tinter".into());
 
+        // Portal-57.a (v6.0 R12-Q22) — channel 1 of the urgent-
+        // window cascade. Subscribes to sway window::urgent events;
+        // spawns `mde-bus publish bus/mbadge/pulse` with the
+        // urgent payload. Gracefully degrades when the mde-bus
+        // binary isn't installed (logs a single warning, continues).
+        sup.spawn(Spawn::new(
+            mackesd_core::workers::urgency_router::UrgencyRouterWorker::new(),
+            RestartPolicy::OnFailure,
+        ));
+        worker_names.lock().expect("worker_names mutex").push("urgency_router".into());
+
         // The reconcile worker runs on its own OS thread (kept on
         // std::thread so its sync rusqlite calls don't block the
         // tokio scheduler). Still surfaced via Shell.Workers so

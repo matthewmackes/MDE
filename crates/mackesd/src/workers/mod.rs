@@ -219,6 +219,13 @@ pub mod tag_autostart;
 // fires `client.focused` with the owning tag's group_color (or
 // the platform Carbon blue when no tag owns the workspace).
 pub mod border_tinter;
+// Portal-57.a (v6.0 R12-Q22, 2026-05-26) — channel 1 of the
+// urgent-window three-channel cascade. Subscribes to sway
+// window::urgent events; spawns `mde-bus publish` to the
+// `bus/mbadge/pulse` topic with the urgent payload. Portal mini-
+// tree + Dock-segment channels (2 + 3) ship as Portal-57.b once
+// their UI prerequisites land.
+pub mod urgency_router;
 
 /// Every worker registered with the supervisor implements this
 /// trait. The trait is `async_trait` because the supervisor stores
