@@ -47,6 +47,15 @@ pub enum DndOp {
         #[arg(long)]
         bus_root: Option<PathBuf>,
     },
+    /// Toggle DND — flips the current state (on → off, off → on).
+    /// Convenient when the operator knows they want "the other
+    /// state" without typing it explicitly. Reads the current
+    /// state, then writes the inverse with a fresh timestamp.
+    Toggle {
+        /// Override the bus_root path.
+        #[arg(long)]
+        bus_root: Option<PathBuf>,
+    },
 }
 
 fn resolve_bus_root(arg: Option<PathBuf>) -> Result<PathBuf> {
@@ -124,6 +133,12 @@ pub async fn run(op: DndOp) -> Result<()> {
             let state = dnd::load_default(&root);
             println!("{}", format_status(&state));
         }
+        DndOp::Toggle { bus_root } => {
+            let root = resolve_bus_root(bus_root)?;
+            let current = dnd::load_default(&root);
+            let state = set_state(&root, !current.active)?;
+            println!("{}", format_status(&state));
+        }
     }
     Ok(())
 }
@@ -178,6 +193,22 @@ mod tests {
         assert!(out.contains("DND: on"));
         assert!(out.contains("Since:"));
         assert!(out.contains("By: fedora"));
+    }
+
+    #[test]
+    fn toggle_flips_off_to_on_then_back_to_off() {
+        let tmp = std::env::temp_dir().join(format!("mde-bus-dnd-toggle-{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        // Initial state is default off. Toggle once → on.
+        let first = set_state(&tmp, !dnd::load_default(&tmp).active).unwrap();
+        assert!(first.active);
+        // Toggle again → off.
+        let second = set_state(&tmp, !dnd::load_default(&tmp).active).unwrap();
+        assert!(!second.active);
+        // Third toggle → on again.
+        let third = set_state(&tmp, !dnd::load_default(&tmp).active).unwrap();
+        assert!(third.active);
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[test]
