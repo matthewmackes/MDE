@@ -54,6 +54,7 @@ async fn main() -> anyhow::Result<()> {
         Cmd::Correlate { op } => mde_bus::cli::correlate::run(op),
         Cmd::Audit { op } => mde_bus::cli::audit::run(op),
         Cmd::Persist { op } => mde_bus::cli::persist::run(op),
+        Cmd::Retention { op } => mde_bus::cli::retention::run(op),
     }
 }
 

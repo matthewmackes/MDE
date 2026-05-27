@@ -32,6 +32,7 @@ pub mod history;
 pub mod mute;
 pub mod persist;
 pub mod publish;
+pub mod retention;
 pub mod sub;
 pub mod tail;
 pub mod topic;
@@ -107,6 +108,14 @@ pub enum Cmd {
     Persist {
         #[command(subcommand)]
         op: persist::PersistOp,
+    },
+    /// Diagnostics on the BUS-1.9 retention engine. Read-only;
+    /// `status` prints the resolved per-priority TTLs + GFS
+    /// quota + current disk usage. GC runs in the daemon's tick
+    /// loop, not as a one-shot CLI gesture.
+    Retention {
+        #[command(subcommand)]
+        op: retention::RetentionOp,
     },
     /// Inspect the operator's cross-topic correlation rule config
     /// (BUS-6.5; `$XDG_CONFIG_HOME/mde/bus-correlate.yaml`).
