@@ -465,6 +465,25 @@ fn update(state: &mut PortalFull, msg: Message) -> Task<Message> {
                         }
                     });
                 }
+                TagMember::Peer { hostname } => {
+                    tracing::info!(%hostname, "portal-full: cascade opens ssh to peer");
+                    let hostname = hostname.clone();
+                    std::thread::spawn(move || {
+                        // Open the platform default terminal (foot)
+                        // with `ssh <hostname>`. Peer hostnames
+                        // resolve via the mesh DNS (Nebula
+                        // overlay), so this works as long as the
+                        // peer is online and SSH is permitted by
+                        // the mesh's flat-trust ACL. Fire-and-
+                        // forget; failure logs.
+                        if let Err(e) = std::process::Command::new("foot")
+                            .args(["ssh", &hostname])
+                            .spawn()
+                        {
+                            tracing::warn!(%hostname, error = %e, "foot ssh spawn failed");
+                        }
+                    });
+                }
                 TagMember::Tray { bus_name } => {
                     tracing::info!(%bus_name, "portal-full: cascade activates SNI tray entry");
                     let bus_name = bus_name.clone();
@@ -2027,6 +2046,22 @@ mod tests {
             &mut state,
             Message::HubCascadeMemberClicked(mackes_mesh_types::TagMember::File {
                 path: "/nonexistent/path/for/cascade/test.txt".to_string(),
+            }),
+        );
+        assert!(state.hub_cascade_stack.is_empty());
+    }
+
+    #[test]
+    fn cascade_member_peer_variant_clears_stack() {
+        // Peer variant fires `foot ssh <hostname>`. Spawn is
+        // fire-and-forget; cascade clears even if the hostname
+        // doesn't resolve.
+        let mut state = PortalFull::default();
+        state.hub_cascade_stack.push("Mesh".to_string());
+        let _ = update(
+            &mut state,
+            Message::HubCascadeMemberClicked(mackes_mesh_types::TagMember::Peer {
+                hostname: "nonexistent-peer-for-cascade-test".to_string(),
             }),
         );
         assert!(state.hub_cascade_stack.is_empty());

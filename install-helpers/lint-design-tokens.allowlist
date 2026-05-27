@@ -96,19 +96,19 @@ crates/mde-portal/src/app.rs:3415
 # const docstring, hex-parser tests, Edit-tag form #42be65 fixtures
 # (re-anchored 2026-05-27 after Portal-18.b modal landed).
 crates/mde-portal/src/portal_full_main.rs:172
-crates/mde-portal/src/portal_full_main.rs:748
-crates/mde-portal/src/portal_full_main.rs:980
-crates/mde-portal/src/portal_full_main.rs:1028
-crates/mde-portal/src/portal_full_main.rs:1401
-crates/mde-portal/src/portal_full_main.rs:1412
-crates/mde-portal/src/portal_full_main.rs:1413
-crates/mde-portal/src/portal_full_main.rs:1423
-crates/mde-portal/src/portal_full_main.rs:1424
-crates/mde-portal/src/portal_full_main.rs:1542
-crates/mde-portal/src/portal_full_main.rs:1572
-crates/mde-portal/src/portal_full_main.rs:1580
-crates/mde-portal/src/portal_full_main.rs:1622
-crates/mde-portal/src/portal_full_main.rs:1623
+crates/mde-portal/src/portal_full_main.rs:767
+crates/mde-portal/src/portal_full_main.rs:999
+crates/mde-portal/src/portal_full_main.rs:1047
+crates/mde-portal/src/portal_full_main.rs:1420
+crates/mde-portal/src/portal_full_main.rs:1431
+crates/mde-portal/src/portal_full_main.rs:1432
+crates/mde-portal/src/portal_full_main.rs:1442
+crates/mde-portal/src/portal_full_main.rs:1443
+crates/mde-portal/src/portal_full_main.rs:1561
+crates/mde-portal/src/portal_full_main.rs:1591
+crates/mde-portal/src/portal_full_main.rs:1599
+crates/mde-portal/src/portal_full_main.rs:1641
+crates/mde-portal/src/portal_full_main.rs:1642
 crates/mde-wizard/src/pages/preset.rs:12
 crates/mde-wizard/src/pages/preset.rs:18
 crates/mde-wizard/src/pages/preset.rs:24
