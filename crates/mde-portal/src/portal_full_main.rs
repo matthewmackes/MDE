@@ -439,7 +439,40 @@ fn update(state: &mut PortalFull, msg: Message) -> Task<Message> {
             state.hub_right_click_target = None;
         }
         Message::HubMenuEnterMode(tag_name) => {
-            tracing::info!(%tag_name, "portal-full: HubMenu → EnterMode (Portal-47 hand-off)");
+            // Portal-47.ui — fire swaymsg `mode <tag-name>` so sway
+            // flips into the named binding mode. The Portal-45
+            // mode segment renders the active mode in the
+            // breadcrumb so operators see immediate visual
+            // confirmation. Spawned in a detached thread so the
+            // UI thread doesn't block on subprocess I/O.
+            //
+            // The mode must exist in the sway config for the
+            // command to take effect. Portal-47.backend (mded
+            // worker that walks tag.json + pre-registers modes
+            // at startup) is the automation half; until that
+            // ships, operators define modes manually in their
+            // ~/.config/sway/config. swaymsg silently no-ops on
+            // unknown mode names — no error surfaced to the
+            // operator beyond the missing mode segment in the
+            // breadcrumb.
+            tracing::info!(%tag_name, "portal-full: HubMenu → EnterMode — firing swaymsg");
+            let name_for_thread = tag_name.clone();
+            std::thread::spawn(move || {
+                let result = std::process::Command::new("swaymsg")
+                    .arg(format!("mode \"{}\"", escape_swayipc_arg(&name_for_thread)))
+                    .status();
+                match result {
+                    Ok(status) if status.success() => {
+                        tracing::info!(tag = %name_for_thread, "portal-full: swaymsg mode succeeded");
+                    }
+                    Ok(status) => {
+                        tracing::warn!(tag = %name_for_thread, ?status, "portal-full: swaymsg mode non-zero exit");
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, tag = %name_for_thread, "portal-full: swaymsg spawn failed");
+                    }
+                }
+            });
             state.hub_right_click_target = None;
         }
         Message::HubMenuSaveAsTemplate(tag_name) => {
@@ -1082,6 +1115,23 @@ fn parse_optional_i32(s: &str) -> Result<Option<i32>, mackes_mesh_types::WindowR
                 std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("{e}")),
             ))
     }
+}
+
+/// Portal-47.ui — escape an argument for embedding inside a
+/// swaymsg-style quoted string. sway accepts `mode "<name>"`
+/// where the name is the literal mode-name from the config;
+/// embedded double-quotes + backslashes need to be escaped.
+/// Used by the Hub Enter-mode handler to safely pass arbitrary
+/// tag names (which may contain quirky chars) to swaymsg.
+fn escape_swayipc_arg(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 4);
+    for ch in s.chars() {
+        if ch == '\\' || ch == '"' {
+            out.push('\\');
+        }
+        out.push(ch);
+    }
+    out
 }
 
 // ── View ──────────────────────────────────────────────────────────────────────
@@ -2377,6 +2427,28 @@ mod tests {
         // schema tolerates them even if we'd never assign there.
         assert_eq!(parse_optional_i32("-1").unwrap(), Some(-1));
         assert!(parse_optional_i32("nope").is_err());
+    }
+
+    #[test]
+    fn escape_swayipc_arg_passes_through_normal_chars() {
+        assert_eq!(escape_swayipc_arg("foot"), "foot");
+        assert_eq!(escape_swayipc_arg("Dev mode"), "Dev mode");
+        assert_eq!(escape_swayipc_arg("dev-2026"), "dev-2026");
+    }
+
+    #[test]
+    fn escape_swayipc_arg_escapes_quotes_and_backslashes() {
+        // A quirky tag name with embedded `"` and `\` must
+        // round-trip safely through the `mode "<name>"` swaymsg
+        // quoting. The escape produces `Dev \"quoted\"` so
+        // swaymsg parses it as a single quoted argument.
+        assert_eq!(escape_swayipc_arg("Dev \"quoted\""), "Dev \\\"quoted\\\"");
+        assert_eq!(escape_swayipc_arg("path\\with\\bs"), "path\\\\with\\\\bs");
+    }
+
+    #[test]
+    fn escape_swayipc_arg_empty_passes_through() {
+        assert_eq!(escape_swayipc_arg(""), "");
     }
 
     #[test]
