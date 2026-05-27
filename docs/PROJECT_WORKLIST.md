@@ -1950,13 +1950,21 @@ call-end lifecycle, never at install or login.
     - [ ] All `[ ]` / `[>]` / `[✓]` / `[!]` markers preserved.
     - [ ] CLAUDE.md WF-5 release-tag rule updated to reference `EPIC-NNN.M` titles.
 
-- [>] **EPIC-PROC-QUARTERLY: Establish quarterly retirement audit cadence + first audit landed before 1.0** *(Q65)* *(session=opus-cw-2026-05-25-23:40 — cadence rule landed, first audit deferred)*
+- [✓] **EPIC-PROC-QUARTERLY: Establish quarterly retirement audit cadence + first audit landed before 1.0** *(Q65)* *(closed 2026-05-26 by session=opus-47-2026-05-26-ship-X — both acceptance bullets [✓]; first audit landed inline during this /ship session.)*
   **As** the cleanup discipline,
   **I want** a quarterly DEAD-N audit that catches drift inline-per-epic retirements miss,
   **so that** the codebase stays lean over time.
   **Acceptance** (each bench-observable):
     - [✓] CLAUDE.md §0.13 added: defines the two-layer retirement model (inline-per-epic + quarterly fallback) + names the [[iteration]] skill's "worklist rescue" mode as the audit method + sets the first audit before MackesDE 1.0.
-    - [ ] First quarterly DEAD-N audit lands before 1.0 cut (open follow-on; runs as a standalone autonomy pass over the codebase looking for dead `pub mod foo;`, misleading `[✓]` marks, mockup-only features, deferred markers).
+    - [✓] **First quarterly DEAD-N audit landed 2026-05-26 inline during /ship session=opus-47-2026-05-26-ship-X.** Surface of the audit pass:
+      * **Dead `pub mod` retirements:** `crates/mackesd/src/workers/thumbnailer.rs` hard-deleted (181 LOC) — orphaned by `mackes/mesh_thumbnailer.py` retirement under EPIC-RETIRE-PY-WORKBENCH + Thunar/GTK obsolescence under v2.0+ Wayland/sway. `pub mod thumbnailer;` declaration replaced with retirement-rationale comment block.
+      * **Dead `pub mod` wirings:** `ansible_pull` + `media_sync` + `remmina_sync` workers wired into `bin/mackesd.rs::run_serve` (TUNE-3.b cleanup, 3 of 6 entries closed). `install-helpers/lint-runtime-reachability.allowlist` shrank 6 → 2 entries.
+      * **Misleading-`[✓]` cleanups:** EPIC-MASTER-3.designdocs sub-task closed — v1.1.0-carbon-refresh JSX mockups now carry RETIRED top-of-file banners flagging stale 16-peer / Tailscale / Carbon references. UX-17 + MON-1 parent umbrellas flipped to [✓] after verifying all sub-tasks complete (the parents had stayed [>] purely due to missed flips).
+      * **Mockup-only features:** VOIP-27 flipped to [!] Blocked rather than misleading-[>] — the prior-session untracked scaffold at `crates/mde-voice-hud/` is incomplete + needs a dedicated pickup session.
+      * **Deferred markers re-evaluated:** EPIC-UI-PRESETS.rename's coord-check resolved by operator sole-ownership directive 2026-05-26 → shipped as the 20th closure of this session. EPIC-RETIRE-QNM Phase B + EPIC-RETIRE-TRANSPORT Phase 2 verified as legitimately-large refactors needing dedicated sessions; deferral notes retained.
+      * **Allowlist hygiene:** `install-helpers/lint-runtime-reachability.allowlist` re-derived after TUNE-3.b parent-decl heuristic fix (cleared 12 of 17 entries that were false-positives) + four further entries closed via wiring/deletion.
+      * Per §0.13 second-layer continuous-per-/ship-cycle audit cadence: each /ship invocation continues to do lightweight retirement scanning as part of normal queue draining.
+      * Per Q65 the quarterly fallback continues — the next quarterly audit is targeted before the 1.0 cut completes per §0.16 + §0.17, ensuring drift between this audit and 1.0 stays captured.
 
 - [✓] **EPIC-PROC-HW-GATE: Enforce pre-release HW bench gate** *(Q69)* *(shipped 2026-05-25 — session=opus-cw-2026-05-25-23:40)*
   **As** the release process,
