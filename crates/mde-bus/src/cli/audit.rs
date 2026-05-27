@@ -35,6 +35,12 @@ pub enum AuditOp {
         /// `default` / `high` / `urgent`). Case-sensitive lower.
         #[arg(long)]
         priority: Option<String>,
+        /// Emit JSON Lines instead of TSV — one JSON object per
+        /// audit entry, suitable for piping to `jq` or other
+        /// JSON-aware tooling. Each line is a complete
+        /// `AuditEntry` per the serde Serialize derive.
+        #[arg(long, default_value_t = false)]
+        json: bool,
     },
 }
 
@@ -75,6 +81,7 @@ pub fn run(op: AuditOp) -> Result<()> {
             publisher,
             topic,
             priority,
+            json,
         } => {
             let root = resolve_bus_root(bus_root)?;
             let entries = audit::read_entries(&root)
@@ -91,10 +98,23 @@ pub fn run(op: AuditOp) -> Result<()> {
                 &filtered[filtered.len() - tail..]
             };
             for e in slice {
-                println!(
-                    "{}\t{}\t{}\t{}\t{}",
-                    e.ts_iso, e.publisher, e.topic, e.priority, e.ulid,
-                );
+                if json {
+                    // jq-pipe-friendly JSONL. serde_json::to_string
+                    // produces a single line (no pretty-print)
+                    // matching the JSONL convention of one object
+                    // per line. Serialize failure is theoretically
+                    // impossible for AuditEntry's flat string +
+                    // String shape, but guard it as an io::Error
+                    // for symmetry with the TSV path.
+                    let line = serde_json::to_string(e)
+                        .map_err(|err| anyhow!("serialize audit entry: {err}"))?;
+                    println!("{line}");
+                } else {
+                    println!(
+                        "{}\t{}\t{}\t{}\t{}",
+                        e.ts_iso, e.publisher, e.topic, e.priority, e.ulid,
+                    );
+                }
             }
         }
     }
@@ -125,6 +145,7 @@ mod tests {
             publisher: None,
             topic: None,
             priority: None,
+            json: false,
         });
         assert!(r.is_ok());
         let _ = std::fs::remove_dir_all(&tmp);
