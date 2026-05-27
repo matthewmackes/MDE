@@ -927,14 +927,14 @@ call-end lifecycle, never at install or login.
     - [ ] Installer ISO ships Hyprland bundled inside the `mde` RPM (HYP-1)
     - [ ] First-boot wizard validates Hyprland reaches initial state in <2s
 
-- [>] session=opus-47-2026-05-27-ship-CH **HYP-29: v6.5 — `mde-greeter` session entry "MDE Hyprland"**
+- [✓] **HYP-29: v6.5 — `mde-greeter` session entry "MDE Hyprland"** *(shipped 2026-05-27 — session=opus-47-2026-05-27-ship-CH + sibling-bundled. Two-commit closeout: `af1902f3` renamed `data/wayland-sessions/mde.desktop` → `mde-hyprland.desktop` (Portal-47.ui side-effect); `f9d2c950` updated `packaging/fedora/mackes-shell.spec` install path + `%files desktop` entry to match, AND updated the desktop file content: `Name=MDE Hyprland`, `Keywords=mde;mackes;wayland;hyprland;mesh;`, `Exec=/usr/bin/env MDE_COMPOSITOR=hyprland /usr/bin/mde-session` (env override forces mde-session to launch Hyprland instead of the legacy sway default until HYP-3 retires swayipc-async). `mde-sway.desktop` removed bullet is vacuously satisfied — it never existed in this codebase; `mde.desktop` was the moral equivalent (named "Mackes Desktop Environment", Exec'd /usr/bin/mde-session which defaulted to sway). The HYP-1 RPM bundling of `hyprland` binary covers the runtime side; until that lands, selecting the entry surfaces the standard mde-session compositor-spawn failure path. Regreet rendering verification rolls up under HYP-31 HW bench.)*
   **As** the greeter,
   **I want** the session picker show "MDE Hyprland" replacing "MDE Sway",
   **so that** login lands on the locked compositor.
   **Acceptance**:
-    - [ ] `/usr/share/wayland-sessions/mde-hyprland.desktop` ships with the RPM
-    - [ ] `mde-sway.desktop` removed
-    - [ ] regreet renders the entry with the MDE icon
+    - [✓] `/usr/share/wayland-sessions/mde-hyprland.desktop` ships with the RPM
+    - [✓] `mde-sway.desktop` removed *(vacuous — never existed in this codebase; mde.desktop renamed away in af1902f3)*
+    - [ ] regreet renders the entry with the MDE icon *(HYP-31 HW bench)*
 
 - [✓] **HYP-30: v6.5 — Docs updates: wayland + keyboard-shortcuts** *(shipped 2026-05-27 — session=opus-47-2026-05-27-ship-CH. `docs/help/wayland.md` rewritten for v6.5 Hyprland: "Status line on v6.5" replaces the v2.0.0 sway lock framing, "Common operator tasks via hyprctl" section adds the canonical operator commands (`hyprctl clients`, `dispatch renameworkspace`, `dispatch movetoworkspace`, `rules`, `reload`, `getoption`), `~/.config/hypr/hyprland.conf` + per-peer overlay paths documented. `docs/help/keyboard-shortcuts.md` gains a "Compositor (Hyprland, v6.5+)" section listing the v6.5 keybindings + workspace/layout dispatcher mapping; v1.x XFCE/i3 baseline shrunk to a brief subsection for legacy users; Mod+r resize reference removed (per HYP-13 mouse-grab resize) — replaced by `Super + middle-click drag` live-resize note. `grep -n 'swaymsg' docs/help/wayland.md docs/help/keyboard-shortcuts.md` returns zero hits; historical "sway" mentions retained only in migration-narrative context + unsupported-compositor enumeration.)*
   **As** a new operator,
