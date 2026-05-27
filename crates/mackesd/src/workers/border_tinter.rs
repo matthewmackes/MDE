@@ -138,7 +138,15 @@ async fn handle_focus(conn: &mut Connection, num: i32) {
             return;
         }
     };
-    let color = color_for_workspace(&store, num);
+    // HYP-22.sway-bridge — also load the tag-manifest snapshot
+    // each focus event so the per-tag `border_color` field can
+    // override the TagStore color. Manifest load is fail-soft: a
+    // missing dir or unreadable file just falls through to the
+    // legacy TagStore path. Cheap relative to the swayipc
+    // round-trip that follows.
+    let manifests = crate::config::default_manifests_dir()
+        .and_then(|d| crate::config::load_tag_manifests(&d).ok());
+    let color = color_for_workspace_with_manifests(&store, num, manifests.as_deref());
     let cmd = client_focused_command(&color);
     match conn.run_command(&cmd).await {
         Ok(_) => tracing::debug!(workspace = num, %color, "border_tinter applied"),
@@ -149,11 +157,53 @@ async fn handle_focus(conn: &mut Connection, num: i32) {
 // ── Pure helpers ────────────────────────────────────────────────────────
 
 /// Resolve the focused-border color for workspace `ws_num`. Returns
-/// the owning tag's `group_color` if present, else
-/// [`DEFAULT_FOCUSED_COLOR`].
+/// the first non-empty source in this precedence chain:
+///
+/// 1. **Tag manifest `border_color`** (HYP-8.5 source of truth) —
+///    `~/.config/mde/tags/<name>.toml`. The compositor-side
+///    visual policy lives here per the simplification re-lock;
+///    when set, it wins over the legacy TagStore color.
+/// 2. **TagStore `group_color`** (Portal-18.a legacy path) —
+///    `~/.local/share/mde/tags.json`. Stays as fallback for
+///    operators who configured tags before HYP-8.5 landed +
+///    haven't migrated their colors yet.
+/// 3. **Platform default** ([`DEFAULT_FOCUSED_COLOR`]) — Carbon
+///    blue from `data/sway/config:60`.
+///
+/// `live_manifests` is the watcher's snapshot — usually the
+/// per-tick result of `tag_manifest::load_all`. None = skip the
+/// manifest layer (e.g. early-boot before tag_manifest_watcher
+/// has primed); fall through to TagStore.
 #[must_use]
 pub fn color_for_workspace(store: &TagStore, ws_num: i32) -> String {
-    find_owning_tag(store, ws_num)
+    color_for_workspace_with_manifests(store, ws_num, None)
+}
+
+/// Same as [`color_for_workspace`] but with an explicit manifest
+/// snapshot. The async handler passes a fresh `load_all` result
+/// per focus event; tests pass a static fixture so the manifest
+/// lookup is deterministic.
+#[must_use]
+pub fn color_for_workspace_with_manifests(
+    store: &TagStore,
+    ws_num: i32,
+    manifests: Option<&[crate::config::TagManifest]>,
+) -> String {
+    let owning_tag = find_owning_tag(store, ws_num);
+
+    // Priority 1: tag-manifest border_color.
+    if let (Some(tag), Some(ms)) = (owning_tag.as_ref(), manifests) {
+        if let Some(m) = ms.iter().find(|m| m.name == tag.name) {
+            if let Some(c) = m.border_color.as_deref() {
+                if is_valid_hex_color(c) {
+                    return c.to_string();
+                }
+            }
+        }
+    }
+
+    // Priority 2: TagStore group_color (legacy path).
+    owning_tag
         .and_then(|t| t.group_color.clone())
         .filter(|c| is_valid_hex_color(c))
         .unwrap_or_else(|| DEFAULT_FOCUSED_COLOR.to_string())
@@ -313,5 +363,93 @@ mod tests {
         }
         // Untagged ws 4 → default.
         assert_eq!(color_for_workspace(&store, 4), DEFAULT_FOCUSED_COLOR);
+    }
+
+    // ── HYP-22.sway-bridge — tag-manifest border_color takes
+    //    precedence over the legacy TagStore group_color ───────
+
+    fn dev_manifest_with(border_color: Option<&str>) -> crate::config::TagManifest {
+        crate::config::TagManifest {
+            name: "Dev".to_string(),
+            border_color: border_color.map(|s| s.to_string()),
+            ..crate::config::TagManifest::default()
+        }
+    }
+
+    /// When a manifest carries a valid `border_color`, it wins
+    /// over the TagStore's `group_color`.
+    #[test]
+    fn manifest_border_color_overrides_tagstore_group_color() {
+        let mut store = TagStore::default();
+        store.add(dev_tag_with_color(1, Some("#tagstore_color"))).unwrap();
+        // TagStore color is invalid (intentional, to confirm
+        // the manifest path doesn't fall through to a malformed
+        // legacy entry).
+        // Manifest carries the canonical Carbon green.
+        let manifests = vec![dev_manifest_with(Some("#42be65"))];
+        let c = color_for_workspace_with_manifests(&store, 1, Some(&manifests));
+        assert_eq!(c, "#42be65");
+    }
+
+    /// When the manifest has no `border_color`, fall through to
+    /// the TagStore's `group_color`.
+    #[test]
+    fn manifest_without_border_color_falls_through_to_tagstore() {
+        let mut store = TagStore::default();
+        store.add(dev_tag_with_color(1, Some("#abcdef"))).unwrap();
+        let manifests = vec![dev_manifest_with(None)];
+        let c = color_for_workspace_with_manifests(&store, 1, Some(&manifests));
+        assert_eq!(c, "#abcdef");
+    }
+
+    /// Manifest border_color must be a valid hex — malformed
+    /// values fall through to TagStore as if the field was None.
+    #[test]
+    fn manifest_with_malformed_border_color_falls_through() {
+        let mut store = TagStore::default();
+        store.add(dev_tag_with_color(1, Some("#abcdef"))).unwrap();
+        // Manifest carries garbage that fails the hex predicate.
+        let manifests = vec![dev_manifest_with(Some("not-a-color"))];
+        let c = color_for_workspace_with_manifests(&store, 1, Some(&manifests));
+        assert_eq!(c, "#abcdef");
+    }
+
+    /// When neither the manifest nor TagStore has a usable color,
+    /// fall through to the platform default.
+    #[test]
+    fn no_color_anywhere_returns_default() {
+        let mut store = TagStore::default();
+        store.add(dev_tag_with_color(1, None)).unwrap();
+        let manifests = vec![dev_manifest_with(None)];
+        let c = color_for_workspace_with_manifests(&store, 1, Some(&manifests));
+        assert_eq!(c, DEFAULT_FOCUSED_COLOR);
+    }
+
+    /// When the manifest snapshot is None (early boot / load
+    /// failure), the function behaves exactly like the original
+    /// `color_for_workspace` — TagStore is the only source.
+    #[test]
+    fn none_manifests_means_tagstore_only() {
+        let mut store = TagStore::default();
+        store.add(dev_tag_with_color(1, Some("#42be65"))).unwrap();
+        let c = color_for_workspace_with_manifests(&store, 1, None);
+        assert_eq!(c, "#42be65");
+    }
+
+    /// Manifest lookup must match by tag NAME — a manifest for
+    /// a different tag doesn't bleed into this workspace.
+    #[test]
+    fn manifest_for_different_tag_is_ignored() {
+        let mut store = TagStore::default();
+        store.add(dev_tag_with_color(1, Some("#abcdef"))).unwrap();
+        // Manifest is for a different tag name.
+        let manifests = vec![crate::config::TagManifest {
+            name: "Other".to_string(),
+            border_color: Some("#000000".to_string()),
+            ..crate::config::TagManifest::default()
+        }];
+        let c = color_for_workspace_with_manifests(&store, 1, Some(&manifests));
+        // Falls through to TagStore.
+        assert_eq!(c, "#abcdef");
     }
 }
