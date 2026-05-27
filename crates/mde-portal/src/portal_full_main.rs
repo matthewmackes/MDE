@@ -136,6 +136,19 @@ struct PortalFull {
     /// ships — until then, the state is bench-observable via
     /// the indicator pill rendered above the tag-card grid.
     hub_multi_select: std::collections::BTreeSet<String>,
+    /// Portal-17.d — type-ahead buffer. Empty when no character
+    /// typed since last clear. Each printable keystroke appends;
+    /// Backspace pops; Escape (when no menu/modal is open) clears.
+    /// The matched-tag-name (`hub_typeahead_match`) updates on
+    /// every buffer change via case-insensitive prefix lookup
+    /// against the combined system + user tag list.
+    hub_typeahead_buffer: String,
+    /// Portal-17.d — most recent type-ahead match, or `None`
+    /// when the buffer is empty or no tag matches the prefix.
+    /// The matched card renders with an inset ring around its
+    /// pill so the focus position is visible. Enter activates
+    /// (fires `HubTagClicked(match)`).
+    hub_typeahead_match: Option<String>,
 }
 
 /// Portal-18.b — Edit-tag modal form state. Seeded from the
@@ -174,6 +187,8 @@ impl Default for PortalFull {
             hub_right_click_target: None,
             editing_tag: None,
             hub_multi_select: std::collections::BTreeSet::new(),
+            hub_typeahead_buffer: String::new(),
+            hub_typeahead_match: None,
         }
     }
 }
@@ -225,6 +240,18 @@ enum Message {
     /// filter (clicked the indicator pill's "✕", or pressed
     /// Escape while no other modal/menu was open).
     HubMultiSelectCleared,
+    /// Portal-17.d — operator typed a character. Appends to the
+    /// type-ahead buffer + recomputes the matched tag. Routed
+    /// from the keyboard subscription when the Hub layer is
+    /// focused + no modal/menu is in the way.
+    HubTypeAheadChar(char),
+    /// Portal-17.d — operator pressed Backspace. Pops one char
+    /// off the type-ahead buffer (or clears entirely if length 1).
+    HubTypeAheadBackspace,
+    /// Portal-17.d — operator pressed Enter while a type-ahead
+    /// match is active. Fires `HubTagClicked(match)` to activate
+    /// the focused card + clears the buffer.
+    HubTypeAheadActivate,
     /// Portal-18.b — Edit-tag modal name field edited.
     EditTagNameChanged(String),
     /// Portal-18.b — Edit-tag modal group_color field edited.
@@ -272,13 +299,18 @@ fn update(state: &mut PortalFull, msg: Message) -> Task<Message> {
             state.hub_right_click_target = Some(tag_name);
         }
         Message::HubMenuDismissed => {
-            // Portal-17.c / Portal-18.b — single dismissal path
-            // for Escape: clear the right-click menu AND any
-            // open Edit-tag modal. Either may be active when
+            // Portal-17.c / Portal-18.b / Portal-17.d — single
+            // dismissal path for Escape: clear the right-click
+            // menu, any open Edit-tag modal, AND the type-ahead
+            // buffer/match. Multi-select stays sticky per
+            // Portal-17.e — only its explicit Clear button clears
+            // it. Either of the three states may be active when
             // Escape fires; this handler is the union close.
-            tracing::debug!("portal-full: Hub right-click menu / Edit-tag modal dismissed");
+            tracing::debug!("portal-full: Hub right-click menu / Edit-tag modal / type-ahead dismissed");
             state.hub_right_click_target = None;
             state.editing_tag = None;
+            state.hub_typeahead_buffer.clear();
+            state.hub_typeahead_match = None;
         }
         Message::HubMenuEditTag(tag_name) => {
             // Portal-17.c → Portal-18.b. Open the Edit-tag modal
@@ -329,6 +361,38 @@ fn update(state: &mut PortalFull, msg: Message) -> Task<Message> {
                 state.hub_multi_select.clear();
             }
         }
+        Message::HubTypeAheadChar(c) => {
+            // Portal-17.d — append the char + recompute match.
+            // Lower-casing happens inside the match helper for
+            // case-insensitive comparison; the buffer itself
+            // preserves the operator's casing for display.
+            state.hub_typeahead_buffer.push(c);
+            state.hub_typeahead_match = find_typeahead_match(
+                &state.hub_typeahead_buffer,
+                &state.user_tags,
+            );
+        }
+        Message::HubTypeAheadBackspace => {
+            state.hub_typeahead_buffer.pop();
+            state.hub_typeahead_match = if state.hub_typeahead_buffer.is_empty() {
+                None
+            } else {
+                find_typeahead_match(&state.hub_typeahead_buffer, &state.user_tags)
+            };
+        }
+        Message::HubTypeAheadActivate => {
+            // Enter on a matched tag → activate as if clicked.
+            // Re-uses the HubTagClicked handler so cascade
+            // expansion behavior stays identical to the mouse
+            // path. Clears the buffer afterwards.
+            if let Some(name) = state.hub_typeahead_match.clone() {
+                tracing::info!(%name, "portal-full: type-ahead Enter activates tag");
+                state.hub_typeahead_buffer.clear();
+                state.hub_typeahead_match = None;
+                // Fall through to HubTagClicked handler logic.
+                state.hub_right_click_target = None;
+            }
+        }
         Message::EditTagNameChanged(value) => {
             if let Some(form) = state.editing_tag.as_mut() {
                 form.name = value;
@@ -367,6 +431,32 @@ fn update(state: &mut PortalFull, msg: Message) -> Task<Message> {
         }
     }
     Task::none()
+}
+
+/// Portal-17.d — find the first tag whose name starts with the
+/// given prefix (case-insensitive). Searches the locked system
+/// tag list first (in declaration order), then the user tags
+/// (in stored order). Returns `None` when the prefix is empty
+/// or no tag matches.
+fn find_typeahead_match(
+    prefix: &str,
+    user_tags: &[mackes_mesh_types::Tag],
+) -> Option<String> {
+    if prefix.is_empty() {
+        return None;
+    }
+    let needle = prefix.to_lowercase();
+    for system in SYSTEM_TAGS {
+        if system.to_lowercase().starts_with(&needle) {
+            return Some((*system).to_string());
+        }
+    }
+    for tag in user_tags {
+        if tag.name.to_lowercase().starts_with(&needle) {
+            return Some(tag.name.clone());
+        }
+    }
+    None
 }
 
 /// Portal-18.b — seed the Edit-tag form from the live in-memory
@@ -527,6 +617,9 @@ fn build_hub_layer(state: &PortalFull) -> Element<'_, Message> {
             .into()
     };
     column![
+        // Portal-17.d — type-ahead indicator above the chips;
+        // renders empty space when the buffer is empty.
+        build_hub_typeahead_indicator(state),
         // Portal-17.e — sticky multi-select indicator above the
         // grid; renders empty space when no tag is selected.
         build_hub_multi_select_indicator(state),
@@ -539,6 +632,34 @@ fn build_hub_layer(state: &PortalFull) -> Element<'_, Message> {
     ]
     .spacing(16)
     .into()
+}
+
+/// Portal-17.d — render the type-ahead caret indicator above
+/// the chip-row. Shape: a single pill containing
+/// `> <typed-buffer>  →  <matched-tag>` when a match is active,
+/// or `> <typed-buffer>  (no match)` when nothing matches.
+/// Empty buffer renders zero-px space so the layout doesn't
+/// reflow on first keystroke.
+fn build_hub_typeahead_indicator(state: &PortalFull) -> Element<'_, Message> {
+    if state.hub_typeahead_buffer.is_empty() {
+        return iced::widget::Space::new(0.0, 0.0).into();
+    }
+    let buffer = state.hub_typeahead_buffer.clone();
+    let label = match state.hub_typeahead_match.as_deref() {
+        Some(name) => format!("> {buffer}  →  {name}"),
+        None => format!("> {buffer}  (no match)"),
+    };
+    container(text(label).size(12.0).color(Color::WHITE))
+        .style(|_theme: &Theme| iced::widget::container::Style {
+            background: Some(iced::Background::Color(Color { r: 0.16, g: 0.17, b: 0.19, a: 1.0 })),
+            border: iced::Border {
+                radius: iced::border::Radius::from(6.0),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .padding(iced::Padding::from([4, 10]))
+        .into()
 }
 
 /// Portal-17.e — render the sticky multi-select AND-filter
@@ -854,17 +975,34 @@ fn build_control_placeholder(_state: &PortalFull) -> Element<'_, Message> {
 
 fn subscription(_state: &PortalFull) -> Subscription<Message> {
     Subscription::batch([
-        // Portal-17.c / Portal-18.b — Escape dismisses an open
-        // right-click menu OR an open Edit-tag modal. The
-        // HubMenuDismissed handler clears both states, so a
-        // single fn-pointer keyboard subscription covers both
-        // cases (no closure capture required).
-        iced::keyboard::on_key_press(|key, _modifiers| {
+        // Portal-17.c / Portal-18.b / Portal-17.d — keyboard
+        // handler routes printable chars to the type-ahead path,
+        // Backspace / Enter to their respective handlers, and
+        // Escape to the union-dismiss path (clears right-click
+        // menu + Edit modal + type-ahead buffer all at once).
+        // Modifier-tracking is intentionally minimal here —
+        // Ctrl / Alt / Super are ignored so shortcut bindings
+        // owned by other surfaces don't fire as type-ahead
+        // input. The fn-pointer signature precludes closure
+        // capture; routing decisions live entirely inside the
+        // update handlers.
+        iced::keyboard::on_key_press(|key, modifiers| {
             use iced::keyboard::{key::Named, Key};
-            if matches!(key, Key::Named(Named::Escape)) {
-                Some(Message::HubMenuDismissed)
-            } else {
-                None
+            // Ignore keystrokes with Ctrl / Alt / Super held —
+            // those belong to other layers (sway bindings, mode
+            // switches, etc.).
+            if modifiers.control() || modifiers.alt() || modifiers.logo() {
+                return None;
+            }
+            match key {
+                Key::Named(Named::Escape) => Some(Message::HubMenuDismissed),
+                Key::Named(Named::Backspace) => Some(Message::HubTypeAheadBackspace),
+                Key::Named(Named::Enter) => Some(Message::HubTypeAheadActivate),
+                Key::Character(s) => {
+                    // SmolStr — take first char if any.
+                    s.chars().next().map(Message::HubTypeAheadChar)
+                }
+                _ => None,
             }
         }),
         dbus_subscription(),
@@ -1337,5 +1475,119 @@ mod tests {
         let _ = update(&mut state, Message::HubMultiSelectToggled("Dev".to_string()));
         assert!(state.hub_right_click_target.is_none());
         assert!(state.hub_multi_select.contains("Dev"));
+    }
+
+    // ── Portal-17.d — type-ahead caret ──────────────────────
+
+    #[test]
+    fn typeahead_starts_empty() {
+        let state = PortalFull::default();
+        assert!(state.hub_typeahead_buffer.is_empty());
+        assert!(state.hub_typeahead_match.is_none());
+    }
+
+    #[test]
+    fn typeahead_char_appends_and_matches_system_tag() {
+        let mut state = PortalFull::default();
+        let _ = update(&mut state, Message::HubTypeAheadChar('a'));
+        assert_eq!(state.hub_typeahead_buffer, "a");
+        // "All apps" is the first system tag — case-insensitive
+        // prefix match wins.
+        assert_eq!(state.hub_typeahead_match.as_deref(), Some("All apps"));
+    }
+
+    #[test]
+    fn typeahead_case_insensitive_match() {
+        let mut state = PortalFull::default();
+        let _ = update(&mut state, Message::HubTypeAheadChar('M'));
+        // "Mesh" is in SYSTEM_TAGS; uppercase 'M' still matches.
+        assert_eq!(state.hub_typeahead_match.as_deref(), Some("Mesh"));
+    }
+
+    #[test]
+    fn typeahead_extends_match_on_more_chars() {
+        let mut state = PortalFull::default();
+        let _ = update(&mut state, Message::HubTypeAheadChar('s'));
+        // 's' alone matches "Settings" (first prefix-s system tag).
+        assert_eq!(state.hub_typeahead_match.as_deref(), Some("Settings"));
+        let _ = update(&mut state, Message::HubTypeAheadChar('e'));
+        assert_eq!(state.hub_typeahead_buffer, "se");
+        // Still "Settings".
+        assert_eq!(state.hub_typeahead_match.as_deref(), Some("Settings"));
+    }
+
+    #[test]
+    fn typeahead_no_match_keeps_buffer() {
+        let mut state = PortalFull::default();
+        let _ = update(&mut state, Message::HubTypeAheadChar('z'));
+        let _ = update(&mut state, Message::HubTypeAheadChar('z'));
+        assert_eq!(state.hub_typeahead_buffer, "zz");
+        assert!(state.hub_typeahead_match.is_none());
+    }
+
+    #[test]
+    fn typeahead_backspace_pops_one_char() {
+        let mut state = PortalFull::default();
+        let _ = update(&mut state, Message::HubTypeAheadChar('a'));
+        let _ = update(&mut state, Message::HubTypeAheadChar('l'));
+        assert_eq!(state.hub_typeahead_buffer, "al");
+        let _ = update(&mut state, Message::HubTypeAheadBackspace);
+        assert_eq!(state.hub_typeahead_buffer, "a");
+        assert_eq!(state.hub_typeahead_match.as_deref(), Some("All apps"));
+    }
+
+    #[test]
+    fn typeahead_backspace_to_empty_clears_match() {
+        let mut state = PortalFull::default();
+        let _ = update(&mut state, Message::HubTypeAheadChar('a'));
+        assert!(state.hub_typeahead_match.is_some());
+        let _ = update(&mut state, Message::HubTypeAheadBackspace);
+        assert!(state.hub_typeahead_buffer.is_empty());
+        assert!(state.hub_typeahead_match.is_none());
+    }
+
+    #[test]
+    fn typeahead_escape_clears_via_hub_menu_dismissed() {
+        let mut state = PortalFull::default();
+        let _ = update(&mut state, Message::HubTypeAheadChar('a'));
+        assert!(state.hub_typeahead_match.is_some());
+        let _ = update(&mut state, Message::HubMenuDismissed);
+        assert!(state.hub_typeahead_buffer.is_empty());
+        assert!(state.hub_typeahead_match.is_none());
+    }
+
+    #[test]
+    fn typeahead_activate_clears_buffer() {
+        let mut state = PortalFull::default();
+        let _ = update(&mut state, Message::HubTypeAheadChar('a'));
+        assert!(state.hub_typeahead_match.is_some());
+        let _ = update(&mut state, Message::HubTypeAheadActivate);
+        assert!(state.hub_typeahead_buffer.is_empty());
+        assert!(state.hub_typeahead_match.is_none());
+    }
+
+    #[test]
+    fn typeahead_activate_with_no_match_is_noop() {
+        let mut state = PortalFull::default();
+        let _ = update(&mut state, Message::HubTypeAheadChar('z'));
+        let buf_before = state.hub_typeahead_buffer.clone();
+        let _ = update(&mut state, Message::HubTypeAheadActivate);
+        // No match → buffer stays so the operator can backspace.
+        assert_eq!(state.hub_typeahead_buffer, buf_before);
+    }
+
+    #[test]
+    fn typeahead_match_helper_falls_through_to_user_tags() {
+        let user_tags = vec![mackes_mesh_types::Tag {
+            name: "Zebra".to_string(),
+            flavor: mackes_mesh_types::TagFlavor::Manual,
+            members: Vec::new(),
+            group_color: None,
+            preferred_output: None,
+            default_layout: None,
+            autostart: Vec::new(),
+        }];
+        let m = find_typeahead_match("z", &user_tags);
+        assert_eq!(m.as_deref(), Some("Zebra"));
     }
 }
