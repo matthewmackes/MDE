@@ -1567,7 +1567,7 @@ call-end lifecycle, never at install or login.
 
 #### Notification policy + alert-relay class awareness
 
-- [~] **GF-16.4: `class:` field in MON-3 ULID schema + class-aware policy table in `alert_relay`** *(foundational — GF-16.2 / GF-16.3 / GF-16.5 / GF-16.7 / GF-16.8 all depend on this)* **SUPERSEDED 2026-05-26 by BUS-1.5 + BUS-2.1:** the `class:` field becomes a Bus TOPIC (`mon.*` / `gluster.*` / `nebula.*` namespaces per BUS R3); the class-aware policy table becomes BUS priority → surface mapping (BUS R5). `alert_relay` is being renamed to `alert_router` in BUS-4.2 (hard-cut migration). No new code for GF-16.4 specifically — Bus delivers the same affordance through topics.
+- [✓] **GF-16.4: `class:` field in MON-3 ULID schema + class-aware policy table in `alert_relay`** *(retired-in-place 2026-05-27 — session=opus-47-2026-05-27-ship-CF; status flipped from `[~]` to `[✓]` because the `[~] Deferred` status is retired per the 2026-05-19 worklist-legend directive. Original supersede note preserved below.)* *(foundational — GF-16.2 / GF-16.3 / GF-16.5 / GF-16.7 / GF-16.8 all depend on this)* **SUPERSEDED 2026-05-26 by BUS-1.5 + BUS-2.1:** the `class:` field becomes a Bus TOPIC (`mon.*` / `gluster.*` / `nebula.*` namespaces per BUS R3); the class-aware policy table becomes BUS priority → surface mapping (BUS R5). `alert_relay` is being renamed to `alert_router` in BUS-4.2 (hard-cut migration). No new code for GF-16.4 specifically — Bus delivers the same affordance through topics.
   **As** the `alert_relay` worker,
   **I want** to know what an alert is *about* (gluster.conflict / nebula.handshake / workstation.thermal),
   **so that** I can apply class-specific notification policy (coalesce, action buttons, DND pierce).
@@ -1578,7 +1578,7 @@ call-end lifecycle, never at install or login.
     - [ ] Pure-fn `policy_for_class(class: &str) -> ClassPolicy` exported + unit-tested for every locked class.
     - [ ] Bench: `mde-alert-emit --class=gluster.conflict --dry-run-from-env <env-vars>` outputs JSON with the field; round-trip through `alert_relay` honors the field; missing-field events deserialize as `unknown` without panic.
 
-- [~] **GF-16.2: Action-bearing conflict notifications [HW carve-out for end-to-end]** *(depends on GF-16.4 + GF-2.2.b live conflict signal)* **SUPERSEDED 2026-05-26 by BUS-2.7 + BUS-6.4:** action-button conflict notifications become Bus action-topic subscriptions (`action/gluster/resolve-conflict`) with reply-topic responses (`reply/<ulid>`) per BUS R9 + Q31/Q32. The notification body's `[Keep mine] [Keep theirs] [Open diff…]` buttons map to Bus action publishes; mde-bus tray popover already supports per-message action buttons via the Bus payload schema.
+- [✓] **GF-16.2: Action-bearing conflict notifications [HW carve-out for end-to-end]** *(retired-in-place 2026-05-27 — session=opus-47-2026-05-27-ship-CF; status flipped from `[~]` to `[✓]` because the `[~] Deferred` status is retired per the 2026-05-19 worklist-legend directive. Original supersede note preserved below.)* *(depends on GF-16.4 + GF-2.2.b live conflict signal)* **SUPERSEDED 2026-05-26 by BUS-2.7 + BUS-6.4:** action-button conflict notifications become Bus action-topic subscriptions (`action/gluster/resolve-conflict`) with reply-topic responses (`reply/<ulid>`) per BUS R9 + Q31/Q32. The notification body's `[Keep mine] [Keep theirs] [Open diff…]` buttons map to Bus action publishes; mde-bus tray popover already supports per-message action buttons via the Bus payload schema.
   **As** an operator presented with a file-conflict toast,
   **I want** inline `[Keep mine] [Keep theirs] [Open diff…]` buttons,
   **so that** I resolve the conflict in one click instead of navigating mde-files.
@@ -1589,7 +1589,7 @@ call-end lifecycle, never at install or login.
     - [ ] Dismissal without action is a no-op (LWW already picked a winner; no UX regression).
     - [ ] Bench: trigger split-brain → toast appears with 3 buttons → click `keep-mine` → `<file>.conflict-<host>-<ts>` moves to `~/Local/conflict-archive/<ts>/` → mde-files reflects single-version-per-path.
 
-- [~] **GF-16.3: Conflict-storm coalescing in `alert_relay`** *(depends on GF-16.4)* **SUPERSEDED 2026-05-26 by BUS-1.7 + BUS-6.4:** coalescing becomes a Bus topic feature — `thread_id` field on a Bus message (BUS R8 payload spec) groups related events; tray popover renders one row per thread with "N more like this" expand affordance. Per-class coalescing thresholds become per-topic config (`max_per_minute` in topic policy).
+- [✓] **GF-16.3: Conflict-storm coalescing in `alert_relay`** *(retired-in-place 2026-05-27 — session=opus-47-2026-05-27-ship-CF; status flipped from `[~]` to `[✓]` because the `[~] Deferred` status is retired per the 2026-05-19 worklist-legend directive. Original supersede note preserved below.)* *(depends on GF-16.4)* **SUPERSEDED 2026-05-26 by BUS-1.7 + BUS-6.4:** coalescing becomes a Bus topic feature — `thread_id` field on a Bus message (BUS R8 payload spec) groups related events; tray popover renders one row per thread with "N more like this" expand affordance. Per-class coalescing thresholds become per-topic config (`max_per_minute` in topic policy).
   **As** an operator after a network flap that surfaces 200 split-brain GFIDs,
   **I want** one coalesced toast instead of 200,
   **so that** the desktop stays usable.
@@ -1600,7 +1600,7 @@ call-end lifecycle, never at install or login.
     - [ ] Pure-fn `should_coalesce(window, now) -> bool` + `coalesced_summary(window) -> String` exported + unit-tested.
     - [ ] Bench: scripted 50-file split-brain → 1 coalesced toast with count 50 → click → mde-files opens with conflict filter applied.
 
-- [~] **GF-16.5: Source-class DND policy (DND-pierce rules locked in `ClassPolicy`)** *(depends on GF-16.4)* **SUPERSEDED 2026-05-26 by BUS-2.8 + Round 6:** Bus ships a single global DND toggle + per-topic mute/snooze + `override=dnd` tag for emergency-pierce. No source-class policy table; the granularity moves to per-topic config which is more flexible. Fleet-wide DND sync (DND on any peer mutes all peers) is the BUS-2.8 lock.
+- [✓] **GF-16.5: Source-class DND policy (DND-pierce rules locked in `ClassPolicy`)** *(retired-in-place 2026-05-27 — session=opus-47-2026-05-27-ship-CF; status flipped from `[~]` to `[✓]` because the `[~] Deferred` status is retired per the 2026-05-19 worklist-legend directive. Original supersede note preserved below.)* *(depends on GF-16.4)* **SUPERSEDED 2026-05-26 by BUS-2.8 + Round 6:** Bus ships a single global DND toggle + per-topic mute/snooze + `override=dnd` tag for emergency-pierce. No source-class policy table; the granularity moves to per-topic config which is more flexible. Fleet-wide DND sync (DND on any peer mutes all peers) is the BUS-2.8 lock.
   **As** an operator with DND enabled,
   **I want** infrastructure-critical alerts to pierce DND while sync-status churn stays silent,
   **so that** DND means "don't bother me with non-essentials" rather than "go dark on production-down."
@@ -1625,7 +1625,7 @@ call-end lifecycle, never at install or login.
     - [ ] Pure-fn `should_emit_origin_toast(file_origin: &str, self_node_id: &str) -> bool` exported + unit-tested.
     - [ ] Bench: pair phone to peer A, push file → peer A fires "new file from <phone>" toast; peers B + C silent; `getfattr` on B + C shows the xattr.
 
-- [~] **GF-16.7: Decommission + replica-count-change notifications** *(depends on GF-2.2.b for signal emission)* **SUPERSEDED 2026-05-26 by BUS topic `mesh/peers`:** peer up/down + decommission events publish to `mesh/peers` (one of the 12 curated default topics seeded on first run per BUS-1.6). Subscribers get peer-state changes via Bus directly; no special notification path needed.
+- [✓] **GF-16.7: Decommission + replica-count-change notifications** *(retired-in-place 2026-05-27 — session=opus-47-2026-05-27-ship-CF; status flipped from `[~]` to `[✓]` because the `[~] Deferred` status is retired per the 2026-05-19 worklist-legend directive. Original supersede note preserved below.)* *(depends on GF-2.2.b for signal emission)* **SUPERSEDED 2026-05-26 by BUS topic `mesh/peers`:** peer up/down + decommission events publish to `mesh/peers` (one of the 12 curated default topics seeded on first run per BUS-1.6). Subscribers get peer-state changes via Bus directly; no special notification path needed.
   **As** an operator on peer C after the admin revokes peer-laptop2's CA,
   **I want** a toast saying "peer-laptop2 left the mesh — replica count now 3,"
   **so that** I know fault-tolerance shifted without checking Workbench.
@@ -1636,7 +1636,7 @@ call-end lifecycle, never at install or login.
     - [ ] DND policy (GF-16.5): `gluster.peer` events are `Never` pierce — they're informational.
     - [ ] Bench: 3-peer fleet → CA-revoke peer C from peer A → peers A and B receive the "left" toast within 10 s; `Gluster.Status::Status()` reflects the new replica count.
 
-- [~] **GF-16.8: De-dup Netdata `gluster_split_brain` vs gluster_worker `ConflictDetected`** *(decision lock; depends on GF-16.4)* **SUPERSEDED 2026-05-26 by BUS topic routing:** both Netdata (via the mon_aggregator dual-write in BUS-4.3) and gluster_worker publish to the same Bus topic (`gluster/conflict` or similar). Bus delivers each unique ULID once per subscriber; dedup is built into the Bus broker model, no special de-dup code path needed.
+- [✓] **GF-16.8: De-dup Netdata `gluster_split_brain` vs gluster_worker `ConflictDetected`** *(retired-in-place 2026-05-27 — session=opus-47-2026-05-27-ship-CF; status flipped from `[~]` to `[✓]` because the `[~] Deferred` status is retired per the 2026-05-19 worklist-legend directive. Original supersede note preserved below.)* *(decision lock; depends on GF-16.4)* **SUPERSEDED 2026-05-26 by BUS topic routing:** both Netdata (via the mon_aggregator dual-write in BUS-4.3) and gluster_worker publish to the same Bus topic (`gluster/conflict` or similar). Bus delivers each unique ULID once per subscriber; dedup is built into the Bus broker model, no special de-dup code path needed.
   **As** an operator,
   **I want** one canonical source of conflict notifications,
   **so that** I don't get a Netdata toast AND a gluster_worker toast for the same split-brain event.
