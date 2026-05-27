@@ -399,10 +399,13 @@ fn update(state: &mut PortalFull, msg: Message) -> Task<Message> {
             // Lower-casing happens inside the match helper for
             // case-insensitive comparison; the buffer itself
             // preserves the operator's casing for display.
+            // Portal-17.d.cascade — match walk also includes
+            // currently-visible cascade column members.
             state.hub_typeahead_buffer.push(c);
             state.hub_typeahead_match = find_typeahead_match(
                 &state.hub_typeahead_buffer,
                 &state.user_tags,
+                &state.hub_cascade_stack,
             );
         }
         Message::HubTypeAheadBackspace => {
@@ -410,7 +413,11 @@ fn update(state: &mut PortalFull, msg: Message) -> Task<Message> {
             state.hub_typeahead_match = if state.hub_typeahead_buffer.is_empty() {
                 None
             } else {
-                find_typeahead_match(&state.hub_typeahead_buffer, &state.user_tags)
+                find_typeahead_match(
+                    &state.hub_typeahead_buffer,
+                    &state.user_tags,
+                    &state.hub_cascade_stack,
+                )
             };
         }
         Message::HubCascadeMemberClicked(label) => {
@@ -511,14 +518,23 @@ pub fn cascade_members_for_tag<'a>(
         .map(|t| t.members.as_slice())
 }
 
-/// Portal-17.d — find the first tag whose name starts with the
-/// given prefix (case-insensitive). Searches the locked system
-/// tag list first (in declaration order), then the user tags
-/// (in stored order). Returns `None` when the prefix is empty
-/// or no tag matches.
+/// Portal-17.d — find the first item whose label starts with the
+/// given prefix (case-insensitive). Searches in visible-surface
+/// priority order:
+///   1. System tags (in declaration order)
+///   2. User tags (in stored order)
+///   3. Cascade column members, column-by-column (root-most
+///      first). Each member's rendered label is matched via
+///      `format_cascade_member`.
+/// Returns `None` when the prefix is empty or nothing matches.
+///
+/// The cascade-column search is the Portal-17.d.cascade extension
+/// (2026-05-27); empty `cascade_stack` reduces to the original
+/// root-only behavior.
 fn find_typeahead_match(
     prefix: &str,
     user_tags: &[mackes_mesh_types::Tag],
+    cascade_stack: &[String],
 ) -> Option<String> {
     if prefix.is_empty() {
         return None;
@@ -532,6 +548,19 @@ fn find_typeahead_match(
     for tag in user_tags {
         if tag.name.to_lowercase().starts_with(&needle) {
             return Some(tag.name.clone());
+        }
+    }
+    // Portal-17.d.cascade — walk each visible cascade column's
+    // members in stack order. Each member's rendered label is
+    // the comparison key (e.g. "App: foot" matches `a`).
+    for column_tag_name in cascade_stack {
+        if let Some(members) = cascade_members_for_tag(column_tag_name, user_tags) {
+            for member in members {
+                let label = format_cascade_member(member);
+                if label.to_lowercase().starts_with(&needle) {
+                    return Some(label);
+                }
+            }
         }
     }
     None
@@ -1726,7 +1755,7 @@ mod tests {
             default_layout: None,
             autostart: Vec::new(),
         }];
-        let m = find_typeahead_match("z", &user_tags);
+        let m = find_typeahead_match("z", &user_tags, &[]);
         assert_eq!(m.as_deref(), Some("Zebra"));
     }
 
@@ -1809,6 +1838,61 @@ mod tests {
         }];
         let members = cascade_members_for_tag("Dev", &user_tags).unwrap();
         assert_eq!(members.len(), 2);
+    }
+
+    #[test]
+    fn typeahead_walks_cascade_column_members() {
+        // Portal-17.d.cascade — with a cascade column open, the
+        // type-ahead match walks the column's members after root.
+        // Test fixture: one user tag "Dev" with an App member +
+        // a Workspace member. Cascade stack contains "Dev". Type
+        // 'w' → root has no tag starting with 'w', falls through
+        // to the cascade column, matches "Workspace #2".
+        let user_tags = vec![mackes_mesh_types::Tag {
+            name: "Dev".to_string(),
+            flavor: mackes_mesh_types::TagFlavor::Manual,
+            members: vec![
+                mackes_mesh_types::TagMember::App { app_id: "foot".to_string() },
+                mackes_mesh_types::TagMember::Workspace { num: 2 },
+            ],
+            group_color: None,
+            preferred_output: None,
+            default_layout: None,
+            autostart: Vec::new(),
+        }];
+        let cascade = vec!["Dev".to_string()];
+        let m = find_typeahead_match("w", &user_tags, &cascade);
+        assert_eq!(m.as_deref(), Some("Workspaces"), "root system tag wins");
+        // 'wor' → past 'Workspaces' the root has no match;
+        // cascade-walk surfaces "Workspace #2".
+        let m = find_typeahead_match("wor", &user_tags, &cascade);
+        // Both "Workspaces" (root system tag) and "Workspace #2"
+        // (cascade member) start with "wor" — root wins by
+        // priority order.
+        assert_eq!(m.as_deref(), Some("Workspaces"));
+        // 'app' → matches "App: foot" in cascade (no root tag
+        // starts with "app").
+        let m = find_typeahead_match("app", &user_tags, &cascade);
+        assert_eq!(m.as_deref(), Some("App: foot"));
+    }
+
+    #[test]
+    fn typeahead_cascade_walk_skips_empty_stack() {
+        let user_tags = vec![mackes_mesh_types::Tag {
+            name: "Dev".to_string(),
+            flavor: mackes_mesh_types::TagFlavor::Manual,
+            members: vec![mackes_mesh_types::TagMember::App {
+                app_id: "foot".to_string(),
+            }],
+            group_color: None,
+            preferred_output: None,
+            default_layout: None,
+            autostart: Vec::new(),
+        }];
+        // No cascade open → "App:" prefix has no match anywhere
+        // since no root tag starts with "App:".
+        let m = find_typeahead_match("App:", &user_tags, &[]);
+        assert!(m.is_none());
     }
 
     #[test]
