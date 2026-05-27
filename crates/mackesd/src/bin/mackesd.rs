@@ -424,6 +424,20 @@ enum Cmd {
         #[clap(long, default_value_t = 9)]
         port: u16,
     },
+
+    /// Portal-18.d (v6.0 R12, 2026-05-27) — fire `swaymsg exec <cmd>`
+    /// for every entry in a preset tag's `launch_bundle`. The runtime
+    /// entry point for Portal-18.d until Portal-17 Hub's tag-card
+    /// click handler lands; operators (or Hub callbacks) invoke this
+    /// to launch the bundle.
+    ///
+    /// Prints `launched <N>/<M>` summary; non-zero exit when any
+    /// individual exec fails.
+    PresetLaunch {
+        /// Name of the preset tag to launch. Must exist in
+        /// `<XDG_DATA_HOME>/mde/tags.json` with `TagFlavor::Preset`.
+        tag: String,
+    },
 }
 
 /// VV-1 / VV-1.5 — `mackesd voice <sub>` subcommands.
@@ -738,6 +752,55 @@ fn main() -> anyhow::Result<()> {
             // the live fields.
             let report = mackesd_core::health::HealthReport::empty();
             println!("{}", report.to_json_line()?);
+        }
+        Cmd::PresetLaunch { tag } => {
+            // Portal-18.d (v6.0 R12, 2026-05-27) — preset launch-
+            // bundle expansion. Loads the tag store, finds the
+            // named preset, fires `swaymsg exec <cmd>` for each
+            // entry in `launch_bundle`. Prints a one-line summary;
+            // non-zero exit when any exec fails.
+            let store = mackes_mesh_types::TagStore::load_default()
+                .with_context(|| "loading tag store for preset-launch")?;
+            let Some(tag_entry) = store.find_by_name(&tag) else {
+                eprintln!("error: tag '{tag}' not found in tag store");
+                std::process::exit(1);
+            };
+            let launch_bundle = match &tag_entry.flavor {
+                mackes_mesh_types::TagFlavor::Preset { launch_bundle } => launch_bundle.clone(),
+                other => {
+                    eprintln!(
+                        "error: tag '{tag}' is not a preset (flavor: {:?})",
+                        other
+                    );
+                    std::process::exit(1);
+                }
+            };
+            if launch_bundle.is_empty() {
+                eprintln!("error: tag '{tag}' has an empty launch_bundle");
+                std::process::exit(1);
+            }
+            let total = launch_bundle.len();
+            let mut launched = 0usize;
+            for cmd_str in &launch_bundle {
+                let escaped = cmd_str.replace('\\', "\\\\").replace('"', "\\\"");
+                let swayipc_cmd = format!("exec \"{escaped}\"");
+                let status = std::process::Command::new("swaymsg")
+                    .arg(&swayipc_cmd)
+                    .status();
+                match status {
+                    Ok(s) if s.success() => launched += 1,
+                    Ok(s) => {
+                        eprintln!("warn: swaymsg exit {s} for '{cmd_str}'");
+                    }
+                    Err(e) => {
+                        eprintln!("warn: swaymsg spawn failed for '{cmd_str}': {e}");
+                    }
+                }
+            }
+            println!("launched {launched}/{total} from preset '{tag}'");
+            if launched != total {
+                std::process::exit(1);
+            }
         }
         Cmd::StateRestore { bundle, passphrase_env, recovery_dir } => {
             // GF-9.3 — bundle decode + CA restore + gluster
