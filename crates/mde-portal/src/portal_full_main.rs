@@ -451,6 +451,20 @@ fn update(state: &mut PortalFull, msg: Message) -> Task<Message> {
                         }
                     });
                 }
+                TagMember::File { path } => {
+                    tracing::info!(%path, "portal-full: cascade opens file via xdg-open");
+                    let path = path.clone();
+                    std::thread::spawn(move || {
+                        // xdg-open hands the file to the operator's
+                        // configured default app per XDG MIME defaults.
+                        // Fire-and-forget; failure logs.
+                        if let Err(e) =
+                            std::process::Command::new("xdg-open").arg(&path).spawn()
+                        {
+                            tracing::warn!(%path, error = %e, "xdg-open spawn failed");
+                        }
+                    });
+                }
                 _ => {
                     tracing::info!(?member, "portal-full: cascade member clicked (no target surface yet)");
                 }
@@ -1948,6 +1962,22 @@ mod tests {
             &mut state,
             Message::HubCascadeMemberClicked(mackes_mesh_types::TagMember::Contact {
                 ulid: "01TESTULIDXYZ".to_string(),
+            }),
+        );
+        assert!(state.hub_cascade_stack.is_empty());
+    }
+
+    #[test]
+    fn cascade_member_file_variant_clears_stack() {
+        // File variant fires xdg-open in a detached thread.
+        // The cascade clears regardless of whether xdg-open
+        // succeeds (fire-and-forget pattern).
+        let mut state = PortalFull::default();
+        state.hub_cascade_stack.push("Documents".to_string());
+        let _ = update(
+            &mut state,
+            Message::HubCascadeMemberClicked(mackes_mesh_types::TagMember::File {
+                path: "/nonexistent/path/for/cascade/test.txt".to_string(),
             }),
         );
         assert!(state.hub_cascade_stack.is_empty());
