@@ -2935,6 +2935,19 @@ fn run_serve(
         ));
         worker_names.lock().expect("worker_names mutex").push("ansible-pull".into());
 
+        // Portal-52.a (v6.0 R12-Q13) — sway session-restore
+        // worker (workspace-structure half). 5s snapshot of
+        // workspaces + outputs + layouts to
+        // <XDG_DATA_HOME>/mde/session.json; first-run-after-start
+        // restore replays the structure via swayipc. Window-
+        // placeholder swallows ship as Portal-52.b once
+        // append_layout reference is locked.
+        sup.spawn(Spawn::new(
+            mackesd_core::workers::session_persist::SessionPersistWorker::new(),
+            RestartPolicy::OnFailure,
+        ));
+        worker_names.lock().expect("worker_names mutex").push("session_persist".into());
+
         // The reconcile worker runs on its own OS thread (kept on
         // std::thread so its sync rusqlite calls don't block the
         // tokio scheduler). Still surfaced via Shell.Workers so

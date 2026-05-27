@@ -226,6 +226,12 @@ pub mod border_tinter;
 // tree + Dock-segment channels (2 + 3) ship as Portal-57.b once
 // their UI prerequisites land.
 pub mod urgency_router;
+// Portal-52.a (v6.0 R12-Q13, 2026-05-26) — sway session-restore
+// worker (workspace-structure half). 5s snapshot of workspaces +
+// outputs + layouts to <XDG_DATA_HOME>/mde/session.json; first-
+// run-after-start restore replays the structure via swayipc.
+// Window-placeholder swallows ship as Portal-52.b.
+pub mod session_persist;
 
 /// Every worker registered with the supervisor implements this
 /// trait. The trait is `async_trait` because the supervisor stores
