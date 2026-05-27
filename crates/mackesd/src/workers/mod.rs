@@ -237,6 +237,12 @@ pub mod urgency_router;
 // run-after-start restore replays the structure via swayipc.
 // Window-placeholder swallows ship as Portal-52.b.
 pub mod session_persist;
+// Portal-53.a (v6.0 R12-Q14, 2026-05-27) — window-rules subsystem
+// backend. Reads `~/.config/mde/window-rules.toml`, applies each
+// rule via swayipc `for_window` registrations on startup +
+// mtime-poll-detected TOML changes. Hub right-click modal +
+// Control panel CRUD UIs ship as Portal-53.b/.c.
+pub mod window_rules;
 
 /// Every worker registered with the supervisor implements this
 /// trait. The trait is `async_trait` because the supervisor stores

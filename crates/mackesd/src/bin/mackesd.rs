@@ -2967,6 +2967,19 @@ fn run_serve(
         ));
         worker_names.lock().expect("worker_names mutex").push("session_persist".into());
 
+        // Portal-53.a (v6.0 R12-Q14) — window-rules subsystem
+        // backend. Reads `~/.config/mde/window-rules.toml` on
+        // startup, applies each rule via swayipc `for_window`
+        // registrations. 5 s mtime-poll watches the file for
+        // operator edits + re-applies on change. Hub right-click
+        // modal + Control panel CRUD UIs ship as Portal-53.b
+        // + Portal-53.c once Portal-17 / Portal-20 are ready.
+        sup.spawn(Spawn::new(
+            mackesd_core::workers::window_rules::WindowRulesWorker::new(),
+            RestartPolicy::OnFailure,
+        ));
+        worker_names.lock().expect("worker_names mutex").push("window_rules".into());
+
         // The reconcile worker runs on its own OS thread (kept on
         // std::thread so its sync rusqlite calls don't block the
         // tokio scheduler). Still surfaced via Shell.Workers so
