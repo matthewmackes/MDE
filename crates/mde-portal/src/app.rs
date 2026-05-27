@@ -1287,6 +1287,57 @@ fn mini_tree_visible_workspaces(workspaces: &[WorkspaceInfo]) -> impl Iterator<I
         .filter(|w| w.num >= 0 && w.num != PARKED_WORKSPACE_NUM)
 }
 
+/// Portal-49 (R12-Q9): pure helper — return the first taxonomy mark
+/// from a list. Operator marks that don't match the Portal-48
+/// taxonomy are skipped so the pill only renders for auto-marks.
+/// Returns `None` when no taxonomy mark is present.
+fn first_taxonomy_mark(marks: &[String]) -> Option<&str> {
+    marks.iter().find_map(|m| match m.as_str() {
+        "editor" | "web" | "shell" | "mail" | "chat" => Some(m.as_str()),
+        _ => None,
+    })
+}
+
+/// Portal-49 (R12-Q9): pure helper — convert a taxonomy mark name
+/// to its pill color. Unknown marks return `None` (no pill rendered).
+/// Color values lifted verbatim from the R12-Q9 design lock; the
+/// pill stays opaque so it reads cleanly on every Dock background.
+fn mark_pill_color(mark: &str) -> Option<Color> {
+    match mark {
+        // editor=#42be65 — Carbon green 40
+        "editor" => Some(Color { r: 0.259, g: 0.745, b: 0.396, a: 1.0 }),
+        // web=#33b1ff — Carbon blue 40
+        "web" => Some(Color { r: 0.200, g: 0.694, b: 1.000, a: 1.0 }),
+        // shell=#8d8d8d — Carbon grey 50
+        "shell" => Some(Color { r: 0.553, g: 0.553, b: 0.553, a: 1.0 }),
+        // mail=#ff8389 — Carbon red 30
+        "mail" => Some(Color { r: 1.000, g: 0.514, b: 0.537, a: 1.0 }),
+        // chat=#be95ff — Carbon purple 30
+        "chat" => Some(Color { r: 0.745, g: 0.584, b: 1.000, a: 1.0 }),
+        _ => None,
+    }
+}
+
+/// Portal-49 (R12-Q9): render the 8 px mark pill for a running-zone
+/// card. Returns `None` if the window has no taxonomy mark. The pill
+/// is a square 8×8 px (rounded to a full-radius circle) so it reads
+/// at Dock-scale without competing with the label or WM micro-button
+/// cluster.
+fn mark_pill_element<'a>(color: Color) -> Element<'a, Message> {
+    container(iced::widget::Space::new(0.0, 0.0))
+        .style(move |_theme: &Theme| iced::widget::container::Style {
+            background: Some(iced::Background::Color(color)),
+            border: iced::Border {
+                radius: iced::border::Radius::from(4.0),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .width(Length::Fixed(8.0))
+        .height(Length::Fixed(8.0))
+        .into()
+}
+
 fn build_running_zone<'a>(app: &DockApp, fg: Color) -> Element<'a, Message> {
     use std::collections::BTreeMap;
     let mut groups: BTreeMap<String, Vec<&WindowInfo>> = BTreeMap::new();
@@ -1310,11 +1361,19 @@ fn build_running_zone<'a>(app: &DockApp, fg: Color) -> Element<'a, Message> {
             app.hovered_running_group.as_deref() == Some(label_key.as_str());
 
         // Best window to focus on click: the focused one or the first.
-        let target_id = group
+        let target_window: &&WindowInfo = group
             .iter()
             .find(|w| w.focused)
-            .unwrap_or(&group[0])
-            .con_id;
+            .unwrap_or(&&group[0]);
+        let target_id = target_window.con_id;
+
+        // Portal-49 (R12-Q9): pull the taxonomy mark from the
+        // target window. Operator marks outside the taxonomy are
+        // skipped via `first_taxonomy_mark` so the pill only
+        // renders for Portal-48 auto-marks.
+        let mark_pill: Option<Element<'a, Message>> = first_taxonomy_mark(&target_window.marks)
+            .and_then(mark_pill_color)
+            .map(mark_pill_element);
 
         // Workspace numbers in this group (for multi-WS badge).
         let mut ws_nums: Vec<i32> = group.iter().map(|w| w.workspace_num).collect();
@@ -1361,6 +1420,15 @@ fn build_running_zone<'a>(app: &DockApp, fg: Color) -> Element<'a, Message> {
             label_parts.push(
                 text("·").size(8.0).color(Color { a: 0.5, ..text_color }).into(),
             );
+        }
+
+        // Portal-49 (R12-Q9): inline taxonomy-mark pill (8 × 8 px,
+        // rounded). Appears immediately after the multi-WS dot
+        // indicator so the visual order is `<label> <count?> <ws-dot?>
+        // <mark-pill?>`. The pill only renders for windows the
+        // Portal-48 auto-mark daemon has classified.
+        if let Some(pill) = mark_pill {
+            label_parts.push(pill);
         }
 
         // Label section: clickable for focus; left padding carries the bg indent.
@@ -1965,6 +2033,7 @@ mod tests {
             title: Some(format!("{app_id} window")),
             workspace_num: ws_num,
             focused,
+            marks: Vec::new(),
         }
     }
 
@@ -2444,6 +2513,46 @@ mod tests {
             Message::ModeChanged(crate::workspace::mode_change_to_message("Dev")),
         );
         assert_eq!(app.current_sway_mode.as_deref(), Some("Dev"));
+    }
+
+    // ── Portal-49 (R12-Q9) mark-pill tests ────────────────────────────────
+
+    /// All five taxonomies map to a renderable pill color.
+    #[test]
+    fn mark_pill_color_covers_all_taxonomies() {
+        for mark in ["editor", "web", "shell", "mail", "chat"] {
+            assert!(
+                mark_pill_color(mark).is_some(),
+                "missing pill color for {mark}"
+            );
+        }
+    }
+
+    /// Unknown marks return None — no pill rendered.
+    #[test]
+    fn mark_pill_color_unknown_returns_none() {
+        assert!(mark_pill_color("unknown").is_none());
+        assert!(mark_pill_color("").is_none());
+        assert!(mark_pill_color("WEB").is_none()); // case-sensitive
+    }
+
+    /// `first_taxonomy_mark` returns the FIRST taxonomy mark in the list.
+    /// Operator marks outside the taxonomy are skipped so the pill only
+    /// shows for Portal-48 auto-marks.
+    #[test]
+    fn first_taxonomy_mark_picks_first_match() {
+        // Auto-marked editor → pill renders editor.
+        let marks = vec!["editor".to_string()];
+        assert_eq!(first_taxonomy_mark(&marks), Some("editor"));
+        // Operator-marked "work" + auto-marked "editor" → pill renders editor.
+        let marks = vec!["work".to_string(), "editor".to_string()];
+        assert_eq!(first_taxonomy_mark(&marks), Some("editor"));
+        // Operator-only marks → no pill.
+        let marks = vec!["work".to_string(), "side-project".to_string()];
+        assert_eq!(first_taxonomy_mark(&marks), None);
+        // Empty marks → no pill.
+        let marks: Vec<String> = Vec::new();
+        assert_eq!(first_taxonomy_mark(&marks), None);
     }
 
     /// `mode_change_to_message` pure-function contract: `default` → None

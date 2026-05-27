@@ -191,6 +191,13 @@ pub mod bus_supervisor;
 // the focused workspace to `<num>: <app_id>` whenever the focused
 // window changes. Operator-set names are preserved.
 pub mod workspace_namer;
+// Portal-48 (v6.0 R12-Q8 + R12-Q10, 2026-05-26) — auto-mark daemon.
+// Subscribes to sway window::new events; classifies app_id against a
+// 25-entry compile-time taxonomy table (editor/web/shell/mail/chat);
+// fires `mark --add <category>` when matched + no existing marks.
+// The cross-peer zbus surface from the original Portal-48 spec is
+// deferred to Portal-48.b per Q20+Q96 Bus-migration lock.
+pub mod auto_mark;
 
 /// Every worker registered with the supervisor implements this
 /// trait. The trait is `async_trait` because the supervisor stores

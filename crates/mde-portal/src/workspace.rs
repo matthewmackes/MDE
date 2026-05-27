@@ -43,6 +43,9 @@ pub struct WindowInfo {
     pub workspace_num: i32,
     /// This window has keyboard focus.
     pub focused: bool,
+    /// Portal-49 (R12-Q9): marks assigned to this window by sway.
+    /// `mark --add <name>` ops land here in insertion order.
+    pub marks: Vec<String>,
 }
 
 impl WindowInfo {
@@ -82,6 +85,7 @@ fn collect_windows(node: &swayipc_async::Node, ws_num: i32) -> Vec<WindowInfo> {
             title: node.name.clone(),
             workspace_num: current_ws_num,
             focused: node.focused,
+            marks: node.marks.clone(),
         });
     }
     for child in &node.nodes {
@@ -601,6 +605,7 @@ mod tests {
             title: Some(format!("{app_id} window")),
             workspace_num: 1,
             focused,
+            marks: Vec::new(),
         }
     }
 
@@ -626,6 +631,7 @@ mod tests {
             title: Some("Doc".to_string()),
             workspace_num: 1,
             focused: false,
+            marks: Vec::new(),
         };
         assert_eq!(w.display_label(), "Doc", "should use title when no app_id");
     }
@@ -638,6 +644,7 @@ mod tests {
             title: None,
             workspace_num: 1,
             focused: false,
+            marks: Vec::new(),
         };
         assert_eq!(w.display_label(), "?");
     }

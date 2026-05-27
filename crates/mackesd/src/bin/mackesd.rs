@@ -2849,6 +2849,19 @@ fn run_serve(
         ));
         worker_names.lock().expect("worker_names mutex").push("workspace_namer".into());
 
+        // Portal-48 (v6.0 R12-Q8 + R12-Q10) — auto-mark daemon.
+        // Subscribes to sway window::new events; classifies app_id
+        // against a 25-entry taxonomy table (editor / web / shell /
+        // mail / chat); fires `[con_id=N] mark --add <category>` for
+        // matched windows that don't already carry an operator
+        // mark. Marks are sway-session-ephemeral; no GFS sync.
+        // Drives Portal-49's running-zone mark-pill render.
+        sup.spawn(Spawn::new(
+            mackesd_core::workers::auto_mark::AutoMarkWorker::new(),
+            RestartPolicy::OnFailure,
+        ));
+        worker_names.lock().expect("worker_names mutex").push("auto_mark".into());
+
         // The reconcile worker runs on its own OS thread (kept on
         // std::thread so its sync rusqlite calls don't block the
         // tokio scheduler). Still surfaced via Shell.Workers so
