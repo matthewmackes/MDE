@@ -58,6 +58,11 @@ pub struct PublishArgs {
     /// IP publish file + `http://<ip>:8443`).
     #[arg(long)]
     pub broker_url: Option<String>,
+    /// Emit the persisted message as a JSON object instead of the
+    /// bare ULID. Suitable for piping to `jq` or other JSON-aware
+    /// tooling that needs full envelope visibility.
+    #[arg(long, default_value_t = false)]
+    pub json: bool,
 }
 
 /// Parse a priority string into the [`Priority`] enum.
@@ -147,7 +152,13 @@ pub async fn run(args: PublishArgs) -> Result<()> {
         .write(&args.topic, priority, args.title.as_deref(), Some(&body))
         .with_context(|| format!("persist publish {} → {}", args.topic, args.topic))?;
 
-    println!("{}", stored.ulid);
+    if args.json {
+        let s = serde_json::to_string(&stored)
+            .with_context(|| "serialize stored message")?;
+        println!("{s}");
+    } else {
+        println!("{}", stored.ulid);
+    }
 
     if args.no_broker {
         return Ok(());
@@ -248,6 +259,7 @@ mod tests {
             no_broker: true,
             bus_root: Some(tmp.path().to_path_buf()),
             broker_url: None,
+            json: false,
         };
         run(args).await.unwrap();
         // Verify Persist stored the message.
