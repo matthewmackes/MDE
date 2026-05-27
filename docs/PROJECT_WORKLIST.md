@@ -672,6 +672,33 @@ call-end lifecycle, never at install or login.
     - [ ] New crate `crates/mde-applets/hyprland-cluster/` with workspace + window enumeration via hyprland-rs
     - [ ] Panel/Hub render workspace list correctly under Hyprland
 
+- [ ] **HYP-8.5: v6.5 — Tag manifest schema + seed defaults (foundation for HYP-9..14, HYP-22)**
+  **As** the platform,
+  **I want** a single source-of-truth schema for tag manifests at `~/.config/mde/tags/<name>.toml` + a curated initial seed (voip / dev / hub / web / media / chat),
+  **so that** every tag-consumer (HYP-9 / HYP-10 / HYP-11 / HYP-12 / HYP-14 / HYP-22) reads the same file format and operators get a working setup on first login without empty-config errors. Pre-existing gap surfaced by the 2026-05-27 simplification re-lock audit — every tag-consumer references this file but no task creates it.
+  **Acceptance**:
+    - [ ] `docs/help/tags.md` documents the schema (fields: `output`, `apps`, `layout`, `marks_default`, `border_color`, `autostart`)
+    - [ ] `crates/mackesd/src/config/tag_manifest.rs` defines `TagManifest` (serde TOML deserialize) + `load_all(dir: &Path) -> Vec<TagManifest>`
+    - [ ] Birthright wizard step seeds 6 default tag manifests under `~/.config/mde/tags/` on first login (voip / dev / hub / web / media / chat), each with curated `apps` + a Material 3 `border_color` (voip indigo, dev green, hub charcoal, web blue, media orange, chat purple)
+    - [ ] `mackesd` startup loads `~/.config/mde/tags/*.toml` via `TagManifest::load_all`; publishes `event/config/tags/loaded` on Bus per tag (payload: name + field count)
+    - [ ] Missing/malformed manifests fail-open with a warning; supervisor never crashes on bad TOML
+    - [ ] **Amends HYP-22**: the per-tag `border_color` field replaces the separate `~/.config/mde/tag-colors.toml`; HYP-22 reads `border_color` from the tag manifest directly. The separate tag-colors file path is retired before HYP-22 ships.
+    - [ ] `~/.config/mde/tags/` GFS-replicated per [[project_v5_0_0_gluster_mesh]] (XDG dirs ARE the mesh; same peer sees the same tags)
+    - [ ] Bench: fresh install boots with all 6 default tags loaded; `journalctl -u mde-mackesd` shows 6 `event/config/tags/loaded` Bus publishes; `ls ~/.config/mde/tags/*.toml | wc -l` returns 6
+
+- [ ] **HYP-8.6: v6.5 — mde-config Settings UI for tag manifest editing**
+  **As** an operator editing tag manifests,
+  **I want** a Settings panel that lets me create, edit, delete, and color my tags without leaving MDE Settings,
+  **so that** I never hand-edit `~/.config/mde/tags/<name>.toml` files. Foundation pairs with HYP-8.5 (schema + seed).
+  **Acceptance**:
+    - [ ] `crates/mde-config/src/panels/tags.rs` renders a list of tag manifests + an editor pane
+    - [ ] Each tag editor exposes: name, output (dropdown from `wlr-output-management` enumeration), apps (multi-select from `.desktop` enumeration), layout (dropdown — only `mde` for now), marks_default (text input, comma-delimited), border_color (color picker preselected from the Material 3 palette per [[project_chromeos_classic_visual_lock]]), autostart (toggle)
+    - [ ] Save writes atomic `~/.config/mde/tags/<name>.toml` + publishes `action/config/tags/reload` on Bus
+    - [ ] `mackesd::workers::tag_manifest` subscribes to `action/config/tags/reload`, re-validates, re-publishes `event/config/tags/loaded` per tag
+    - [ ] Existing tag manifests survive Settings restart (read on panel mount; not cleared)
+    - [ ] Delete confirms via modal; rename writes new file + removes old atomically
+    - [ ] Bench: edit voip's border_color via the picker → save → focused VOIP window's border reflects the new color within one frame (validates HYP-22 end-to-end)
+
 - [ ] **HYP-9: v6.5 — `workspace_namer` ports to hyprland-rs (Portal-41 retarget)**
   **As** an operator,
   **I want** new workspaces auto-named from the first window's app_id taxonomy,
@@ -816,16 +843,17 @@ call-end lifecycle, never at install or login.
 
 - [ ] **HYP-22: v6.5 — Per-tag border color via mded `border_colors` worker**
   **As** an operator,
-  **I want** the focused window's border match its tag's color (voip=blue, dev=green, hub=indigo),
+  **I want** the focused window's border match its tag's color (voip indigo, dev green, hub charcoal, etc.),
   **so that** I can read a window's tag from across the room. Retargeted from plugin to mded per the 2026-05-27 simplification re-lock (design doc §10.1).
   **Acceptance**:
     - [ ] `mackesd::workers::border_colors` subscribes to Bus topic `event/marks/<addr>` from `marks_state` (HYP-14)
     - [ ] Subscribes to `hyprctl sockets2` `activewindow` events for active/inactive transitions
-    - [ ] Maps `tag:<name>` marks → border color from `~/.config/mde/tag-colors.toml`
+    - [ ] Maps `tag:<name>` marks → border color by reading the matching tag manifest's `border_color` field (per HYP-8.5 — no separate `tag-colors.toml` file)
     - [ ] On mark or activewindow change, dispatches `hyprctl keyword windowrulev2 = bordercolor 0x<RRGGBB>, address:0x<addr>` per window
     - [ ] Inactive border = tag color desaturated 50%
     - [ ] No accent-per-preset reflection on borders (preset accent shows up in panel/Hub only)
-    - [ ] Bench: tag change reflects in border within one frame (16 ms)
+    - [ ] Subscribes to `event/config/tags/loaded` Bus topic — re-evaluates all open windows' bordercolor when tag manifest changes
+    - [ ] Bench: tag change reflects in border within one frame (16 ms); edit voip's `border_color` in HYP-8.6 Settings → save → open voip windows' border updates without restart
 
 - [ ] **HYP-23: v6.5 — Hyprland default animation curves locked**
   **As** the platform,
