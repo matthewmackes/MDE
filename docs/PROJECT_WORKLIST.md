@@ -559,6 +559,341 @@ call-end lifecycle, never at install or login.
 
 ---
 
+### v6.5 — Hyprland compositor migration (HYP-1..HYP-33, locked 2026-05-27 via 30-Q survey)
+
+> **Authority:** `docs/design/v6.5-hyprland-compositor.md` (30 locks across 3 rounds).
+> **Memory:** `project_v6_5_hyprland.md`.
+> **Lock-lift:** operator-issued 2026-05-27 (recorded in CLAUDE.md §0.16 + lock-window list above).
+> **Adds:** §11 1.0-roadmap item #19 (HYP-* fully shipped).
+> **Supersedes:** v2.0.0 "Wayland-only (sway)" lock; Portal-41..Portal-59 sway-IPC contracts; R12 Q44 keyboard-resize mode; Classic ChromeOS "universal flat" element (Q23 amendment).
+>
+> Hard cut at v6.5 — sway retires same commit Hyprland lands. Operator HW bench gates the v6.5 tag per §0.15; no field rollback path.
+>
+> The `mde-hypr-plugin` C++ plugin (HYP-4 skeleton + HYP-12/14/15/18 features + HYP-21/22 visual locks) is the largest sub-effort; it consolidates 5 compositor-grain mechanics that Portal R12 would otherwise have to fake from layer-shell overlays.
+
+- [ ] **HYP-1: v6.5 — CI build pipeline for Hyprland binaries**
+  **As** the release engineer,
+  **I want** Hyprland built from a pinned upstream tag inside `.github/workflows/release.yml`,
+  **so that** every named MDE cut ships a reproducible Hyprland version owned by our pipeline (no external repo dep on peers).
+  **Acceptance** (each bench-observable):
+    - [ ] `release.yml` checks out Hyprland at pinned tag (e.g. `v0.50.x`) and builds via cmake
+    - [ ] Build artifacts land in `rpmbuild/SOURCES/hyprland-bundle.tar.gz`
+    - [ ] `mde-X.Y.Z.rpm` `Provides: hyprland`, `Provides: hyprctl`, `Provides: hyprland-plugin-api`
+    - [ ] `dnf install mde` succeeds on a clean F44 image with no external repo enabled
+    - [ ] Version bumps documented in CHANGELOG per cut
+
+- [ ] **HYP-2: v6.5 — Cargo dep: add `hyprland` crate to consumer crates**
+  **As** the Rust workspace,
+  **I want** `hyprland = { version = "...", features = ["async-tokio"] }` in `mde-portal`, `mde-panel`, `mde-session`, `mackesd`,
+  **so that** every consumer of compositor IPC builds against the locked client.
+  **Acceptance**:
+    - [ ] 4 `Cargo.toml` files updated with consistent pinned version
+    - [ ] `cargo build --workspace` succeeds
+    - [ ] `cargo deny check` records no new advisory
+
+- [ ] **HYP-3: v6.5 — Delete swayipc-async across the workspace**
+  **As** the maintainer,
+  **I want** every `use swayipc_async` import ported to `hyprland::...`,
+  **so that** the dead sway-IPC path is gone (per §0.12 no stubs).
+  **Acceptance**:
+    - [ ] `swayipc-async` removed from every `Cargo.toml`
+    - [ ] `grep -rl swayipc_async crates/ src/` returns zero hits
+    - [ ] Every previously-sway file in `crates/mackesd/src/workers/` + `crates/mde-portal/src/workspace.rs` + `crates/mde-panel/src/toplevels.rs` + `crates/mde-session/src/session.rs` compiles + functions against Hyprland
+    - [ ] `cargo test --workspace` green
+
+- [ ] **HYP-4: v6.5 — `crates/mde-hypr-plugin/` skeleton with C++ build chain**
+  **As** the platform,
+  **I want** a Cargo crate that wraps a cmake-built C++ plugin via `build.rs`,
+  **so that** the plugin compiles as part of `cargo build --workspace` and lands in the same RPM.
+  **Acceptance**:
+    - [ ] `crates/mde-hypr-plugin/Cargo.toml` + `build.rs` that invokes cmake
+    - [ ] `cpp/` subdir with the Hyprland plugin entry point + headers vendored from Hyprland tag
+    - [ ] Plugin loads on Hyprland startup; `hyprctl plugin list` shows `mde-hypr-plugin`
+    - [ ] Empty plugin body returns 0 from each subsystem stub callable via IPC
+
+- [ ] **HYP-5: v6.5 — hyprland.conf baseline + GFS-replicated user overrides**
+  **As** an operator,
+  **I want** `/etc/mde/hyprland.conf` ship with the RPM and `~/.config/hypr/hyprland.conf` source it,
+  **so that** every peer sees the same baseline and my overrides are GFS-replicated.
+  **Acceptance**:
+    - [ ] `/etc/mde/hyprland.conf` lands in `data/` and the spec file installs it
+    - [ ] Birthright wizard step writes `~/.config/hypr/hyprland.conf` containing `source = /etc/mde/hyprland.conf` + empty override block
+    - [ ] `~/.config/hypr/` is GFS-mesh-replicated per [[project_v5_0_0_gluster_mesh]]
+    - [ ] Per-peer EDID-keyed monitor overlays under `~/.config/mde/peers/<hostname>/hyprland-monitors.conf` (operator-edited; not GFS-replicated)
+    - [ ] `hyprctl reload` after operator edit applies changes
+
+- [ ] **HYP-6: v6.5 — `mde-config` writes hyprland.conf from MDE Settings**
+  **As** an operator using MDE Settings,
+  **I want** my motion / color / monitor / window-rule choices written to hyprland.conf and reloaded,
+  **so that** Settings IS the source of truth (no hand-editing required).
+  **Acceptance**:
+    - [ ] `mde-config` write path generates Hyprland-syntax config block
+    - [ ] Settings changes trigger `hyprctl reload` automatically
+    - [ ] Operator-edited fields in hyprland.conf are preserved (mde-config writes only the managed `# MDE-MANAGED-START`/`END` block)
+
+- [ ] **HYP-7: v6.5 — Motion-vocabulary split: window-level vs intra-surface**
+  **As** the design system maintainer,
+  **I want** Hyprland animate window open/close/move/workspace-switch and Iced animate intra-surface motion,
+  **so that** the 100/120/150/200 ms grid stays consistent across layers.
+  **Acceptance**:
+    - [ ] `data/css/motion-vocabulary.css` unchanged
+    - [ ] Hyprland animation tokens declared per HYP-23 + HYP-24
+    - [ ] Visual diff confirms no double-animation (Hyprland fade-in overlapping Iced fade-in)
+
+- [ ] **HYP-8: v6.5 — Delete `sway-cluster`; create `hyprland-cluster`**
+  **As** the workspace,
+  **I want** `crates/mde-applets/sway-cluster/` retired and `crates/mde-applets/hyprland-cluster/` introduced,
+  **so that** the workspace-enumeration applet matches the locked compositor.
+  **Acceptance**:
+    - [ ] `git rm -r crates/mde-applets/sway-cluster/`
+    - [ ] New crate `crates/mde-applets/hyprland-cluster/` with workspace + window enumeration via hyprland-rs
+    - [ ] Panel/Hub render workspace list correctly under Hyprland
+
+- [ ] **HYP-9: v6.5 — `workspace_namer` ports to hyprland-rs (Portal-41 retarget)**
+  **As** an operator,
+  **I want** new workspaces auto-named from the first window's app_id taxonomy,
+  **so that** breadcrumbs read "voip" / "dev" / "hub" not "3" / "4" / "5".
+  **Acceptance**:
+    - [ ] `mackesd::workers::workspace_namer` subscribes to `openwindow` events via hyprland-rs
+    - [ ] On first window in a numeric workspace, dispatches `renameworkspace <id> <name>` derived from app_id tag map
+    - [ ] Breadcrumb shows the named workspace
+    - [ ] Restart preserves names (via HYP-17 session_persist)
+    - [ ] Retires Portal-41 (cross-reference in HYP-33)
+
+- [ ] **HYP-10: v6.5 — `workspace_router` ports (Portal-42 retarget)**
+  **As** an operator with multi-monitor,
+  **I want** tagged workspaces routed to a specific output on creation,
+  **so that** "voip" always opens on the secondary monitor.
+  **Acceptance**:
+    - [ ] `workspace_router` worker reads `~/.config/mde/tags/<name>.toml`'s `output` field
+    - [ ] On workspace-create event, dispatches `moveworkspacetomonitor <ws> <output>`
+    - [ ] Survives mid-session monitor hot-plug (re-route on monitor-add event)
+    - [ ] Retires Portal-42
+
+- [ ] **HYP-11: v6.5 — `tag_autostart` ports (Portal-43 retarget)**
+  **As** an operator,
+  **I want** the apps for a tag launch on first workspace activation,
+  **so that** "voip" workspace opens with `mde-voice-hud` already running.
+  **Acceptance**:
+    - [ ] `tag_autostart` worker subscribes to workspace-create
+    - [ ] Reads tag manifest `~/.config/mde/tags/<name>.toml`'s `apps:` list
+    - [ ] Dispatches `exec [workspace name:<name>] <command>` per app
+    - [ ] Doesn't re-launch if app already running in that workspace
+    - [ ] Retires Portal-43
+
+- [ ] **HYP-12: v6.5 — Custom MDE layout in `mde-hypr-plugin` (Portal-44 retarget)**
+  **As** the platform,
+  **I want** Hyprland's `IHyprLayout` interface implemented as the MDE layout,
+  **so that** tag-driven tiling behaves exactly as R12 specified (golden-ratio master split, breadcrumb-aware focus).
+  **Acceptance**:
+    - [ ] Plugin registers `mde` layout in `setlayout` registry
+    - [ ] hyprland.conf default: `general { layout = mde }`
+    - [ ] tag_layout worker dispatches `setlayout mde` per tag manifest
+    - [ ] Bench: workspace with 4 windows tiles per the locked golden-ratio master pattern
+    - [ ] Retires Portal-44
+
+- [ ] **HYP-13: v6.5 — Mouse-grab resize wiring (Portal-45 retarget, amends R12 Q44)**
+  **As** an operator,
+  **I want** Mod+Right-drag to resize the focused window,
+  **so that** resizing is fast without entering a keyboard mode.
+  **Acceptance**:
+    - [ ] hyprland.conf: `bindm = SUPER, mouse:273, resizewindow`
+    - [ ] No `submap = resize` block in hyprland.conf (keyboard resize mode retired)
+    - [ ] Portal breadcrumb's mode segment never shows "resize"
+    - [ ] **Amends** [[project_v6_0_mde_portal]] R12 Q44 (mode segment use case shrinks)
+
+- [ ] **HYP-14: v6.5 — Plugin extends window state with marks (Portal-46 retarget)**
+  **As** the platform,
+  **I want** each window to carry a `Vec<String>` of marks accessible via plugin IPC,
+  **so that** R12 mark semantics survive on a compositor that has no native mark primitive.
+  **Acceptance**:
+    - [ ] Plugin stores marks per `CWindow*` address in a hash map
+    - [ ] Plugin IPC exposes `mde:mark add <addr> <name>`, `mde:mark remove <addr> <name>`, `mde:mark list <addr>`, `mde:mark match <pattern>`
+    - [ ] Marks persist across plugin reload (via session_persist seeding)
+    - [ ] Retires Portal-46
+
+- [ ] **HYP-15: v6.5 — Plugin renders mark pills on decoration (Portal-47 retarget)**
+  **As** an operator,
+  **I want** each window's marks rendered as colored pills on its title bar,
+  **so that** I can see at a glance which tags + apps a window belongs to.
+  **Acceptance**:
+    - [ ] Plugin renders pills inside `renderWindow` callback
+    - [ ] Pill style (font, padding, radius, colors) read from `~/.config/mde/pill-style.toml` written by mde-config
+    - [ ] Pills update on mark add/remove without window recreate
+    - [ ] Retires Portal-47
+
+- [ ] **HYP-16: v6.5 — Portal generates `hyprctl --batch` per template (Portal-48 retarget)**
+  **As** an operator opening a Card-template,
+  **I want** Portal serialize the template as one atomic `hyprctl --batch` dispatch,
+  **so that** the layout applies in a single compositor pass with no intermediate flicker.
+  **Acceptance**:
+    - [ ] `mde-portal::template` module emits `--batch` string from Card schema
+    - [ ] Template apply uses one IPC call (verified via plugin event log)
+    - [ ] Bench: a 3-window VOIP template applies in <50ms
+    - [ ] Retires Portal-48
+
+- [ ] **HYP-17: v6.5 — `session_persist` ports to hyprland-rs (Portal-49 retarget)**
+  **As** an operator,
+  **I want** my last session's layout (workspaces + window class/title/geometry) saved every 60s and seeded as `windowrulev2` on next login,
+  **so that** re-launching apps lands them where they were.
+  **Acceptance**:
+    - [ ] `mackesd::workers::session_persist` subscribes to window/workspace events
+    - [ ] Every 60s + on shutdown, writes `~/.local/share/mde/session/<peer>.toml`
+    - [ ] Snapshot file is GFS-replicated (under `~/.local/share/mde/` which mounts to mesh-home)
+    - [ ] On login, `mde-session` reads snapshot + injects matching `windowrulev2 = position, class:..., title:...` entries into hyprland.conf's MDE-managed block before Hyprland starts
+    - [ ] Apps are NOT auto-launched (Q19 lock: "layouts no apps")
+    - [ ] Retires Portal-49
+
+- [ ] **HYP-18: v6.5 — Plugin owns window rules (Portal-50 retarget)**
+  **As** the platform,
+  **I want** the plugin read `~/.config/mde/window-rules.toml` and apply matching rules on `openwindow` events,
+  **so that** MDE-specific rules (auto-mark, auto-tag, focus-policy) live in code rather than scattered windowrulev2 entries.
+  **Acceptance**:
+    - [ ] Plugin parses TOML rule file at startup + on file-change inotify
+    - [ ] Each rule: match-criteria (class, title, app_id) + actions (add-mark, move-to-workspace, set-fullscreenstate, set-bordercolor)
+    - [ ] Plugin IPC exposes `mde:rules reload`
+    - [ ] Bench: a 10-rule file applies on 50 windows in <100ms
+    - [ ] Retires Portal-50
+
+- [ ] **HYP-19: v6.5 — 4 px window-frame corners**
+  **As** the design system,
+  **I want** all window frames rounded at 4 px,
+  **so that** the `--radius-sm` token applies uniformly across compositor + intra-surface.
+  **Acceptance**:
+    - [ ] hyprland.conf: `decoration { rounding = 4 }`
+    - [ ] Screenshot diff confirms 4 px corners on every window class
+
+- [ ] **HYP-20: v6.5 — Blur on Portal layer-shell only**
+  **As** the design system,
+  **I want** blur enabled only on Portal layer-shell surfaces (Hub, breadcrumb overlay, notifications),
+  **so that** windows + wallpaper stay sharp and GPU cost stays bounded.
+  **Acceptance**:
+    - [ ] hyprland.conf: `layerrule = blur, ^(mde-portal-.*)$`
+    - [ ] hyprland.conf: `decoration { blur { enabled = false } }` (windows default off)
+    - [ ] Screenshot diff: Hub has blurred backdrop; Firefox window doesn't
+
+- [ ] **HYP-21: v6.5 — Per-elevation M3 shadows (amends Classic ChromeOS flat lock)**
+  **As** the design system,
+  **I want** window shadows scale with elevation marks (elev-1 = ambient, elev-2 = raised, elev-3 = floating),
+  **so that** the visual hierarchy reads correctly without breaking the Classic ChromeOS tokens.
+  **Acceptance**:
+    - [ ] Plugin reads `elevation:N` from each window's marks
+    - [ ] Plugin sets per-window `decoration { drop_shadow }` parameters matching M3 elevation tokens
+    - [ ] `docs/AI_GOVERNANCE.md` §14 supersession table lists "Classic ChromeOS universal-flat → Q23 per-elevation"
+
+- [ ] **HYP-22: v6.5 — Per-tag border color via plugin `bordercolor` rule**
+  **As** an operator,
+  **I want** the focused window's border match its tag's color (voip=blue, dev=green, hub=indigo),
+  **so that** I can read a window's tag from across the room.
+  **Acceptance**:
+    - [ ] Plugin maps `tag:<name>` marks → border color from `~/.config/mde/tag-colors.toml`
+    - [ ] Plugin applies `bordercolor` windowrule on mark add/remove + workspace switch
+    - [ ] Inactive border = tag color desaturated 50%
+    - [ ] No accent-per-preset reflection on borders (preset accent shows up in panel/Hub only)
+
+- [ ] **HYP-23: v6.5 — Hyprland default animation curves locked**
+  **As** the platform,
+  **I want** hyprland.conf use `linear` / `smoothstep` defaults rather than custom M3 beziers,
+  **so that** compositor animations stay simple + Iced retains the M3 curves intra-surface.
+  **Acceptance**:
+    - [ ] hyprland.conf `animations` block uses only built-in curves
+    - [ ] No `bezier = m3-...` definitions in the MDE-managed block
+
+- [ ] **HYP-24: v6.5 — Animation durations tuned to motion-vocabulary grid**
+  **As** the design system,
+  **I want** Hyprland animation durations match the 100/120/150/200 ms grid,
+  **so that** compositor motion feels at the same tempo as Iced motion.
+  **Acceptance**:
+    - [ ] hyprland.conf `animations`: `windows = 1, 12, default, popin`; `workspaces = 1, 15, default, slide`; `fade = 1, 10, default`; `border = 1, 10, default`; `layers = 1, 10, default, fade` (values in 10ms units)
+    - [ ] Visual diff confirms no animation longer than 200ms
+
+- [ ] **HYP-25: v6.5 — VOIP windowrulev2 fullscreenstate 2**
+  **As** an operator on a video call,
+  **I want** the call window auto-promote to real-fullscreen on workspace activation,
+  **so that** the call is the visual focus with no panel/notifications drawing over it.
+  **Acceptance**:
+    - [ ] hyprland.conf: `windowrulev2 = fullscreenstate 2, class:^(org.mde.voice.*)$`
+    - [ ] BUS notifications during call route to phone (priority escalation per [[project_v6_x_mackes_bus]] §5)
+    - [ ] Mic mute / hangup gestures from `mde-voice-hud` reach the fullscreen call
+
+- [ ] **HYP-26: v6.5 — Tearing disabled by default**
+  **As** the platform,
+  **I want** `general { allow_tearing = false }` globally and per-game-class opt-in via windowrulev2,
+  **so that** typical desktop visuals stay artifact-free.
+  **Acceptance**:
+    - [ ] hyprland.conf `general` has `allow_tearing = false`
+    - [ ] Operator override path documented in `docs/help/wayland.md`
+
+- [ ] **HYP-27: v6.5 — VRR always-on (mode 1)**
+  **As** an operator with a FreeSync monitor,
+  **I want** Hyprland use variable refresh rate everywhere,
+  **so that** scrolling + video + games feel smoother on capable monitors.
+  **Acceptance**:
+    - [ ] hyprland.conf `misc { vrr = 1 }`
+    - [ ] Per-monitor opt-out path via mde-config Settings (writes `monitor = ..., highrr, vrr:0` override)
+
+- [ ] **HYP-28: v6.5 — `mde-installer` swaps sway dep for Hyprland**
+  **As** the installer,
+  **I want** sway dropped from `mde-installer`'s package manifest and Hyprland's bundled binaries seeded into the installed image,
+  **so that** a fresh install boots into Hyprland.
+  **Acceptance**:
+    - [ ] `crates/mde-installer/` no longer references sway
+    - [ ] Installer ISO ships Hyprland bundled inside the `mde` RPM (HYP-1)
+    - [ ] First-boot wizard validates Hyprland reaches initial state in <2s
+
+- [ ] **HYP-29: v6.5 — `mde-greeter` session entry "MDE Hyprland"**
+  **As** the greeter,
+  **I want** the session picker show "MDE Hyprland" replacing "MDE Sway",
+  **so that** login lands on the locked compositor.
+  **Acceptance**:
+    - [ ] `/usr/share/wayland-sessions/mde-hyprland.desktop` ships with the RPM
+    - [ ] `mde-sway.desktop` removed
+    - [ ] regreet renders the entry with the MDE icon
+
+- [ ] **HYP-30: v6.5 — Docs updates: wayland + keyboard-shortcuts**
+  **As** a new operator,
+  **I want** `docs/help/wayland.md` + `docs/help/keyboard-shortcuts.md` reflect Hyprland's keybinds + dispatchers,
+  **so that** the help pages match the running compositor.
+  **Acceptance**:
+    - [ ] Every sway/swaymsg reference replaced with Hyprland/hyprctl equivalent
+    - [ ] Mod+r resize mode reference removed (per HYP-13)
+    - [ ] hyprctl command examples for common operator tasks (rename ws, move window, list rules)
+
+- [ ] **HYP-31: v6.5 — HW bench item (per-bullet per Q13 25-Q)**
+  **As** an operator before cutting v6.5,
+  **I want** a per-peer Hyprland bench task tracking each acceptance bullet,
+  **so that** §0.15 cut gate verifies bench-green before tagging.
+  **Acceptance** (each operator-typed `[✓]`):
+    - [ ] Hyprland reaches initial state in <2s on Lenovo X1 G10
+    - [ ] Hyprland reaches initial state in <2s on secondary peer
+    - [ ] `mde-hypr-plugin` loads cleanly + all 5 subsystems respond to IPC ping
+    - [ ] All 7 mackesd workers run without panic in a 30-min stress session
+    - [ ] VOIP test call completes with fullscreenstate 2 promotion + hangup gesture
+    - [ ] GFS-replicated hyprland.conf survives one peer reboot + one peer-add cycle
+    - [ ] Per-tag border colors visible + correct across at least 3 tags (voip, dev, hub)
+    - [ ] No animation regression vs sway baseline (subjective; operator typed)
+    - [ ] Battery drain on Lenovo X1 G10 over 1h idle is within 5% of sway baseline
+
+- [ ] **HYP-32: v6.5 — Voice-and-tone lint allowlist + string sweep**
+  **As** the lint maintainer,
+  **I want** `install-helpers/lint-voice.sh` allowlist updated and every user-visible "sway"/"i3" string ported to "Hyprland",
+  **so that** the gate at CLAUDE.md §0.7 #6 stays green.
+  **Acceptance**:
+    - [ ] `grep -rn "sway\|i3" crates/mde-*/src` returns only retraction comments
+    - [ ] `install-helpers/lint-voice.sh` passes on the migrated tree
+    - [ ] CHANGELOG entry for v6.5 records the user-visible string flip
+
+- [ ] **HYP-33: v6.5 — Worklist hygiene: Portal-41..Portal-59 re-pointed**
+  **As** the worklist maintainer,
+  **I want** Portal-41..Portal-59 either re-pointed to HYP-* equivalents or marked retired with cross-references,
+  **so that** no R12 task carries a stale sway-IPC acceptance bullet.
+  **Acceptance**:
+    - [ ] Each Portal-4N either gets its acceptance bullets rewritten in terms of Hyprland mechanics OR closes with an inline `superseded by HYP-N` note + cross-reference
+    - [ ] Cross-references in BOTH directions (HYP-N→Portal-4N + Portal-4N→HYP-N)
+    - [ ] No Portal-4N task carries a swayipc acceptance bullet after this closes
+
+---
+
 ### EPIC-TUNING-25Q — 25-question tuning survey aftermath (locked 2026-05-26)
 
 > **Authority:** `docs/design/2026-05-26-25Q-tuning-survey.md`.

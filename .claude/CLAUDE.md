@@ -724,6 +724,17 @@ we're at it, ..." scope creep.
   i3 contract (Mod+r) + supersedes R5-Q23 (scratchpad badge) +
   reframes R4-Q67 (5th micro-button). Lock re-engaged after
   Portal-59 lifts close 2026-05-26.
+- **2026-05-27 — HYP-1..HYP-33** (v6.5 Hyprland compositor
+  migration epic, 30-Q survey across 3 rounds: Strategy &
+  scope / Portal R12 redesign + WM mechanics / Visual+motion+
+  build+rollout). Operator-issued lift in /plan for full
+  Hyprland epic. Locks captured in
+  `docs/design/v6.5-hyprland-compositor.md` and
+  [[project_v6_5_hyprland]]. Adds §11 1.0-roadmap item #19;
+  supersedes the v2.0.0 sway lock + Portal-41..Portal-59 sway-
+  IPC contracts + R12 Q44 keyboard-resize submap + Classic
+  ChromeOS universal-flat element. Lock re-engaged after HYP-33
+  lifts close.
 
 **Why this rule:** the active worklist already represents 324
 items across 15+ epics. Continuing to add scope while draining is
