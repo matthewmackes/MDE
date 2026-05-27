@@ -579,11 +579,12 @@ call-end lifecycle, never at install or login.
 
 ---
 
-### v6.5 — Hyprland compositor migration (HYP-1..HYP-33, locked 2026-05-27 via 30-Q survey)
+### v6.5 — Hyprland compositor migration (HYP-1..HYP-33, locked 2026-05-27 via 30-Q survey + same-day simplification re-lock)
 
-> **Authority:** `docs/design/v6.5-hyprland-compositor.md` (30 locks across 3 rounds).
+> **Authority:** `docs/design/v6.5-hyprland-compositor.md` (30 locks across 3 rounds + §10.1 simplification re-lock).
 > **Memory:** `project_v6_5_hyprland.md`.
 > **Lock-lift:** operator-issued 2026-05-27 (recorded in CLAUDE.md §0.16 + lock-window list above).
+> **In-place re-lock:** operator-issued 2026-05-27 same-day risk review picked simplification option 1 — plugin scope narrows from 5 subsystems to 3 (custom MDE layout + window rules + event-bridge). Marks live in `mackesd::workers::marks_state` (HYP-14); pills render in `mde-portal` wlr-layer-shell overlay (HYP-15); per-tag border + per-elevation shadow apply via `mackesd::workers::border_colors` (HYP-22) + `elevation` (HYP-21). Per §0.16 this is a scope-reduction within the locked epic — no fresh lock-lift needed. See design doc §10.1 for the full re-lock metadata.
 > **Adds:** §11 1.0-roadmap item #19 (HYP-* fully shipped).
 > **Supersedes:** v2.0.0 "Wayland-only (sway)" lock; Portal-41..Portal-59 sway-IPC contracts; R12 Q44 keyboard-resize mode; Classic ChromeOS "universal flat" element (Q23 amendment).
 >
