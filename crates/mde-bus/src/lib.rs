@@ -25,6 +25,7 @@
 pub mod audit;
 pub mod broker;
 pub mod cli;
+pub mod correlate;
 pub mod discovery;
 pub mod dnd;
 pub mod hooks;

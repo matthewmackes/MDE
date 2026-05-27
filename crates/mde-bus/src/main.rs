@@ -178,6 +178,36 @@ async fn run_daemon() -> anyhow::Result<()> {
             (None, None)
         }
     };
+    // BUS-6.5.parser — load the operator's correlation rule
+    // config at startup. Synthesized publishes happen in
+    // BUS-6.5.evaluator (next sub-task); this commit just loads +
+    // logs the rule count so operators can see the file was
+    // picked up.
+    match mde_bus::correlate::default_config_path() {
+        Some(path) => match mde_bus::correlate::load_default(&path) {
+            Ok(cfg) => {
+                tracing::info!(
+                    target: "mde_bus::correlate",
+                    rules = cfg.rules.len(),
+                    path = %path.display(),
+                    "correlation rules loaded"
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    target: "mde_bus::correlate",
+                    error = %e,
+                    "correlation config invalid — skipping"
+                );
+            }
+        },
+        None => {
+            tracing::info!(
+                target: "mde_bus::correlate",
+                "correlation config skipped — no XDG config dir"
+            );
+        }
+    };
     // BUS-2.8.watcher — mtime-poll watcher for <bus_root>/dnd.yaml.
     // Broadcasts DndState changes through a tokio::sync::watch
     // channel so subscribers (hook handler, future BUS-2.x display
