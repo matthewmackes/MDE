@@ -25,6 +25,7 @@
 //!   so tests can exercise its skip semantics without exec.
 //! - `render` — render a Tera template against live mesh vars.
 
+pub mod audit;
 pub mod correlate;
 pub mod dnd;
 pub mod history;
@@ -91,6 +92,13 @@ pub enum Cmd {
     Dnd {
         #[command(subcommand)]
         op: dnd::DndOp,
+    },
+    /// Inspect the per-peer publish audit log (BUS-7.1) at
+    /// `<bus_root>/audit/<YYYY-MM-DD>.jsonl`. Read-only —
+    /// surfaces ts + publisher + topic + priority + ULID.
+    Audit {
+        #[command(subcommand)]
+        op: audit::AuditOp,
     },
     /// Inspect the operator's cross-topic correlation rule config
     /// (BUS-6.5; `$XDG_CONFIG_HOME/mde/bus-correlate.yaml`).

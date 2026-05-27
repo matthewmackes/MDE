@@ -52,6 +52,7 @@ async fn main() -> anyhow::Result<()> {
         Cmd::Topic { op } => mde_bus::cli::topic::run(op),
         Cmd::Dnd { op } => mde_bus::cli::dnd::run(op).await,
         Cmd::Correlate { op } => mde_bus::cli::correlate::run(op),
+        Cmd::Audit { op } => mde_bus::cli::audit::run(op),
     }
 }
 

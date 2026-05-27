@@ -181,6 +181,50 @@ pub fn list_files(bus_root: &Path) -> Result<Vec<PathBuf>, AuditError> {
     Ok(out)
 }
 
+/// Read every audit entry under `<bus_root>/audit/*.jsonl` in
+/// oldest-first order (sorted by filename which is `YYYY-MM-DD`
+/// so date-ordered). Returns `Ok(vec![])` when the audit dir
+/// doesn't exist yet. Per-line parse failures are skipped + logged
+/// as warnings (one malformed line shouldn't blow away the whole
+/// read; the rest of the file should still be readable).
+///
+/// # Errors
+/// [`AuditError::Io`] on directory-read or file-open failure;
+/// per-line JSON parse errors are NOT bubbled — they log + skip.
+pub fn read_entries(bus_root: &Path) -> Result<Vec<AuditEntry>, AuditError> {
+    let files = list_files(bus_root)?;
+    let mut out = Vec::new();
+    for path in files {
+        let body = match std::fs::read_to_string(&path) {
+            Ok(b) => b,
+            Err(e) => {
+                return Err(AuditError::Io(format!(
+                    "read {}: {e}",
+                    path.display()
+                )));
+            }
+        };
+        for (line_no, line) in body.lines().enumerate() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            match serde_json::from_str::<AuditEntry>(line) {
+                Ok(entry) => out.push(entry),
+                Err(e) => {
+                    tracing::warn!(
+                        target: "mde_bus::audit",
+                        path = %path.display(),
+                        line = line_no + 1,
+                        error = %e,
+                        "skipping malformed audit line"
+                    );
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -316,5 +360,53 @@ mod tests {
         let meta = std::fs::metadata(&dir).unwrap();
         let mode = meta.permissions().mode() & 0o777;
         assert_eq!(mode, 0o700, "expected 0700, got {mode:o}");
+    }
+
+    #[test]
+    fn read_entries_returns_empty_when_audit_dir_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let bus_root = tmp.path();
+        let entries = read_entries(bus_root).unwrap();
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn read_entries_returns_logged_entries_in_order() {
+        let tmp = tempfile::tempdir().unwrap();
+        let bus_root = tmp.path();
+        let day1 = Utc.with_ymd_and_hms(2026, 5, 25, 10, 0, 0).unwrap();
+        let day2 = Utc.with_ymd_and_hms(2026, 5, 26, 10, 0, 0).unwrap();
+        // Out-of-order writes — filename-sort should put day1 first.
+        append_at(bus_root, &entry("a", "t1", "u1"), day2).unwrap();
+        append_at(bus_root, &entry("a", "t1", "u2"), day2).unwrap();
+        append_at(bus_root, &entry("a", "t0", "u0"), day1).unwrap();
+        let entries = read_entries(bus_root).unwrap();
+        assert_eq!(entries.len(), 3);
+        // day1 entry first (sorted by filename), then 2x day2 entries
+        // in append order.
+        assert_eq!(entries[0].ulid, "u0");
+        assert_eq!(entries[1].ulid, "u1");
+        assert_eq!(entries[2].ulid, "u2");
+    }
+
+    #[test]
+    fn read_entries_skips_malformed_lines() {
+        let tmp = tempfile::tempdir().unwrap();
+        let bus_root = tmp.path();
+        let today = Utc.with_ymd_and_hms(2026, 5, 26, 10, 0, 0).unwrap();
+        // Write a valid entry, then a corrupt line, then another
+        // valid entry. read_entries should skip the corrupt line +
+        // return 2 valid entries.
+        append_at(bus_root, &entry("a", "t", "u1"), today).unwrap();
+        let dir = audit_dir(bus_root);
+        let file_path = dir.join(filename_for(today));
+        let mut existing = std::fs::read_to_string(&file_path).unwrap();
+        existing.push_str("not-valid-json\n");
+        std::fs::write(&file_path, existing).unwrap();
+        append_at(bus_root, &entry("a", "t", "u2"), today).unwrap();
+        let entries = read_entries(bus_root).unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].ulid, "u1");
+        assert_eq!(entries[1].ulid, "u2");
     }
 }
