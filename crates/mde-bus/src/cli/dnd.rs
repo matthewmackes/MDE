@@ -46,6 +46,12 @@ pub enum DndOp {
         /// Override the bus_root path.
         #[arg(long)]
         bus_root: Option<PathBuf>,
+        /// Emit the state as a single-line JSON object suitable
+        /// for piping to `jq`. Replaces the multi-line
+        /// human-readable `DND: on/off\nSince: ...\nBy: ...`
+        /// format with the underlying `DndState` JSON shape.
+        #[arg(long, default_value_t = false)]
+        json: bool,
     },
     /// Toggle DND — flips the current state (on → off, off → on).
     /// Convenient when the operator knows they want "the other
@@ -128,10 +134,16 @@ pub async fn run(op: DndOp) -> Result<()> {
             let state = set_state(&root, false)?;
             println!("{}", format_status(&state));
         }
-        DndOp::Status { bus_root } => {
+        DndOp::Status { bus_root, json } => {
             let root = resolve_bus_root(bus_root)?;
             let state = dnd::load_default(&root);
-            println!("{}", format_status(&state));
+            if json {
+                let line = serde_json::to_string(&state)
+                    .map_err(|err| anyhow!("serialize dnd state: {err}"))?;
+                println!("{line}");
+            } else {
+                println!("{}", format_status(&state));
+            }
         }
         DndOp::Toggle { bus_root } => {
             let root = resolve_bus_root(bus_root)?;
