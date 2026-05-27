@@ -871,6 +871,7 @@ impl iced_layershell::Application for DockApp {
             crate::workspace::bus_pulse_subscription(),
             crate::workspace::bus_announce_subscription(),
             crate::workspace::bus_clipboard_subscription(),
+            crate::workspace::bus_peer_topics_subscription(),
             clock_subscription(),
             snapshot_subscription(),
             status_subscription(),
@@ -3520,6 +3521,45 @@ mod tests {
             app.bus_announce_segments[0].topic,
             BusSegmentTopic::Clipboard
         );
+    }
+
+    // ── BUS-2.2.b.peer tests ────────────────────────────────────────────────
+
+    /// `local_hostname` returns a non-empty string (never an empty
+    /// string, even on malformed /proc — fallback to
+    /// `"unknown-host"`).
+    #[test]
+    fn local_hostname_never_empty() {
+        let h = crate::workspace::local_hostname();
+        assert!(!h.is_empty());
+        assert!(!h.contains('\n'), "hostname must be trimmed");
+    }
+
+    /// `peer_alerts_topic_dir` composes the expected layout under
+    /// XDG_DATA_HOME.
+    #[test]
+    fn peer_alerts_topic_dir_composes_path() {
+        let path = crate::workspace::peer_alerts_topic_dir("fedora").unwrap();
+        let s = path.to_string_lossy();
+        assert!(s.contains("mde/bus/peer/fedora/alerts"));
+    }
+
+    /// `peer_system_topic_dir` composes the expected layout.
+    #[test]
+    fn peer_system_topic_dir_composes_path() {
+        let path = crate::workspace::peer_system_topic_dir("fedora-laptop").unwrap();
+        let s = path.to_string_lossy();
+        assert!(s.contains("mde/bus/peer/fedora-laptop/system"));
+    }
+
+    /// Hostnames with unusual characters (still per RFC 1123) round-
+    /// trip through path composition.
+    #[test]
+    fn peer_topic_dirs_handle_dashes_and_dots() {
+        let p1 = crate::workspace::peer_alerts_topic_dir("host.with.dots").unwrap();
+        assert!(p1.to_string_lossy().contains("host.with.dots/alerts"));
+        let p2 = crate::workspace::peer_system_topic_dir("host-with-dashes").unwrap();
+        assert!(p2.to_string_lossy().contains("host-with-dashes/system"));
     }
 
     /// Malformed JSON returns None — subscription stays alive.

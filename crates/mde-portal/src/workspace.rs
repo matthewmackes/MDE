@@ -527,6 +527,119 @@ pub fn parse_breadcrumb_file(
     })
 }
 
+/// BUS-2.2.b.peer — resolve the local hostname via
+/// `/proc/sys/kernel/hostname` for the per-peer topic paths.
+/// Falls back to the literal string `"unknown-host"` so the
+/// subscription is at least well-defined even on a malformed
+/// /proc; the fallback path won't carry real messages so the
+/// subscription stays quiet.
+#[must_use]
+pub fn local_hostname() -> String {
+    std::fs::read_to_string("/proc/sys/kernel/hostname")
+        .map(|s| s.trim().to_string())
+        .map(|s| if s.is_empty() { "unknown-host".to_string() } else { s })
+        .unwrap_or_else(|_| "unknown-host".to_string())
+}
+
+/// BUS-2.2.b.peer — resolve the on-disk topic directory for the
+/// Bus `peer/<hostname>/alerts` topic.
+#[must_use]
+pub fn peer_alerts_topic_dir(hostname: &str) -> Option<std::path::PathBuf> {
+    let data_home = dirs::data_dir()?;
+    Some(
+        data_home
+            .join("mde")
+            .join("bus")
+            .join("peer")
+            .join(hostname)
+            .join("alerts"),
+    )
+}
+
+/// BUS-2.2.b.peer — resolve the on-disk topic directory for the
+/// Bus `peer/<hostname>/system` topic.
+#[must_use]
+pub fn peer_system_topic_dir(hostname: &str) -> Option<std::path::PathBuf> {
+    let data_home = dirs::data_dir()?;
+    Some(
+        data_home
+            .join("mde")
+            .join("bus")
+            .join("peer")
+            .join(hostname)
+            .join("system"),
+    )
+}
+
+/// BUS-2.2.b.peer — Iced `Subscription` over BOTH
+/// `peer/<hostname>/alerts` AND `peer/<hostname>/system` topics
+/// in a single loop. Combining the two saves a tokio task vs
+/// running them as separate subscriptions. Both tag segments
+/// with `BusSegmentTopic::Announce` (priority palette wins) since
+/// they're alert-class events, not clipboard adds.
+pub fn bus_peer_topics_subscription() -> Subscription<Message> {
+    Subscription::run_with_id(
+        "mde-portal-bus-peer-topics",
+        async_stream::stream! {
+            let mut seen: std::collections::BTreeSet<String> =
+                std::collections::BTreeSet::new();
+            let hostname = local_hostname();
+            let alerts_dir = peer_alerts_topic_dir(&hostname);
+            let system_dir = peer_system_topic_dir(&hostname);
+            let topic_dirs: Vec<std::path::PathBuf> =
+                [alerts_dir, system_dir].into_iter().flatten().collect();
+            if topic_dirs.is_empty() {
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+                }
+            }
+            loop {
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                let mut new_msgs: Vec<crate::app::BusAnnounceSegment> = Vec::new();
+                for topic_dir in &topic_dirs {
+                    let entries = match std::fs::read_dir(topic_dir) {
+                        Ok(e) => e,
+                        Err(_) => continue,
+                    };
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        let Some(name) = path.file_name().and_then(|s| s.to_str()) else {
+                            continue;
+                        };
+                        let Some(ulid_str) = name.strip_suffix(".json") else {
+                            continue;
+                        };
+                        if seen.contains(ulid_str) {
+                            continue;
+                        }
+                        seen.insert(ulid_str.to_string());
+                        if let Some(msg) = parse_breadcrumb_file(
+                            &path,
+                            ulid_str,
+                            crate::app::BusSegmentTopic::Announce,
+                        ) {
+                            new_msgs.push(msg);
+                        }
+                    }
+                }
+                if !new_msgs.is_empty() && seen.len() != new_msgs.len() {
+                    for msg in new_msgs {
+                        yield Message::BusAnnounceSegment(msg);
+                    }
+                }
+                if seen.len() > 1000 {
+                    let drop_count = seen.len() / 2;
+                    let to_drop: Vec<String> =
+                        seen.iter().take(drop_count).cloned().collect();
+                    for ulid in to_drop {
+                        seen.remove(&ulid);
+                    }
+                }
+            }
+        },
+    )
+}
+
 /// BUS-2.2.b — resolve the on-disk topic directory for the Bus
 /// `clipboard/sync` topic.
 #[must_use]
