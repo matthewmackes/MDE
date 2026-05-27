@@ -135,7 +135,16 @@ async fn handle_init(conn: &mut Connection, node: &swayipc_async::Node) {
             return;
         }
     };
-    let Some(output_name) = preferred_output_for_workspace(&store, num) else {
+    // HYP-10.sway-bridge — load the tag-manifest snapshot each
+    // event so per-tag `output` can override the legacy TagStore
+    // `preferred_output`. Manifest load is fail-soft: missing
+    // dir / unreadable file falls through to TagStore. Cheap
+    // relative to the swayipc command that follows.
+    let manifests = crate::config::default_manifests_dir()
+        .and_then(|d| crate::config::load_tag_manifests(&d).ok());
+    let Some(output_name) =
+        preferred_output_for_workspace_with_manifests(&store, num, manifests.as_deref())
+    else {
         return;
     };
     let cmd = move_workspace_command(num, &output_name);
@@ -166,7 +175,44 @@ pub fn find_owning_tag(store: &TagStore, ws_num: i32) -> Option<&Tag> {
 /// tag has no `preferred_output` set.
 #[must_use]
 pub fn preferred_output_for_workspace(store: &TagStore, ws_num: i32) -> Option<String> {
-    find_owning_tag(store, ws_num)?.preferred_output.clone()
+    preferred_output_for_workspace_with_manifests(store, ws_num, None)
+}
+
+/// HYP-10.sway-bridge — same as [`preferred_output_for_workspace`]
+/// but with an explicit tag-manifest snapshot. Resolution
+/// precedence:
+///
+/// 1. **Tag manifest `output`** (HYP-8.5 source of truth) — when
+///    the manifest matching the workspace's owning tag carries a
+///    non-empty `output` field, that wins. Per the simplification
+///    re-lock, the compositor-side output policy lives in the
+///    manifest.
+/// 2. **TagStore `preferred_output`** (Portal-18.a legacy) —
+///    fallback so existing operator setups stay working until
+///    they migrate.
+/// 3. `None` — sway picks the natural output (no-op move command
+///    issued).
+#[must_use]
+pub fn preferred_output_for_workspace_with_manifests(
+    store: &TagStore,
+    ws_num: i32,
+    manifests: Option<&[crate::config::TagManifest]>,
+) -> Option<String> {
+    let owning_tag = find_owning_tag(store, ws_num)?;
+
+    // Priority 1: tag-manifest output.
+    if let Some(ms) = manifests {
+        if let Some(m) = ms.iter().find(|m| m.name == owning_tag.name) {
+            if let Some(o) = m.output.as_deref() {
+                if !o.trim().is_empty() {
+                    return Some(o.to_string());
+                }
+            }
+        }
+    }
+
+    // Priority 2: TagStore preferred_output (legacy).
+    owning_tag.preferred_output.clone()
 }
 
 /// Build the swayipc command string that moves workspace `ws_num`
@@ -305,5 +351,75 @@ mod tests {
             })
             .unwrap();
         assert!(preferred_output_for_workspace(&store, 1).is_none());
+    }
+
+    // ── HYP-10.sway-bridge — tag-manifest output overrides
+    //    TagStore preferred_output ──────────────────────────────
+
+    fn dev_manifest_with(output: Option<&str>) -> crate::config::TagManifest {
+        crate::config::TagManifest {
+            name: "Dev".to_string(),
+            output: output.map(|s| s.to_string()),
+            ..crate::config::TagManifest::default()
+        }
+    }
+
+    /// Manifest output wins over TagStore preferred_output.
+    #[test]
+    fn manifest_output_overrides_tagstore_preferred() {
+        let mut store = TagStore::default();
+        store.add(dev_tag_on_hdmi(&[1])).unwrap(); // TagStore: HDMI-A-1
+        let manifests = vec![dev_manifest_with(Some("DP-2"))];
+        let out =
+            preferred_output_for_workspace_with_manifests(&store, 1, Some(&manifests));
+        assert_eq!(out.as_deref(), Some("DP-2"));
+    }
+
+    /// Manifest without output → fall through to TagStore.
+    #[test]
+    fn manifest_without_output_falls_through_to_tagstore() {
+        let mut store = TagStore::default();
+        store.add(dev_tag_on_hdmi(&[1])).unwrap();
+        let manifests = vec![dev_manifest_with(None)];
+        let out =
+            preferred_output_for_workspace_with_manifests(&store, 1, Some(&manifests));
+        assert_eq!(out.as_deref(), Some("HDMI-A-1"));
+    }
+
+    /// Manifest with empty / whitespace-only output → fall
+    /// through (operator typed nothing meaningful).
+    #[test]
+    fn manifest_with_empty_output_falls_through() {
+        let mut store = TagStore::default();
+        store.add(dev_tag_on_hdmi(&[1])).unwrap();
+        let manifests = vec![dev_manifest_with(Some("  "))];
+        let out =
+            preferred_output_for_workspace_with_manifests(&store, 1, Some(&manifests));
+        assert_eq!(out.as_deref(), Some("HDMI-A-1"));
+    }
+
+    /// None snapshot → behaves exactly like the bare function.
+    #[test]
+    fn none_manifests_means_tagstore_only() {
+        let mut store = TagStore::default();
+        store.add(dev_tag_on_hdmi(&[1])).unwrap();
+        let out = preferred_output_for_workspace_with_manifests(&store, 1, None);
+        assert_eq!(out.as_deref(), Some("HDMI-A-1"));
+    }
+
+    /// Manifest for a different tag name → ignored.
+    #[test]
+    fn manifest_for_different_tag_is_ignored() {
+        let mut store = TagStore::default();
+        store.add(dev_tag_on_hdmi(&[1])).unwrap();
+        let manifests = vec![crate::config::TagManifest {
+            name: "Other".to_string(),
+            output: Some("DP-2".to_string()),
+            ..crate::config::TagManifest::default()
+        }];
+        let out =
+            preferred_output_for_workspace_with_manifests(&store, 1, Some(&manifests));
+        // Falls through to TagStore.
+        assert_eq!(out.as_deref(), Some("HDMI-A-1"));
     }
 }
