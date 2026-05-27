@@ -149,6 +149,11 @@ struct PortalFull {
     /// pill so the focus position is visible. Enter activates
     /// (fires `HubTagClicked(match)`).
     hub_typeahead_match: Option<String>,
+    /// Portal-17.b — cascade-card column stack. Each entry is
+    /// the name of a tag that's been expanded. Click on a tag
+    /// pushes it; up to 3 deep before forcing dismiss-to-root.
+    /// Empty when the cascade is closed (Hub root view).
+    hub_cascade_stack: Vec<String>,
 }
 
 /// Portal-18.b — Edit-tag modal form state. Seeded from the
@@ -189,9 +194,14 @@ impl Default for PortalFull {
             hub_multi_select: std::collections::BTreeSet::new(),
             hub_typeahead_buffer: String::new(),
             hub_typeahead_match: None,
+            hub_cascade_stack: Vec::new(),
         }
     }
 }
+
+/// Portal-17.b — maximum cascade depth before forcing
+/// dismiss-to-root. Per the design lock.
+pub const HUB_CASCADE_DEPTH_CAP: usize = 3;
 
 // ── Messages ──────────────────────────────────────────────────────────────────
 
@@ -288,29 +298,43 @@ fn update(state: &mut PortalFull, msg: Message) -> Task<Message> {
             }
         }
         Message::HubTagClicked(tag_name) => {
-            // Portal-17.a — log only for v1; Portal-17.b adds the
-            // cascade-card expansion on top of this signal.
+            // Portal-17.b — push the clicked tag onto the cascade
+            // stack. Clicking the same tag that's already on top
+            // collapses one level (toggle). Stack caps at
+            // HUB_CASCADE_DEPTH_CAP entries — beyond that the
+            // oldest entry drops (root-most), keeping focus on
+            // the deepest 3 visible.
             tracing::info!(%tag_name, "portal-full: Hub tag clicked");
-            // Any left-click dismisses an open right-click menu.
             state.hub_right_click_target = None;
+            if state.hub_cascade_stack.last() == Some(&tag_name) {
+                // Re-click on the deepest → pop (collapse one).
+                state.hub_cascade_stack.pop();
+            } else {
+                state.hub_cascade_stack.push(tag_name);
+                while state.hub_cascade_stack.len() > HUB_CASCADE_DEPTH_CAP {
+                    state.hub_cascade_stack.remove(0);
+                }
+            }
         }
         Message::HubTagRightClicked(tag_name) => {
             tracing::info!(%tag_name, "portal-full: Hub tag right-clicked, opening menu");
             state.hub_right_click_target = Some(tag_name);
         }
         Message::HubMenuDismissed => {
-            // Portal-17.c / Portal-18.b / Portal-17.d — single
-            // dismissal path for Escape: clear the right-click
-            // menu, any open Edit-tag modal, AND the type-ahead
-            // buffer/match. Multi-select stays sticky per
+            // Portal-17.c / Portal-18.b / Portal-17.d / Portal-17.b
+            // — single dismissal path for Escape: clear the right-
+            // click menu, any open Edit-tag modal, the type-ahead
+            // buffer/match, AND the cascade column stack
+            // (dismiss-to-root). Multi-select stays sticky per
             // Portal-17.e — only its explicit Clear button clears
-            // it. Either of the three states may be active when
+            // it. Any of the four states may be active when
             // Escape fires; this handler is the union close.
-            tracing::debug!("portal-full: Hub right-click menu / Edit-tag modal / type-ahead dismissed");
+            tracing::debug!("portal-full: Hub right-click menu / Edit-tag modal / type-ahead / cascade dismissed");
             state.hub_right_click_target = None;
             state.editing_tag = None;
             state.hub_typeahead_buffer.clear();
             state.hub_typeahead_match = None;
+            state.hub_cascade_stack.clear();
         }
         Message::HubMenuEditTag(tag_name) => {
             // Portal-17.c → Portal-18.b. Open the Edit-tag modal
@@ -431,6 +455,42 @@ fn update(state: &mut PortalFull, msg: Message) -> Task<Message> {
         }
     }
     Task::none()
+}
+
+/// Portal-17.b — render a single cascade-member entry as a
+/// readable label string. Each TagMember variant gets its
+/// own format: app:`<id>` → "App: <id>", peer → "Peer: <hostname>",
+/// workspace → "Workspace #<num>", container → "Container: <name>",
+/// etc. System tags don't have member entries; user tags do.
+#[must_use]
+pub fn format_cascade_member(member: &mackes_mesh_types::TagMember) -> String {
+    use mackes_mesh_types::TagMember;
+    match member {
+        TagMember::App { app_id } => format!("App: {app_id}"),
+        TagMember::Peer { hostname } => format!("Peer: {hostname}"),
+        TagMember::Contact { ulid } => format!("Contact: {ulid}"),
+        TagMember::Workspace { num } => format!("Workspace #{num}"),
+        TagMember::Container { name } => format!("Container: {name}"),
+        TagMember::Tray { bus_name } => format!("Tray: {bus_name}"),
+        TagMember::File { path } => format!("File: {path}"),
+        TagMember::Activity { ulid } => format!("Activity: {ulid}"),
+        TagMember::Zone { name } => format!("Zone: {name}"),
+    }
+}
+
+/// Portal-17.b — look up the TagMember list for the named tag
+/// in the live user-tag snapshot. Returns `None` when the tag
+/// doesn't exist (system tags + un-stored user tags). Empty
+/// list when the tag exists but has no members yet.
+#[must_use]
+pub fn cascade_members_for_tag<'a>(
+    tag_name: &str,
+    user_tags: &'a [mackes_mesh_types::Tag],
+) -> Option<&'a [mackes_mesh_types::TagMember]> {
+    user_tags
+        .iter()
+        .find(|t| t.name == tag_name)
+        .map(|t| t.members.as_slice())
 }
 
 /// Portal-17.d — find the first tag whose name starts with the
@@ -626,12 +686,70 @@ fn build_hub_layer(state: &PortalFull) -> Element<'_, Message> {
         row(system_row).spacing(8).wrap(),
         text("Your tags").size(13.0).color(FG_DIM),
         user_section,
+        // Portal-17.b — cascade columns to the right of the
+        // root grid; renders empty space when stack is empty.
+        build_hub_cascade_columns(state),
         // Portal-17.c — context-menu overlay; renders empty
         // space when no menu is open.
         build_hub_menu_overlay(state),
     ]
     .spacing(16)
     .into()
+}
+
+/// Portal-17.b — render the cascade columns. One column per
+/// entry on `hub_cascade_stack`, in declaration order (root-most
+/// on the left, deepest on the right). Each column lists the
+/// tag's members via `format_cascade_member`. Empty space when
+/// the stack is empty.
+fn build_hub_cascade_columns(state: &PortalFull) -> Element<'_, Message> {
+    if state.hub_cascade_stack.is_empty() {
+        return iced::widget::Space::new(0.0, 0.0).into();
+    }
+    use iced::widget::row;
+    let mut columns: Vec<Element<'_, Message>> = Vec::new();
+    for tag_name in &state.hub_cascade_stack {
+        let header = text(tag_name.clone()).size(13.0).color(FG);
+        let mut rows: Vec<Element<'_, Message>> = vec![header.into()];
+        match cascade_members_for_tag(tag_name, &state.user_tags) {
+            Some(members) if !members.is_empty() => {
+                for member in members {
+                    rows.push(
+                        text(format_cascade_member(member))
+                            .size(11.0)
+                            .color(FG_DIM)
+                            .into(),
+                    );
+                }
+            }
+            Some(_) => {
+                rows.push(text("(no members)").size(11.0).color(FG_DIM).into());
+            }
+            None => {
+                rows.push(
+                    text("(system tag — members render via per-surface integration)")
+                        .size(11.0)
+                        .color(FG_DIM)
+                        .into(),
+                );
+            }
+        }
+        columns.push(
+            container(column(rows).spacing(4))
+                .style(|_theme: &Theme| iced::widget::container::Style {
+                    background: Some(iced::Background::Color(Color { r: 0.16, g: 0.17, b: 0.19, a: 1.0 })),
+                    border: iced::Border {
+                        radius: iced::border::Radius::from(8.0),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                })
+                .padding(iced::Padding::from([8, 12]))
+                .width(Length::Fixed(220.0))
+                .into(),
+        );
+    }
+    row(columns).spacing(8).into()
 }
 
 /// Portal-17.d — render the type-ahead caret indicator above
@@ -1169,15 +1287,15 @@ mod tests {
     }
 
     #[test]
-    fn hub_tag_clicked_message_updates_logs_only() {
-        // Bench-observable: clicking a tag emits the message;
-        // update is a no-op state-wise (Portal-17.b owns the
-        // cascade response). We assert the call doesn't panic +
-        // doesn't change `state.layer` or `user_tags`.
+    fn hub_tag_clicked_pushes_to_cascade() {
+        // Portal-17.b — clicking a tag pushes its name onto the
+        // cascade stack + the layer stays Hub (cascade is a
+        // sub-render inside Hub, not a layer flip).
         let mut state = PortalFull::default();
         let layer_before = state.layer;
         let _ = update(&mut state, Message::HubTagClicked("Dev".to_string()));
         assert_eq!(state.layer, layer_before);
+        assert_eq!(state.hub_cascade_stack, vec!["Dev".to_string()]);
     }
 
     // ── Portal-17.c right-click menu tests ─────────────────────────────────
@@ -1589,5 +1707,111 @@ mod tests {
         }];
         let m = find_typeahead_match("z", &user_tags);
         assert_eq!(m.as_deref(), Some("Zebra"));
+    }
+
+    // ── Portal-17.b — cascade-card expansion ───────────────
+
+    #[test]
+    fn cascade_starts_empty() {
+        let state = PortalFull::default();
+        assert!(state.hub_cascade_stack.is_empty());
+    }
+
+    #[test]
+    fn cascade_depth_cap_is_three() {
+        // R5 design lock — 3 levels deep before forcing
+        // dismiss-to-root.
+        assert_eq!(HUB_CASCADE_DEPTH_CAP, 3);
+    }
+
+    #[test]
+    fn cascade_push_appends_to_stack() {
+        let mut state = PortalFull::default();
+        let _ = update(&mut state, Message::HubTagClicked("Dev".to_string()));
+        let _ = update(&mut state, Message::HubTagClicked("Personal".to_string()));
+        assert_eq!(state.hub_cascade_stack, vec!["Dev".to_string(), "Personal".to_string()]);
+    }
+
+    #[test]
+    fn cascade_re_click_deepest_collapses_one_level() {
+        let mut state = PortalFull::default();
+        let _ = update(&mut state, Message::HubTagClicked("Dev".to_string()));
+        let _ = update(&mut state, Message::HubTagClicked("Personal".to_string()));
+        // Click "Personal" again → pop.
+        let _ = update(&mut state, Message::HubTagClicked("Personal".to_string()));
+        assert_eq!(state.hub_cascade_stack, vec!["Dev".to_string()]);
+    }
+
+    #[test]
+    fn cascade_caps_at_depth_three() {
+        let mut state = PortalFull::default();
+        let _ = update(&mut state, Message::HubTagClicked("A".to_string()));
+        let _ = update(&mut state, Message::HubTagClicked("B".to_string()));
+        let _ = update(&mut state, Message::HubTagClicked("C".to_string()));
+        let _ = update(&mut state, Message::HubTagClicked("D".to_string()));
+        // Cap is 3 — root drops, deepest 3 stay.
+        assert_eq!(state.hub_cascade_stack.len(), 3);
+        assert_eq!(
+            state.hub_cascade_stack,
+            vec!["B".to_string(), "C".to_string(), "D".to_string()]
+        );
+    }
+
+    #[test]
+    fn cascade_cleared_on_hub_menu_dismissed() {
+        let mut state = PortalFull::default();
+        state.hub_cascade_stack.push("Dev".to_string());
+        state.hub_cascade_stack.push("Personal".to_string());
+        let _ = update(&mut state, Message::HubMenuDismissed);
+        assert!(state.hub_cascade_stack.is_empty());
+    }
+
+    #[test]
+    fn cascade_members_for_system_tag_returns_none() {
+        let user_tags: Vec<mackes_mesh_types::Tag> = Vec::new();
+        assert!(cascade_members_for_tag("Settings", &user_tags).is_none());
+    }
+
+    #[test]
+    fn cascade_members_for_known_user_tag_returns_members() {
+        let user_tags = vec![mackes_mesh_types::Tag {
+            name: "Dev".to_string(),
+            flavor: mackes_mesh_types::TagFlavor::Manual,
+            members: vec![
+                mackes_mesh_types::TagMember::App { app_id: "foot".to_string() },
+                mackes_mesh_types::TagMember::Workspace { num: 3 },
+            ],
+            group_color: None,
+            preferred_output: None,
+            default_layout: None,
+            autostart: Vec::new(),
+        }];
+        let members = cascade_members_for_tag("Dev", &user_tags).unwrap();
+        assert_eq!(members.len(), 2);
+    }
+
+    #[test]
+    fn format_cascade_member_renders_each_variant() {
+        use mackes_mesh_types::TagMember;
+        assert_eq!(
+            format_cascade_member(&TagMember::App { app_id: "foot".to_string() }),
+            "App: foot",
+        );
+        assert_eq!(
+            format_cascade_member(&TagMember::Peer { hostname: "alpha".to_string() }),
+            "Peer: alpha",
+        );
+        assert_eq!(
+            format_cascade_member(&TagMember::Workspace { num: 5 }),
+            "Workspace #5",
+        );
+        assert_eq!(
+            format_cascade_member(&TagMember::Container { name: "ntfy".to_string() }),
+            "Container: ntfy",
+        );
+        assert_eq!(
+            format_cascade_member(&TagMember::Zone { name: "taskbar".to_string() }),
+            "Zone: taskbar",
+        );
     }
 }
