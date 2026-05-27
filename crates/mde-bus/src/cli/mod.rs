@@ -30,6 +30,7 @@ pub mod correlate;
 pub mod dnd;
 pub mod history;
 pub mod mute;
+pub mod persist;
 pub mod publish;
 pub mod sub;
 pub mod tail;
@@ -99,6 +100,13 @@ pub enum Cmd {
     Audit {
         #[command(subcommand)]
         op: audit::AuditOp,
+    },
+    /// Diagnostics on the per-peer SQLite index + per-topic
+    /// file tree (BUS-1.4 persistence layer). Read-only;
+    /// `verify` walks both surfaces + flags divergence.
+    Persist {
+        #[command(subcommand)]
+        op: persist::PersistOp,
     },
     /// Inspect the operator's cross-topic correlation rule config
     /// (BUS-6.5; `$XDG_CONFIG_HOME/mde/bus-correlate.yaml`).
