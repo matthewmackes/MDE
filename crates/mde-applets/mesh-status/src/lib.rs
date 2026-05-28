@@ -51,6 +51,9 @@ impl Default for HealthReport {
     }
 }
 
+/// Build the static applet manifest the host registers at
+/// startup. Slot = TopBarRight alongside the other status chips
+/// (audio, network, clock).
 #[must_use]
 pub fn manifest() -> mde_applet_api::AppletManifest {
     mde_applet_api::AppletManifest {
@@ -206,6 +209,10 @@ pub const fn show_lighthouse_badge(snap: &NebulaStatusSnapshot) -> bool {
     snap.is_lighthouse
 }
 
+/// Process a host control message and return `true` when the
+/// applet should keep running. Only [`HostMessage::Shutdown`]
+/// stops the event loop; every other variant is a host-side
+/// hint the renderer reacts to elsewhere.
 #[must_use]
 pub fn handle_host(msg: &HostMessage) -> bool {
     !matches!(msg, HostMessage::Shutdown)
