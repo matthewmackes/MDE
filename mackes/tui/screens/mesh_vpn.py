@@ -9,7 +9,7 @@ def build() -> Container:
     body = Container()
     body.compose_add_child(Static(
         "[b]Mesh VPN[/b]\n"
-        "[#c6c6c6]Headscale + Tailscale peers. Cap 16.[/#c6c6c6]\n"
+        "[#c6c6c6]Nebula overlay peers. Cap 8.[/#c6c6c6]\n"
     ))
     try:
         from mackes.mesh_vpn import MeshState, headscale_list_peers, MESH_CAP, tailscale_status

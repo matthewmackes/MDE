@@ -868,7 +868,7 @@ class WorkbenchWindow(Gtk.ApplicationWindow):
         def _apply():
             _set_status_item(
                 self._sb_mesh,
-                f"● mesh: {mesh_online}/{mesh_cap or 16}",
+                f"● mesh: {mesh_online}/{mesh_cap or 8}",
                 "ok" if mesh_online > 0 else "warn",
             )
             _set_status_item(

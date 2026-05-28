@@ -29,7 +29,8 @@ or methods shift, not for routine feature work.
 
 **Mackes Desktop Environment (MDE)** is a Wayland-only, Rust-based,
 mesh-native Linux desktop environment for **small-business fleets**
-(target: ≤ 16 peers per mesh). It runs on Fedora 44+, ships as
+(target: ≤ 8 peers per mesh, tightened from 16 per Q3 of the
+100-Q tightening survey 2026-05-25). It runs on Fedora 44+, ships as
 RPMs, and is operated by **a single engineer** (Matthew Mackes) in
 collaboration with multiple Claude sessions.
 
@@ -640,7 +641,7 @@ should flag them rather than silently extend them.
 | 1 | **GlusterFS** as XDG file backend | Gluster is enterprise distributed storage. Using it for `~/Documents` replication is creative but unusual; most DEs leave file-sync to Syncthing/Dropbox/cloud | Locked v5.0; central to platform |
 | 2 | **Kamailio + Vitelity** PBX | Telephony-server stack in a DE; most DEs treat calling as an app concern | Locked v4.x; integrated into Portal |
 | 3 | **Caddy reverse proxy** on every peer | HTTPS gateway for cross-peer service exposure (`https://media.mesh/<service>/<peer>/`); most DEs don't ship a web server | `mackes/caddy_gateway.py` live; tied to mesh-services (being retired) |
-| 4 | **Ansible-pull** on every peer | Config-mgmt infrastructure for a 16-peer fleet — most fleets that small use SSH scripts | Locked v1.3 Fleet; 7 curated playbooks in QNM-Shared |
+| 4 | **Ansible-pull** on every peer | Config-mgmt infrastructure for an 8-peer fleet — most fleets that small use SSH scripts | Locked v1.3 Fleet; 7 curated playbooks in QNM-Shared |
 | 5 | **Native Airsonic music client** | Bundling a music app in the DE; could be a separate app | Locked v6.x AIR-*; 30-Q survey |
 | 6 | **Headless mode** (`mackes/headless/`) | A "desktop environment" with full CLI-driven no-GUI mode for lighthouses + servers | Live; tied to `role: lighthouse` |
 | 7 | **Birthright wizard does UID renames** | `usermod -u 1000` + recursive chown of `$HOME` is unusually invasive for a first-run wizard | Locked GF-3.1; required for gluster UID stability |
@@ -732,7 +733,7 @@ should flag them rather than silently extend them.
 If you only have time for the elevator-pitch version:
 
 1. **MDE is a Wayland-only Rust desktop environment for small
-   mesh fleets** (≤ 16 peers). Single user, many machines.
+   mesh fleets** (≤ 8 peers per Q3). Single user, many machines.
 2. **Stack:** sway + mded + Iced/libcosmic + Nebula + GlusterFS +
    Netdata + zbus. RPM-only, Fedora 44+.
 3. **Two design primitives:** every object is a card, every
