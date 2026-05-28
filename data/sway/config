@@ -16,12 +16,22 @@
 # ---------------------------------------------------------------------------
 set $mod Mod4
 
-# Same font as the panel.
-font pango:Red Hat Text 11
+# Same font as the panel — Roboto (UI) per the sway-native lock (Q31).
+font pango:Roboto 11
 
 # ---------------------------------------------------------------------------
-# Look & feel — borders, gaps, colors (Mackes Carbon palette, unchanged)
+# Look & feel — borderless + thin focus-line, gaps, Classic ChromeOS palette
 # ---------------------------------------------------------------------------
+# Sway-native lock (2026-05-28, docs/design/sway-native-shell.md §5;
+# Q26/Q27/Q31): borderless windows + a thin 1 px accent line on the
+# FOCUSED window only; smart_borders gives a lone window full-bleed.
+# client.* uses the Classic ChromeOS palette — only the focused border
+# is the accent (#4285f4); unfocused borders are the desktop bg
+# (#202124) so they vanish into the gaps. Per-tag focus color (Q28) is
+# deferred to the mded border_colors worker (ANIM-8.b). SUPERSEDES
+# (newer-wins §0.14) the BUG-10 / BUG-16 / Portal-55 / Carbon notes
+# retained below as history:
+#
 # BUG-10 (2026-05-23): operator asked for thicker, always-visible
 # window borders. Was `pixel 1` + `smart_borders on` (hides border on
 # single-window workspaces). Bumped to 4 px + smart_borders off so the
@@ -47,21 +57,20 @@ font pango:Red Hat Text 11
 # — background apps never steal focus; they set the urgent flag
 # instead. Per-app overrides flow through the Portal-53 window-rules
 # subsystem's `focus_policy` field, not this file.
-default_border normal 4
-default_floating_border normal 4
-title_align center
+default_border pixel 1
+default_floating_border pixel 1
 focus_on_window_activation urgent
 gaps inner 4
 gaps outer 0
 smart_gaps on
 smart_borders on
 
-#                       border       bg       text      indicator child_border
-client.focused          #2b9af3      #2b9af3  #f4f4f4   #4589ff   #2b9af3
-client.focused_inactive #393939      #393939  #f4f4f4   #393939   #393939
-client.unfocused        #262626      #262626  #a8a8a8   #262626   #262626
-client.urgent           #fa4d56      #fa4d56  #f4f4f4   #fa4d56   #fa4d56
-client.placeholder      #1a1a1a      #1a1a1a  #a8a8a8   #1a1a1a   #1a1a1a
+#                       border    bg        text      indicator child_border
+client.focused          #4285f4   #4285f4   #ffffff   #4285f4   #4285f4
+client.focused_inactive #202124   #202124   #a8a8a8   #202124   #202124
+client.unfocused        #202124   #202124   #a8a8a8   #202124   #202124
+client.urgent           #f28b82   #f28b82   #202124   #f28b82   #f28b82
+client.placeholder      #202124   #202124   #a8a8a8   #202124   #202124
 
 # ---------------------------------------------------------------------------
 # Workspaces (4, persistent — no dynamic workspaces by name)
