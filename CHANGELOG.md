@@ -40,6 +40,14 @@ unreleased; tag versions get a date when they ship.
   for tag-mode, `hyprctl clients`/`--batch` for templates,
   `togglesplit`/`togglegroup`/`swapwindow` for Hub drag-to-tile;
   HYP-33 partial close).
+- HYP-AutoMark.sway-bridge: auto_mark worker now also applies
+  the focused workspace's tag manifest `marks_default` list to
+  every new window (after the existing taxonomy mark). Closes
+  the fifth interim sway-side bridge — every compositor-
+  effective tag-manifest field now takes effect end-to-end
+  under sway before HYP-14 Hyprland marks_state ships. New
+  pure-fn `marks_default_for_workspace` with 8 unit tests
+  (15/15 green).
 - HYP-5.b Birthright wizard step seeds
   `~/.config/hypr/hyprland.conf` on first login with
   `source = /usr/share/mde/hyprland.conf` + an empty operator
