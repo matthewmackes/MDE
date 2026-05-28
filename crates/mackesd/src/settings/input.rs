@@ -34,6 +34,18 @@ pub struct InputPrefs {
     /// XKB layout code(s), e.g. `us` or `us,de`.
     #[serde(default = "default_xkb_layout")]
     pub xkb_layout: String,
+    /// libinput pointer acceleration, -1.0..=1.0 (0.0 = system default).
+    #[serde(default)]
+    pub pointer_accel: f64,
+    /// Reverse (natural) scrolling on touchpads.
+    #[serde(default)]
+    pub natural_scroll: bool,
+    /// Tap-to-click on touchpads.
+    #[serde(default)]
+    pub tap_to_click: bool,
+    /// Left-handed button mapping on pointers.
+    #[serde(default)]
+    pub left_handed: bool,
 }
 
 impl Default for InputPrefs {
@@ -42,6 +54,10 @@ impl Default for InputPrefs {
             repeat_delay_ms: default_repeat_delay(),
             repeat_rate_cps: default_repeat_rate(),
             xkb_layout: default_xkb_layout(),
+            pointer_accel: 0.0,
+            natural_scroll: false,
+            tap_to_click: false,
+            left_handed: false,
         }
     }
 }
@@ -58,6 +74,7 @@ fn default_xkb_layout() -> String {
 
 const REPEAT_DELAY_RANGE: std::ops::RangeInclusive<u32> = 100..=2000;
 const REPEAT_RATE_RANGE: std::ops::RangeInclusive<u32> = 1..=100;
+const POINTER_ACCEL_RANGE: std::ops::RangeInclusive<f64> = -1.0..=1.0;
 
 fn cache_root() -> PathBuf {
     if let Ok(s) = std::env::var("XDG_CACHE_HOME") {
@@ -83,22 +100,44 @@ pub fn parse_prefs_json(text: &str) -> InputPrefs {
     serde_json::from_str(text).unwrap_or_default()
 }
 
-/// Pure helper: the `swaymsg` argv that applies `key`'s `value` to a
-/// live session. `None` for keys this module doesn't own.
+/// Pure helper: the `swaymsg` `(input-type, subcommand)` pair for a
+/// key. `None` for keys this module doesn't own.
+#[must_use]
+pub fn sway_input_target(key: SettingKey) -> Option<(&'static str, &'static str)> {
+    match key {
+        SettingKey::KeyboardRepeatDelay => Some(("type:keyboard", "repeat_delay")),
+        SettingKey::KeyboardRepeatRate => Some(("type:keyboard", "repeat_rate")),
+        SettingKey::KeyboardXkbLayout => Some(("type:keyboard", "xkb_layout")),
+        SettingKey::MousePointerAccel => Some(("type:pointer", "pointer_accel")),
+        SettingKey::MouseLeftHanded => Some(("type:pointer", "left_handed")),
+        SettingKey::MouseNaturalScroll => Some(("type:touchpad", "natural_scroll")),
+        SettingKey::MouseTapToClick => Some(("type:touchpad", "tap")),
+        _ => None,
+    }
+}
+
+/// Pure helper: the full `swaymsg` argv that applies `key`'s `value`
+/// to a live session. `None` for keys this module doesn't own.
 #[must_use]
 pub fn sway_input_args(key: SettingKey, value: &str) -> Option<Vec<String>> {
-    let subcmd = match key {
-        SettingKey::KeyboardRepeatDelay => "repeat_delay",
-        SettingKey::KeyboardRepeatRate => "repeat_rate",
-        SettingKey::KeyboardXkbLayout => "xkb_layout",
-        _ => return None,
-    };
+    let (input_type, subcmd) = sway_input_target(key)?;
     Some(vec![
         "input".to_owned(),
-        "type:keyboard".to_owned(),
+        input_type.to_owned(),
         subcmd.to_owned(),
         value.to_owned(),
     ])
+}
+
+/// libinput boolean knobs take `enabled` / `disabled`, not `true` /
+/// `false`.
+#[must_use]
+fn bool_to_sway(b: bool) -> &'static str {
+    if b {
+        "enabled"
+    } else {
+        "disabled"
+    }
 }
 
 /// Apply a `keyboard.*` setting: validate, persist to the sidecar,
@@ -135,6 +174,30 @@ pub fn apply(key: SettingKey, value: &SettingValue) -> anyhow::Result<()> {
             let layout_clone = layout.clone();
             update_prefs(move |p| p.xkb_layout = layout_clone.clone())?;
             layout
+        }
+        SettingKey::MousePointerAccel => {
+            let accel: f64 = value.to_serde()?;
+            if !POINTER_ACCEL_RANGE.contains(&accel) {
+                anyhow::bail!("input: mouse pointer_accel must be -1.0..=1.0, got {accel}");
+            }
+            update_prefs(move |p| p.pointer_accel = accel)?;
+            // sway accepts e.g. `0.5`; format without trailing noise.
+            format!("{accel}")
+        }
+        SettingKey::MouseNaturalScroll => {
+            let on: bool = value.to_serde()?;
+            update_prefs(move |p| p.natural_scroll = on)?;
+            bool_to_sway(on).to_owned()
+        }
+        SettingKey::MouseTapToClick => {
+            let on: bool = value.to_serde()?;
+            update_prefs(move |p| p.tap_to_click = on)?;
+            bool_to_sway(on).to_owned()
+        }
+        SettingKey::MouseLeftHanded => {
+            let on: bool = value.to_serde()?;
+            update_prefs(move |p| p.left_handed = on)?;
+            bool_to_sway(on).to_owned()
         }
         _ => anyhow::bail!("input: {key} is not an input key"),
     };
@@ -187,6 +250,10 @@ pub fn current(key: SettingKey) -> anyhow::Result<SettingValue> {
         SettingKey::KeyboardRepeatDelay => SettingValue::from_serde(&prefs.repeat_delay_ms),
         SettingKey::KeyboardRepeatRate => SettingValue::from_serde(&prefs.repeat_rate_cps),
         SettingKey::KeyboardXkbLayout => SettingValue::from_serde(&prefs.xkb_layout),
+        SettingKey::MousePointerAccel => SettingValue::from_serde(&prefs.pointer_accel),
+        SettingKey::MouseNaturalScroll => SettingValue::from_serde(&prefs.natural_scroll),
+        SettingKey::MouseTapToClick => SettingValue::from_serde(&prefs.tap_to_click),
+        SettingKey::MouseLeftHanded => SettingValue::from_serde(&prefs.left_handed),
         _ => anyhow::bail!("input: {key} is not an input key"),
     }
 }
@@ -354,5 +421,116 @@ mod tests {
     #[test]
     fn current_rejects_non_input_key() {
         assert!(current(SettingKey::ThemeName).is_err());
+    }
+
+    #[test]
+    fn sway_input_target_routes_mouse_keys_to_pointer_or_touchpad() {
+        assert_eq!(
+            sway_input_target(SettingKey::MousePointerAccel),
+            Some(("type:pointer", "pointer_accel"))
+        );
+        assert_eq!(
+            sway_input_target(SettingKey::MouseLeftHanded),
+            Some(("type:pointer", "left_handed"))
+        );
+        assert_eq!(
+            sway_input_target(SettingKey::MouseNaturalScroll),
+            Some(("type:touchpad", "natural_scroll"))
+        );
+        assert_eq!(
+            sway_input_target(SettingKey::MouseTapToClick),
+            Some(("type:touchpad", "tap"))
+        );
+    }
+
+    #[test]
+    fn bool_to_sway_uses_enabled_disabled() {
+        assert_eq!(bool_to_sway(true), "enabled");
+        assert_eq!(bool_to_sway(false), "disabled");
+    }
+
+    #[test]
+    fn apply_pointer_accel_rejects_out_of_range() {
+        let tmp = tempfile::tempdir().unwrap();
+        with_xdg(tmp.path(), || {
+            assert!(apply(
+                SettingKey::MousePointerAccel,
+                &SettingValue::from_serde(&2.0_f64).unwrap()
+            )
+            .is_err());
+            assert!(apply(
+                SettingKey::MousePointerAccel,
+                &SettingValue::from_serde(&-1.5_f64).unwrap()
+            )
+            .is_err());
+        });
+    }
+
+    #[test]
+    fn apply_mouse_keys_round_trip_through_sidecar() {
+        let tmp = tempfile::tempdir().unwrap();
+        with_xdg(tmp.path(), || {
+            apply(
+                SettingKey::MousePointerAccel,
+                &SettingValue::from_serde(&0.5_f64).unwrap(),
+            )
+            .unwrap();
+            apply(
+                SettingKey::MouseNaturalScroll,
+                &SettingValue::from_serde(&true).unwrap(),
+            )
+            .unwrap();
+            apply(
+                SettingKey::MouseTapToClick,
+                &SettingValue::from_serde(&true).unwrap(),
+            )
+            .unwrap();
+            apply(
+                SettingKey::MouseLeftHanded,
+                &SettingValue::from_serde(&true).unwrap(),
+            )
+            .unwrap();
+
+            let accel: f64 = current(SettingKey::MousePointerAccel)
+                .unwrap()
+                .to_serde()
+                .unwrap();
+            let natural: bool = current(SettingKey::MouseNaturalScroll)
+                .unwrap()
+                .to_serde()
+                .unwrap();
+            let tap: bool = current(SettingKey::MouseTapToClick)
+                .unwrap()
+                .to_serde()
+                .unwrap();
+            let left: bool = current(SettingKey::MouseLeftHanded)
+                .unwrap()
+                .to_serde()
+                .unwrap();
+            assert!((accel - 0.5).abs() < f64::EPSILON);
+            assert!(natural && tap && left);
+        });
+    }
+
+    #[test]
+    fn apply_mouse_key_preserves_keyboard_keys() {
+        let tmp = tempfile::tempdir().unwrap();
+        with_xdg(tmp.path(), || {
+            apply(
+                SettingKey::KeyboardRepeatRate,
+                &SettingValue::from_serde(&50_u32).unwrap(),
+            )
+            .unwrap();
+            apply(
+                SettingKey::MouseLeftHanded,
+                &SettingValue::from_serde(&true).unwrap(),
+            )
+            .unwrap();
+            let rate: u32 = current(SettingKey::KeyboardRepeatRate)
+                .unwrap()
+                .to_serde()
+                .unwrap();
+            assert_eq!(rate, 50);
+        });
     }
 }

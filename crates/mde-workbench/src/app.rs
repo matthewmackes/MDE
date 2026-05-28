@@ -27,7 +27,7 @@ use crate::panels::{
     health_check as health_check_panel,
     help_index as help_index_panel, home as home_panel, hub as hub_panel,
     inventory as inventory_panel, keyboard as keyboard_panel,
-    logs as logs_panel, mesh_control as mesh_control_panel,
+    logs as logs_panel, mesh_control as mesh_control_panel, mouse as mouse_panel,
     mesh_history as mesh_history_panel, mesh_join as mesh_join_panel,
     mesh_pending as mesh_pending_panel,
     mesh_services as mesh_services_panel,
@@ -115,6 +115,8 @@ pub enum Message {
     Displays(displays_panel::Message),
     /// EPIC-RETIRE-PY-WORKBENCH.port-keyboard — Devices keyboard panel sub-message.
     Keyboard(keyboard_panel::Message),
+    /// EPIC-RETIRE-PY-WORKBENCH.port-mouse — Devices mouse/touchpad panel sub-message.
+    Mouse(mouse_panel::Message),
     /// CB-1.4.b — Devices sound panel sub-message.
     Sound(sound_panel::Message),
     /// v4.0.1 WB-2.a — Dashboard `home` landing-page messages.
@@ -216,6 +218,7 @@ pub struct App {
     removable: removable_panel::RemovablePanel,
     displays: displays_panel::DisplaysPanel,
     keyboard: keyboard_panel::KeyboardPanel,
+    mouse: mouse_panel::MousePanel,
     sound: sound_panel::SoundPanel,
     printers: printers_panel::PrintersPanel,
     /// v4.0.1 WB-1 — Connected Devices panel state. Hosts the
@@ -316,6 +319,7 @@ impl App {
             removable: removable_panel::RemovablePanel::new(),
             displays: displays_panel::DisplaysPanel::new(),
             keyboard: keyboard_panel::KeyboardPanel::new(),
+            mouse: mouse_panel::MousePanel::new(),
             sound: sound_panel::SoundPanel::new(),
             printers: printers_panel::PrintersPanel::new(),
             connect: connect_panel::ConnectPanel::new(),
@@ -672,6 +676,7 @@ impl App {
             Message::Removable(msg) => self.removable.update(msg, self.backend()),
             Message::Displays(msg) => self.displays.update(msg, self.backend()),
             Message::Keyboard(msg) => self.keyboard.update(msg, self.backend()),
+            Message::Mouse(msg) => self.mouse.update(msg, self.backend()),
             Message::Sound(msg) => self.sound.update(msg),
             Message::SoundRefresh => sound_panel::SoundPanel::load(),
             Message::Home(msg) => self.home.update(msg),
@@ -749,6 +754,7 @@ impl App {
             (Group::Devices, "removable") => removable_panel::RemovablePanel::load(self.backend()),
             (Group::Devices, "displays") => displays_panel::DisplaysPanel::load(self.backend()),
             (Group::Devices, "keyboard") => keyboard_panel::KeyboardPanel::load(self.backend()),
+            (Group::Devices, "mouse") => mouse_panel::MousePanel::load(self.backend()),
             (Group::Devices, "sound") => sound_panel::SoundPanel::load(),
             (Group::Devices, "printers") => printers_panel::PrintersPanel::load(),
             // v4.0.1 WB-1 (Phase 0.7 rescue): Connected Devices
@@ -948,6 +954,10 @@ impl App {
                 group: Group::Devices,
                 panel: "keyboard",
             } => self.keyboard.view(),
+            View::Panel {
+                group: Group::Devices,
+                panel: "mouse",
+            } => self.mouse.view(),
             View::Panel {
                 group: Group::Devices,
                 panel: "sound",

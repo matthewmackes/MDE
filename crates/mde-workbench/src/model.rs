@@ -183,6 +183,7 @@ pub fn nav_model() -> Vec<NavEntry> {
             panels: vec![
                 Panel::new("displays", "Displays"),
                 Panel::new("keyboard", "Keyboard"),
+                Panel::new("mouse", "Mouse & Touchpad"),
                 Panel::new("power", "Power"),
                 Panel::new("sound", "Sound"),
                 Panel::new("printers", "Printers"),

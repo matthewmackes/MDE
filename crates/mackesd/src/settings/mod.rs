@@ -125,6 +125,20 @@ pub enum SettingKey {
     /// Applied via `swaymsg input type:keyboard xkb_layout <codes>`.
     KeyboardXkbLayout,
 
+    // --- input (mouse / touchpad) ---
+    /// libinput pointer acceleration, -1.0..=1.0 (0.0 = default).
+    /// Applied via `swaymsg input type:pointer pointer_accel <v>`.
+    MousePointerAccel,
+    /// Reverse (natural) scrolling on touchpads (`true`/`false`).
+    /// Applied via `swaymsg input type:touchpad natural_scroll <on>`.
+    MouseNaturalScroll,
+    /// Tap-to-click on touchpads (`true`/`false`).
+    /// Applied via `swaymsg input type:touchpad tap <on>`.
+    MouseTapToClick,
+    /// Left-handed button mapping on pointers (`true`/`false`).
+    /// Applied via `swaymsg input type:pointer left_handed <on>`.
+    MouseLeftHanded,
+
     // --- keybinds ---
     /// JSON dict of binding -> command (rendered into
     /// `~/.config/sway/config.d/mackes-bindings.conf`).
@@ -172,6 +186,10 @@ impl SettingKey {
             Self::KeyboardRepeatDelay => "keyboard.repeat_delay",
             Self::KeyboardRepeatRate => "keyboard.repeat_rate",
             Self::KeyboardXkbLayout => "keyboard.xkb_layout",
+            Self::MousePointerAccel => "mouse.pointer_accel",
+            Self::MouseNaturalScroll => "mouse.natural_scroll",
+            Self::MouseTapToClick => "mouse.tap_to_click",
+            Self::MouseLeftHanded => "mouse.left_handed",
             Self::KeybindsMap => "keybinds.map",
             Self::AutostartHidden => "autostart.hidden",
             Self::AutostartExtra => "autostart.extra",
@@ -212,6 +230,10 @@ impl SettingKey {
             Self::KeyboardRepeatDelay,
             Self::KeyboardRepeatRate,
             Self::KeyboardXkbLayout,
+            Self::MousePointerAccel,
+            Self::MouseNaturalScroll,
+            Self::MouseTapToClick,
+            Self::MouseLeftHanded,
             Self::KeybindsMap,
             Self::AutostartHidden,
             Self::AutostartExtra,
@@ -343,7 +365,11 @@ pub fn apply(key: SettingKey, value: &SettingValue) -> anyhow::Result<()> {
         SettingKey::WallpaperPath | SettingKey::WallpaperMode => wallpaper::apply(key, value),
         SettingKey::KeyboardRepeatDelay
         | SettingKey::KeyboardRepeatRate
-        | SettingKey::KeyboardXkbLayout => input::apply(key, value),
+        | SettingKey::KeyboardXkbLayout
+        | SettingKey::MousePointerAccel
+        | SettingKey::MouseNaturalScroll
+        | SettingKey::MouseTapToClick
+        | SettingKey::MouseLeftHanded => input::apply(key, value),
         SettingKey::KeybindsMap => keybinds::apply(key, value),
         SettingKey::AutostartHidden | SettingKey::AutostartExtra => autostart::apply(key, value),
     }
@@ -387,7 +413,11 @@ pub fn current(key: SettingKey) -> anyhow::Result<SettingValue> {
         SettingKey::WallpaperPath | SettingKey::WallpaperMode => wallpaper::current(key),
         SettingKey::KeyboardRepeatDelay
         | SettingKey::KeyboardRepeatRate
-        | SettingKey::KeyboardXkbLayout => input::current(key),
+        | SettingKey::KeyboardXkbLayout
+        | SettingKey::MousePointerAccel
+        | SettingKey::MouseNaturalScroll
+        | SettingKey::MouseTapToClick
+        | SettingKey::MouseLeftHanded => input::current(key),
         SettingKey::KeybindsMap => keybinds::current(key),
         SettingKey::AutostartHidden | SettingKey::AutostartExtra => autostart::current(key),
     }

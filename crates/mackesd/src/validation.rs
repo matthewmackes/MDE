@@ -229,15 +229,18 @@ fn key_expected_shape(key: crate::settings::SettingKey) -> ValueShape {
         | K::NotificationDefaultExpireMs
         | K::KeyboardRepeatDelay
         | K::KeyboardRepeatRate => ValueShape::UnsignedInt,
-        // Floats — fractional scale factor.
-        K::DisplayScale => ValueShape::Float,
+        // Floats — fractional scale factor + libinput pointer accel.
+        K::DisplayScale | K::MousePointerAccel => ValueShape::Float,
         // Booleans.
         K::DisplayNightLight
         | K::PowerPresentationMode
         | K::NotificationDoNotDisturb
         | K::AutomountOnInsert
         | K::AutomountOpenOnMount
-        | K::AutomountAutorun => ValueShape::Bool,
+        | K::AutomountAutorun
+        | K::MouseNaturalScroll
+        | K::MouseTapToClick
+        | K::MouseLeftHanded => ValueShape::Bool,
         // Object — keybinds map.
         K::KeybindsMap => ValueShape::Object,
         // Arrays of string — autostart hidden/extra lists.
