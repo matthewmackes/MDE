@@ -26,7 +26,7 @@ use crate::panels::{
     fleet_settings as fleet_settings_panel, fonts as fonts_panel,
     health_check as health_check_panel,
     help_index as help_index_panel, home as home_panel, hub as hub_panel,
-    inventory as inventory_panel,
+    inventory as inventory_panel, keyboard as keyboard_panel,
     logs as logs_panel, mesh_control as mesh_control_panel,
     mesh_history as mesh_history_panel, mesh_join as mesh_join_panel,
     mesh_pending as mesh_pending_panel,
@@ -113,6 +113,8 @@ pub enum Message {
     Removable(removable_panel::Message),
     /// CB-1.4.a — Devices displays panel sub-message.
     Displays(displays_panel::Message),
+    /// EPIC-RETIRE-PY-WORKBENCH.port-keyboard — Devices keyboard panel sub-message.
+    Keyboard(keyboard_panel::Message),
     /// CB-1.4.b — Devices sound panel sub-message.
     Sound(sound_panel::Message),
     /// v4.0.1 WB-2.a — Dashboard `home` landing-page messages.
@@ -213,6 +215,7 @@ pub struct App {
     power: power_panel::PowerPanel,
     removable: removable_panel::RemovablePanel,
     displays: displays_panel::DisplaysPanel,
+    keyboard: keyboard_panel::KeyboardPanel,
     sound: sound_panel::SoundPanel,
     printers: printers_panel::PrintersPanel,
     /// v4.0.1 WB-1 — Connected Devices panel state. Hosts the
@@ -312,6 +315,7 @@ impl App {
             power: power_panel::PowerPanel::new(),
             removable: removable_panel::RemovablePanel::new(),
             displays: displays_panel::DisplaysPanel::new(),
+            keyboard: keyboard_panel::KeyboardPanel::new(),
             sound: sound_panel::SoundPanel::new(),
             printers: printers_panel::PrintersPanel::new(),
             connect: connect_panel::ConnectPanel::new(),
@@ -667,6 +671,7 @@ impl App {
             Message::Power(msg) => self.power.update(msg, self.backend()),
             Message::Removable(msg) => self.removable.update(msg, self.backend()),
             Message::Displays(msg) => self.displays.update(msg, self.backend()),
+            Message::Keyboard(msg) => self.keyboard.update(msg, self.backend()),
             Message::Sound(msg) => self.sound.update(msg),
             Message::SoundRefresh => sound_panel::SoundPanel::load(),
             Message::Home(msg) => self.home.update(msg),
@@ -743,6 +748,7 @@ impl App {
             (Group::Devices, "power") => power_panel::PowerPanel::load(self.backend()),
             (Group::Devices, "removable") => removable_panel::RemovablePanel::load(self.backend()),
             (Group::Devices, "displays") => displays_panel::DisplaysPanel::load(self.backend()),
+            (Group::Devices, "keyboard") => keyboard_panel::KeyboardPanel::load(self.backend()),
             (Group::Devices, "sound") => sound_panel::SoundPanel::load(),
             (Group::Devices, "printers") => printers_panel::PrintersPanel::load(),
             // v4.0.1 WB-1 (Phase 0.7 rescue): Connected Devices
@@ -938,6 +944,10 @@ impl App {
                 group: Group::Devices,
                 panel: "displays",
             } => self.displays.view(),
+            View::Panel {
+                group: Group::Devices,
+                panel: "keyboard",
+            } => self.keyboard.view(),
             View::Panel {
                 group: Group::Devices,
                 panel: "sound",

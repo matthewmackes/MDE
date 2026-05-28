@@ -219,13 +219,16 @@ fn key_expected_shape(key: crate::settings::SettingKey) -> ValueShape {
         | K::PowerProfile
         | K::NotificationLocation
         | K::WallpaperPath
-        | K::WallpaperMode => ValueShape::Str,
+        | K::WallpaperMode
+        | K::KeyboardXkbLayout => ValueShape::Str,
         // Unsigned integers — brightness, kelvin, idle seconds, ms.
         K::DisplayBrightness
         | K::DisplayNightLightTemp
         | K::PowerSuspendIdleBatteryS
         | K::PowerSuspendIdleAcS
-        | K::NotificationDefaultExpireMs => ValueShape::UnsignedInt,
+        | K::NotificationDefaultExpireMs
+        | K::KeyboardRepeatDelay
+        | K::KeyboardRepeatRate => ValueShape::UnsignedInt,
         // Floats — fractional scale factor.
         K::DisplayScale => ValueShape::Float,
         // Booleans.

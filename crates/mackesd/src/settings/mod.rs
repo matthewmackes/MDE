@@ -29,6 +29,7 @@ pub mod automount;
 pub mod autostart;
 pub mod display;
 pub mod font;
+pub mod input;
 pub mod keybinds;
 pub mod notification;
 pub mod power;
@@ -111,6 +112,19 @@ pub enum SettingKey {
     /// `stretch` / `fit` / `fill` / `center` / `tile`.
     WallpaperMode,
 
+    // --- input (keyboard) ---
+    /// Key-repeat delay in milliseconds before the first repeat
+    /// (100..=2000). Applied via `swaymsg input type:keyboard
+    /// repeat_delay <ms>`.
+    KeyboardRepeatDelay,
+    /// Key-repeat rate in characters per second once the delay
+    /// elapses (1..=100). Applied via `swaymsg input type:keyboard
+    /// repeat_rate <cps>`.
+    KeyboardRepeatRate,
+    /// XKB layout code(s), e.g. `us` or `us,de` (comma-separated).
+    /// Applied via `swaymsg input type:keyboard xkb_layout <codes>`.
+    KeyboardXkbLayout,
+
     // --- keybinds ---
     /// JSON dict of binding -> command (rendered into
     /// `~/.config/sway/config.d/mackes-bindings.conf`).
@@ -155,6 +169,9 @@ impl SettingKey {
             Self::AutomountAutorun => "automount.autorun",
             Self::WallpaperPath => "wallpaper.path",
             Self::WallpaperMode => "wallpaper.mode",
+            Self::KeyboardRepeatDelay => "keyboard.repeat_delay",
+            Self::KeyboardRepeatRate => "keyboard.repeat_rate",
+            Self::KeyboardXkbLayout => "keyboard.xkb_layout",
             Self::KeybindsMap => "keybinds.map",
             Self::AutostartHidden => "autostart.hidden",
             Self::AutostartExtra => "autostart.extra",
@@ -192,6 +209,9 @@ impl SettingKey {
             Self::AutomountAutorun,
             Self::WallpaperPath,
             Self::WallpaperMode,
+            Self::KeyboardRepeatDelay,
+            Self::KeyboardRepeatRate,
+            Self::KeyboardXkbLayout,
             Self::KeybindsMap,
             Self::AutostartHidden,
             Self::AutostartExtra,
@@ -321,6 +341,9 @@ pub fn apply(key: SettingKey, value: &SettingValue) -> anyhow::Result<()> {
         | SettingKey::AutomountOpenOnMount
         | SettingKey::AutomountAutorun => automount::apply(key, value),
         SettingKey::WallpaperPath | SettingKey::WallpaperMode => wallpaper::apply(key, value),
+        SettingKey::KeyboardRepeatDelay
+        | SettingKey::KeyboardRepeatRate
+        | SettingKey::KeyboardXkbLayout => input::apply(key, value),
         SettingKey::KeybindsMap => keybinds::apply(key, value),
         SettingKey::AutostartHidden | SettingKey::AutostartExtra => autostart::apply(key, value),
     }
@@ -362,6 +385,9 @@ pub fn current(key: SettingKey) -> anyhow::Result<SettingValue> {
         | SettingKey::AutomountOpenOnMount
         | SettingKey::AutomountAutorun => automount::current(key),
         SettingKey::WallpaperPath | SettingKey::WallpaperMode => wallpaper::current(key),
+        SettingKey::KeyboardRepeatDelay
+        | SettingKey::KeyboardRepeatRate
+        | SettingKey::KeyboardXkbLayout => input::current(key),
         SettingKey::KeybindsMap => keybinds::current(key),
         SettingKey::AutostartHidden | SettingKey::AutostartExtra => autostart::current(key),
     }

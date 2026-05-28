@@ -19,6 +19,7 @@ pub mod fleet_settings;
 pub mod fonts;
 pub mod health_check;
 pub mod help_index;
+pub mod keyboard;
 pub mod home;
 pub mod hub;
 pub mod inventory;
