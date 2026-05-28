@@ -20,7 +20,9 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use mde_card::probe::{host_card, service_card, HostFacts, HostSource, ServiceFacts};
+use mde_card::probe::{
+    host_card, host_facts, service_card, service_facts, HostFacts, HostSource, ServiceFacts,
+};
 use mde_card::Card;
 
 /// Curated port set both profiles scan. Union of the media ports the
@@ -313,6 +315,116 @@ pub fn mesh_targets(qnm_root: &Path) -> Vec<String> {
         .collect()
 }
 
+// ── Read API (MESH-PROBE-6) ──────────────────────────────────────────
+//
+// The consumer-facing side: merge every peer's GFS-replicated
+// `probe-inventory.json` into one `Vec<Card>`, and a query for "which
+// hosts run service X". The design (Q8) names this `mackesd::probe::`;
+// it lives here in `probe_nmap` co-located with the inventory format +
+// path (`inventory_path`) + writer it mirrors, rather than a separate
+// module that would have to re-export those. In-process consumers
+// (app_sync, MESH-A workers) poll `inventory()` on their tick (the
+// established mackesd worker pattern) + use `inventory_fingerprint()`
+// to skip a re-parse when nothing changed; the push side
+// (`probe/changed` Bus event from MESH-PROBE-4) drives the Portal's
+// subscription (MESH-PROBE-9) via the standard mde-bus subs.
+
+/// One host + one of its services — the unit `peers_with_service`
+/// returns so a consumer can build, e.g., a media-server URL.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostService {
+    /// The host the service runs on.
+    pub host: HostFacts,
+    /// The matching service.
+    pub service: ServiceFacts,
+}
+
+/// Merge every peer's `<qnm_root>/*/mackesd/probe-inventory.json` into
+/// one `Vec<Card>` (the union of all host cards across the mesh).
+/// Fail-open per file: a missing/malformed/unreadable inventory is
+/// skipped (logged at debug) so one corrupt peer can't blind the
+/// reader to the others. Missing `qnm_root` → empty.
+#[must_use]
+pub fn inventory(qnm_root: &Path) -> Vec<Card> {
+    let entries = match std::fs::read_dir(qnm_root) {
+        Ok(e) => e,
+        Err(_) => return Vec::new(),
+    };
+    let mut out: Vec<Card> = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path().join("mackesd").join(INVENTORY_FILENAME);
+        let Ok(body) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        match serde_json::from_str::<Vec<Card>>(&body) {
+            Ok(cards) => out.extend(cards),
+            Err(e) => tracing::debug!(
+                target: "mackesd::probe_nmap",
+                path = %path.display(),
+                error = %e,
+                "skipping malformed probe inventory (fail-open)",
+            ),
+        }
+    }
+    out
+}
+
+/// Find every `(host, service)` in the merged inventory whose service
+/// kind matches `kind` (case-insensitive). The query app_sync uses to
+/// locate media peers (`peers_with_service("airsonic")`).
+#[must_use]
+pub fn peers_with_service(qnm_root: &Path, kind: &str) -> Vec<HostService> {
+    let want = kind.to_ascii_lowercase();
+    let mut out = Vec::new();
+    for host_card in inventory(qnm_root) {
+        let Some(host) = host_facts(&host_card) else {
+            continue;
+        };
+        for child in &host_card.children {
+            if let Some(service) = service_facts(child) {
+                if service.service_kind.to_ascii_lowercase() == want {
+                    out.push(HostService {
+                        host: host.clone(),
+                        service,
+                    });
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Cheap change-detection token over the inventory files: a hash of
+/// each peer dir's `(filename, len, mtime)`. A polling consumer keeps
+/// the last value + only re-parses [`inventory`] when it changes —
+/// avoiding a full JSON parse every tick. Order-independent (sums per
+/// file) so directory iteration order doesn't matter.
+#[must_use]
+pub fn inventory_fingerprint(qnm_root: &Path) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let Ok(entries) = std::fs::read_dir(qnm_root) else {
+        return 0;
+    };
+    let mut acc: u64 = 0;
+    for entry in entries.flatten() {
+        let path = entry.path().join("mackesd").join(INVENTORY_FILENAME);
+        let Ok(meta) = std::fs::metadata(&path) else {
+            continue;
+        };
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        path.hash(&mut h);
+        meta.len().hash(&mut h);
+        if let Ok(mtime) = meta.modified() {
+            if let Ok(d) = mtime.duration_since(std::time::UNIX_EPOCH) {
+                d.as_nanos().hash(&mut h);
+            }
+        }
+        // XOR-accumulate so peer order doesn't affect the result.
+        acc ^= h.finish();
+    }
+    acc
+}
+
 // ── Target resolver (MESH-PROBE-5) ───────────────────────────────────
 //
 // Q5 scope = mesh peers ∪ local LAN ∪ operator-arbitrary; Q9 default =
@@ -591,7 +703,6 @@ pub fn run_probe_cycle(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mde_card::probe::{host_facts, service_facts};
     use mde_card::CardKind;
 
     // A faithful `nmap -sV -oX -` sample: one up host (10.42.0.5,
@@ -887,6 +998,95 @@ mod tests {
         assert_eq!(got, vec!["10.0.0.1".to_string(), "192.168.0.0/24".to_string()]);
         assert!(missing.is_empty(), "absent key → empty");
         assert!(absent.is_empty(), "absent file → empty");
+    }
+
+    // ── Read API (MESH-PROBE-6) ─────────────────────────────────────
+
+    // Seed `<root>/<peer>/mackesd/probe-inventory.json` with a host
+    // card carrying the given services, for the read-API tests.
+    fn seed_inventory(root: &Path, peer: &str, ip: &str, services: &[(&str, u16)]) {
+        let dir = root.join(peer).join("mackesd");
+        std::fs::create_dir_all(&dir).unwrap();
+        let svc_cards: Vec<Card> = services
+            .iter()
+            .map(|(kind, port)| {
+                service_card(
+                    &ServiceFacts {
+                        port: *port,
+                        service_kind: (*kind).to_owned(),
+                        product: String::new(),
+                        version: String::new(),
+                        fingerprint: String::new(),
+                    },
+                    1,
+                )
+            })
+            .collect();
+        let host = host_card(
+            &HostFacts {
+                ip: ip.to_owned(),
+                hostname: peer.to_owned(),
+                source: HostSource::Mesh,
+                trust_state: String::new(),
+                last_seen: 1,
+            },
+            svc_cards,
+            1,
+        );
+        std::fs::write(
+            dir.join(INVENTORY_FILENAME),
+            serialize_inventory(&[host]),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn inventory_unions_all_peer_files() {
+        let root = tmp_root("inv-union");
+        seed_inventory(&root, "peer-a", "10.42.0.5", &[("ssh", 22)]);
+        seed_inventory(&root, "peer-b", "10.42.0.6", &[("jellyfin", 8096)]);
+        // A malformed file must be skipped (fail-open), not abort.
+        let bad = root.join("peer-c").join("mackesd");
+        std::fs::create_dir_all(&bad).unwrap();
+        std::fs::write(bad.join(INVENTORY_FILENAME), "{ not an array").unwrap();
+        let inv = inventory(&root);
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(inv.len(), 2, "two valid host cards, malformed skipped");
+    }
+
+    #[test]
+    fn inventory_empty_for_missing_root() {
+        assert!(inventory(Path::new("/nonexistent/xyz")).is_empty());
+    }
+
+    #[test]
+    fn peers_with_service_filters_by_kind() {
+        let root = tmp_root("inv-svc");
+        seed_inventory(&root, "peer-a", "10.42.0.5", &[("ssh", 22), ("jellyfin", 8096)]);
+        seed_inventory(&root, "peer-b", "10.42.0.6", &[("airsonic", 4040)]);
+        let jelly = peers_with_service(&root, "jellyfin");
+        let airs = peers_with_service(&root, "AIRSONIC"); // case-insensitive
+        let none = peers_with_service(&root, "redis");
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(jelly.len(), 1);
+        assert_eq!(jelly[0].host.ip, "10.42.0.5");
+        assert_eq!(jelly[0].service.port, 8096);
+        assert_eq!(airs.len(), 1);
+        assert_eq!(airs[0].host.ip, "10.42.0.6");
+        assert!(none.is_empty());
+    }
+
+    #[test]
+    fn inventory_fingerprint_changes_on_write() {
+        let root = tmp_root("inv-fp");
+        seed_inventory(&root, "peer-a", "10.42.0.5", &[("ssh", 22)]);
+        let fp1 = inventory_fingerprint(&root);
+        // Adding a peer changes the fingerprint.
+        seed_inventory(&root, "peer-b", "10.42.0.6", &[("ssh", 22)]);
+        let fp2 = inventory_fingerprint(&root);
+        let _ = std::fs::remove_dir_all(&root);
+        assert_ne!(fp1, fp2, "fingerprint changes when a peer's inventory appears");
+        assert_ne!(fp1, 0);
     }
 
     #[test]

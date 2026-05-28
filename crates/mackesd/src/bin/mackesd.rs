@@ -511,6 +511,17 @@ enum ProbeCmd {
         #[clap(long, default_value = "/usr/share/mde/nmap")]
         nse_dir: String,
     },
+    /// List the merged mesh-wide probe inventory (MESH-PROBE-6): the
+    /// union of every peer's `probe-inventory.json`. With `--service`,
+    /// list only the hosts running that service kind.
+    List {
+        /// Mesh-home root (defaults to `$QNM_SHARED_ROOT` / `~/QNM-Shared`).
+        #[clap(long, env = "QNM_SHARED_ROOT")]
+        qnm_root: Option<PathBuf>,
+        /// Filter to hosts running this service kind (e.g. `jellyfin`).
+        #[clap(long)]
+        service: Option<String>,
+    },
 }
 
 /// VV-1 / VV-1.5 — `mackesd voice <sub>` subcommands.
@@ -887,6 +898,25 @@ fn main() -> anyhow::Result<()> {
                     &qnm_root, &node_id, &home, "nmap", &nse_dir, true,
                 );
                 println!("probe refresh: {n} host(s) in inventory");
+            }
+            ProbeCmd::List { qnm_root, service } => {
+                // MESH-PROBE-6 — read the merged mesh-wide inventory.
+                let qnm_root = qnm_root.unwrap_or_else(mackesd_core::default_qnm_shared_root);
+                match service {
+                    Some(kind) => {
+                        for hs in mackesd_core::probe_nmap::peers_with_service(&qnm_root, &kind) {
+                            println!(
+                                "{}\t{}\t{}:{}",
+                                hs.host.ip, hs.service.service_kind, hs.host.hostname, hs.service.port
+                            );
+                        }
+                    }
+                    None => {
+                        for card in &mackesd_core::probe_nmap::inventory(&qnm_root) {
+                            println!("{}", serde_json::to_string(card)?);
+                        }
+                    }
+                }
             }
         },
         Cmd::PresetLaunch { tag } => {
