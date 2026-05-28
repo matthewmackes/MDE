@@ -45,6 +45,52 @@
  *        --mde-tray-popover-slide-px:            8     (§2.3 reveal slide distance)
  *
  *
+ * §3 — Motion vocabulary (SWAY-2, 2026-05-28; sway-native max-animation
+ *      lock, docs/design/sway-native-shell.md §2). Three reusable
+ *      primitives compose every shell animation:
+ *
+ *        fade   — opacity 0<->1
+ *        slide  — translate on one axis (panel edge / page direction)
+ *        scale  — 0.8<->1.0 (pop / press); origin-anchored where it
+ *                 grows from a trigger point (menus from cursor, etc.)
+ *
+ *      Exit rule: every surface dismisses as the REVERSE of its reveal,
+ *      dropped one tier (reveal 200 -> dismiss 150; reveal 150 -> 120).
+ *
+ *      Stagger: list/grid reveals cascade the first ~8 visible items at
+ *      ~20 ms offset each, then the remainder appears instantly (so a
+ *      long list never crawls).
+ *
+ * §4 — Per-surface timing assignments (all resolve to the §1 grid):
+ *
+ *        reveal (Portal / menus / launcher / notifications)  200 ms slide+fade
+ *        dismiss (all surfaces)                              one tier faster
+ *        hover / press feedback                              100 ms scale+brightness
+ *        selection / focus-highlight travel                 120 ms slide
+ *        OSD level-bar fill                                  120 ms
+ *        theme / preset crossfade                            200 ms
+ *        urgent pulse                                        ~2 cycles, bounded
+ *        workspace-label morph (typewriter)                  60 chars/sec (§2)
+ *
+ * §5 — Interruptibility + reduced motion (Q61 + Q4, sway-native lock):
+ *
+ *      Interruptible: a new trigger mid-animation REDIRECTS the tween
+ *      from its current value toward the new target over the standard
+ *      eased curve -- it never snaps or waits to finish. This is an
+ *      eased redirect, NOT a physics spring: the "no spring / overshoot
+ *      / bounce" lock (§1 easing) still holds. "Interruptible"
+ *      describes the behaviour, not an overshoot shape.
+ *
+ *      Reduced motion: honor prefers-reduced-motion (accessibility
+ *      toggle only -- no battery / hardware auto-throttle). When set,
+ *      non-essential motion snaps or uses a single short fade; loading
+ *      feedback (skeleton shimmer) is retained.
+ *
+ *      Owner: the `mde-motion` crate (SWAY-1) implements §1-§5 as the
+ *      single Rust source every iced surface consumes; this file is its
+ *      documentation anchor.
+ *
+ *
  * Consumers (search-and-replace target — when these values evolve,
  * grep the codebase for the constant name + update):
  *
@@ -56,7 +102,14 @@
  *   crates/mde-popover/src/window_actions.rs     (button-press feedback)
  *   crates/mde-workbench/src/header.rs           (panel-mount fade)
  *   crates/mde-applets/notification-bell/src/main.rs
+ *   crates/mde-motion/src/lib.rs                 (SWAY-1 — central owner
+ *                                                 of §1-§5; the other
+ *                                                 consumers above migrate
+ *                                                 to import from here)
  *
  *
  * Locked: 2026-05-27 via HYP-7 closure under ship-CH session.
+ * Extended: 2026-05-28 via SWAY-2 (sway-native maximum-animation lock;
+ *           §3 vocabulary + §4 per-surface timing + §5 interruptibility
+ *           & reduced motion). Authority docs/design/sway-native-shell.md.
  */

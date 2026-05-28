@@ -50,13 +50,17 @@ matters via MDE-drawn surfaces, which iced renders itself.
   interpolations) cover all shell motion.
 - **Q8 — exits:** every surface dismisses as the reverse of its
   reveal, dropped one grid tier (reveal 200 → dismiss 150).
-- **Q61 — interruptibility:** animations reverse/redirect from their
-  current position; never snap or wait. (The premium-feel factor.)
+- **Q61 — interruptibility:** a new trigger mid-animation redirects the
+  tween from its current value toward the new target over the standard
+  eased curve; never snaps or waits. This is an **eased redirect, not a
+  physics spring** — the "no spring/overshoot/bounce" lock in
+  `motion-language.md` / `motion-vocabulary.css` §1 still holds.
+  (The premium-feel factor.)
 - **Q45 — presets:** one shared motion system; presets differ by
   accent/color only.
 - **Q79 — home of truth:** new `mde-motion` crate — the timing grid +
-  fade/slide/scale + interruptible-spring primitives, consumed by
-  every iced surface.
+  fade/slide/scale + interruptible eased-redirect primitives (no
+  overshoot), consumed by every iced surface.
 - **Q80 — tokens:** extend `data/css/motion-vocabulary.css` + add
   motion tokens to `tokens.css`; `mde-motion` reads them.
 - **Q82 — frame rate:** 60 fps target, honor display refresh, throttle
