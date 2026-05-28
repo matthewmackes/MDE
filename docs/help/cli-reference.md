@@ -125,6 +125,26 @@ mackesd nebula peer-list                 # all peers + overlay IPs + cert expiry
 mackesd nebula regen-certs               # request cert renewal for this peer
 ```
 
+## Mesh passcode
+
+Every peer in the fleet shares one 16-character passcode. Generate it
+on the first peer, then paste the same code on every other peer at
+enrol time. `--store` encrypts the code at rest via `systemd-creds`
+(TPM when present, host key otherwise) at
+`/var/lib/mackesd/mesh-passcode.cred` — the plaintext never lands on
+disk. The cred is host-local: each peer encrypts the shared passcode
+under its own key, so the file does not replicate across the mesh.
+
+```
+mackesd generate-passcode                # print a fresh 16-char passcode
+mackesd generate-passcode --store        # also encrypt it to the cred file
+            [--cred-path <PATH>]         # override the cred-file location
+mackesd rotate-passcode                  # print a new passcode; peers refresh
+            [--store] [--cred-path <PATH>]  #   on next heartbeat (reconcile loop)
+mackesd show-passcode                    # decrypt + print the stored passcode
+            [--cred-path <PATH>]         #   (inverse of generate/rotate --store)
+```
+
 ## Nebula CA (lighthouse operators only)
 
 ```
@@ -139,6 +159,23 @@ mackesd ca sign <node-id> [--groups lighthouse,peer]
 mackesd ca revoke <node-id>              # revoke a peer cert + push CRL to all peers
 mackesd ca export                        # export encrypted CA backup bundle (stdout)
 mackesd ca import                        # import a CA backup bundle (stdin)
+```
+
+### Ban list (compromised nodes)
+
+A ban refuses a node-id enrolment mesh-wide — even with a valid
+passcode and across a CA rotation. Bans propagate to every peer via
+GFS-replicated mesh-home; the enrolment gate enforces the *union* of
+every peer's list, so there is no override. `ca unban` only lifts the
+entry the local peer set — a ban another peer set must be lifted there.
+
+```
+mackesd ca ban <node-id>                 # add a node-id to this peer's ban list
+            [--qnm-root <PATH>]          #   (env: QNM_SHARED_ROOT)
+mackesd ca unban <node-id>               # lift this peer's ban entry
+            [--qnm-root <PATH>]
+mackesd ca ban-list                      # print the mesh-wide union the gate enforces
+            [--qnm-root <PATH>]
 ```
 
 ## Daemon
