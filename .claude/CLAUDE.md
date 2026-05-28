@@ -734,7 +734,22 @@ we're at it, ..." scope creep.
   supersedes the v2.0.0 sway lock + Portal-41..Portal-59 sway-
   IPC contracts + R12 Q44 keyboard-resize submap + Classic
   ChromeOS universal-flat element. Lock re-engaged after HYP-33
-  lifts close.
+  lifts close. **❌ REVERSED 2026-05-28 — see next entry.**
+- **2026-05-28 — Hyprland removed; sway-native re-scope**
+  (HYP-1..HYP-33 fully retired; compositor stays vanilla sway
+  permanently). Operator-issued lift for a 150-Q survey (100
+  sway-integration + max-animation, 50 correction). Locks
+  captured in `docs/design/sway-native-shell.md` and
+  [[sway-native-reversal]]. **Replaces** §11 1.0-roadmap item
+  #19 (now "Sway-native shell + maximum-animation system");
+  retires the v6.5 HYP section; reverts the v2.0.0 sway lock to
+  STANDS, the Portal-41..59 sway-IPC contracts to STAND, R12 Q44
+  to sway resize+OSD; supersedes `EPIC-UI-WALLPAPER` (EtherApe
+  wireframe wallpaper revived), the Classic-ChromeOS universal-
+  flat clause (→ flat-but-elevated), and the all-mono Portal font
+  lock (→ Roboto UI + Intel One Mono). New worklist epic SWAY-* /
+  ANIM-*. This is the legitimate §0.17 / Q91 amendment path
+  (operator-directed). Lock re-engaged after the retune lands.
 
 **Why this rule:** the active worklist already represents 324
 items across 15+ epics. Continuing to add scope while draining is

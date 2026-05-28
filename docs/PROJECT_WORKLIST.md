@@ -583,7 +583,45 @@ call-end lifecycle, never at install or login.
 
 ---
 
-### v6.5 — Hyprland compositor migration (HYP-1..HYP-33, locked 2026-05-27 via 30-Q survey + same-day simplification re-lock)
+### Sway-native shell + maximum animation (SWAY-* / ANIM-*, locked 2026-05-28 via 150-Q survey)
+
+> **Authority:** `docs/design/sway-native-shell.md` (150 locks: 100 sway-integration/animation + 50 correction). Memory `sway-native-reversal`. §11 1.0-roadmap item #19 (replaces the removed Hyprland migration).
+> **Decision:** Hyprland removed; compositor is **vanilla sway**, permanently. Windows snap; ALL animation lives in MDE iced layer-shell surfaces via the `mde-motion` crate. Verification = automated/headless/CI (extend HW-3), not per-machine bench.
+> **Supersedes / reverts:** the v6.5 HYP-1..HYP-33 section below (RETIRED); `EPIC-UI-WALLPAPER` Q48 static-wallpaper de-scope (→ EtherApe wireframe revived); the *universal-flat* clause of Classic ChromeOS (→ flat-but-elevated); the all-Intel-One-Mono Portal font lock + Roboto-Mono ChromeOS pairing (→ Roboto UI + Intel One Mono). The 2026-05-27 Hyprland re-points on **Portal-45 / Portal-47 / Portal-48.b / Portal-51 / Portal-58** are VOID — their v6.0 swayipc "historical contract" bodies stand as canonical again.
+> Part of 1.0 (the whole backlog). Low-effort options only (flashy-when-achievable OK; no heavy engineering).
+
+**Foundation (SWAY-*)**
+- [ ] **SWAY-1: `mde-motion` crate** — timing grid (100/120/150/200 ms) + fade/slide/scale + interruptible-spring primitives + reduce-motion gate; consumed by every iced surface. Unblocks all ANIM-*. (Q2/Q3/Q6/Q8/Q61/Q79). Acceptance: design doc §2; unit-test interpolation value-at-t + interrupt-reversal + reduce-motion path.
+- [ ] **SWAY-2: Motion tokens** — extend `data/css/motion-vocabulary.css` + add motion tokens to `data/css/tokens.css`; `mde-motion` reads them (Q80).
+- [ ] **SWAY-3: Headless verification** — extend the HW-3 `WLR_BACKENDS=headless` harness with worker-exercise assertions (Q5/Q81); reduce-motion CI asserts static render (Q99).
+- [ ] **SWAY-4: marks worker on sway** — salvage `marks_state` from `mde-x` commit `c913bed1`: keep the pure MarksStore (add/remove/list/match) + Bus responder; port IPC hyprland-rs → swayipc (sway native marks) (Q89/Q94). Replaces the HYP-14 marks_state + the HYP-AutoMark sway-bridge.
+- [ ] **SWAY-5: template emitter on sway** — salvage from `mde-x` commit `d3c81f3d`: keep `CardKind::Template` + `TemplateSpec`; retarget the batch emitter `hyprctl --batch` → `swaymsg` (`;`-separated) (Q90/Q94). Satisfies Portal-51.
+- [ ] **SWAY-6: voice-tone lint** — extend `install-helpers/lint-voice.sh` to fail on user-visible "sway"/"i3" (compositor is an implementation detail) (Q84).
+- [ ] **SWAY-7: motion-token lint** — low-effort gate: motion in `crates/mde-*/src` uses `mde-motion` tokens, no ad-hoc durations (Q93).
+- [ ] **SWAY-8: installer + config** — installer pulls Fedora-repo sway + seeds MDE sway config (Q51); `mde-config` generates sway config GFS-replicated (Q52); shared config + per-peer EDID overlay (Q53); inotify `swaymsg reload` + crossfade on edit (Q54).
+
+**Animation coverage (ANIM-*)** — each cites `docs/design/sway-native-shell.md` §3–§7:
+- [ ] **ANIM-1: Panel motion** — taskbar width-expand (Q9), focus-indicator slide (Q10), status-icon state + tray enter/leave (Q38), fullscreen panel slide-away (Q23).
+- [ ] **ANIM-2: Portal motion** — compact slide-up reveal (Q7), full horizontal-slide layers (Q16), breadcrumb slide+crossfade (Q35), command palette drop-in + live reflow (Q42).
+- [ ] **ANIM-3: Overlays** — notifications slide-in + stack-shift (Q12), OSD bar-fill + slide (Q13), context menus grow-from-cursor + stagger (Q44), toast action-button expand (Q97).
+- [ ] **ANIM-4: Lists & selection** — capped ~8 stagger everywhere (Q15), selection-highlight slide (Q18), skeleton-shimmer loading (Q19).
+- [ ] **ANIM-5: Pills, marks, urgent** — pill pop-in + slide-reorder (Q11), bounded urgent pulse (Q20), scratchpad pill pulse (Q68).
+- [ ] **ANIM-6: Launcher, overview, which-key** — launcher slide-up + stagger (Q14), data-driven workspace overview (Q46), sway-mode pill + which-key overlay (Q55).
+- [ ] **ANIM-7: Session theater** — login sequenced reveal (Q25), logout shell-out (Q40), lock crossfade (Q48), cold-start reveal (Q74), idle→dim→lock (Q63).
+- [ ] **ANIM-8: Flat-but-elevated visual** — borderless windows + thin focus line (Q26/Q27), tag-color focus line + pill (Q28), shadows on MDE surfaces (Q29), mixed-radius 4/8/12 (Q30), Material icon fill-morph (Q32), theme crossfade (Q33), Roboto UI + Intel One Mono (Q31).
+- [ ] **ANIM-9: Clipboard signature** — content-morph chip → fly-to-peers (Q43, operator-confirmed); cross-peer file-drop fly (Q65); silent by default (Q67).
+- [ ] **ANIM-10: Workspace experience** — switch indicator + name OSD (Q21), label character-morph (Q22), wallpaper crossfade + parallax (Q24), app-launch icon pulse (Q56), Hub drag-to-tile ghost+highlight (Q34), FLIP drag-reorder (Q96).
+- [ ] **ANIM-11: Feature-surface motion** — mesh peers enter/leave + state (Q41), VoIP ringing→pill (Q57), monitoring sparklines+gauges (Q58), birthright wizard step-slide (Q59), screenshot flash+thumbnail (Q60), file ops + drag ghost (Q50), settings nav (Q49), toggles thumb+echo (Q39), invalid-action shake (Q62), empty-state animation (Q64), calendar slide-up (Q70), IME switch pill (Q72), hold radial-fill (Q98).
+- [ ] **ANIM-12: EtherApe mesh-wallpaper** — revive Portal-22/23/24 + MESH-W-* + MESH-WP-* as the wallpaper rendering source: live wireframe network-activity graph at MESH-WP fidelity (auto-pause-when-obscured, reduced solver iterations, 12 s update) (Q76). **Supersedes `EPIC-UI-WALLPAPER`.** Default wallpaper; static image stays selectable for weak peers.
+- [ ] **ANIM-13: Reduce-motion plumbing** — honor `prefers-reduced-motion` across `mde-motion` (Q4, toggle-only, no battery throttle); snap/quick-fade non-essential motion, keep loading feedback.
+
+---
+
+### v6.5 — Hyprland compositor migration (HYP-1..HYP-33) — ❌ RETIRED 2026-05-28
+
+> **❌ RETIRED — Hyprland fully removed by operator directive 2026-05-28.** Superseded by the **Sway-native shell + maximum-animation** epic above (`docs/design/sway-native-shell.md`, §11 roadmap item #19). **Do NOT action any HYP-* task below** — they are kept only as historical record. The compositor stays vanilla sway, permanently. Compositor-agnostic logic from the shipped/staged HYP work is salvaged into SWAY-4 / SWAY-5. The `hyprland-cut` worktree is discarded (its commits remain on the `mde-x` mirror).
+>
+> _(original v6.5 lock metadata retained below as history)_
 
 > **Authority:** `docs/design/v6.5-hyprland-compositor.md` (30 locks across 3 rounds + §10.1 simplification re-lock).
 > **Memory:** `project_v6_5_hyprland.md`.
@@ -2366,7 +2404,7 @@ call-end lifecycle, never at install or login.
     - [✓] **EPIC-UI-MOTION.cleanup (shipped 2026-05-26):** 6 transitions in `data/css/mackes.css` (lines 132/133/206/207/257/363/390/435) updated from `180ms cubic-bezier(0.2, 0, 0, 1)` to the Q47-locked `150ms cubic-bezier(0.0, 0.0, 0.2, 1.0)`. Other CSS files carry no transitions. CSS lint clean on mackes.css + tokens.css.
     - [~] **EPIC-UI-MOTION.reduced (retired 2026-05-26):** GTK CSS provider doesn't support `@media (prefers-reduced-motion)` (`gtk-css-provider-error-quark: unknown @ rule`). Per motion-language.md §4 + `data/css/density.css:73-83` comment block: GTK panels use `gtk-settings::gtk-enable-animations = false` instead. The `@media` wrapper applies only to Iced/HTML surfaces (mde-* crates) which already include it. Subtask retired — platform-policy choice, not a code task.
 
-- [ ] **EPIC-UI-WALLPAPER: Mesh-wallpaper = decoration + optional Bus mesh-stripe (urgent only)** *(Q48)*
+- [ ] **EPIC-UI-WALLPAPER: ❌ SUPERSEDED 2026-05-28 by ANIM-12** (EtherApe network-activity wireframe wallpaper revived per 150-Q Q76; the Q48 static-image de-scope is reversed). Bus `urgent` mesh-stripe (BUS-2.6) remains as an overlay on the live wallpaper. *(Q48 → superseded)*
   **As** the Mesh-Wallpaper surface,
   **I want** a simpler model than the full functional-globe vision,
   **so that** the wallpaper layer doesn't carry the data-visualization complexity.

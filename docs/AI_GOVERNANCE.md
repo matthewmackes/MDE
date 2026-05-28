@@ -289,7 +289,7 @@ MackesDE for Workgroups 1.0 ships when ALL of these are green:
 | 16 | **EPIC-TUNING-25Q completed** — 16 tuning tasks from the 2026-05-26 25-Q survey: 5 new pre-commit gates (#11-#15), pre-cut-check + hard-block, autonomy amendments, cap enforcement, security-posture doc, Carbon final sweep, phone Nebula peer-hood, federation UX | 25-Q (2026-05-26) |
 | 17 | **PHONE-NEBULA-PEER** — phone elevated from "beside the mesh" to full Nebula peer (Q23 reopens Q58) | Q23 (25-Q) |
 | 18 | **Security posture documented** (`docs/design/security-posture.md`) — Fedora targeted + user-UID stance | Q25 (25-Q) |
-| 19 | **HYP-1..HYP-33** v6.5 Hyprland compositor migration fully shipped (sway hard-cut retired; `mde-hypr-plugin` C++ bridge live; Portal R12 retargeted) | 30-Q survey (2026-05-27) |
+| 19 | **Sway-native shell + maximum-animation system** (`docs/design/sway-native-shell.md`) — vanilla sway compositor; all motion in MDE iced layer-shell surfaces via the `mde-motion` crate; EtherApe network-activity mesh-wallpaper; flat-but-elevated visual identity. **Replaces the removed Hyprland migration.** | 150-Q survey (2026-05-28) |
 
 **Post-1.0:**
 - Continuous main; tag minor versions annually (1.1, 1.2, …)
@@ -364,10 +364,10 @@ The following older locks are **superseded** by this doc:
 | `mackes-shell` naming | Q71 MackesDE for Workgroups | Rebrand |
 | v12.x / v8.x / v5.x design IDs as release versions | Q72 1.0 reset | Versioning clean slate |
 | Hardware Testing carve-out (memory `feedback_no_cut_until_worklist_empty`) | Q69 pre-release HW bench required | Tighter gate |
-| v2.0.0 Wayland-only (sway) compositor lock (memory `project_v2_0_0_mackes_de`) | v6.5 Hyprland migration (`docs/design/v6.5-hyprland-compositor.md`) | Compositor-level animation + decoration polish |
-| Classic ChromeOS "universal flat" element (memory `project_chromeos_classic_visual_lock`) | HYP-21 per-elevation M3 shadows | Layered visual hierarchy |
-| R12 Q44 Mod+r → Portal-compact resize (memory `project_v6_0_mde_portal`) | HYP-13 mouse-grab resize | Hyprland's mouse-grab is the locked path |
-| Portal-41..Portal-59 sway-IPC contracts (memory `project_v6_0_mde_portal`) | HYP-9..HYP-18 hyprland-rs equivalents | Compositor swap |
+| v2.0.0 Wayland-only (sway) compositor lock (memory `project_v2_0_0_mackes_de`) | **STANDS** — Hyprland migration removed 2026-05-28; vanilla sway is permanent (`docs/design/sway-native-shell.md`) | Reverted → sway-native |
+| Classic ChromeOS "universal flat" element (memory `project_chromeos_classic_visual_lock`) | "flat-but-elevated" — shadows on MDE iced surfaces only, windows stay flat (`sway-native-shell.md` §5) | Layered visual hierarchy |
+| R12 Q44 Mod+r → Portal-compact resize (memory `project_v6_0_mde_portal`) | **STANDS** — sway resize mode + live dimension OSD (`sway-native-shell.md` Q37); HYP-13 mouse-grab void | Reverted → sway-native |
+| Portal-41..Portal-59 sway-IPC contracts (memory `project_v6_0_mde_portal`) | **STAND** — Hyprland equivalents removed 2026-05-28 | Reverted → sway-native |
 
 Memory files for the items above should be updated to reflect
 supersession; CLAUDE.md §0.7 and §0.8 need amendment per Q63 + Q64
