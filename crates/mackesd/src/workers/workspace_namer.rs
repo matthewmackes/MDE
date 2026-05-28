@@ -166,7 +166,19 @@ async fn rename_pass(conn: &mut Connection) {
         return;
     };
     let app_id = focused_window_app_id(&tree, focused.num);
-    let desired = derive_workspace_name(focused.num, app_id.as_deref());
+    // HYP-9.sway-bridge — load the tag-manifest snapshot each pass
+    // so per-tag `name` overrides the literal app_id when the
+    // focused window's `app_id` appears in any manifest's `apps[]`.
+    // Manifest load is fail-soft: missing dir / unreadable file
+    // falls through to the legacy app_id-based naming. Cheap
+    // relative to the swayipc tree+workspaces fetches above.
+    let manifests = crate::config::default_manifests_dir()
+        .and_then(|d| crate::config::load_tag_manifests(&d).ok());
+    let desired = derive_workspace_name_with_manifests(
+        focused.num,
+        app_id.as_deref(),
+        manifests.as_deref(),
+    );
     if !is_auto_derived(focused.num, &focused.name) {
         return;
     }
@@ -224,7 +236,10 @@ fn visit_leaves<F: FnMut(&swayipc_async::Node)>(node: &swayipc_async::Node, f: &
 // ── Pure helpers (testable without a sway connection) ───────────────────
 
 /// Produce the preferred name for a workspace whose number is `num`
-/// and whose focused-or-first app_id is `app_id`.
+/// and whose focused-or-first app_id is `app_id`. Shim around
+/// [`derive_workspace_name_with_manifests`] with no manifest snapshot
+/// (preserves the Portal-41 contract for callers that don't load
+/// manifests yet).
 ///
 /// * `Some(non-empty)` → `"<num>: <app_id>"`
 /// * `Some("")` or `None` → `"<num>"` (numeric-only, the empty state)
@@ -234,10 +249,44 @@ fn visit_leaves<F: FnMut(&swayipc_async::Node)>(node: &swayipc_async::Node, f: &
 /// workspace via `Mod+<n>`.
 #[must_use]
 pub fn derive_workspace_name(num: i32, app_id: Option<&str>) -> String {
-    match app_id {
-        Some(s) if !s.is_empty() => format!("{num}: {s}"),
-        _ => num.to_string(),
+    derive_workspace_name_with_manifests(num, app_id, None)
+}
+
+/// HYP-9.sway-bridge — same as [`derive_workspace_name`] but with an
+/// explicit tag-manifest snapshot. Resolution precedence:
+///
+/// 1. **Tag manifest `name`** (HYP-8.5 source of truth) — when the
+///    focused window's `app_id` appears in any manifest's `apps[]`
+///    list AND that manifest has a non-empty `name`, the workspace
+///    name uses the manifest's `name` field instead of the literal
+///    `app_id`. First match wins via the alphabetical sort that
+///    `load_all` enforces (deterministic across reboots).
+/// 2. **Literal `app_id`** (Portal-41 legacy) — fallback when no
+///    manifest claims the focused window's `app_id`, or when the
+///    matching manifest's `name` is empty.
+/// 3. **Numeric-only** — when `app_id` is `None` or empty.
+#[must_use]
+pub fn derive_workspace_name_with_manifests(
+    num: i32,
+    app_id: Option<&str>,
+    manifests: Option<&[crate::config::TagManifest]>,
+) -> String {
+    let Some(id) = app_id.filter(|s| !s.is_empty()) else {
+        return num.to_string();
+    };
+
+    // Priority 1: tag-manifest `name` lookup. First manifest whose
+    // `apps[]` contains `id` AND whose `name` is non-empty wins.
+    if let Some(ms) = manifests {
+        for m in ms.iter() {
+            if m.apps.iter().any(|a| a == id) && !m.name.is_empty() {
+                return format!("{num}: {name}", name = m.name);
+            }
+        }
     }
+
+    // Priority 2: literal app_id (Portal-41 legacy).
+    format!("{num}: {id}")
 }
 
 /// `true` if `current_name` matches the pattern this worker writes
@@ -415,5 +464,136 @@ mod tests {
             rename_command(1, "1: org.mozilla.firefox"),
             r#"rename workspace number 1 to "1: org.mozilla.firefox""#
         );
+    }
+
+    // ── HYP-9.sway-bridge precedence tests ─────────────────────────────────
+    //
+    // Mirror the testing shape used by workspace_router /
+    // border_tinter / tag_layout / tag_autostart bridges: pure-fn
+    // unit tests over the new precedence helper, no live sway
+    // connection.
+
+    use crate::config::TagManifest;
+
+    fn manifest_with(name: &str, apps: &[&str]) -> TagManifest {
+        TagManifest {
+            name: name.to_string(),
+            apps: apps.iter().map(|s| s.to_string()).collect(),
+            ..TagManifest::default()
+        }
+    }
+
+    /// Manifest `apps[]` claims the focused app_id → workspace
+    /// name uses the manifest `name` instead of the literal
+    /// app_id. Bench acceptance: workspace running `linphone`
+    /// whose voip manifest groups it under `voip` reads
+    /// `3: voip`.
+    #[test]
+    fn manifest_name_wins_when_apps_match() {
+        let manifests = vec![manifest_with("voip", &["org.mde.voice.hud", "linphone"])];
+        assert_eq!(
+            derive_workspace_name_with_manifests(3, Some("linphone"), Some(&manifests)),
+            "3: voip"
+        );
+        assert_eq!(
+            derive_workspace_name_with_manifests(7, Some("org.mde.voice.hud"), Some(&manifests)),
+            "7: voip"
+        );
+    }
+
+    /// Manifests present but none claim the focused app_id →
+    /// falls through to literal-app_id naming (Portal-41 legacy).
+    #[test]
+    fn manifest_no_match_falls_through_to_app_id() {
+        let manifests = vec![manifest_with("voip", &["linphone"])];
+        assert_eq!(
+            derive_workspace_name_with_manifests(2, Some("firefox"), Some(&manifests)),
+            "2: firefox"
+        );
+    }
+
+    /// Matching manifest with empty `name` falls through to
+    /// literal-app_id naming. Defensive: a degenerate manifest
+    /// shouldn't strip the workspace name to `<num>: ` (which
+    /// is a malformed auto-derived form).
+    #[test]
+    fn manifest_match_with_empty_name_falls_through() {
+        let manifests = vec![manifest_with("", &["firefox"])];
+        assert_eq!(
+            derive_workspace_name_with_manifests(4, Some("firefox"), Some(&manifests)),
+            "4: firefox"
+        );
+    }
+
+    /// Two manifests claim the same app_id → first match wins.
+    /// `load_all` returns manifests sorted by name, so this also
+    /// locks the deterministic tiebreaker contract: a manifest
+    /// named "alpha" beats "beta" when both list the same app.
+    #[test]
+    fn first_matching_manifest_wins_deterministic() {
+        let manifests = vec![
+            manifest_with("alpha", &["chromium"]),
+            manifest_with("beta", &["chromium"]),
+        ];
+        assert_eq!(
+            derive_workspace_name_with_manifests(1, Some("chromium"), Some(&manifests)),
+            "1: alpha"
+        );
+    }
+
+    /// `None` manifest snapshot → behaves identically to the
+    /// shim. Confirms the legacy callers stay byte-for-byte
+    /// stable when manifests aren't loaded yet.
+    #[test]
+    fn none_manifests_match_legacy_shim() {
+        assert_eq!(
+            derive_workspace_name_with_manifests(5, Some("firefox"), None),
+            "5: firefox"
+        );
+        assert_eq!(
+            derive_workspace_name_with_manifests(5, Some("firefox"), None),
+            derive_workspace_name(5, Some("firefox"))
+        );
+    }
+
+    /// Empty / None app_id → numeric-only regardless of
+    /// manifests. The manifest lookup is skipped entirely so a
+    /// workspace with no focused window can't accidentally pick
+    /// up a tag name.
+    #[test]
+    fn empty_app_id_returns_numeric_only_with_manifests() {
+        let manifests = vec![manifest_with("voip", &[""])];
+        assert_eq!(
+            derive_workspace_name_with_manifests(8, None, Some(&manifests)),
+            "8"
+        );
+        assert_eq!(
+            derive_workspace_name_with_manifests(8, Some(""), Some(&manifests)),
+            "8"
+        );
+    }
+
+    /// Empty manifest list → falls through to literal app_id.
+    /// Covers the early-boot path where the loader returns
+    /// `Some(vec![])` after a successful read of an empty dir.
+    #[test]
+    fn empty_manifest_list_falls_through() {
+        let manifests: Vec<TagManifest> = Vec::new();
+        assert_eq!(
+            derive_workspace_name_with_manifests(6, Some("firefox"), Some(&manifests)),
+            "6: firefox"
+        );
+    }
+
+    /// `is_auto_derived` still recognises the manifest-named
+    /// form (`<num>: <name>`) — both `5: firefox` and
+    /// `5: voip` start with `5: ` so re-rename pass after a
+    /// manifest is added or removed correctly fires.
+    #[test]
+    fn manifest_named_form_is_still_auto_derived() {
+        assert!(is_auto_derived(3, "3: voip"));
+        assert!(is_auto_derived(3, "3: firefox"));
+        // Operator-curated name still preserved.
+        assert!(!is_auto_derived(3, "VoIP Calls"));
     }
 }
