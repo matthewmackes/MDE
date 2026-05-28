@@ -5,6 +5,20 @@ unreleased; tag versions get a date when they ship.
 
 ## Unreleased — v1.0 MackesDE for Workgroups (rebrand cut)
 
+**EPIC-SEC-BANLIST — compromised-node ban list (2026-05-28)**
+- A node-id can now be permanently banned from the mesh:
+  `mackesd ca ban <node-id>`. A banned identity is refused
+  enrollment even with a valid passcode and even after a CA
+  rotation — closing the "stolen peer replays its node-id" gap that
+  cert revocation alone doesn't cover.
+- The ban list lives at `<mesh-home>/<peer>/mackesd/ban-list.json`
+  (GFS-replicated), and the enrollment gate enforces the union of
+  every peer's list, so a ban set on any peer blocks the node-id
+  everywhere and survives the loss of the peer that set it.
+- `mackesd ca unban <node-id>` lifts this peer's entry;
+  `mackesd ca ban-list` prints the enforced mesh-wide union. A ban
+  has no override flag — it is deliberate by design.
+
 **v6.5 Hyprland migration — baseline ships (2026-05-27)**
 - `/usr/share/mde/hyprland.conf` lands with every locked
   baseline policy inline: 4 px window corners (HYP-19), blur on

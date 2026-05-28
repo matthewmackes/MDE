@@ -470,6 +470,15 @@ pub enum SignCsrError {
         /// The locked cap value (8 for 1.0).
         cap: u32,
     },
+    /// EPIC-SEC-BANLIST (Q53) — the node-id appears in the union of
+    /// every peer's ban list. A banned identity is refused
+    /// enrollment even with a valid passcode + even across a CA
+    /// rotation. Lift the ban by editing the ban list (no override
+    /// flag — a ban is deliberate).
+    NodeBanned {
+        /// The banned node-id the CSR carried.
+        node_id: String,
+    },
 }
 
 impl std::fmt::Display for SignCsrError {
@@ -510,6 +519,14 @@ impl std::fmt::Display for SignCsrError {
                  `mackesd ca sign-csr <node-id> --override-cap` to \
                  bypass; document the exception in \
                  docs/design/cap-overrides.md.",
+            ),
+            Self::NodeBanned { node_id } => write!(
+                f,
+                "node-id '{node_id}' is on the mesh ban list (Q53) and \
+                 cannot re-join, even with a valid passcode. A ban is \
+                 deliberate — there is no override flag. To lift it, run \
+                 `mackesd ca unban {node_id}` on the peer that set it (or \
+                 edit ban-list.json under that peer's QNM-Shared dir).",
             ),
         }
     }
@@ -565,6 +582,23 @@ pub fn sign_pending_csr<B: crate::ca::NebulaCertBackend + ?Sized>(
         serde_json::from_slice(&csr_bytes).map_err(|e| SignCsrError::CsrCorrupt {
             reason: e.to_string(),
         })?;
+    // EPIC-SEC-BANLIST (Q53) — refuse a banned node-id BEFORE the
+    // cap check + before any signing work. A ban is a deliberate,
+    // permanent block that survives CA rotation; there is no
+    // override (unlike the cap). The union spans every peer's ban
+    // list under qnm_root, so a ban set anywhere blocks everywhere.
+    if crate::ca::ban_list::is_banned(qnm_root, &csr.node_id) {
+        tracing::warn!(
+            target: "mackesd::ban_list",
+            event = "enroll.banned.refused",
+            peer_id = %csr.node_id,
+            mesh_id = %mesh_id,
+            "EPIC-SEC-BANLIST: refusing enrollment of a banned node-id",
+        );
+        return Err(SignCsrError::NodeBanned {
+            node_id: csr.node_id.clone(),
+        });
+    }
     // TUNE-11 — 8-peer cap (Q3 + Q22) enforcement. Counts
     // distinct active node_ids at the active epoch. The
     // UNIQUE(node_id, epoch) constraint on `nebula_peer_certs`
@@ -1019,6 +1053,83 @@ mod tests {
             )
             .unwrap();
         assert_eq!(row_count, 1);
+    }
+
+    #[test]
+    fn sign_csr_refuses_banned_node() {
+        // EPIC-SEC-BANLIST — a banned node-id is refused at the sign
+        // gate even with a valid pending CSR + an active CA, and even
+        // when the peer cap has room. No override path.
+        let tmp = tempdir().expect("tempdir");
+        let conn = fresh_store();
+        let (ca_crt, ca_key) = make_test_ca(tmp.path(), &conn);
+        place_csr(tmp.path(), "peer:evil");
+        // Ban the node-id from a (different) peer's ban list — the
+        // union check must still see it.
+        crate::ca::ban_list::add_banned(tmp.path(), "peer:lh", "peer:evil")
+            .expect("ban");
+        let paths = SignCsrPaths {
+            ca_crt,
+            ca_key,
+            scratch_dir: tmp.path().join("scratch"),
+        };
+        let r = sign_pending_csr(
+            &MockBackend,
+            &conn,
+            tmp.path(),
+            "peer:evil",
+            "test-mesh",
+            &paths,
+            Vec::new(),
+            365,
+            // Even with override_cap = true, a ban is absolute.
+            true,
+        );
+        match r {
+            Err(SignCsrError::NodeBanned { node_id }) => {
+                assert_eq!(node_id, "peer:evil");
+            }
+            other => panic!("expected NodeBanned, got {other:?}"),
+        }
+        // The banned node must NOT have landed a cert row.
+        let row_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM nebula_peer_certs WHERE node_id = ?1",
+                ["peer:evil"],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(row_count, 0, "banned node must not be signed");
+    }
+
+    #[test]
+    fn sign_csr_allows_unbanned_node_when_others_banned() {
+        // A ban list containing OTHER node-ids must not block an
+        // innocent peer.
+        let tmp = tempdir().expect("tempdir");
+        let conn = fresh_store();
+        let (ca_crt, ca_key) = make_test_ca(tmp.path(), &conn);
+        place_csr(tmp.path(), "peer:anvil");
+        crate::ca::ban_list::add_banned(tmp.path(), "peer:lh", "peer:someone-else")
+            .expect("ban");
+        let paths = SignCsrPaths {
+            ca_crt,
+            ca_key,
+            scratch_dir: tmp.path().join("scratch"),
+        };
+        let outcome = sign_pending_csr(
+            &MockBackend,
+            &conn,
+            tmp.path(),
+            "peer:anvil",
+            "test-mesh",
+            &paths,
+            Vec::new(),
+            365,
+            false,
+        )
+        .expect("innocent peer should sign");
+        assert_eq!(outcome.peer_id, "peer:anvil");
     }
 
     #[test]

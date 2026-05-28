@@ -606,6 +606,35 @@ enum CaCmd {
         #[arg(long, default_value_t = false)]
         override_cap: bool,
     },
+    /// EPIC-SEC-BANLIST (Q53) — add a node-id to this peer's ban
+    /// list. A banned node-id is refused enrollment mesh-wide, even
+    /// with a valid passcode + across a CA rotation. GFS replication
+    /// propagates the ban to every peer.
+    Ban {
+        /// Node-id to ban (e.g. `peer:stolen`).
+        node_id: String,
+        /// Override QNM-Shared / mesh-home root (defaults to
+        /// `$QNM_SHARED_ROOT` or `~/QNM-Shared`).
+        #[arg(long, env = "QNM_SHARED_ROOT")]
+        qnm_root: Option<PathBuf>,
+    },
+    /// EPIC-SEC-BANLIST (Q53) — remove a node-id from this peer's
+    /// ban list. Only lifts the entry THIS peer set; a ban another
+    /// peer set must be lifted there (the gate checks the union).
+    Unban {
+        /// Node-id to unban.
+        node_id: String,
+        /// Override QNM-Shared / mesh-home root.
+        #[arg(long, env = "QNM_SHARED_ROOT")]
+        qnm_root: Option<PathBuf>,
+    },
+    /// EPIC-SEC-BANLIST (Q53) — print the union of every peer's ban
+    /// list (the set the enrollment gate enforces).
+    BanList {
+        /// Override QNM-Shared / mesh-home root.
+        #[arg(long, env = "QNM_SHARED_ROOT")]
+        qnm_root: Option<PathBuf>,
+    },
 }
 
 /// NF-18.x — `mackesd nebula <sub>` subcommands.
@@ -1565,6 +1594,65 @@ fn main() -> anyhow::Result<()> {
                         }
                         Err(e) => {
                             return Err(anyhow::anyhow!("sign-csr: {e}"));
+                        }
+                    }
+                }
+                CaCmd::Ban { node_id, qnm_root } => {
+                    // EPIC-SEC-BANLIST (Q53) — add node-id to this
+                    // peer's ban list. GFS replication propagates it.
+                    let qnm_root =
+                        qnm_root.unwrap_or_else(mackesd_core::default_qnm_shared_root);
+                    let self_id = default_node_id();
+                    match mackesd_core::ca::ban_list::add_banned(
+                        &qnm_root, &self_id, &node_id,
+                    ) {
+                        Ok(true) => println!(
+                            "banned '{node_id}' (recorded in {}'s ban list; \
+                             propagates to every peer via GFS).",
+                            self_id
+                        ),
+                        Ok(false) => println!("'{node_id}' was already banned (no-op)."),
+                        Err(e) => return Err(anyhow::anyhow!("ca ban: {e}")),
+                    }
+                }
+                CaCmd::Unban { node_id, qnm_root } => {
+                    // EPIC-SEC-BANLIST (Q53) — lift a ban THIS peer
+                    // set. Bans set on other peers must be lifted
+                    // there (the gate enforces the union).
+                    let qnm_root =
+                        qnm_root.unwrap_or_else(mackesd_core::default_qnm_shared_root);
+                    let self_id = default_node_id();
+                    match mackesd_core::ca::ban_list::remove_banned(
+                        &qnm_root, &self_id, &node_id,
+                    ) {
+                        Ok(true) => println!("unbanned '{node_id}' from {self_id}'s ban list."),
+                        Ok(false) => {
+                            // Still surface the union state so the
+                            // operator knows if another peer banned it.
+                            if mackesd_core::ca::ban_list::is_banned(&qnm_root, &node_id) {
+                                println!(
+                                    "'{node_id}' isn't in {self_id}'s ban list, but ANOTHER \
+                                     peer still bans it — unban it on that peer too."
+                                );
+                            } else {
+                                println!("'{node_id}' isn't banned (no-op).");
+                            }
+                        }
+                        Err(e) => return Err(anyhow::anyhow!("ca unban: {e}")),
+                    }
+                }
+                CaCmd::BanList { qnm_root } => {
+                    // EPIC-SEC-BANLIST (Q53) — print the enforced
+                    // union across every peer's ban list.
+                    let qnm_root =
+                        qnm_root.unwrap_or_else(mackesd_core::default_qnm_shared_root);
+                    let union = mackesd_core::ca::ban_list::load_union(&qnm_root);
+                    if union.is_empty() {
+                        println!("ban list empty (no node-ids banned across the mesh).");
+                    } else {
+                        println!("Banned node-ids (mesh-wide union, {} total):", union.len());
+                        for id in &union {
+                            println!("  {id}");
                         }
                     }
                 }
