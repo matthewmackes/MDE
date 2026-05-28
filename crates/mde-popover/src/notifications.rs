@@ -532,17 +532,6 @@ fn render_row(row_data: &NotificationRow) -> Element<'_, Message> {
         .into()
 }
 
-fn load_groups() -> Vec<(String, Vec<NotificationRow>)> {
-    let path: PathBuf = notifications_cache_path();
-    let raw = match fs::read_to_string(&path) {
-        Ok(s) => s,
-        Err(_) => return Vec::new(),
-    };
-    let rows = parse_notifications(&raw);
-    let visible_rows = visible(rows);
-    group_and_sort(visible_rows)
-}
-
 /// BUG-8.c — load + group rows for the current `GroupMode`,
 /// filtering muted peers in peer-mode (mute is a peer concept;
 /// app-mode users want the full firehose so they can still see
@@ -684,13 +673,6 @@ mod tests {
         assert_eq!(HEIGHT, 600);
     }
 
-    #[test]
-    fn load_groups_returns_empty_when_cache_missing() {
-        // Hard to guarantee without setting env vars, but if the
-        // cache is missing the helper returns an empty Vec rather
-        // than panicking.
-        let _ = load_groups();
-    }
 
     #[test]
     fn parse_mutes_decodes_known_shape() {
