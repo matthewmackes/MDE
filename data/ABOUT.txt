@@ -1,11 +1,13 @@
-Mackes Shell — XFCE Workstation
-================================
+Mackes Desktop Environment (MDE) — for Workgroups
+=================================================
 
-A unified GTK shell on top of vanilla XFCE: top status bar with an
-Apple-menu-style launcher, macOS-style bottom dock with window
-grouping, right-side notification drawer, preset-driven theming, and
-mesh-VPN-aware workbench panels. Standard XFCE underneath as the
-window manager and session.
+A custom desktop environment for Fedora Linux that makes a group of
+computers feel like one machine: a top status bar with a start menu,
+a dock with window grouping, a right-side notification drawer,
+preset-driven theming, and a mesh-aware workbench. Each peer shows up
+as a folder on every other peer; clipboard, notifications, media, and
+SSH all flow across the mesh. sway underneath as the compositor and
+session.
 
 
 Project

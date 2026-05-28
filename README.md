@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/readme-banner-dark.svg">
+    <img alt="MDE — Mackes Desktop Environment for Workgroups" src="assets/brand/readme-banner-light.svg" width="480">
+  </picture>
+</p>
+
 # MDE — Mackes Desktop Environment
 
 **In one line:** MDE is a custom desktop for Fedora Linux that makes
