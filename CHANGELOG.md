@@ -5,6 +5,17 @@ unreleased; tag versions get a date when they ship.
 
 ## Unreleased — v1.0 MackesDE for Workgroups (rebrand cut)
 
+**Passcode encrypted at rest via systemd-creds (2026-05-28)**
+- `mackesd generate-passcode --store` (and `rotate-passcode --store`)
+  now encrypt the mesh passcode to `/var/lib/mackesd/mesh-passcode.cred`
+  via `systemd-creds` — using the TPM when present, falling back to
+  the machine host key. `mackesd show-passcode` decrypts it back.
+- The plaintext is fed to `systemd-creds` on stdin and the ciphertext
+  written 0600, so the plaintext never touches disk. The cred is
+  host-bound (not mesh-replicated) — each peer encrypts its own copy
+  under its own key. This is the mechanism; the Birthright wizard and
+  mded enrollment path wire onto it next.
+
 **Bus RPC — `action/`/`reply/` request-response pattern (2026-05-28)**
 - The Bus now supports commands with responses, not just
   fire-and-forget events. `mde-bus request action/<domain>/<verb>

@@ -49,6 +49,9 @@ pub mod nebula_enroll;
 // CLI + by the NF-18.4 automated backup worker (planned).
 pub mod nebula_roster;
 pub mod passcode;
+// EPIC-SEC-PASSCODE-CREDS (Q52) — encrypt the mesh passcode at rest
+// via systemd-creds (TPM-or-host-key).
+pub mod passcode_creds;
 // PC-3 (2026-05-21) — peer-join handler: writes probe.json +
 // spawns mde-peer-card on mesh peer-join events. Event-source
 // integration into the mesh / topology layer is PC-3.a.

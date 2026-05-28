@@ -92,20 +92,47 @@ enum Cmd {
     },
 
     /// Generate a fresh 16-char URL-safe passcode (Phase 12.10.1).
-    /// Prints the passcode and an instruction to save it to
-    /// `libsecret` as `org.mackes.mesh.passcode`. Does NOT mutate
-    /// libsecret on its own — caller drives the secret-storage step.
-    GeneratePasscode,
+    /// Prints the passcode. With `--store` (EPIC-SEC-PASSCODE-CREDS),
+    /// also encrypts it to the cred file via `systemd-creds` instead
+    /// of printing the libsecret hint.
+    GeneratePasscode {
+        /// EPIC-SEC-PASSCODE-CREDS — encrypt the generated passcode
+        /// to the cred file via `systemd-creds encrypt`.
+        #[arg(long, default_value_t = false)]
+        store: bool,
+        /// Override the cred-file path (defaults to
+        /// `/var/lib/mackesd/mesh-passcode.cred`).
+        #[arg(long, value_name = "PATH")]
+        cred_path: Option<PathBuf>,
+    },
 
     /// Walk the `events` table forward and verify every row's hash
     /// (Phase 12.10.3). Exits 0 on Intact / Empty, 1 on Break.
     AuditVerify,
 
     /// Rotate the shared mesh passcode (Phase 12.10.2). Prints a
-    /// freshly-generated passcode and reminds the operator to
-    /// store it in libsecret. Peers pick up the new passcode on
-    /// their next heartbeat once the reconcile loop ships (12.5).
-    RotatePasscode,
+    /// freshly-generated passcode. With `--store`, encrypts it to
+    /// the cred file via `systemd-creds`. Peers pick up the new
+    /// passcode on their next heartbeat once the reconcile loop runs.
+    RotatePasscode {
+        /// EPIC-SEC-PASSCODE-CREDS — encrypt the rotated passcode to
+        /// the cred file via `systemd-creds encrypt`.
+        #[arg(long, default_value_t = false)]
+        store: bool,
+        /// Override the cred-file path.
+        #[arg(long, value_name = "PATH")]
+        cred_path: Option<PathBuf>,
+    },
+
+    /// EPIC-SEC-PASSCODE-CREDS — decrypt + print the mesh passcode
+    /// stored via `systemd-creds` (the inverse of
+    /// `generate-passcode --store`). Reads the cred file, runs
+    /// `systemd-creds decrypt`, prints the plaintext to stdout.
+    ShowPasscode {
+        /// Override the cred-file path.
+        #[arg(long, value_name = "PATH")]
+        cred_path: Option<PathBuf>,
+    },
 
     /// Explain why a given peer is expected to peer with each of
     /// its neighbors (Phase 12.4.4). Reads `topology::calculate`'s
@@ -924,13 +951,29 @@ fn main() -> anyhow::Result<()> {
                 | mackesd_core::gluster::headroom::Verdict::NoBrick => std::process::exit(1),
             }
         }
-        Cmd::GeneratePasscode => {
+        Cmd::GeneratePasscode { store, cred_path } => {
             let code = mackesd_core::passcode::generate();
             println!("{code}");
-            eprintln!(
-                "(save with: secret-tool store --label='Mackes mesh passcode' \
-                org.mackes.mesh.passcode <name>)"
-            );
+            if store {
+                let path = cred_path
+                    .unwrap_or_else(mackesd_core::passcode_creds::default_cred_path);
+                mackesd_core::passcode_creds::store(
+                    &code,
+                    &path,
+                    mackesd_core::passcode_creds::CRED_NAME,
+                )
+                .map_err(|e| anyhow::anyhow!("generate-passcode --store: {e}"))?;
+                eprintln!(
+                    "stored (encrypted via systemd-creds) at {}. Share the code \
+                     above with peers; the plaintext is not on disk.",
+                    path.display()
+                );
+            } else {
+                eprintln!(
+                    "(encrypt at rest with: mackesd generate-passcode --store, \
+                     or save to libsecret manually)"
+                );
+            }
         }
         Cmd::AuditVerify => {
             // Reads every row from the `events` table (ordered by
@@ -952,16 +995,44 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         }
-        Cmd::RotatePasscode => {
-            // Phase 12.10.2 — generate fresh passcode; libsecret
-            // store + peer redistribution wires through with 12.5.
+        Cmd::RotatePasscode { store, cred_path } => {
+            // Phase 12.10.2 — generate fresh passcode; peer
+            // redistribution wires through the reconcile loop (12.5).
             let code = mackesd_core::passcode::generate();
             println!("{code}");
-            eprintln!(
-                "rotation: store with `secret-tool store --label='Mackes mesh \
-                 passcode' org.mackes.mesh.passcode <name>` then peers refresh \
-                 their bearer tokens on next heartbeat."
-            );
+            if store {
+                let path = cred_path
+                    .unwrap_or_else(mackesd_core::passcode_creds::default_cred_path);
+                mackesd_core::passcode_creds::store(
+                    &code,
+                    &path,
+                    mackesd_core::passcode_creds::CRED_NAME,
+                )
+                .map_err(|e| anyhow::anyhow!("rotate-passcode --store: {e}"))?;
+                eprintln!(
+                    "rotation: stored (encrypted via systemd-creds) at {}; \
+                     peers refresh their bearer tokens on next heartbeat.",
+                    path.display()
+                );
+            } else {
+                eprintln!(
+                    "rotation: encrypt at rest with `mackesd rotate-passcode \
+                     --store`; peers refresh their bearer tokens on next \
+                     heartbeat."
+                );
+            }
+        }
+        Cmd::ShowPasscode { cred_path } => {
+            // EPIC-SEC-PASSCODE-CREDS — decrypt + print the stored
+            // passcode. The inverse of generate/rotate --store.
+            let path = cred_path
+                .unwrap_or_else(mackesd_core::passcode_creds::default_cred_path);
+            let code = mackesd_core::passcode_creds::load(
+                &path,
+                mackesd_core::passcode_creds::CRED_NAME,
+            )
+            .map_err(|e| anyhow::anyhow!("show-passcode: {e}"))?;
+            println!("{code}");
         }
         Cmd::PeersWhy { node_id } => {
             // Phase 12.4.4 — explanation surface. Loads the node
