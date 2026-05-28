@@ -1,3 +1,9 @@
+//! Binary entry point for the audio top-bar-right applet. Polls
+//! `pactl` on a 2 s tick + writes the formatted chip + the
+//! current state to the host over stdio. `--manifest` prints the
+//! applet's manifest JSON and exits (called by the panel host
+//! during registration discovery).
+
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, ExitCode};
 

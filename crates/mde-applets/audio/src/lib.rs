@@ -12,6 +12,9 @@
 
 use mde_applet_api::{AppletId, AppletSlot, HostMessage};
 
+/// Build the static applet manifest the host registers at startup.
+/// Identity + binary name + slot match the `mde-applet-audio` binary
+/// the panel spawns when this applet is wired into the layout.
 #[must_use]
 pub fn manifest() -> mde_applet_api::AppletManifest {
     mde_applet_api::AppletManifest {
@@ -23,9 +26,16 @@ pub fn manifest() -> mde_applet_api::AppletManifest {
     }
 }
 
+/// Snapshot of the default-sink state polled from `pactl` on the
+/// 2 s tick. Render-only — the applet never owns mutation; the
+/// Workbench Sound panel is the source of truth for volume + mute.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AudioState {
+    /// Default-sink volume, 0..=100. Clamped at parse time so the
+    /// renderer never sees values outside the chip's display range.
     pub volume_pct: u32,
+    /// `true` when the default sink is muted. Renders as a
+    /// crossed-speaker glyph regardless of volume_pct.
     pub muted: bool,
 }
 
@@ -115,6 +125,11 @@ pub fn format_chip(state: AudioState) -> String {
     }
 }
 
+/// Process a host control message and return `true` when the
+/// applet should keep running. Only [`HostMessage::Shutdown`]
+/// stops the event loop; every other variant is a host-side
+/// hint (accent change, visibility toggle, etc.) the applet
+/// renderer reacts to elsewhere.
 #[must_use]
 pub fn handle_host(msg: &HostMessage) -> bool {
     !matches!(msg, HostMessage::Shutdown)
