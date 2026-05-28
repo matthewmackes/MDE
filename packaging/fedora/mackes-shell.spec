@@ -199,6 +199,12 @@ Requires:       glusterfs-fuse
 # leader-flip lands with MON-1.b.
 Requires:       netdata
 
+# EPIC-MESH-PROBE (MESH-PROBE-3) — nmap is the sole probe engine
+# (design Q3). mackesd's probe worker + `mackesd probe scan` shell
+# out to it; the bundled NSE scripts at %{_datadir}/%{name}/nmap/
+# extend `-sV` with the mesh-media + Mackes-service fingerprinters.
+Requires:       nmap
+
 # VV-1 + VV-1.5 (v4.1.0) — voice stack. Kamailio is the SIP
 # proxy/registrar/router; rtpengine is the SRTP relay it drives
 # via the NG unix socket. Both from F44's official repo (no
@@ -747,6 +753,16 @@ install -D -m 0644 data/bus/hooks/home_assistant.yaml \
     %{buildroot}%{_datadir}/mde/bus/hooks/home_assistant.yaml
 install -D -m 0644 data/bus/hooks/generic.yaml \
     %{buildroot}%{_datadir}/mde/bus/hooks/generic.yaml
+
+# EPIC-MESH-PROBE (MESH-PROBE-3) — bundled NSE scripts the deep
+# probe profile loads via `nmap --script %{_datadir}/mde/nmap`
+# (the probe_nmap deep_argv default nse_dir). The media detector
+# names Airsonic/Navidrome/Jellyfin behind generic http banners;
+# the service fingerprinter marks Mackes Bus broker peers.
+install -D -m 0644 data/nmap/mde-media-detect.nse \
+    %{buildroot}%{_datadir}/mde/nmap/mde-media-detect.nse
+install -D -m 0644 data/nmap/mde-service-fingerprint.nse \
+    %{buildroot}%{_datadir}/mde/nmap/mde-service-fingerprint.nse
 
 # BUS-3.1 (v6.x Mackes Bus) — firewalld service definition for
 # the two Bus ports (8443/tcp ntfy + 8444/tcp webhooks). Operator

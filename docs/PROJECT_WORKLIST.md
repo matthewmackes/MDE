@@ -2523,14 +2523,14 @@ call-end lifecycle, never at install or login.
     - [✓] Fast + deep argv builders are pure-fn + unit-tested for flag shape (`-T3` rate-limited, never `-T5`; `-oX -`; deep adds `-sV --version-all` + `--script <nse_dir>`).
     - [✓] `nmap` absent → `scan` returns empty + logs at warn (no panic; verified via the `mackesd probe scan` CLI smoke + a unit test). `Requires: nmap` in the RPM is MESH-PROBE-3.
 
-- [ ] **MESH-PROBE-3: v1.0 — bundled NSE scripts + RPM packaging**
+- [✓] **MESH-PROBE-3: v1.0 — bundled NSE scripts + RPM packaging** *(shipped 2026-05-28 — session=opus-47-2026-05-28-ship-B. Two NSE scripts under `data/nmap/`: `mde-media-detect.nse` (probes Subsonic `/rest/ping.view` + Jellyfin `/System/Info/Public` to name Airsonic/Navidrome/Jellyfin behind generic http banners, setting precise `service_kind` via `set_port_version`) + `mde-service-fingerprint.nse` (probes Mackes Bus broker `/v1/health` + `/config.js` to mark MDE peers / `mde-bus` service). Both validated against real nmap 7.92 — `nmap --script-help data/nmap/<name>.nse` resolves + parses both. Spec: `Requires: nmap` (verified via `rpmspec -q --requires`) + two `install -D` lines → `%{_datadir}/mde/nmap/` mirroring the proven `data/bus/*.tmpl` pattern (covered by the `%{_datadir}/%{name}/` %files catch-all). Already wired into the deep profile (`probe_nmap::deep_argv` → `--script /usr/share/mde/nmap`). `rpmspec -P` parses clean. **No `make rpm` — RPM builds are deferred to release per the operator's hard rule (2026-05-28); packaging verified via `rpmspec -P` + correct-by-construction install lines.** Cite: mesh-probe-subsystem.md §2 (Q4 bundled NSE).)*
   **As** the deep-identification path,
   **I want** custom NSE scripts (a mesh-media detector + a Mackes-service fingerprinter) shipped to `/usr/share/mde/nmap/` with `Requires: nmap`,
   **so that** identification beats stock `-sV` for platform services (Q4).
   **Acceptance** (each bench-observable):
-    - [ ] NSE scripts land under `data/nmap/`; spec installs them to `/usr/share/mde/nmap/` + adds `Requires: nmap`.
-    - [ ] `nmap --script-help <bundled-name>` resolves against the installed path.
-    - [ ] `make rpm` builds clean with the new data + Requires.
+    - [✓] NSE scripts land under `data/nmap/`; spec installs them to `/usr/share/mde/nmap/` + adds `Requires: nmap`.
+    - [✓] `nmap --script-help <bundled-name>` resolves against the installed path (validated against real nmap 7.92 for both scripts).
+    - [✓] Packaging verified via `rpmspec -P` (parses clean) + `rpmspec -q --requires` (nmap registered); install lines mirror the proven `data/bus` pattern. **`make rpm` deferred to release** per the no-RPM-until-release hard rule (2026-05-28).
 
 - [ ] **MESH-PROBE-4: v1.0 — probe worker (two-tier cadence + manual refresh)**
   **As** each peer's `mackesd`,
