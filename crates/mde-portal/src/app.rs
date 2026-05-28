@@ -1285,6 +1285,31 @@ fn build_mode_segment<'a>(app: &DockApp) -> Element<'a, Message> {
     .into()
 }
 
+/// ANIM (sway-native motion lock, Q8 exit rule): dismissal-fade alpha
+/// for an urgent-pulse pill as it nears the end of its
+/// [`URGENT_PULSE_TTL_MS`] life — full opacity for most of the life,
+/// then a smooth ease-in fade over the last [`PULSE_FADE_TAIL_MS`] ms
+/// via the canonical `mde-motion` tween. Pure fn of the pulse's age so
+/// it unit-tests headless; the existing 33 ms typewriter tick drives
+/// the redraw, so no new subscription is needed.
+const PULSE_FADE_TAIL_MS: i64 = 200;
+
+fn pulse_fade_alpha(elapsed_ms: i64, ttl_ms: i64) -> f32 {
+    if elapsed_ms <= 0 {
+        return 1.0;
+    }
+    let remaining = ttl_ms - elapsed_ms;
+    if remaining >= PULSE_FADE_TAIL_MS {
+        return 1.0;
+    }
+    if remaining <= 0 {
+        return 0.0;
+    }
+    let into_fade = (PULSE_FADE_TAIL_MS - remaining) as u64;
+    mde_motion::Tween::new(1.0, 0.0, PULSE_FADE_TAIL_MS as u32, mde_motion::easing::EASE_IN, 0)
+        .value_at(into_fade)
+}
+
 /// Portal-57.c.basic — Dock breadcrumb segment for active urgent
 /// pulses. Renders one tier-red pill per alive
 /// `bus/mbadge/pulse` event in `DockApp::recent_pulses`. Plain-
@@ -1328,11 +1353,19 @@ fn build_urgent_pulse_segments<'a>(app: &DockApp) -> Element<'a, Message> {
         )
         .to_string();
         let con_id = pulse.con_id;
+        // ANIM (Q8 dismissal): pill fades out over its last
+        // PULSE_FADE_TAIL_MS before the TTL expires, via mde-motion.
+        let elapsed_ms = now
+            .signed_duration_since(pulse.spawned_at)
+            .num_milliseconds();
+        let fade = pulse_fade_alpha(elapsed_ms, URGENT_PULSE_TTL_MS);
+        let pill_bg = Color { a: tier_red.a * fade, ..tier_red };
+        let pill_fg = Color { a: fade, ..Color::WHITE };
         pills.push(
             mouse_area(
-                container(text(label).size(11.0).color(Color::WHITE))
+                container(text(label).size(11.0).color(pill_fg))
                     .style(move |_theme: &Theme| iced::widget::container::Style {
-                        background: Some(iced::Background::Color(tier_red)),
+                        background: Some(iced::Background::Color(pill_bg)),
                         border: iced::Border {
                             radius: iced::border::Radius::from(4.0),
                             ..Default::default()
@@ -3499,6 +3532,23 @@ mod tests {
         // 1500 ms in → expired (TTL is 1200).
         let past = now + chrono::Duration::milliseconds(1500);
         assert!(!is_pulse_alive(&pulse, past));
+    }
+
+    /// ANIM: the pill holds full opacity for most of its life, then
+    /// ease-in-fades over the last PULSE_FADE_TAIL_MS before the TTL.
+    #[test]
+    fn pulse_fade_full_then_dismisses() {
+        let ttl = URGENT_PULSE_TTL_MS;
+        // Full at spawn + mid-life + right up to the fade tail.
+        assert!((pulse_fade_alpha(0, ttl) - 1.0).abs() < 1e-6);
+        assert!((pulse_fade_alpha(500, ttl) - 1.0).abs() < 1e-6);
+        assert!((pulse_fade_alpha(ttl - PULSE_FADE_TAIL_MS, ttl) - 1.0).abs() < 1e-3);
+        // Inside the tail: partially faded (between 0 and 1).
+        let mid = pulse_fade_alpha(ttl - PULSE_FADE_TAIL_MS / 2, ttl);
+        assert!(mid < 1.0 && mid > 0.0, "expected partial fade, got {mid}");
+        // At / past the TTL: fully faded.
+        assert!(pulse_fade_alpha(ttl, ttl) <= 0.01);
+        assert!((pulse_fade_alpha(ttl + 100, ttl) - 0.0).abs() < 1e-6);
     }
 
     /// `pulse_workspace_num` looks up the con_id via running_windows.

@@ -87,6 +87,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 # mde_theme::Palette without hardcoding hex literals.
 mde-theme = { path = "../mde-theme", features = ["iced"] }
 
+# SWAY-1 motion primitives — canonical eased tween/grid for the
+# urgent-pulse pill dismissal fade (ANIM, sway-native motion lock).
+mde-motion = { path = "../mde-motion" }
+
 # Portal-31 — universal cards subsystem. Startup hook scans the
 # on-disk store and logs a summary so the runtime confirms the
 # crate is wired (no scaffold-only modules per §0.12).

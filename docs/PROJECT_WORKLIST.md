@@ -621,7 +621,11 @@ call-end lifecycle, never at install or login.
 - [ ] **ANIM-2: Portal motion** — compact slide-up reveal (Q7), full horizontal-slide layers (Q16), breadcrumb slide+crossfade (Q35), command palette drop-in + live reflow (Q42).
 - [ ] **ANIM-3: Overlays** — notifications slide-in + stack-shift (Q12), OSD bar-fill + slide (Q13), context menus grow-from-cursor + stagger (Q44), toast action-button expand (Q97).
 - [ ] **ANIM-4: Lists & selection** — capped ~8 stagger everywhere (Q15), selection-highlight slide (Q18), skeleton-shimmer loading (Q19).
-- [ ] **ANIM-5: Pills, marks, urgent** — pill pop-in + slide-reorder (Q11), bounded urgent pulse (Q20), scratchpad pill pulse (Q68).
+- **ANIM-5: Pills, marks, urgent** — split per §0.12:
+  - [✓] **ANIM-5.a: urgent-pulse pill dismissal fade** (Q8 exit rule applied to the live `bus/mbadge/pulse` pills) *(shipped 2026-05-28 — session=opus-47-2026-05-28-ship-SN; `crates/mde-portal/src/app.rs` `build_urgent_pulse_segments` — the tier-red urgent pills now ease-in-fade their bg+text alpha over the last `PULSE_FADE_TAIL_MS` (200 ms) of their `URGENT_PULSE_TTL_MS` (1200 ms) life instead of vanishing hard, via a new pure `pulse_fade_alpha(elapsed, ttl)` that drives `mde_motion::Tween` (EASE_IN). The existing 33 ms typewriter tick redraws it — no new subscription. **First live surface consumer of `mde-motion` end-to-end.** Added `mde-motion` dep to mde-portal. `cargo test -p mde-portal` 86/86 (new `pulse_fade_full_then_dismisses`); lints clean. Reduced-motion plumbing deferred to ANIM-13. Smoothness signed off at release bench per [[feedback_no_pre_release_reviews]].)*
+  - [ ] **ANIM-5.b: pill pop-in + slide-reorder** (Q11) — entry/reorder animation for mark pills (consume `slide_in_offset` + a scale pop).
+  - [ ] **ANIM-5.c: bounded urgent pulse/glow** (Q20) — the ~2-cycle attention pulse on the taskbar button + pill (oscillation, distinct from the 5.a dismissal fade).
+  - [ ] **ANIM-5.d: scratchpad pill pulse** (Q68).
 - [ ] **ANIM-6: Launcher, overview, which-key** — launcher slide-up + stagger (Q14), data-driven workspace overview (Q46), sway-mode pill + which-key overlay (Q55).
 - [ ] **ANIM-7: Session theater** — login sequenced reveal (Q25), logout shell-out (Q40), lock crossfade (Q48), cold-start reveal (Q74), idle→dim→lock (Q63).
 - **ANIM-8: Flat-but-elevated visual** — split per §0.12:
@@ -2489,6 +2493,96 @@ call-end lifecycle, never at install or login.
     - [ ] BUS-5.3 spec updated: `~/.local/share/mde/clipboard/blobs/` → `~/.mde-mesh/blobs/`.
     - [ ] `mde-clipd` writes to the gluster-replicated path.
     - [ ] GC logic respects gluster's replication (don't delete on local peer if other peers might still reference).
+
+#### EPIC-MESH-PROBE (centralized probe subsystem — one probe source, all tools consume)
+
+> **Locked 2026-05-28 via 10-Q `/plan` survey** (operator lock-lift from §0.16). Design: `docs/design/mesh-probe-subsystem.md`. Memory: `project_mesh_probe`. Big-bang epic (Q10) — lands cohesively, but each task is an independent bench-observable user-story per §0.12. Consolidates/underpins MESH-A-1/2/4/7 (they repoint onto this). Locks: per-peer centerless (Q1); GFS source + Bus `probe/changed` (Q2); nmap-for-everything (Q3) + bundled NSE (Q4); mesh+LAN+arbitrary scope (Q5); two-tier+manual cadence (Q6); mde-card schema (Q7); `mackesd::probe` library (Q8); scan-everything-actively (Q9).
+
+- [ ] **MESH-PROBE-1: v1.0 — `mde-card` Host + Service card kinds + probe field set**
+  **As** the inventory model,
+  **I want** `CardKind::Host` + `CardKind::Service` variants carrying the probe fields (ip, hostname, source mesh/lan/arbitrary, trust-state, last-seen; product, version, fingerprint on services),
+  **so that** the probe inventory is a first-class `mde-card` structure that renders via the existing `card_index` (Q7).
+  **Acceptance** (each bench-observable):
+    - [ ] `crates/mde-card` `CardKind` gains `Host` + `Service`; the 12-field schema carries the probe fields (in field set, `schema_version` bumped with a migration entry).
+    - [ ] A host Card with two service child Cards round-trips through serialize → `card_index` load → render without a probe-specific transform.
+    - [ ] `mde-card` unit tests cover the new kinds + the host→service `children` composition.
+
+- [ ] **MESH-PROBE-2: v1.0 — nmap invocation profiles + `-oX` XML parser**
+  **As** the probe engine,
+  **I want** a `mackesd` module that shells `nmap -oX -` in a fast profile (`-sn` + curated known-ports) and a deep profile (`-sV --version-all --script <bundled NSE>`) and parses the XML into `Vec<Card>`,
+  **so that** every probe goes through one engine (Q3) with rich identification (Q4).
+  **Acceptance** (each bench-observable):
+    - [ ] Pure parser turns a captured nmap XML fixture into host+service Cards (unit-tested on real nmap output samples).
+    - [ ] Fast + deep argv builders are pure-fn + unit-tested for flag shape (`-T` rate-limited, never `-T5`).
+    - [ ] `nmap` absent → the module returns empty + logs at warn (no panic); `Requires: nmap` ensures presence in the RPM.
+
+- [ ] **MESH-PROBE-3: v1.0 — bundled NSE scripts + RPM packaging**
+  **As** the deep-identification path,
+  **I want** custom NSE scripts (a mesh-media detector + a Mackes-service fingerprinter) shipped to `/usr/share/mde/nmap/` with `Requires: nmap`,
+  **so that** identification beats stock `-sV` for platform services (Q4).
+  **Acceptance** (each bench-observable):
+    - [ ] NSE scripts land under `data/nmap/`; spec installs them to `/usr/share/mde/nmap/` + adds `Requires: nmap`.
+    - [ ] `nmap --script-help <bundled-name>` resolves against the installed path.
+    - [ ] `make rpm` builds clean with the new data + Requires.
+
+- [ ] **MESH-PROBE-4: v1.0 — probe worker (two-tier cadence + manual refresh)**
+  **As** each peer's `mackesd`,
+  **I want** a `workers::probe` worker that runs the fast tier (~60 s) + deep tier (~10 min) + an operator manual-refresh, writes `<qnm_root>/<self>/mackesd/probe-inventory.json`, and publishes a `probe/changed` Bus message on a material diff,
+  **so that** the centerless per-peer inventory exists + propagates (Q1, Q2, Q6).
+  **Acceptance** (each bench-observable):
+    - [ ] Worker spawned in `run_serve`; fast + deep tiers fire on their cadences (rate-limited, mutex-guarded like the gluster quota probe).
+    - [ ] `probe-inventory.json` written atomically; a `probe/changed` Bus publish fires only when the inventory content changes.
+    - [ ] Manual refresh trigger (CLI `mackesd probe refresh`) forces an immediate deep pass.
+
+- [ ] **MESH-PROBE-5: v1.0 — target resolver (mesh + LAN + arbitrary) + safety controls**
+  **As** the probe worker,
+  **I want** to resolve scan targets from the nebula roster (mesh peers) + the local LAN CIDR + an operator arbitrary-target list, honoring an optional do-not-scan exclusion list,
+  **so that** scope (Q5) + the Q9 "scan everything actively" default (with the exclusion escape hatch) are both served.
+  **Acceptance** (each bench-observable):
+    - [ ] Resolver unions mesh-peer overlay IPs + detected LAN CIDR + `~/.config/mde/probe-targets.toml` arbitrary entries; deduped.
+    - [ ] A CIDR/IP in `~/.config/mde/probe-do-not-scan.toml` is excluded from every pass (unit-tested).
+    - [ ] Default behavior with no exclusion file = scan all resolved targets (Q9).
+
+- [ ] **MESH-PROBE-6: v1.0 — `mackesd::probe` read library + Bus-event subscription**
+  **As** every consumer,
+  **I want** `mackesd::probe::{inventory, peers_with_service, subscribe_changed}` that merges all peers' GFS card-files,
+  **so that** tools read one merged inventory in-process (Q8).
+  **Acceptance** (each bench-observable):
+    - [ ] `inventory()` returns the union of every `<qnm_root>/*/mackesd/probe-inventory.json`; missing/malformed files skipped (fail-open per file).
+    - [ ] `peers_with_service("airsonic")` returns the hosts whose service Cards match; unit-tested over a multi-peer tmpdir fixture.
+    - [ ] A `probe/changed` Bus message drives a re-read in a subscribed consumer.
+
+- [ ] **MESH-PROBE-7: v1.0 — repoint `app_sync` media-discovery onto the probe library**
+  **As** `app_sync`,
+  **I want** to read `probe::peers_with_service("airsonic"/"jellyfin")` instead of TCP-probing itself,
+  **so that** the double-probe is gone + `mesh_media`'s probe path retires (Q10 consumer repoint).
+  **Acceptance** (each bench-observable):
+    - [ ] `app_sync` discovery sources from `mackesd::probe`; `mesh_media::{discover, scan_probe, peer_overlay_ips}` deleted (or reduced to a thin re-export if still used).
+    - [ ] The byte-faithful Sublime/Delfin config tests still pass against probe-sourced servers.
+    - [ ] No remaining direct TCP-probe of media ports in `app_sync`/`mesh_media`.
+
+- [ ] **MESH-PROBE-8: v1.0 — repoint MESH-A-1/2/4/7 + connect-actions onto the inventory**
+  **As** the MESH-A network-assessment surfaces,
+  **I want** MESH-A-1 (assessment), -A-2 (route-trace targets), -A-4 (surrounding-host ID), -A-7 (port→connect-action) to read the probe inventory,
+  **so that** there is exactly one prober + the MESH-A epic builds on it (Q10).
+  **Acceptance** (each bench-observable):
+    - [ ] MESH-A-4 surrounding-host identification reads host Cards (the deep nmap/NSE pass IS the identifier); no separate scan.
+    - [ ] MESH-A-7's 12 well-known-port mappings read open ports from service Cards.
+    - [ ] MESH-A-1/A-2 source their host/target list from `mackesd::probe::inventory()`.
+
+- [ ] **MESH-PROBE-9: v1.0 — Portal/Workbench render host + service Cards**
+  **As** the operator,
+  **I want** the probe inventory to appear in the Portal/Workbench via the existing `card_index`,
+  **so that** "what's on my mesh/LAN" is visible with no probe-specific UI code (Q7/Q8).
+  **Acceptance** (each bench-observable):
+    - [ ] Host + service Cards surface in the Portal card grid via `card_index` (visual bench).
+    - [ ] A Workbench network view lists hosts with their identified services + trust-state.
+
+- [ ] **MESH-PROBE-10: v1.0 — HW bench: active scanning on a real fleet + LAN [HW carve-out]**
+  **Acceptance** (each bench-observable):
+    - [ ] `mackesd probe` deep pass runs on the operator's 8-peer fleet; inventory propagates peer→peer over GFS within the cadence window.
+    - [ ] LAN scan identifies real surrounding hosts (router, printers, etc.) with correct service ID.
+    - [ ] nmap timing (`-T` tuning) verified non-disruptive on the operator's own LAN; do-not-scan exclusion confirmed to carve out a chosen segment.
 
 #### EPIC-BUS-EXT (Bus refinements beyond BUS-1..7)
 
