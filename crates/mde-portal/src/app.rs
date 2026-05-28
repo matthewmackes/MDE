@@ -359,6 +359,10 @@ pub struct DockApp {
     /// stamp; gone keys are dropped; existing keys keep theirs (no
     /// re-fade). See `update_running_first_seen`.
     running_first_seen: HashMap<String, chrono::DateTime<chrono::Local>>,
+    /// ANIM: when each window's con_id first carried a taxonomy mark,
+    /// so the mark pill scale-pops in when auto-classification lands.
+    /// Keyed by con_id string; same stamp/keep/drop lifecycle.
+    mark_first_seen: HashMap<String, chrono::DateTime<chrono::Local>>,
     /// App-id key of the currently hovered running-zone group; `None` = no hover.
     hovered_running_group: Option<String>,
     /// Horizontal scroll offsets (px) per workspace name for marquee (Portal-5.b).
@@ -492,6 +496,7 @@ impl Default for DockApp {
             status_info: StatusInfo::default(),
             running_windows: Vec::new(),
             running_first_seen: HashMap::new(),
+            mark_first_seen: HashMap::new(),
             hovered_running_group: None,
             ws_marquee_offsets: HashMap::new(),
             visited_workspaces_lru: Vec::new(),
@@ -811,11 +816,12 @@ impl iced_layershell::Application for DockApp {
                 // ANIM: stamp newly-appeared running-zone groups so
                 // their cells fade in (build_running_zone).
                 let keys = running_group_keys(&self.running_windows);
-                update_running_first_seen(
-                    &mut self.running_first_seen,
-                    &keys,
-                    chrono::Local::now(),
-                );
+                let now = chrono::Local::now();
+                update_running_first_seen(&mut self.running_first_seen, &keys, now);
+                // ANIM: stamp windows whose con_id just gained a
+                // taxonomy mark so the mark pill scale-pops in.
+                let mark_keys = marked_con_id_keys(&self.running_windows);
+                update_running_first_seen(&mut self.mark_first_seen, &mark_keys, now);
             }
             Message::FocusWindowById(con_id) => {
                 return Task::perform(
@@ -2254,7 +2260,7 @@ fn mark_pill_color(mark: &str) -> Option<Color> {
 /// is a square 8×8 px (rounded to a full-radius circle) so it reads
 /// at Dock-scale without competing with the label or WM micro-button
 /// cluster.
-fn mark_pill_element<'a>(color: Color) -> Element<'a, Message> {
+fn mark_pill_element<'a>(color: Color, size_px: f32) -> Element<'a, Message> {
     container(iced::widget::Space::new(0.0, 0.0))
         .style(move |_theme: &Theme| iced::widget::container::Style {
             background: Some(iced::Background::Color(color)),
@@ -2264,8 +2270,8 @@ fn mark_pill_element<'a>(color: Color) -> Element<'a, Message> {
             },
             ..Default::default()
         })
-        .width(Length::Fixed(8.0))
-        .height(Length::Fixed(8.0))
+        .width(Length::Fixed(size_px))
+        .height(Length::Fixed(size_px))
         .into()
 }
 
@@ -2282,6 +2288,16 @@ fn running_group_keys(windows: &[WindowInfo]) -> std::collections::BTreeSet<Stri
                 .clone()
                 .unwrap_or_else(|| format!("#{}", w.con_id))
         })
+        .collect()
+}
+
+/// ANIM: con_id strings of visible windows that currently carry a
+/// taxonomy mark — the keys whose mark pill should scale-pop in when
+/// the mark first lands (stamped via `update_running_first_seen`).
+fn marked_con_id_keys(windows: &[WindowInfo]) -> std::collections::BTreeSet<String> {
+    running_zone_visible_windows(windows)
+        .filter(|w| first_taxonomy_mark(&w.marks).is_some())
+        .map(|w| w.con_id.to_string())
         .collect()
 }
 
@@ -2332,9 +2348,24 @@ fn build_running_zone<'a>(app: &DockApp, fg: Color) -> Element<'a, Message> {
         // target window. Operator marks outside the taxonomy are
         // skipped via `first_taxonomy_mark` so the pill only
         // renders for Portal-48 auto-marks.
+        // ANIM-5.b: the mark pill scale-pops in (size 0→8 px) when the
+        // window's taxonomy mark first lands, via mde_theme::animation.
+        let mark_pop = match app.mark_first_seen.get(&target_window.con_id.to_string()) {
+            Some(t) => {
+                let e = chrono::Local::now()
+                    .signed_duration_since(*t)
+                    .num_milliseconds()
+                    .max(0) as f32;
+                mde_theme::ease(
+                    (e / RUNNING_APPEAR_FADE_MS).clamp(0.0, 1.0),
+                    mde_theme::Easing::EaseOut,
+                )
+            }
+            None => 1.0,
+        };
         let mark_pill: Option<Element<'a, Message>> = first_taxonomy_mark(&target_window.marks)
             .and_then(mark_pill_color)
-            .map(mark_pill_element);
+            .map(|c| mark_pill_element(c, 8.0 * mark_pop));
 
         // Workspace numbers in this group (for multi-WS badge).
         let mut ws_nums: Vec<i32> = group.iter().map(|w| w.workspace_num).collect();
@@ -3667,6 +3698,21 @@ mod tests {
         assert_eq!(map["firefox"], t0, "existing key keeps its stamp (no re-fade)");
         assert_eq!(map["code"], t1, "new key stamped now");
         assert!(!map.contains_key("foot"), "gone key dropped");
+    }
+
+    /// ANIM-5.b: only windows carrying a taxonomy mark contribute keys
+    /// (so only those get the mark-pill scale-pop).
+    #[test]
+    fn marked_con_id_keys_picks_taxonomy_marked_windows() {
+        let mut marked = make_window(1, "code", 1, true);
+        marked.marks = vec!["editor".to_string()];
+        let unmarked = make_window(2, "foot", 1, false);
+        let mut other = make_window(3, "x", 1, false);
+        other.marks = vec!["custom-not-a-taxonomy".to_string()];
+        let keys = marked_con_id_keys(&[marked, unmarked, other]);
+        assert!(keys.contains("1"), "taxonomy-marked window included");
+        assert!(!keys.contains("2"), "unmarked window excluded");
+        assert!(!keys.contains("3"), "non-taxonomy mark excluded");
     }
 
     /// `pulse_workspace_num` looks up the con_id via running_windows.
