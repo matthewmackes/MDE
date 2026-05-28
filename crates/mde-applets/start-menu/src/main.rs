@@ -1,3 +1,9 @@
+//! Binary entry point for the Win10-style Start popover applet.
+//! Walks the freedesktop `.desktop` index, applies the pinned
+//! overlay, and writes the popover state to the host over stdio.
+//! `--manifest` prints the applet's manifest JSON and exits
+//! (called by the panel host during registration discovery).
+
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;

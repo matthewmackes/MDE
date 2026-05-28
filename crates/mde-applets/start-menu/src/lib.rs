@@ -22,6 +22,9 @@ use std::path::PathBuf;
 
 use mde_applet_api::{AppletId, AppletSlot, HostMessage};
 
+/// Build the static applet manifest the host registers at
+/// startup. Slot = Overlay because the Start popover renders
+/// over the panel rather than embedded inside a top-bar slot.
 #[must_use]
 pub fn manifest() -> mde_applet_api::AppletManifest {
     mde_applet_api::AppletManifest {
@@ -63,16 +66,28 @@ pub struct AppEntry {
 /// `all`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PinnedRow {
+    /// Desktop-id without the `.desktop` suffix — matches the
+    /// freedesktop application identity convention.
     pub desktop_id: String,
+    /// Which Start pane this row belongs to (pinned tiles vs
+    /// the all-apps list).
     pub pane: PinnedPane,
 }
 
+/// Which Start pane a [`PinnedRow`] is assigned to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PinnedPane {
+    /// The user's pinned tiles pane.
     Pinned,
+    /// The all-apps list pane (the right-hand column in the
+    /// Win10-style popover).
     All,
 }
 
+/// Absolute path to the `start-pinned` config file. Honors
+/// `$XDG_CONFIG_HOME` first, then falls back to
+/// `$HOME/.config/mde/start-pinned`. Returns `/var/empty/...`
+/// only in the degenerate case where neither env var is set.
 #[must_use]
 pub fn pinned_path() -> PathBuf {
     let base = std::env::var("XDG_CONFIG_HOME")
@@ -211,6 +226,10 @@ pub fn format_now(pinned: &[AppEntry], all: &[AppEntry], search_hits: usize) -> 
     )
 }
 
+/// Process a host control message and return `true` when the
+/// applet should keep running. Only [`HostMessage::Shutdown`]
+/// stops the event loop; every other variant is a host-side
+/// hint the applet renderer reacts to elsewhere.
 #[must_use]
 pub fn handle_host(msg: &HostMessage) -> bool {
     !matches!(msg, HostMessage::Shutdown)
