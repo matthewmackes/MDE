@@ -1130,14 +1130,6 @@ chmod 0755 %{buildroot}%{_bindir}/mackes-clipboard
 install -m 0755 bin/mackes-gvfsd-mesh %{buildroot}%{_bindir}/mackes-gvfsd-mesh
 install -m 0755 bin/mackes-mesh-open  %{buildroot}%{_bindir}/mackes-mesh-open
 
-# v2.0.0 cut: mackes-enforce-session retired
-# (xfce4-session is Conflicts now; no XFCE session means no
-# need to enforce the i3 + mackes-panel session). The binary
-# still ships at /usr/bin/ for back-compat (callers in v1.x
-# upgrade paths can still invoke it; it's now a no-op stub
-# that exits 0 on Wayland).
-install -m 0755 bin/mackes-enforce-session \
-    %{buildroot}%{_bindir}/mackes-enforce-session
 
 # v2.0.0 cut: kdeconnect-indicator + xfce4-panel XDG suppressors
 # retired (see the CB-3.5 / H.4 comment in section 5a).
@@ -1421,7 +1413,6 @@ echo ">>> mde-desktop installed. Run \`sudo mde-install --profile=full\` to fini
 # Legacy mackes-* GTK panel binaries that the v2.0+ Iced port
 # is still co-shipping pending per-panel retirements.
 %{_bindir}/mackes-clipboard
-%{_bindir}/mackes-enforce-session
 %{_bindir}/mackes-gvfsd-mesh
 %{_bindir}/mackes-mesh-open
 %{_bindir}/mackes-panel
