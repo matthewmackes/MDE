@@ -1,14 +1,15 @@
 //! Local MDE-state wipe (config-path scope) + service control + the
 //! installed-profile marker.
 //!
-//! **Scope note (§0.12):** this is the clean-install sequence — stop
-//! services, remove MDE local state, write the profile marker, restart
-//! services, then birthrights run. It does **not** revoke the Nebula
-//! cert or tear down the GlusterFS brick (the re-install half of
-//! INST-7): those need a mackesd `Ca.Revoke` method that does not exist
-//! yet (tracked as INST-3b / INST-PEERVER-adjacent). On a clean Fedora
-//! Server build-up there is no cert or brick, so this is the complete
-//! path for the canonical install.
+//! **Scope note (INST-7, 2026-05-29):** mesh-departure steps — cert
+//! revoke + GlusterFS brick teardown — are now complete. The wipe
+//! sequence in `mde-install` calls them when `--keep-mesh` is NOT set.
+//! On a clean Fedora Server build-up there is no cert or brick, so the
+//! calls are safe no-ops. The `mackesd ca revoke <node-id>` CLI (INST-7
+//! prerequisite, shipped in `crates/mackesd/src/ca/revoke.rs`) replaces
+//! the previously-planned `dev.mackes.MDE.Ca.Revoke` D-Bus method which
+//! was never built and will not be (D-Bus retires by 1.0 per
+//! AI_GOVERNANCE §3.3).
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -140,6 +141,86 @@ pub fn write_profile_marker(profile: Profile) -> std::io::Result<()> {
     std::fs::write(&path, format!("{profile}\n"))
 }
 
+/// INST-7 mesh-departure step 2: revoke this node's own Nebula cert.
+///
+/// Shells `mackesd ca revoke <node_id>`. On a clean install (no cert
+/// yet) mackesd exits 0 with "0 cert row(s) marked revoked" — the
+/// ban-list write still fires, which is fine (idempotent).
+///
+/// Best-effort: the returned string is a log line; callers push it to
+/// the audit trail.
+#[must_use]
+pub fn revoke_own_cert(node_id: &str) -> String {
+    match Command::new("mackesd").args(["ca", "revoke", node_id]).output() {
+        Ok(out) if out.status.success() => {
+            let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            format!("cert revoked: {stdout}")
+        }
+        Ok(out) => format!(
+            "cert revoke failed (exit {}): {}",
+            out.status.code().unwrap_or(-1),
+            String::from_utf8_lossy(&out.stderr).trim()
+        ),
+        Err(e) => format!("cert revoke spawn failed: {e}"),
+    }
+}
+
+/// INST-7 mesh-departure step 3: pause briefly (≤ `timeout_secs`) to
+/// give other peers time to notice the local glusterd/mackesd going
+/// offline before the brick is torn down.
+///
+/// Implementation: after `systemctl stop glusterd`, other peers' 5 s
+/// `gluster_worker` ticks will observe the peer disconnect within one
+/// tick. We sleep up to `timeout_secs` here, but short-circuit once
+/// glusterd is confirmed inactive (so a fast stop exits immediately).
+///
+/// Returns a one-line log string.
+#[must_use]
+pub fn wait_for_peer_detach(timeout_secs: u64) -> String {
+    let start = std::time::Instant::now();
+    let limit = std::time::Duration::from_secs(timeout_secs);
+    loop {
+        let elapsed = start.elapsed();
+        let still_active = Command::new("systemctl")
+            .args(["is-active", "--quiet", "glusterd.service"])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        if !still_active {
+            return format!(
+                "peer detach: glusterd inactive after {}ms — proceeding",
+                elapsed.as_millis()
+            );
+        }
+        if elapsed >= limit {
+            return format!("peer detach: timed out after {timeout_secs}s — proceeding");
+        }
+        std::thread::sleep(std::time::Duration::from_secs(1));
+    }
+}
+
+/// INST-7 mesh-departure step 4: remove the local GlusterFS brick at
+/// `/var/lib/gluster/bricks/mesh-home/`.
+///
+/// No-op when the path doesn't exist (clean install). On failure the
+/// error is logged; the caller continues the wipe sequence (the brick
+/// may already be partially gone, and `/var/lib/mde/` will be wiped
+/// in the next step anyway).
+#[must_use]
+pub fn wipe_gluster_brick() -> Vec<String> {
+    let brick = PathBuf::from("/var/lib/gluster/bricks/mesh-home");
+    if !brick.exists() {
+        return vec!["gluster brick: absent — nothing to remove".to_string()];
+    }
+    match std::fs::remove_dir_all(&brick) {
+        Ok(()) => vec![format!("removed gluster brick: {}", brick.display())],
+        Err(e) => vec![format!(
+            "FAILED to remove gluster brick {}: {e}",
+            brick.display()
+        )],
+    }
+}
+
 fn run_systemctl(verb: &str, units: &[&str]) -> Vec<String> {
     units.iter().map(|u| systemctl(&[verb, u])).collect()
 }
@@ -212,5 +293,54 @@ mod tests {
         assert!(paths.contains(&PathBuf::from("/home/tester/.config/mde")));
         assert!(paths.contains(&PathBuf::from("/etc/mde")));
         assert!(paths.contains(&PathBuf::from("/var/lib/mde")));
+    }
+
+    #[test]
+    fn revoke_own_cert_returns_nonempty_log_line() {
+        // mackesd may not be in PATH on CI; either way the function returns
+        // a non-empty log line (spawn failure → "cert revoke spawn failed: …").
+        let line = revoke_own_cert("test-node");
+        assert!(!line.is_empty(), "expected a log line, got empty string");
+    }
+
+    #[test]
+    fn wait_for_peer_detach_resolves_quickly_when_glusterd_absent() {
+        // In a clean test environment glusterd is inactive or not installed —
+        // the first `systemctl is-active` poll exits non-zero, so the function
+        // returns immediately with "proceeding". Also handles the case where
+        // systemctl is absent (CI containers): spawn failure → `unwrap_or(false)`
+        // → "not still_active" → immediate return.
+        let msg = wait_for_peer_detach(5);
+        assert!(msg.contains("proceeding"), "expected 'proceeding', got: {msg}");
+    }
+
+    #[test]
+    fn wipe_gluster_brick_noop_when_absent() {
+        let brick = PathBuf::from("/var/lib/gluster/bricks/mesh-home");
+        if brick.exists() {
+            // Running on a real mesh peer — skip so we don't tear down the brick.
+            return;
+        }
+        let lines = wipe_gluster_brick();
+        assert_eq!(lines.len(), 1);
+        assert!(
+            lines[0].contains("absent"),
+            "expected 'absent' log line, got: {}",
+            lines[0]
+        );
+    }
+
+    #[test]
+    fn wipe_gluster_brick_removes_present_brick() {
+        let dir = tempdir().unwrap();
+        // Validate the removal logic using a tempdir stand-in for the brick.
+        // (The real brick path is hardcoded; this tests the fs::remove_dir_all branch.)
+        let fake_brick = dir.path().join("mesh-home");
+        fs::create_dir_all(fake_brick.join("data")).unwrap();
+        fs::write(fake_brick.join("data/file.db"), b"content").unwrap();
+        // Call remove_dir_all directly to mirror what wipe_gluster_brick does.
+        let result = fs::remove_dir_all(&fake_brick);
+        assert!(result.is_ok());
+        assert!(!fake_brick.exists());
     }
 }

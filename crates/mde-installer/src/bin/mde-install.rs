@@ -44,6 +44,12 @@ struct Args {
     /// Skip the post-install smoke check (INST-14) — for image builds where some services aren't started yet.
     #[arg(long)]
     skip_smoke: bool,
+
+    /// Skip cert revocation + GlusterFS brick teardown (INST-7 mesh-departure steps 2-4).
+    /// Use when wiping local config but staying enrolled in the mesh — the node
+    /// remains a valid mesh peer. Noted on the NUKE confirm screen.
+    #[arg(long)]
+    keep_mesh: bool,
 }
 
 fn main() -> ExitCode {
@@ -126,6 +132,15 @@ fn run(args: &Args) -> Result<u8, String> {
         if args.backup {
             println!("[dry-run] would tar existing MDE state to /var/lib/mde/backups/ before wiping.");
         }
+        if args.keep_mesh {
+            println!("[dry-run] --keep-mesh: cert revoke + GlusterFS brick teardown will be SKIPPED.");
+        } else {
+            println!(
+                "[dry-run] would revoke this node's Nebula cert, wait up to 10s for peer \
+                 detach, then remove the GlusterFS brick at \
+                 /var/lib/gluster/bricks/mesh-home/."
+            );
+        }
         println!("\n[dry-run] would stop {:?}, wipe the paths above, write the \
                   profile marker, restart services, then run birthrights for {profile}.",
                  wipe::MANAGED_SERVICES);
@@ -137,6 +152,12 @@ fn run(args: &Args) -> Result<u8, String> {
 
     // Confirm.
     if confirm::stdin_is_tty() && !args.yes {
+        if args.keep_mesh {
+            println!(
+                "(Mesh enrollment will be kept (--keep-mesh): cert revoke + \
+                 GlusterFS brick teardown skipped.)"
+            );
+        }
         let ok = confirm::require_typed(
             "NUKE",
             "\nType NUKE to wipe the above and (re)install: ",
@@ -203,6 +224,21 @@ fn run(args: &Args) -> Result<u8, String> {
     // Wipe sequence (clean-install scope).
     for line in wipe::stop_services(wipe::MANAGED_SERVICES) {
         audit.push(line);
+    }
+    // INST-7 — mesh-departure steps 2-4: cert revoke → peer-detach wait →
+    // GlusterFS brick teardown. Skipped when --keep-mesh is set (node stays
+    // a valid mesh peer with local config wiped but cert intact).
+    if args.keep_mesh {
+        audit.push(
+            "keep-mesh: cert revoke + GlusterFS brick teardown skipped".to_string(),
+        );
+    } else {
+        let local_node_id = mde_installer::peers::local_hostname();
+        audit.push(wipe::revoke_own_cert(&local_node_id));
+        audit.push(wipe::wait_for_peer_detach(10));
+        for line in wipe::wipe_gluster_brick() {
+            audit.push(line);
+        }
     }
     for line in wipe::wipe_paths(&all) {
         audit.push(line);
