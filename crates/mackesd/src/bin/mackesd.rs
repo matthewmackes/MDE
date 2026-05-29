@@ -710,6 +710,33 @@ enum CaCmd {
         #[arg(long, default_value_t = false)]
         override_cap: bool,
     },
+    /// INST-7 prerequisite (v2.7) — revoke a peer's Nebula cert.
+    /// Marks every active row for `<node-id>` in `nebula_peer_certs`
+    /// as revoked, adds the node-id to the local ban list (so the
+    /// identity can't re-enroll even after a CA rotation), and fires
+    /// a best-effort Bus event `ca/revoke/<node-id>`.
+    ///
+    /// This is the CLI replacement for the originally-planned
+    /// `dev.mackes.MDE.Ca.Revoke` D-Bus method. D-Bus retires by 1.0
+    /// per AI_GOVERNANCE §3.3; the wipe sequence in `mde-install`
+    /// shells this command instead.
+    ///
+    /// Exits 0 on success (0 rows marked is still success — the ban
+    /// list write happens regardless). Exits non-zero on DB or
+    /// ban-list I/O failure.
+    Revoke {
+        /// Node-id to revoke (e.g. `peer:anvil`).
+        node_id: String,
+        /// Override QNM-Shared / mesh-home root (defaults to
+        /// `$QNM_SHARED_ROOT` or `~/QNM-Shared`).
+        #[clap(long, env = "QNM_SHARED_ROOT")]
+        qnm_root: Option<std::path::PathBuf>,
+        /// This peer's own node-id (used to locate the local
+        /// ban-list file). Defaults to reading `/etc/mde/node-id`.
+        #[clap(long)]
+        self_node_id: Option<String>,
+    },
+
     /// EPIC-SEC-BANLIST (Q53) — add a node-id to this peer's ban
     /// list. A banned node-id is refused enrollment mesh-wide, even
     /// with a valid passcode + across a CA rotation. GFS replication
@@ -1885,6 +1912,28 @@ fn main() -> anyhow::Result<()> {
                             return Err(anyhow::anyhow!("sign-csr: {e}"));
                         }
                     }
+                }
+                CaCmd::Revoke {
+                    node_id,
+                    qnm_root,
+                    self_node_id,
+                } => {
+                    // INST-7 prerequisite — revoke a peer's cert +
+                    // ban the identity. CLI surface replaces the
+                    // originally-planned D-Bus method (D-Bus retires
+                    // by 1.0 per AI_GOVERNANCE §3.3).
+                    let qnm_root =
+                        qnm_root.unwrap_or_else(mackesd_core::default_qnm_shared_root);
+                    let self_id =
+                        self_node_id.unwrap_or_else(default_node_id);
+                    let rows = mackesd_core::ca::revoke::revoke_peer(
+                        &conn, &qnm_root, &self_id, &node_id,
+                    )
+                    .context("ca revoke")?;
+                    println!(
+                        "revoked '{node_id}': {rows} cert row(s) marked revoked; \
+                         added to ban list at {self_id}'s QNM-Shared entry."
+                    );
                 }
                 CaCmd::Ban { node_id, qnm_root } => {
                     // EPIC-SEC-BANLIST (Q53) — add node-id to this
