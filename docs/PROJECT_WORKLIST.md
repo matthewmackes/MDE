@@ -5057,7 +5057,7 @@ disconnected" toasts get a dedicated Nebula vocabulary.
     - Profile transitions table is encoded in `mde-installer::lib::profile::is_lossy_downgrade(prev, new)`.
     - Blockers: INST-4 (profile enum), INST-5 (confirm primitives).
 
-- [ ] **v2.7: INST-7 Wipe sequence — atomic, ordered, mackesd-aware (Tier 1)**
+- [!] **v2.7: INST-7 Wipe sequence — atomic, ordered, mackesd-aware (Tier 1)** *(BLOCKED 2026-05-29 — the cert-revoke step (acceptance bullet 2) calls a mackesd `dev.mackes.MDE.Ca.Revoke(node_id)` method that does not exist: verified no `Ca` IPC interface + no `Revoke` method in `crates/mackesd/src/ipc/*.rs`. The config-path wipe half is already shipped (`mde_installer::wipe`, INST-3a) + the PEERVER-5 own-peer-file removal covers "leave the registry", so the clean-Fedora-Server build-up sequence is complete; what's blocked is the ACTIVE cert-revoke + brick-teardown on an already-enrolled re-install. Unblocks when a mackesd `Ca.Revoke` method lands (own follow-up task). Re-evaluate on the next [!]-sweep cycle.)*
   **As** a mackes-shell operator who just typed `NUKE`,
   **I want** the wipe to happen in an order that doesn't leave the mesh in a half-revoked state (cert revoked but peer still in QNM-Shared list, or brick wiped while glusterd is still trying to replicate to it),
   **so that** other peers see this node go away cleanly instead of getting stuck retrying a half-dead peer.
