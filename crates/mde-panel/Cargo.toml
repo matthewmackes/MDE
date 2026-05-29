@@ -33,13 +33,6 @@ iced       = { version = "0.13", default-features = false, features = ["wgpu", "
 # Phase E.4.1 — swayipc for Window/Workspace focus stream. Added when
 # sway_cluster.rs ports in.
 
-# HYP-2 (v6.5) — hyprland-rs IPC client. Replaces the legacy
-# `swaymsg` subprocess shell-outs that mde-panel/src/lib.rs and
-# mde-panel/src/toplevels_sub.rs currently invoke; ported per
-# HYP-3 (delete swayipc-async + swaymsg-shellout sweep). Pinned
-# to the latest stable per design doc §1 Q3.
-hyprland = "0.4.0-beta.3"
-
 # v2.0.0 zbus surface — for dev.mackes.MDE.* method calls.
 zbus       = { version = "5", default-features = false, features = ["tokio"] }
 

@@ -1096,15 +1096,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8"
 
 [[package]]
-name = "convert_case"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "633458d4ef8c78b72454de2d54fd6ab2e60f9e02be22f3c6104cdc8a4e0fceb9"
-dependencies = [
- "unicode-segmentation",
-]
-
-[[package]]
 name = "core-foundation"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1406,29 +1397,6 @@ checksum = "7cd812cc2bc1d69d4764bd80df88b4317eaef9e773c75226407d9bc0876b211c"
 dependencies = [
  "powerfmt",
  "serde_core",
-]
-
-[[package]]
-name = "derive_more"
-version = "2.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d751e9e49156b02b44f9c1815bcb94b984cdcc4396ecc32521c739452808b134"
-dependencies = [
- "derive_more-impl",
-]
-
-[[package]]
-name = "derive_more-impl"
-version = "2.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "799a97264921d8623a957f6c3b9011f3b5492f557bbb7a5a19b7fa6d06ba8dcb"
-dependencies = [
- "convert_case",
- "proc-macro2",
- "quote",
- "rustc_version",
- "syn 2.0.117",
- "unicode-xid",
 ]
 
 [[package]]
@@ -2731,35 +2699,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hyprland"
-version = "0.4.0-beta.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62fc24052f578592af91e5c60da1893ba6aea266b6ab86ffb72a644cf213fea9"
-dependencies = [
- "async-stream",
- "derive_more",
- "either",
- "futures-lite",
- "hyprland-macros",
- "pastey",
- "serde",
- "serde_json",
- "serde_repr",
- "tokio",
-]
-
-[[package]]
-name = "hyprland-macros"
-version = "0.4.0-beta.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31157e6ccefbad4b0cd7e549db6696691a70c11b108f26bf6bf76eef26af8c10"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.117",
-]
-
-[[package]]
 name = "iana-time-zone"
 version = "0.1.65"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3663,7 +3602,6 @@ dependencies = [
  "ed25519-dalek",
  "fs2",
  "futures-util",
- "hyprland",
  "insta",
  "mackes-mesh-types",
  "mackes-nebula-https-tunnel",
@@ -4062,7 +4000,6 @@ version = "0.0.0"
 dependencies = [
  "clap",
  "dirs 5.0.1",
- "hyprland",
  "iced",
  "iced_layershell",
  "mackes-theme",
@@ -4125,7 +4062,6 @@ dependencies = [
  "clap",
  "dirs 5.0.1",
  "futures-util",
- "hyprland",
  "iced",
  "iced_layershell",
  "mackes-mesh-types",
@@ -4148,7 +4084,6 @@ dependencies = [
  "anyhow",
  "async-trait",
  "dirs 5.0.1",
- "hyprland",
  "mackesd",
  "tempfile",
  "tokio",
@@ -5029,12 +4964,6 @@ name = "paste"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
-
-[[package]]
-name = "pastey"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "35fb2e5f958ec131621fdd531e9fc186ed768cbe395337403ae56c17a74c68ec"
 
 [[package]]
 name = "pem"

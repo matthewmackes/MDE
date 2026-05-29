@@ -30,17 +30,12 @@ path = "src/mde_open_main.rs"
 iced            = { version = "0.13", default-features = false, features = ["wgpu", "tiny-skia", "svg", "image", "tokio", "advanced"] }
 iced_layershell = "0.13.7"
 
-# v6.0 Portal-1 — swayipc-async for i3/sway IPC: workspace tree (Portal-5),
+# v6.0 Portal-1 — swayipc-async for sway IPC: workspace tree (Portal-5),
 # window focus events (Portal-8), output-add/remove events (Portal-2).
-# Retiring per HYP-3 — replaced by the `hyprland` crate below when each
-# call site ports. Both deps coexist during the migration window.
+# Permanent — sway is the compositor. SWAY-9.b (2026-05-29) retired the
+# v6.5 hyprland-rs migration that would have replaced this (Hyprland was
+# reversed 2026-05-28; sway-native shell is the locked direction).
 swayipc-async = "3.0.0"
-
-# HYP-2 (v6.5) — hyprland-rs IPC client (sockets2 event stream + dispatch
-# socket). Pinned to the latest stable per design doc §1 Q3; bumped per
-# named MDE cut. Default features bundle the tokio runtime + listener +
-# dispatch + data + keyword + config + ctl + hyprpaper.
-hyprland = "0.4.0-beta.3"
 
 # v6.0 Portal-1 — D-Bus surface: dev.mackes.MDE.Portal
 # {Goto, Focus, Lock, ToggleDND}. Same zbus 5 + tokio feature set as

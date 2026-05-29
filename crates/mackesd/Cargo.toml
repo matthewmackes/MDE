@@ -238,15 +238,6 @@ swayipc-async = { version = "3.0.0", optional = true }
 # `futures-util`; this declaration is the explicit consumer entry.
 futures-util = { version = "0.3", optional = true }
 
-# HYP-2 (v6.5) — hyprland-rs IPC client. Replaces swayipc-async
-# above as the workers/{workspace_namer, workspace_router,
-# tag_layout, tag_autostart, border_tinter, auto_mark, session_persist}
-# call sites port per HYP-9..HYP-18. Optional behind the same
-# `async-services` feature flag as swayipc-async so the dep stays
-# behind the gate during the migration window. Pinned to the
-# latest stable per design doc §1 Q3.
-hyprland = { version = "0.4.0-beta.3", optional = true }
-
 [dev-dependencies]
 # Deterministic snapshot diffs for library-contract tests (12.11.5).
 insta    = { version = "1", features = ["json", "redactions"] }
@@ -285,7 +276,6 @@ async-services = [
     "dep:rustls-native-certs",
     "dep:swayipc-async",
     "dep:futures-util",
-    "dep:hyprland",
 ]
 
 [package.metadata.docs.rs]

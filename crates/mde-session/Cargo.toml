@@ -30,13 +30,6 @@ mackesd-core = { package = "mackesd", path = "../mackesd", features = ["async-se
 # XDG path resolution (same crate mackesd uses).
 dirs = "5"
 
-# HYP-2 (v6.5) — hyprland-rs IPC client. mde-session will dispatch
-# the post-login compositor-state-set sequence (workspace prime,
-# tag-router warmup) via this crate instead of the legacy swaymsg
-# shellouts the v2.0.0 session bring-up still uses. Pinned to the
-# latest stable per design doc §1 Q3.
-hyprland = "0.4.0-beta.3"
-
 [features]
 # `wayland` (default): sway compositor + swaylock screen locker.
 # `x11`: i3 compositor + i3lock screen locker.
