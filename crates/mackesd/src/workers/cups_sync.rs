@@ -43,15 +43,21 @@
 
 #![cfg(feature = "async-services")]
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::Duration;
 
+use mde_bus::hooks::Priority;
+use mde_bus::persist::Persist;
+use mde_bus::rpc::reply_topic;
 use serde_json::{json, Value};
 
 use super::gluster_worker::DEFAULT_OVERLAY_IP_PATH;
 use super::{ShutdownToken, Worker};
+
+/// PRINT-8.b — the two `action/printers/<verb>` topics this worker serves.
+const ACTION_VERBS: [&str; 2] = ["sync-now", "list"];
 
 /// Tick cadence — five seconds, matching the other mesh workers.
 pub const DEFAULT_TICK_INTERVAL: Duration = Duration::from_secs(5);
@@ -280,6 +286,11 @@ pub struct CupsSyncWorker {
     lpadmin: String,
     lpoptions: String,
     cupsctl: String,
+    /// PRINT-8.b — Bus persist root (`~/.local/share/mde/bus`); `None`
+    /// disables the action-responder (unit tests that don't need Bus).
+    bus_root: Option<PathBuf>,
+    /// Per-verb read cursors for the `action/printers/<verb>` topics.
+    action_cursors: HashMap<String, String>,
 }
 
 impl CupsSyncWorker {
@@ -296,6 +307,8 @@ impl CupsSyncWorker {
             lpadmin: "lpadmin".to_string(),
             lpoptions: "lpoptions".to_string(),
             cupsctl: "cupsctl".to_string(),
+            bus_root: default_bus_root(),
+            action_cursors: HashMap::new(),
         }
     }
 
@@ -460,6 +473,54 @@ impl CupsSyncWorker {
             .spawn();
     }
 
+    /// PRINT-8.b — poll `action/printers/{sync-now,list}` for operator
+    /// commands + reply on `reply/<ulid>`. Silent no-op when Bus isn't set up.
+    fn poll_bus_actions(&mut self) {
+        let Some(bus_root) = self.bus_root.clone() else {
+            return;
+        };
+        let persist = match Persist::open(bus_root) {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        for verb in ACTION_VERBS {
+            let topic = format!("action/printers/{verb}");
+            let since = self.action_cursors.get(&topic).map(String::as_str);
+            let msgs = match persist.list_since(&topic, since) {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+            for msg in msgs {
+                self.action_cursors.insert(topic.clone(), msg.ulid.clone());
+                let reply_json = self.handle_action(verb);
+                let _ = persist.write(
+                    &reply_topic(&msg.ulid),
+                    Priority::Default,
+                    None,
+                    Some(&reply_json),
+                );
+            }
+        }
+    }
+
+    /// Dispatch one `action/printers/<verb>` message. Returns the JSON
+    /// body to write to `reply/<ulid>`. Pure over `&self` so tests can
+    /// call it without a running Bus.
+    #[must_use]
+    pub fn handle_action(&self, verb: &str) -> String {
+        match verb {
+            "sync-now" => {
+                self.tick_once();
+                r#"{"ok":true}"#.to_string()
+            }
+            "list" => {
+                let union = read_peer_records(&self.printers_dir());
+                serde_json::to_string(&union).unwrap_or_else(|_| "[]".to_string())
+            }
+            _ => r#"{"error":"unknown verb"}"#.to_string(),
+        }
+    }
+
     fn run_lpadmin(&self, args: &[&str]) -> bool {
         Command::new(&self.lpadmin)
             .args(args)
@@ -492,10 +553,14 @@ impl Worker for CupsSyncWorker {
 
     async fn run(&mut self, mut shutdown: ShutdownToken) -> anyhow::Result<()> {
         self.tick_once();
+        self.poll_bus_actions();
         loop {
             tokio::select! {
                 () = shutdown.wait() => return Ok(()),
-                () = tokio::time::sleep(self.tick) => self.tick_once(),
+                () = tokio::time::sleep(self.tick) => {
+                    self.tick_once();
+                    self.poll_bus_actions();
+                }
             }
         }
     }
@@ -549,6 +614,10 @@ fn now_ms() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
         .unwrap_or(0)
+}
+
+fn default_bus_root() -> Option<PathBuf> {
+    Some(dirs::data_dir()?.join("mde").join("bus"))
 }
 
 #[cfg(test)]
@@ -649,5 +718,54 @@ mod tests {
         assert!(!next.contains("Listen 0.0.0.0"));
         // Second pass: already present → no rewrite needed.
         assert!(!cupsd_needs_listen(&next, "10.42.0.7"));
+    }
+
+    // ── PRINT-8.b: handle_action pure dispatch ─────────────────────────────
+
+    fn test_worker() -> CupsSyncWorker {
+        CupsSyncWorker {
+            tick: DEFAULT_TICK_INTERVAL,
+            mesh_home: PathBuf::from("/nonexistent/mesh-home"),
+            overlay_ip_path: PathBuf::from("/nonexistent/overlay-ip"),
+            hostname: "testpeer".to_string(),
+            overlay_cidr: "10.42.0.0/16".to_string(),
+            lpstat: "lpstat".to_string(),
+            lpadmin: "lpadmin".to_string(),
+            lpoptions: "lpoptions".to_string(),
+            cupsctl: "cupsctl".to_string(),
+            bus_root: None,               // no Bus in unit tests
+            action_cursors: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn handle_action_list_returns_json_array() {
+        let w = test_worker();
+        let reply = w.handle_action("list");
+        // printers dir doesn't exist → empty array, not an error.
+        let v: serde_json::Value = serde_json::from_str(&reply).expect("valid JSON");
+        assert!(v.is_array(), "expected array, got: {reply}");
+    }
+
+    #[test]
+    fn handle_action_sync_now_returns_ok() {
+        let w = test_worker();
+        // tick_once is a no-op when lpstat/lpadmin are absent or not installed.
+        let reply = w.handle_action("sync-now");
+        let v: serde_json::Value = serde_json::from_str(&reply).expect("valid JSON");
+        assert_eq!(v["ok"], serde_json::json!(true), "got: {reply}");
+    }
+
+    #[test]
+    fn handle_action_unknown_verb_returns_error() {
+        let w = test_worker();
+        let reply = w.handle_action("frobnicate");
+        let v: serde_json::Value = serde_json::from_str(&reply).expect("valid JSON");
+        assert!(v["error"].is_string(), "got: {reply}");
+    }
+
+    #[test]
+    fn action_verbs_are_the_locked_two() {
+        assert_eq!(ACTION_VERBS, ["sync-now", "list"]);
     }
 }

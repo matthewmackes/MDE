@@ -394,7 +394,6 @@ impl Worker for FirewallMonitorWorker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write as _;
 
     // --- parse_denied_line ---
 
