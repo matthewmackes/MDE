@@ -702,13 +702,6 @@ install -D -m 0644 data/sway/config %{buildroot}%{_datadir}/mde/sway/config
 install -D -m 0644 data/sway/config.d/mackes-defaults.conf \
     %{buildroot}%{_datadir}/mde/sway/config.d/mackes-defaults.conf
 
-# HYP-5.a (v6.5) — Hyprland baseline config shipped under
-# /usr/share/mde/. HYP-5.b's birthright step will eventually
-# seed ~/.config/hypr/hyprland.conf with `source = ...` pointing
-# here. Carries HYP-19 + HYP-20 + HYP-23 + HYP-24 + HYP-26 +
-# HYP-27.a policies inline.
-install -D -m 0644 data/hyprland.conf %{buildroot}%{_datadir}/mde/hyprland.conf
-
 # HYP-8.5 (v6.5) — default tag manifests. Six curated tags
 # (voip/dev/hub/web/media/chat) shipped under /usr/share/mde/
 # tag-manifests/; the birthright wizard step (HYP-8.5.birthright

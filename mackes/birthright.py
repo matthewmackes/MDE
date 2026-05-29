@@ -2245,67 +2245,6 @@ def apply_tag_manifests_seed(_preset: Preset) -> List[str]:
     return actions
 
 
-# 17.6  apply_hyprland_baseline_conf — HYP-5.b (v6.5).
-#
-#       Writes `~/.config/hypr/hyprland.conf` on first login so the
-#       operator's home compositor config sources the
-#       RPM-installed baseline at `/usr/share/mde/hyprland.conf`
-#       (HYP-5.a). The file shipped here is a thin shim — the real
-#       policy lives in the baseline. The override block below the
-#       `source =` line is left empty for the operator to fill in.
-#
-#       Idempotent: when the destination already exists the step
-#       leaves it untouched. This protects operator overrides from
-#       being clobbered if Birthright is re-run after first login.
-def apply_hyprland_baseline_conf(_preset: Preset) -> List[str]:
-    """HYP-5.b: seed `~/.config/hypr/hyprland.conf` with a
-    `source = /usr/share/mde/hyprland.conf` line + empty
-    operator override block.
-
-    Runs once at first login. Subsequent invocations find the
-    destination already present and skip without overwriting,
-    so operator overrides survive re-runs.
-    """
-    actions: List[str] = []
-    home = Path(os.path.expanduser("~"))
-    dst_dir = home / ".config" / "hypr"
-    dst = dst_dir / "hyprland.conf"
-
-    if dst.exists():
-        actions.append(
-            f"hyprland.conf: {dst} already present; preserving "
-            "operator overrides"
-        )
-        log_action(actions[-1])
-        return actions
-
-    try:
-        dst_dir.mkdir(parents=True, exist_ok=True)
-    except OSError as e:
-        actions.append(f"hyprland.conf: could not mkdir {dst_dir}: {e}")
-        log_action(actions[-1])
-        return actions
-
-    body = (
-        "# MDE Hyprland operator config.\n"
-        "#\n"
-        "# Sourced once at first login by Birthright (HYP-5.b).\n"
-        "# The baseline at /usr/share/mde/hyprland.conf carries\n"
-        "# every locked HYP-* policy; operator overrides go below.\n"
-        "\n"
-        "source = /usr/share/mde/hyprland.conf\n"
-        "\n"
-        "# Operator overrides below this line\n"
-    )
-    try:
-        dst.write_text(body, encoding="utf-8")
-        actions.append(f"hyprland.conf: wrote {dst}")
-    except OSError as e:
-        actions.append(f"hyprland.conf: write {dst} failed: {e}")
-    log_action(actions[-1])
-    return actions
-
-
 # 18. apply_user_dirs — Phase 1.1.0 of the v1.1.0 work.
 #
 #     User lock 2026-05-19: the freedesktop user-dirs default
@@ -2697,8 +2636,8 @@ def apply_uninstall_legacy_xsessions(_preset: Preset) -> List[str]:
 # Mapping note: the matrix's abstract steps (nebula-enroll, mackesd-init,
 # KDC2 plugins) don't all exist as discrete apply_* functions; the
 # closest real functions are mapped here and the divergence is recorded
-# in the INST epic. apply_hyprland_baseline_conf is intentionally
-# excluded — Hyprland was retired 2026-05-28 (sway-native reversal).
+# in the INST epic. The Hyprland baseline step was removed entirely
+# (SWAY-9.d) — Hyprland was retired 2026-05-28 (sway-native reversal).
 # Legacy v1.x XFCE-migration steps (panel_swap / enforce_i3 /
 # uninstall_legacy_*) are also excluded: the canonical install is a
 # clean Fedora Server build-up that never had XFCE to migrate.

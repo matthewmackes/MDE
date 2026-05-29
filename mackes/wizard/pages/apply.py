@@ -51,7 +51,7 @@ from mackes.birthright import (
     apply_display_manager, apply_gluster_bootstrap, apply_hotkey, apply_media_clients,
     apply_netdata_monitor, apply_panel_archive, apply_panel_layout,
     apply_panel_swap, apply_plymouth, apply_qnm, apply_remote_desktop,
-    apply_hyprland_baseline_conf, apply_sway_config,
+    apply_sway_config,
     apply_tag_manifests_seed, apply_themes,
     apply_third_party_repos, apply_thunar_autostart, apply_uid_normalize,
     apply_uninstall_legacy_xfce, apply_uninstall_legacy_xsessions,
@@ -403,11 +403,6 @@ class ApplyPage(Gtk.Box):
             # existing destination files are preserved so operator
             # edits survive re-runs.
             _Step("Tag manifest seed", lambda: apply_tag_manifests_seed(merged)),
-            # HYP-5.b (v6.5) — seed ~/.config/hypr/hyprland.conf
-            # with a `source = /usr/share/mde/hyprland.conf` line +
-            # an empty operator override block. Idempotent: skipped
-            # when the file already exists.
-            _Step("Hyprland baseline", lambda: apply_hyprland_baseline_conf(merged)),
             _Step("XDG user dirs",     lambda: apply_user_dirs(merged)),
             _Step("Super+M hotkey",    lambda: apply_hotkey(merged)),
             # Phase 10.6.1-4: archive the user's pre-1.0 xfce4-panel state,
