@@ -188,7 +188,9 @@ mod tests {
             p.write("t/x", Priority::Default, None, Some(&i.to_string())).unwrap();
             std::thread::sleep(std::time::Duration::from_millis(2));
         }
-        assert_eq!(p.count().unwrap(), 3);
+        // 6 = 3 t/x messages + 3 audit/<peer> records (one auto-emitted
+        // per publish, EPIC-BUS-EXT-AUDIT-BUS).
+        assert_eq!(p.count().unwrap(), 6);
         drop(p);
         // Dispatch the verb — count() is exercised, output to stdout.
         let r = run(PersistOp::Count {

@@ -205,6 +205,11 @@ pub fn run_pass_at(
     let conn = open_index(bus_root)?;
 
     // Build cutoff per priority class and collect rows to delete.
+    // EPIC-BUS-EXT-AUDIT-BUS (Q28) — `audit/*` topics are
+    // retention=forever (the audit trail must never be reaped, even
+    // though audit records are `min` priority); exclude them from the
+    // victim query regardless of TTL.
+    let audit_like = format!("{}%", crate::persist::AUDIT_TOPIC_PREFIX);
     let mut victims: Vec<(String, String)> = Vec::new(); // (ulid, file_path)
     for priority in ["min", "default", "high"] {
         let Some(cutoff) = ttl_cutoff_unix_ms(policy, priority, now_unix_ms) else {
@@ -213,11 +218,11 @@ pub fn run_pass_at(
         let mut stmt = conn
             .prepare(
                 "SELECT ulid, file_path FROM messages \
-                 WHERE priority = ?1 AND ts_unix_ms < ?2",
+                 WHERE priority = ?1 AND ts_unix_ms < ?2 AND topic NOT LIKE ?3",
             )
             .map_err(|e| RetentionError::Sql(format!("prepare: {e}")))?;
         let rows = stmt
-            .query_map(params![priority, cutoff], |r| {
+            .query_map(params![priority, cutoff, audit_like], |r| {
                 Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
             })
             .map_err(|e| RetentionError::Sql(format!("query: {e}")))?;
@@ -390,6 +395,16 @@ mod tests {
             )
             .unwrap();
         }
+        // EPIC-BUS-EXT-AUDIT-BUS: each write() above also emitted an
+        // audit/<peer> record. Purge them (row + files) so the
+        // retention fixture contains exactly the seeded messages —
+        // retention behavior is what's under test here, not the audit
+        // doubling (audit/* is retention-exempt anyway, exercised in
+        // its own test below).
+        let conn = Connection::open(bus_root.join("index.sqlite")).unwrap();
+        conn.execute("DELETE FROM messages WHERE topic LIKE 'audit/%'", [])
+            .unwrap();
+        let _ = std::fs::remove_dir_all(bus_root.join("audit"));
         (tmp, bus_root)
     }
 
@@ -440,6 +455,35 @@ mod tests {
         // The recent message is still indexed.
         let p = Persist::open(root.clone()).unwrap();
         assert_eq!(p.count().unwrap(), 1);
+    }
+
+    #[test]
+    fn audit_topics_exempt_from_retention() {
+        // EPIC-BUS-EXT-AUDIT-BUS (Q28) — audit/* is retention=forever
+        // even though audit records are `min` priority.
+        let now = 1_000_000_000_000_i64;
+        let ten_days = now - (10 * 24 * 60 * 60 * 1000);
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().to_path_buf();
+        let p = Persist::open(root.clone()).unwrap();
+        // audit/peerx is cycle-guarded (no further audit); the regular
+        // write also emits an audit/<peer> record.
+        p.write("audit/peerx", Priority::Min, None, Some("{}")).unwrap();
+        p.write("t/regular", Priority::Min, None, Some("body")).unwrap();
+        // Back-date everything to 10 days ago — well past the 24h min TTL.
+        let conn = Connection::open(root.join("index.sqlite")).unwrap();
+        conn.execute("UPDATE messages SET ts_unix_ms = ?1", params![ten_days])
+            .unwrap();
+        drop(conn);
+        let report = run_pass_at(&RetentionPolicy::default(), &root, now).unwrap();
+        // Only the non-audit message is reaped; both audit/* records
+        // survive despite being 10 days old + min priority.
+        assert_eq!(report.removed, 1, "only the non-audit message reaped");
+        let p = Persist::open(root.clone()).unwrap();
+        assert!(
+            !p.list_since("audit/peerx", None).unwrap().is_empty(),
+            "audit/peerx survived the reap"
+        );
     }
 
     #[test]

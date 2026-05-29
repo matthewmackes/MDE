@@ -44,6 +44,12 @@ const SCHEMA: &str = include_str!("../migrations/0001_init.sql");
 /// Default `bus_root` path. Matches BUS-1.7 + BUS-1.6 conventions.
 pub const DEFAULT_BUS_ROOT: &str = "~/.local/share/mde/bus";
 
+/// EPIC-BUS-EXT-AUDIT-BUS (Q28) — topic-prefix for the per-peer audit
+/// stream. Every publish emits a metadata-only audit record to
+/// `audit/<peer>`; messages already under this prefix are NOT
+/// re-audited (the cycle guard in [`Persist::write`]).
+pub const AUDIT_TOPIC_PREFIX: &str = "audit/";
+
 /// One row of the index + the on-disk file pointer.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct StoredMessage {
@@ -211,24 +217,46 @@ impl Persist {
             )
             .map_err(|e| PersistError::Sql(format!("insert {ulid}: {e}")))?;
 
-        // BUS-7.1 — append a metadata-only line to today's audit
-        // JSONL. Best-effort: if the append fails we log + carry
-        // on (the message is already durably stored; the audit
-        // gap is recoverable from the SQLite index later).
-        let entry = crate::audit::AuditEntry {
-            publisher: publisher_id(),
-            ts_iso: chrono::Utc::now().to_rfc3339(),
-            topic: msg.topic.clone(),
-            priority: msg.priority.clone(),
-            ulid: msg.ulid.clone(),
-        };
-        if let Err(e) = crate::audit::append(&self.bus_root, &entry) {
-            tracing::warn!(
-                target: "mde_bus::persist",
-                error = %e,
-                ulid = %msg.ulid,
-                "audit log append failed — message persisted but audit gap"
-            );
+        // BUS-7.1 + EPIC-BUS-EXT-AUDIT-BUS (Q28) — emit a metadata-only
+        // audit record to the `audit/<peer>` Bus topic (uniform
+        // substrate + trivial cross-peer visibility, replacing the old
+        // per-day JSONL). **Cycle guard:** audit records are NOT
+        // themselves audited — without this, the recursive write below
+        // would loop forever. Best-effort: a failed audit emit logs +
+        // carries on (the original message is already durably stored;
+        // the gap is recoverable from the SQLite index later) and never
+        // fails the caller's write.
+        if !topic.starts_with(AUDIT_TOPIC_PREFIX) {
+            let pid = publisher_id();
+            let entry = crate::audit::AuditEntry {
+                publisher: pid.clone(),
+                ts_iso: chrono::Utc::now().to_rfc3339(),
+                topic: msg.topic.clone(),
+                priority: msg.priority.clone(),
+                ulid: msg.ulid.clone(),
+            };
+            match serde_json::to_string(&entry) {
+                Ok(audit_body) => {
+                    let audit_topic = format!("{AUDIT_TOPIC_PREFIX}{pid}");
+                    // Recursive write — the guard above stops it from
+                    // re-auditing itself. Always `min` priority.
+                    if let Err(e) =
+                        self.write(&audit_topic, Priority::Min, None, Some(&audit_body))
+                    {
+                        tracing::warn!(
+                            target: "mde_bus::persist",
+                            error = %e,
+                            ulid = %msg.ulid,
+                            "audit emit failed — message persisted but audit gap"
+                        );
+                    }
+                }
+                Err(e) => tracing::warn!(
+                    target: "mde_bus::persist",
+                    error = %e,
+                    "audit entry encode failed — audit gap"
+                ),
+            }
         }
 
         Ok(msg)
@@ -509,7 +537,8 @@ mod tests {
             .unwrap();
         drop(p1);
         let p2 = Persist::open(tmp.path().to_path_buf()).unwrap();
-        assert_eq!(p2.count().unwrap(), 1);
+        // 2 = the test/x message + its audit/<peer> record.
+        assert_eq!(p2.count().unwrap(), 2);
     }
 
     #[test]
@@ -526,8 +555,10 @@ mod tests {
         // File exists on disk.
         let abs = tmp.path().join(&msg.file_path);
         assert!(abs.exists(), "file missing: {}", abs.display());
-        // Row exists in DB.
-        assert_eq!(p.count().unwrap(), 1);
+        // Row exists in DB. EPIC-BUS-EXT-AUDIT-BUS: each publish also
+        // emits one audit record to audit/<peer>, so the index holds
+        // 2 rows (the message + its audit record).
+        assert_eq!(p.count().unwrap(), 2);
         // File content round-trips.
         let json = std::fs::read_to_string(&abs).unwrap();
         let decoded: StoredMessage = serde_json::from_str(&json).unwrap();
@@ -676,7 +707,10 @@ mod tests {
             )
             .unwrap();
         }
-        assert_eq!(p.count().unwrap(), 10_000);
+        // 20_000 = 10k load/test messages + 10k audit/<peer> records
+        // (one per publish). The per-topic count is unaffected — audit
+        // records land on a different topic.
+        assert_eq!(p.count().unwrap(), 20_000);
         let rows = p.list_since("load/test", None).unwrap();
         assert_eq!(rows.len(), 10_000);
         // ULIDs are monotonically increasing within a process.

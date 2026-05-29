@@ -140,7 +140,7 @@ pub fn run(op: AuditOp) -> Result<()> {
             json,
         } => {
             let root = resolve_bus_root(bus_root)?;
-            let entries = audit::read_entries(&root)
+            let entries = audit::read_entries_from_bus(&root)
                 .with_context(|| format!("read audit at {}", root.display()))?;
             let filtered = apply_filters(
                 &entries,
@@ -185,7 +185,7 @@ pub fn run(op: AuditOp) -> Result<()> {
             json,
         } => {
             let root = resolve_bus_root(bus_root)?;
-            let entries = audit::read_entries(&root)
+            let entries = audit::read_entries_from_bus(&root)
                 .with_context(|| format!("read audit at {}", root.display()))?;
             let filtered = apply_filters(
                 &entries,
