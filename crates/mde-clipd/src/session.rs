@@ -188,7 +188,11 @@ impl Dispatch<ZwlrDataControlDeviceV1, ()> for AppState {
                         // BUS-5.2: request the clipboard content before the offer
                         // moves to prev_selection. The compositor writes to the
                         // pipe write end (now server-side) after we flush.
-                        if let Some(offer) = &state.pending_offer {
+                        // BUS-5.5: if Super+Shift+C was pressed within the last
+                        // 500 ms, skip publishing this copy (local-only).
+                        if crate::skip_sync::should_skip_and_clear() {
+                            debug!("clipboard: skip-sync flag set — local-only copy");
+                        } else if let Some(offer) = &state.pending_offer {
                             if let Some(selected) = pick_mime(&state.pending_mimes) {
                                 match start_receive(offer, &selected) {
                                     Ok(read_fd) => {

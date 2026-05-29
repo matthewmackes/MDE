@@ -16,6 +16,7 @@ mod blobstore;
 mod proto;
 mod publish;
 mod session;
+mod skip_sync;
 mod subscribe;
 
 /// mde-clipd — MDE clipboard daemon
@@ -29,6 +30,12 @@ struct Cli {
     /// Bus root directory (default: $XDG_DATA_HOME/mde/bus/).
     #[arg(long, env = "MDE_BUS_ROOT")]
     bus_root: Option<PathBuf>,
+
+    /// BUS-5.5: mark the next clipboard copy as local-only (skip sync).
+    /// Invoked by the sway keybinding for Super+Shift+C; exits immediately
+    /// after writing the flag.
+    #[arg(long)]
+    skip_next_copy: bool,
 }
 
 /// Resolve `$XDG_DATA_HOME` → `$HOME/.local/share` → `/var/lib`.
@@ -52,6 +59,13 @@ fn main() -> anyhow::Result<()> {
         .with_env_filter(&cli.log_level)
         .with_writer(std::io::stderr)
         .init();
+
+    // BUS-5.5: --skip-next-copy is a one-shot invocation from the sway
+    // keybinding; write the flag and exit immediately.
+    if cli.skip_next_copy {
+        skip_sync::mark_skip_next()?;
+        return Ok(());
+    }
 
     info!("mde-clipd: starting (BUS-5.2)");
 
