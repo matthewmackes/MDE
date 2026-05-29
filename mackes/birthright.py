@@ -54,12 +54,14 @@ All wired into mackes/wizard/pages/apply.py between Panel and Mesh.
 """
 from __future__ import annotations
 
+import argparse
 import os
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from mackes.logging import log_action
 from mackes.presets import Preset
@@ -2663,3 +2665,216 @@ def apply_uninstall_legacy_xsessions(_preset: Preset) -> List[str]:
     for line in actions:
         log_action(line)
     return actions
+
+
+# ---------------------------------------------------------------------------
+# INST-8 (v2.7) — profile-aware CLI
+#
+# `python3 -m mackes.birthright --profile=<name> [--noninteractive]
+#  [--dry-run] apply` runs exactly the steps a profile requires. The
+# installer (`mde-install`, INST-3) shells out here; an operator can
+# also run it directly for debugging.
+#
+# Until this landed, `python3 -m mackes.birthright apply <steps>` (the
+# argv the Rust wizard builds in mde-wizard/src/pages/apply.rs) did
+# NOTHING — birthright.py had no `__main__` / dispatch at all. This
+# block fixes that dead contract AND adds profile gating.
+#
+# Profiles (locked matrix, AI_GOVERNANCE §11.1 / INST epic preamble):
+#   lighthouse — mesh substrate only (no desktop, no fleet, no monitor)
+#   headless   — lighthouse + fleet ansible-pull + monitoring (no desktop)
+#   full       — headless + the full Wayland desktop
+#
+# Mapping note: the matrix's abstract steps (nebula-enroll, mackesd-init,
+# KDC2 plugins) don't all exist as discrete apply_* functions; the
+# closest real functions are mapped here and the divergence is recorded
+# in the INST epic. apply_hyprland_baseline_conf is intentionally
+# excluded — Hyprland was retired 2026-05-28 (sway-native reversal).
+# Legacy v1.x XFCE-migration steps (panel_swap / enforce_i3 /
+# uninstall_legacy_*) are also excluded: the canonical install is a
+# clean Fedora Server build-up that never had XFCE to migrate.
+# ---------------------------------------------------------------------------
+
+PROFILES: tuple[str, ...] = ("lighthouse", "headless", "full")
+
+# step-id -> apply_* callable. Ordered: dependency-sane apply order.
+STEP_FUNCS: "dict[str, Callable[[Preset], List[str]]]" = {
+    # --- mesh substrate (all profiles) ---
+    "uid-normalize":     apply_uid_normalize,
+    "user-dirs":         apply_user_dirs,
+    "mesh":              apply_qnm,
+    "gluster":           apply_gluster_bootstrap,
+    # --- headless + full ---
+    "fleet":             apply_fleet,
+    "monitor":           apply_netdata_monitor,
+    "clipboard":         apply_clipboard_daemon,
+    # --- full desktop only ---
+    "third-party-repos": apply_third_party_repos,
+    "system-update":     apply_dnf_update,
+    "flathub":           apply_flathub,
+    "themes":            apply_themes,
+    "fonts":             apply_fonts,
+    "apps":              apply_apps,
+    "panel-layout":      apply_panel_layout,
+    "sway-config":       apply_sway_config,
+    "display-manager":   apply_display_manager,
+    "boot-splash":       apply_plymouth,
+    "drawer":            apply_drawer,
+    "hotkey":            apply_hotkey,
+    "remote-desktop":    apply_remote_desktop,
+    "media-clients":     apply_media_clients,
+    "tag-manifests":     apply_tag_manifests_seed,
+    "thunar-autostart":  apply_thunar_autostart,
+}
+
+_MESH_STEPS: tuple[str, ...] = ("uid-normalize", "user-dirs", "mesh", "gluster")
+_HEADLESS_EXTRA: tuple[str, ...] = ("fleet", "monitor", "clipboard")
+_DESKTOP_EXTRA: tuple[str, ...] = (
+    "third-party-repos", "system-update", "flathub", "themes", "fonts",
+    "apps", "panel-layout", "sway-config", "display-manager", "boot-splash",
+    "drawer", "hotkey", "remote-desktop", "media-clients", "tag-manifests",
+    "thunar-autostart",
+)
+
+# profile -> ordered step-ids. Nested so the matrix invariant
+# (lighthouse ⊂ headless ⊂ full) is structural, not hand-maintained.
+PROFILE_STEPS: "dict[str, tuple[str, ...]]" = {
+    "lighthouse": _MESH_STEPS,
+    "headless":   _MESH_STEPS + _HEADLESS_EXTRA,
+    "full":       _MESH_STEPS + _HEADLESS_EXTRA + _DESKTOP_EXTRA,
+}
+
+
+def steps_for_profile(profile: str) -> list[str]:
+    """Ordered step-ids that run for `profile`. Raises on unknown profile."""
+    if profile not in PROFILE_STEPS:
+        raise ValueError(
+            f"unknown profile: {profile} (choose {'|'.join(PROFILES)})"
+        )
+    return list(PROFILE_STEPS[profile])
+
+
+def run_steps(
+    step_ids: list[str],
+    preset: Preset,
+    *,
+    dry_run: bool = False,
+) -> int:
+    """Run the named steps in order. Returns a process exit code.
+
+    A failing step (raising, or its action log containing a `failed`
+    line) is reported but does not abort the remaining steps — birthright
+    steps are individually idempotent, so a re-run resumes cleanly. The
+    return code is non-zero if any step raised.
+    """
+    rc = 0
+    for sid in step_ids:
+        func = STEP_FUNCS.get(sid)
+        if func is None:
+            print(f"birthright: unknown step '{sid}'", file=sys.stderr)
+            rc = 2
+            continue
+        if dry_run:
+            print(f"[dry-run] would run: {sid} ({func.__name__})")
+            continue
+        print(f">>> {sid}")
+        try:
+            for line in func(preset):
+                print(f"    {line}")
+        except Exception as exc:  # noqa: BLE001 — one bad step must not kill the run
+            print(f"    ERROR: {sid} raised: {exc}", file=sys.stderr)
+            log_action(f"birthright: step {sid} raised: {exc}")
+            rc = 1
+    return rc
+
+
+def _load_profile_preset(profile: str) -> Preset:
+    """Default preset with the requested install profile stamped on it."""
+    from mackes.presets import default_preset
+
+    preset = default_preset()
+    if preset is None:
+        # No preset YAMLs available (minimal/headless box): synthesize a
+        # bare preset so the mesh + system steps still run.
+        preset = Preset(
+            name="default",
+            display_name="Default",
+            description="synthesized default (no preset YAML found)",
+        )
+    preset.profile = profile
+    return preset
+
+
+def main(argv: Optional[list[str]] = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="python3 -m mackes.birthright",
+        description="Run Mackes birthright install steps, gated by install profile.",
+    )
+    parser.add_argument(
+        "--profile",
+        choices=PROFILES,
+        help="install profile selecting which steps run (required for `apply`)",
+    )
+    parser.add_argument(
+        "--noninteractive",
+        action="store_true",
+        help="never prompt; assume non-TTY-safe defaults (used by mde-install)",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print the step plan without running any step",
+    )
+    sub = parser.add_subparsers(dest="command")
+
+    p_apply = sub.add_parser("apply", help="run steps")
+    p_apply.add_argument(
+        "steps",
+        nargs="*",
+        help="explicit step-ids to run; if omitted, runs all steps for --profile",
+    )
+    sub.add_parser("list", help="list profiles and their steps")
+
+    args = parser.parse_args(argv)
+
+    if args.command == "list":
+        for prof in PROFILES:
+            print(f"{prof}:")
+            for sid in PROFILE_STEPS[prof]:
+                print(f"  {sid:<18} {STEP_FUNCS[sid].__name__}")
+        return 0
+
+    # Default command is `apply`.
+    explicit = list(getattr(args, "steps", []) or [])
+
+    if explicit:
+        # Honor explicit steps (the wizard's `apply <steps>` contract).
+        bad = [s for s in explicit if s not in STEP_FUNCS]
+        if bad:
+            print(
+                f"birthright: unknown step(s): {', '.join(bad)} "
+                f"(see `python3 -m mackes.birthright list`)",
+                file=sys.stderr,
+            )
+            return 2
+        step_ids = explicit
+        profile = args.profile or "full"
+    else:
+        # No explicit steps -> profile-driven. Profile is required;
+        # the module refuses to guess (acceptance: no silent defaulting).
+        if not args.profile:
+            print(
+                "birthright: --profile is required when no explicit steps are "
+                f"given (choose {'|'.join(PROFILES)})",
+                file=sys.stderr,
+            )
+            return 2
+        profile = args.profile
+        step_ids = steps_for_profile(profile)
+
+    preset = _load_profile_preset(profile)
+    return run_steps(step_ids, preset, dry_run=args.dry_run)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -52,6 +52,14 @@ class Preset:
     apps: dict[str, Any] = field(default_factory=dict)
     snapshot: dict[str, Any] = field(default_factory=dict)
     source_path: Optional[Path] = None
+    # INST-8 (v2.7) — install profile gating which birthright steps run.
+    # "full" is the default so existing callers (the GTK wizard, which
+    # always builds a full desktop) are unchanged; the installer sets
+    # this to "lighthouse" / "headless" for non-desktop nodes. Steps
+    # like apply_display_manager already branch on `preset.profile`;
+    # before this field existed that was a latent AttributeError on any
+    # Preset built from_dict.
+    profile: str = "full"
 
     @classmethod
     def from_dict(cls, data: dict[str, Any], source: Optional[Path] = None) -> "Preset":
@@ -67,6 +75,7 @@ class Preset:
             apps=dict(data.get("apps") or {}),
             snapshot=dict(data.get("snapshot") or {}),
             source_path=source,
+            profile=str(data.get("profile", "full")),
         )
 
 
