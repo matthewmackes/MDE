@@ -4990,6 +4990,15 @@ disconnected" toasts get a dedicated Nebula vocabulary.
     - Help doc is markdown; renders inline in the Workbench help viewer (per the v2.0.0 docs/help/ rendering path).
     - Blockers: every other INST-* item — the docs land in the same commit as the last wired piece.
 
+- [ ] **v2.7: INST-DATADIR-SWEEP (NEW 2026-05-29 from the end-to-end install audit, finding A1) — migrate the ~40 legacy `/usr/share/mackes-shell/` consumers to `/usr/share/mde/`, then drop the compat symlink**
+  **Context:** the `mackes-shell`→`mde` data-path rename (v2.0) was only half-done. 77 references already use `/usr/share/mde/`; ~40 still use `/usr/share/mackes-shell/` (Python in `mackes/`, several Rust crates — `mackes-panel`, `mde-files`, `mackes-theme`, `mde-logout-dialog`, `mde-popover`, `mde-workbench` — `install-helpers/*.sh`, `packaging/iso/mde.ks`, and ~9 `data/systemd/*.service` `Documentation=` lines). The spec ships only to `/usr/share/mde/`, so those consumers were broken on installed systems (dev hid it via source-tree fallbacks).
+  **Interim fix shipped 2026-05-29:** a `/usr/share/mackes-shell` → `mde` compat symlink in the spec (`ln -sfn %{appname} …`) makes all legacy refs resolve; `birthright.py` was also pointed at `/usr/share/mde/` first.
+  **This task:** finish the migration — update every remaining `/usr/share/mackes-shell/` literal to `/usr/share/mde/` (or a shared constant), then remove the compat symlink. Rust crates need a rebuild; `mde.ks` + systemd units are string edits.
+  **Acceptance:**
+    - [ ] `grep -rn '/usr/share/mackes-shell' --include='*.py' --include='*.rs' --include='*.sh' --include='*.ks' --include='*.service'` returns only intentional back-compat/historical refs (comments).
+    - [ ] The `ln -sfn %{appname} …/mackes-shell` symlink + its `%files` entry are removed from the spec.
+    - [ ] `cargo build --workspace` + `make test-nodeps` green after the Rust-side path edits.
+
 ### DM-1..DM-8: v2.7 — greetd + regreet display manager (replaces LightDM, locked 2026-05-24 via 10-Q survey)
 
 > **Gap:** LightDM ships a graphically dated GTK3 greeter that

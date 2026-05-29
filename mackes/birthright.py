@@ -73,8 +73,16 @@ from mackes.presets import Preset
 
 
 def _data_roots() -> List[Path]:
-    """Return ordered list of candidate data roots (installed > source-tree)."""
+    """Return ordered list of candidate data roots (installed > source-tree).
+
+    The RPM ships data to ``/usr/share/mde/`` (the package renamed
+    mackes-shell -> mde at v2.0); ``/usr/share/mackes-shell`` is a
+    back-compat symlink to it. We probe the canonical ``mde`` path
+    first so this works even if the compat symlink is ever dropped,
+    then the legacy path, then the source tree (dev checkout).
+    """
     return [
+        Path("/usr/share/mde/data"),
         Path("/usr/share/mackes-shell/data"),
         Path(__file__).resolve().parent.parent / "data",
     ]
@@ -89,8 +97,9 @@ def _find_data(*rel: str) -> Path | None:
 
 
 def _branding(*rel: str) -> Path | None:
-    """Branding lives at /usr/share/mackes-shell/branding/ (RPM) or repo branding/."""
+    """Branding lives at /usr/share/mde/branding/ (RPM; /usr/share/mackes-shell is a compat symlink) or repo branding/."""
     for root in (
+        Path("/usr/share/mde/branding"),
         Path("/usr/share/mackes-shell/branding"),
         Path(__file__).resolve().parent.parent / "branding",
     ):

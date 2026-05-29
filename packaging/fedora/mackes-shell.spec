@@ -554,6 +554,20 @@ if [ -d data/xfce-baseline ]; then
     cp -r data/xfce-baseline %{buildroot}%{_datadir}/%{appname}/data/
 fi
 
+# A1 fix (2026-05-29) — back-compat path symlink. The package
+# renamed mackes-shell -> mde at v2.0, and all shipped data moved to
+# %{_datadir}/%{appname}/ == /usr/share/mde/. But the path migration
+# was only half-done: ~40 consumers (Python in mackes/, several Rust
+# crates, install-helpers/*.sh, systemd unit Documentation= lines,
+# packaging/iso/mde.ks) still read /usr/share/mackes-shell/. On an
+# installed system those paths did not exist, so e.g. birthright
+# could not find its shipped data/branding (it silently fell back to
+# its source-tree path, masking the bug in dev). This relative
+# symlink makes every legacy /usr/share/mackes-shell/ reference
+# resolve to the real /usr/share/mde/ tree. Tracked for full consumer
+# migration (then drop this) under INST-DATADIR-SWEEP.
+ln -sfn %{appname} %{buildroot}%{_datadir}/mackes-shell
+
 # 3a. Mackes Shell branding — hero logo (About / Wizard / Dashboard) +
 #     standard wallpaper (desktop + LightDM greeter)
 install -d %{buildroot}%{_datadir}/%{appname}/branding
@@ -1293,6 +1307,9 @@ echo ">>> mde-desktop installed. Run \`sudo mde-install --profile=full\` to fini
 %{py3_sitelib}/mackes/
 %{py3_sitelib}/mackes_shell-%{version}.dist-info/
 %{_datadir}/%{appname}/
+# A1 fix — back-compat symlink: /usr/share/mackes-shell -> mde, so the
+# ~40 legacy consumers still reading /usr/share/mackes-shell/ resolve.
+%{_datadir}/mackes-shell
 # Metainfo for the dev.mackes.MDE upstream identity. Stays in
 # base so `appstream-cli` / dnf metadata clients can list MDE
 # even on lighthouse installs.
