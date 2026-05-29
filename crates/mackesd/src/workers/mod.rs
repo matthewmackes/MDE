@@ -135,6 +135,15 @@ pub mod nebula_ca_backup;
 // the GF-1.3.a overlay-ip publish file is missing (peer
 // hasn't completed Nebula enrollment).
 pub mod gluster_worker;
+// INST-11 + INST-12 + INST-13 (v2.7) — fleet upgrade-barrier
+// worker. Runs on every peer: watches `<mesh-home>/upgrade-
+// intent/*.json` (written by `mde-update --coordinate`), runs
+// `dnf upgrade mde-core` on its own schedule + marks itself
+// `ready`, fires `mde-install --yes` once quorum + grace are
+// met (marking `complete`), and — when leader — deletes
+// fully-complete intent files after a +24h grace. Silent
+// no-op when the upgrade-intent dir doesn't exist.
+pub mod upgrade_intent_watcher;
 // MON-4 (v2.6) — alert relay worker. Polls
 // `~/.local/share/mde/alerts/*.json` (written by
 // `mde-alert-emit` via Netdata's `health_alarm_notify.conf`

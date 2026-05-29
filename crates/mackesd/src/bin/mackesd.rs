@@ -2866,6 +2866,28 @@ fn run_serve(
             }
         }
 
+        // INST-11 + INST-12 + INST-13 (v2.7) — fleet upgrade-barrier
+        // worker. Runs on every peer; silently no-ops until a
+        // `mde-update --coordinate <ver>` writes an intent file into
+        // `<mesh-home>/upgrade-intent/`. Then it runs `dnf upgrade
+        // mde-core` on its own schedule, marks itself ready, fires
+        // `mde-install --yes` once quorum + grace are met, and — when
+        // it holds the leader lease — cleans up fully-complete intent
+        // files after the +24h grace. No SQLite handle needed: the
+        // barrier state lives in the GFS-replicated intent files and
+        // the peer roster in the PEERVER peers dir.
+        sup.spawn(Spawn::new(
+            mackesd_core::workers::upgrade_intent_watcher::UpgradeIntentWatcher::new(
+                qnm_root.clone(),
+                node_id.clone(),
+            ),
+            RestartPolicy::Always,
+        ));
+        worker_names
+            .lock()
+            .expect("worker_names mutex")
+            .push("upgrade_intent_watcher".into());
+
         // EPIC-MESH-PROBE (MESH-PROBE-4) — scheduled two-tier nmap
         // probe worker. Resolves mesh-peer overlay IPs, scans them
         // (fast 60s / deep 10min), writes this peer's
