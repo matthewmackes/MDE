@@ -218,6 +218,12 @@ pub mod bus_supervisor;
 // BUS-5.1 — clipboard daemon supervisor. Spawns one `mde-clipd` process
 // per Wayland session; idles when $WAYLAND_DISPLAY is unset.
 pub mod clipd_supervisor;
+// SWAY-4 (v6.0 Q89/Q94) — per-window mark state. Bridges the sway-native
+// mark API to the Mackes Bus so Portal (mark pills), border_tinter, and
+// elevation-shadow workers can subscribe to mark deltas without querying
+// the compositor. Ported from HYP-14 (mde-x c913bed1): pure MarksStore +
+// Bus action responder; IPC replaced hyprland-rs → swayipc_async.
+pub mod marks_state;
 // Portal-41 (v6.0 R12-Q1, 2026-05-26) — auto-derived workspace names.
 // Subscribes to sway's Window event stream; debounces 200 ms; renames
 // the focused workspace to `<num>: <app_id>` whenever the focused

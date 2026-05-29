@@ -3282,6 +3282,19 @@ fn run_serve(
         ));
         worker_names.lock().expect("worker_names mutex").push("auto_mark".into());
 
+        // SWAY-4 (v6.0 Q89/Q94) — per-window mark state. Bridges the
+        // sway-native mark API to the Mackes Bus: serves
+        // action/marks/{add,remove,list,match} topics + publishes
+        // event/marks/<con_id> deltas. Snapshots to
+        // ~/.local/share/mde/marks/<peer>.toml on 60 s tick + shutdown.
+        // OnFailure — swayipc reconnect loop is internal; supervisor
+        // only sees an Err when the reconnect itself fails repeatedly.
+        sup.spawn(Spawn::new(
+            mackesd_core::workers::marks_state::MarksStateWorker::new(),
+            RestartPolicy::OnFailure,
+        ));
+        worker_names.lock().expect("worker_names mutex").push("marks_state".into());
+
         // Portal-42 (v6.0 R12-Q2) — tag-driven workspace output
         // assignment. Subscribes to sway workspace::init events;
         // looks up the owning tag from Portal-18.a's tag store;

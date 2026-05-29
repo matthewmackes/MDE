@@ -75,6 +75,9 @@ mde-kdc-proto = { path = "../mde-kdc-proto" }
 # Cards (Q7): the nmap parser emits Host cards with Service children
 # via `mde_card::probe`. Pure lib (serde + sha2), no feature gate.
 mde-card = { path = "../mde-card" }
+# SWAY-4 (v6.0 Q89/Q94) — marks_state worker uses Persist + rpc::reply_topic
+# to serve action/marks/* Bus action topics. Optional (async-services gate).
+mde-bus = { path = "../mde-bus", optional = true }
 
 # VV-1 / VV-1.5 (v4.1.0) — pure-function config generator for
 # the kamailio-mde + rtpengine-mde stack. Consumed by the
@@ -106,7 +109,7 @@ roxmltree   = "0.20"
 # operator override at ~/.config/mde/connect/policy.toml.
 # default-features = false because we don't need TOML's
 # date / preserve_order features here.
-toml = { version = "0.8", default-features = false, features = ["parse"] }
+toml = { version = "0.8", default-features = false, features = ["parse", "display"] }
 
 # Time: chrono for ISO-8601 timestamps stored in SQLite TEXT columns.
 chrono = { version = "0.4", features = ["serde"] }
@@ -276,6 +279,7 @@ async-services = [
     "dep:rustls-native-certs",
     "dep:swayipc-async",
     "dep:futures-util",
+    "dep:mde-bus",
 ]
 
 [package.metadata.docs.rs]
