@@ -4830,7 +4830,7 @@ disconnected" toasts get a dedicated Nebula vocabulary.
     - [ ] Unit test: after a mirror tick, `list_nodes` rows carry the peer-file versions.
   **Blockers:** PEERVER-1.
 
-- [ ] **v2.7: PEERVER-5 — stale-peer rendering + decommission file removal** *(PARTIAL 2026-05-29: stale rendering ✓ — `PeerRecord::is_stale` + `STALE_THRESHOLD_MS` (10 min) + `mde-update` marks stale rows. STILL OPEN: `mde-install`'s wipe sequence must remove this node's `peers/<hostname>.json` (own-row authority = file is presence) — lands with PEERVER-2's writer so write+remove are symmetric.)*
+- [✓] **v2.7: PEERVER-5 — stale-peer rendering + decommission file removal** *(shipped 2026-05-29 — session=opus-48-2026-05-29-ship-PV2. Stale rendering ✓ (`PeerRecord::is_stale` + `STALE_THRESHOLD_MS` 10min + `mde-update` STALE flag). Decommission ✓: `mde-installer::peers::remove_local_peer_file()` deletes this node's `<mesh-home>/peers/<hostname>.json`, called in `mde-install`'s wipe sequence (own-row authority = file is presence) — symmetric with PEERVER-2's writer. 23 mde-installer tests green.)*
   **As** an operator reading the fleet view,
   **I want** peers whose file is older than a stale threshold marked stale, and a decommissioned peer's file removed,
   **so that** the list reflects reality.

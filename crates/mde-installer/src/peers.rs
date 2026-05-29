@@ -7,6 +7,8 @@
 //! (skew table, INST-9) and `mde-install`'s peer-impact preflight
 //! (INST-5).
 
+use std::io;
+use std::path::PathBuf;
 use std::process::Command;
 
 pub use mackes_mesh_types::peers::{default_mesh_home, peers_dir, read_peers, PeerRecord};
@@ -78,6 +80,23 @@ pub fn classify_skew(local: Option<&str>, remote: Option<&str>) -> Skew {
 #[must_use]
 pub fn major(version: &str) -> Option<u64> {
     version.split('.').next()?.trim().parse::<u64>().ok()
+}
+
+/// Remove this node's own peer-file (PEERVER-5). Own-row authority:
+/// deleting `<mesh-home>/peers/<hostname>.json` is how this node leaves
+/// the mesh registry (called from `mde-install`'s wipe sequence).
+/// Returns the removed path, or `None` when there was nothing to remove.
+///
+/// # Errors
+/// IO failures other than a missing file.
+pub fn remove_local_peer_file() -> io::Result<Option<PathBuf>> {
+    let path = peers_dir(&default_mesh_home()).join(format!("{}.json", local_hostname()));
+    if path.exists() {
+        std::fs::remove_file(&path)?;
+        Ok(Some(path))
+    } else {
+        Ok(None)
+    }
 }
 
 /// This node's hostname (falls back to `localhost`).

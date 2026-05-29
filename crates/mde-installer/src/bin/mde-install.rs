@@ -147,6 +147,13 @@ fn run(args: &Args) -> Result<(), String> {
     for line in wipe::wipe_paths(&all) {
         audit.push(line);
     }
+    // PEERVER-5 — leave the mesh registry: remove our own peer-file
+    // (own-row authority = the file is this node's presence).
+    match mde_installer::peers::remove_local_peer_file() {
+        Ok(Some(p)) => audit.push(format!("removed peer-record: {}", p.display())),
+        Ok(None) => audit.push("peer-record: none to remove".to_string()),
+        Err(e) => audit.push(format!("peer-record remove failed: {e}")),
+    }
     if let Err(e) = wipe::write_profile_marker(profile) {
         audit.push(format!("FAILED to write profile marker: {e}"));
     } else {
