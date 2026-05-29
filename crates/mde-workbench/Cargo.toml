@@ -82,6 +82,8 @@ x11     = []
 # Single-instance handshake tests build minimal in-memory bus
 # fixtures (no real D-Bus connection); RequestNameReply lives in
 # zbus's `fdo` module already covered by the runtime dep.
+# FWMON-5 panel tests write temp JSONL files.
+tempfile = "3"
 
 [lints.rust]
 unsafe_code     = "forbid"

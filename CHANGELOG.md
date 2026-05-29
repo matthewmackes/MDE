@@ -5,6 +5,26 @@ unreleased; tag versions get a date when they ship.
 
 ## Unreleased — v1.0 MackesDE for Workgroups (rebrand cut)
 
+**Firewall activity monitoring (2026-05-29)**
+- MDE now records every external packet that firewalld blocks and shows
+  fleet-wide denial data in the Workbench → Firewall panel (Activity
+  section).
+- The **Recent denials** table shows the last 20 blocked packets with
+  source IP, protocol, port, and which peer saw them. **Top sources**
+  shows the five most active offenders across your fleet. **Per-peer
+  counts** lets you spot an exposed peer at a glance.
+- Mesh traffic (Nebula UDP/4242 + lighthouse TCP/443 + established
+  connections) is filtered out automatically — you only see genuine
+  external attempts.
+- When a single source IP triggers 10 or more denials in 60 minutes,
+  a desktop notification fires (once per source per window, not per
+  packet). Records older than 7 days are trimmed automatically.
+- Data lives in `/mnt/mesh-storage/firewall/<hostname>.jsonl` (one
+  file per peer); the panel reads the union across all peers.
+- All three peer profiles (lighthouse, headless, full) enable
+  `LogDenied=all` in firewalld during setup.
+- `mackesd::firewall_monitor` — see `docs/help/firewall.md`.
+
 **Printers auto-share across the mesh (2026-05-29)**
 - A printer added on any peer now appears — and works — on every other
   peer automatically, with no per-peer setup. A background `cups_sync`

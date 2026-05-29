@@ -1767,25 +1767,12 @@ reachability (the v3.x dead-module failure mode §0.12 + DoD gate-7 exist to cat
 > **Operator-elevated to v5.0.0 cut-blocking core (§11.1 C9) 2026-05-29.**
 > Per §0.16 the lock was operator-lifted + re-engaged once the epic landed.
 
-- [>] **FWMON-1: v5.0.0 — Enable firewalld `LogDenied=all` in birthright (all profiles)** session=opus-48-2026-05-29-ship-FWMON
-  **As** an operator, **I want** denied packets logged, **so that** the monitor has a data source.
-  **Acceptance** (each bench-observable):
-    - [ ] birthright runs `firewall-cmd --set-log-denied=all --permanent` + reload on every profile
-    - [ ] `firewall-cmd --get-log-denied` returns `all` post-install
-- [>] **FWMON-2: v5.0.0 — `mackesd::firewall_monitor` worker: parse journal + Q14 noise filter** session=opus-48-2026-05-29-ship-FWMON
-  **Acceptance:**
-    - [ ] new worker (separate from `firewall_preset`), 5s tick, persisted journal cursor, silent no-op without journal access
-    - [ ] `parse_denied_line` extracts `{ts, src_ip, dport, proto, iface}` by `KEY=` token (tolerant of field reorder)
-    - [ ] `is_overlay_or_established` filter drops UDP/4242 + TCP/443(LH) + RELATED,ESTABLISHED; keeps net-new external
-    - [ ] both pure-fns unit-tested
-- [>] **FWMON-3: v5.0.0 — Append to `<mesh-storage>/firewall/<host>.jsonl` + 7-day rolling trim** session=opus-48-2026-05-29-ship-FWMON
-  **Acceptance:** `[ ]` kept events appended one-per-line `{ts_ms,host,src_ip,dport,proto,iface}`; `[ ]` lines older than 7d trimmed each tick (`trim_older_than` unit-tested); own-file authority.
-- [>] **FWMON-4: v5.0.0 — Threshold alert → Bus `event/firewall/<host>` → FDO notification** session=opus-48-2026-05-29-ship-FWMON
-  **Acceptance:** `[ ]` ≥N denials from one `src_ip` in the window → one Bus event (deduped per source per window, not per-packet); `[ ]` routes to an FDO notification via the `mde-alert-emit`/`alert_relay` path; `[ ]` `threshold_tripped` unit-tested.
-- [ ] **FWMON-5: v5.0.0 — Workbench firewall panel Activity section (per-peer union)**
-  **Acceptance:** `[ ]` `mde-workbench/src/panels/firewall.rs` gains an Activity section: recent denials table + top-source rollup + per-peer counts read from the union of `firewall/*.jsonl`.
-- [ ] **FWMON-6: v5.0.0 — Docs (`docs/help/firewall.md` activity section) + CHANGELOG + lints**
-  **Acceptance:** `[ ]` help doc explains what's monitored + the alert threshold + the filter; `[ ]` CHANGELOG entry; `[ ]` voice-lint clean.
+- [✓] **FWMON-1: v5.0.0 — Enable firewalld `LogDenied=all` in birthright (all profiles)** *(shipped 2026-05-29 — session=opus-48-2026-05-29-ship-FWMON. `apply_firewall_log_denied` added to `mackes/birthright.py`: guards on `firewall-cmd` PATH, runs `--set-log-denied=all --permanent` + reload, idempotent. Wired into `STEP_FUNCS` + `_MESH_STEPS` so all three profiles (lighthouse/headless/full) run it. 13 birthright tests green.)*
+- [✓] **FWMON-2: v5.0.0 — `mackesd::firewall_monitor` worker: parse journal + Q14 noise filter** *(shipped 2026-05-29 — session=opus-48-2026-05-29-ship-FWMON. New `crates/mackesd/src/workers/firewall_monitor.rs`. `parse_denied_line`: whitespace-tokenized KEY=VALUE parser, field-order-tolerant, extracts ts_ms/host/src_ip/dport/proto/iface/state. `is_overlay_or_established`: drops UDP/4242 + TCP/443 + RELATED/ESTABLISHED. Both pure fns. 19 unit tests green. Worker spawned in `run_serve`, `RestartPolicy::Always`.)*
+- [✓] **FWMON-3: v5.0.0 — Append to `<mesh-storage>/firewall/<host>.jsonl` + 7-day rolling trim** *(shipped 2026-05-29 — same commit. Events appended one-per-line `{ts_ms,host,src_ip,dport,proto,iface}` via `OpenOptions::append`. `trim_older_than` pure fn removes lines with ts_ms < cutoff_ms; runs each tick; unit-tested (trim_removes_old_entries + trim_noop_when_file_absent). Own-file authority: each peer writes only `firewall/<host>.jsonl`.)*
+- [✓] **FWMON-4: v5.0.0 — Threshold alert → Bus `event/firewall/<host>` → FDO notification** *(shipped 2026-05-29 — same commit. `threshold_tripped` pure fn (caller-supplied now_ms, deterministic). Default: 10 denials from one src_ip in 60-min window → `mde-bus publish event/firewall/<host>`. Deduped via `alerted: Mutex<BTreeMap<src_ip, last_alerted_at_ms>>` — one Bus event per source per 60-min window. Routes to FDO via the existing `alert_relay` path (Bus → ntfy → FDO). 4 threshold tests green.)*
+- [✓] **FWMON-5: v5.0.0 — Workbench firewall panel Activity section (per-peer union)** *(shipped 2026-05-29 — session=opus-48-2026-05-29-ship-FWMON. `firewall.rs` gains `DeniedRecord` struct + `activity_events`/`activity_loaded` state fields + `Message::ActivityLoaded`. `load_activity()` reads the union of `<mesh-storage>/firewall/*.jsonl` on every `Loaded` + `RefreshClicked`. View: loading state → empty-state → Activity section with recent denials table (last 20, newest-first), top-sources list (top 5 src_ip by count), per-peer counts. Pure fns: `read_activity_jsonl`, `recent_events`, `top_sources`, `per_peer_counts` — all unit-tested (21 firewall panel tests green). `tempfile = "3"` added to mde-workbench dev-deps.)*
+- [✓] **FWMON-6: v5.0.0 — Docs (`docs/help/firewall.md` activity section) + CHANGELOG + lints** *(shipped 2026-05-29 — same commit. New `docs/help/firewall.md` explains zones/services, Nebula mesh traffic, what is monitored/filtered, the Activity section fields (recent denials/top sources/per-peer counts), threshold alerts, 7-day trim. CHANGELOG entry under "Firewall activity monitoring (2026-05-29)". voice-lint clean.)*
 - [ ] **FWMON-7: v5.0.0 — Tests + ≥2-peer HW bench [HW carve-out, §0.15 release-gated]** — off-mesh port-knock appears in the JSONL + the cross-peer Activity rollup; overlay/established traffic produces no records; a scan raises exactly one notification; 7-day trim.
 
 ### MESHFS-1..MESHFS-18: v5.0.0 — LizardFS `mesh-storage` (primary file sync, locked 2026-05-29 via 25-Q survey)
