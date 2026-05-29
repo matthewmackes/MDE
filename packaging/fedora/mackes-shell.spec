@@ -925,6 +925,10 @@ install -D -m 0644 data/applications/mde.desktop \
     %{buildroot}%{_datadir}/applications/mde.desktop
 install -D -m 0644 data/icons/mackes-shell.svg \
     %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/mackes-shell.svg
+# BRAND-LOGO-2: the `mde` icon name (mde.desktop Icon=mde, panel
+# M-button) resolves to the MDE mesh-penguin app icon.
+install -D -m 0644 data/icons/mde.svg \
+    %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/mde.svg
 
 # 6. /usr/bin/* wrappers
 #
@@ -1263,6 +1267,7 @@ fi
 %{_metainfodir}/io.github.matthewmackes.MackesShell.metainfo.xml
 %{_metainfodir}/shell.mackes.Panel.metainfo.xml
 %{_datadir}/icons/hicolor/scalable/apps/mackes-shell.svg
+%{_datadir}/icons/hicolor/scalable/apps/mde.svg
 %{_unitdir}/mackes-node.service
 %{_unitdir}/mackes-tailscale-bootstrap.service
 %{_unitdir}/mackesd.service

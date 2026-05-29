@@ -11,11 +11,54 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
+import os
+
 import gi
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk  # noqa: E402
+from gi.repository import GdkPixbuf, Gtk  # noqa: E402
 
 from mackes import __version__
+
+
+# Brand-asset resolution mirrors the Rust `mde_theme::Brand` loader's
+# probe order so the About window shows the same wordmark the shell
+# does: $MDE_BRAND_DIR override → system install → source tree. SVG is
+# preferred over PNG (scales cleanly); the first existing file wins.
+_BRAND_DIRS = [
+    os.environ.get("MDE_BRAND_DIR"),
+    "/usr/share/mde/brand",
+    str(Path(__file__).resolve().parents[1] / "assets" / "brand"),
+]
+
+
+def _resolve_brand_asset(basename: str) -> Optional[str]:
+    """First-hit path for a brand slot, probing svg then png across the
+    override / system / source-tree layers. Returns None if absent."""
+    for directory in _BRAND_DIRS:
+        if not directory:
+            continue
+        for ext in ("svg", "png"):
+            candidate = Path(directory) / f"{basename}.{ext}"
+            if candidate.is_file():
+                return str(candidate)
+    return None
+
+
+def _brand_wordmark(height: int = 56) -> Optional[Gtk.Image]:
+    """Load the MDE wordmark as a height-scaled Gtk.Image, or None if no
+    asset resolves (caller falls back to a text wordmark)."""
+    path = _resolve_brand_asset("wordmark")
+    if path is None:
+        return None
+    try:
+        # Scale by height, preserving aspect (width = -1). librsvg's
+        # GdkPixbuf loader handles the SVG; PNGs scale the same way.
+        pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, -1, height, True)
+    except Exception:  # noqa: BLE001
+        return None
+    image = Gtk.Image.new_from_pixbuf(pixbuf)
+    image.set_halign(Gtk.Align.START)
+    return image
 
 
 # Where the credits file lives once the RPM is installed. We also fall
@@ -79,12 +122,18 @@ def build_about_window(application: Optional[Gtk.Application] = None) -> Gtk.Win
     header = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
     header.set_margin_top(24); header.set_margin_bottom(8)
     header.set_margin_start(24); header.set_margin_end(24)
-    brand = Gtk.Label()
-    brand.set_markup(
-        '<span size="x-large" weight="bold">Mackes</span> '
-        '<span size="x-large" foreground="#a8a8a8">Shell</span>'
-    )
-    brand.set_xalign(0)
+    # Prefer the resolved brand wordmark (mesh-penguin + "MDE / Mackes
+    # Desktop Environment"); fall back to a text wordmark if no asset
+    # resolves on this box.
+    brand = _brand_wordmark()
+    if brand is None:
+        brand = Gtk.Label()
+        brand.set_markup(
+            '<span size="x-large" weight="bold">MDE</span> '
+            '<span size="x-large" foreground="#a8a8a8">'
+            'Mackes Desktop Environment</span>'
+        )
+        brand.set_xalign(0)
     header.pack_start(brand, False, False, 0)
 
     sub = Gtk.Label()

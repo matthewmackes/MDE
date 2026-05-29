@@ -5,6 +5,32 @@ unreleased; tag versions get a date when they ship.
 
 ## Unreleased — v1.0 MackesDE for Workgroups (rebrand cut)
 
+**New MDE logo — also the app icon, panel button, and launcher entries (2026-05-28)**
+- The mesh-penguin app icon now ships as the system icon (`mackes-shell`
+  and `mde`), so the taskbar/launcher, the `mde.desktop` entry (whose
+  icon previously resolved to nothing), and the panel's menu button all
+  show the new mark. The pre-rendered icon PNGs (16–512 px) and the
+  `assets/brand/*` raster fallbacks were re-rendered from the new vector
+  art so nothing ships the old logo anymore.
+
+**New MDE logo — mesh-penguin + wordmark, integrated platform-wide (2026-05-28)**
+- The new brand mark (a low-poly mesh-network penguin beside the "MDE /
+  Mackes Desktop Environment for Workgroups" wordmark) is now traced to
+  scalable SVG and wired through the existing brand-asset system, so it
+  shows up wherever the shell asks for a logo — the workbench / sidebar
+  header, the About panel, empty states, the app icon, and the greeter.
+- The wordmark text adapts to the active theme automatically (charcoal on
+  light surfaces, white on dark) while the penguin keeps its blue palette
+  so the mark reads on any background — no separate per-theme art to
+  maintain for the in-app surfaces.
+- The GitHub README now opens with the logo (a light/dark pair swapped by
+  your system theme), the Python "About MDE" window shows the wordmark in
+  its header, and the bundled About text leads with "Mackes Desktop
+  Environment (MDE) — for Workgroups" (was the stale "Mackes Shell — XFCE
+  Workstation").
+- Drop-in by design: replace any file in `assets/brand/` (or point
+  `$MDE_BRAND_DIR` at your own) and the running shell picks it up.
+
 **Media-server sync is now native (no Python daemon) (2026-05-28)**
 - Keeping your Sublime Music + Delfin (Jellyfin) configs pointed at the
   mesh's media servers is now handled directly by `mackesd` instead of a

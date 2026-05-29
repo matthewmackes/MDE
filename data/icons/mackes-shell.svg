@@ -1,22 +1,36 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#3a4258"/>
-      <stop offset="1" stop-color="#1d1f21"/>
-    </linearGradient>
-  </defs>
-  <rect x="2" y="2" width="60" height="60" rx="12" ry="12" fill="url(#bg)" stroke="#81a2be" stroke-width="2"/>
-  <g fill="none" stroke="#c5c8c6" stroke-width="3" stroke-linecap="round">
-    <circle cx="32" cy="32" r="14"/>
-    <line x1="32" y1="10" x2="32" y2="18"/>
-    <line x1="32" y1="46" x2="32" y2="54"/>
-    <line x1="10" y1="32" x2="18" y2="32"/>
-    <line x1="46" y1="32" x2="54" y2="32"/>
-    <line x1="16" y1="16" x2="22" y2="22"/>
-    <line x1="42" y1="42" x2="48" y2="48"/>
-    <line x1="48" y1="16" x2="42" y2="22"/>
-    <line x1="22" y1="42" x2="16" y2="48"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="MDE application icon">
+  <title>MDE application icon</title>
+  <desc>
+    Shipped window / taskbar app icon. Fixed palette baked in — charcoal
+    rounded tile, brand-blue mesh penguin, white MDE mark — so it renders
+    consistently across host taskbars regardless of theme. Not tintable.
+    See assets/brand/README.md.
+  </desc>
+
+  <!-- Charcoal tile -->
+  <rect x="0" y="0" width="256" height="256" rx="56" ry="56" fill="#1d1d1f"/>
+
+  <!-- Mesh-network penguin, upper-centre -->
+  <g transform="translate(80 28) scale(1.0)" fill="none"
+     stroke="#6aa3f0" stroke-width="1.6" stroke-linejoin="round">
+    <polygon points="48,4 36,10 30,26 30,46 26,72 24,96 30,110 40,114 44,108 48,110 52,108 56,114 66,110 70,94 66,70 64,48 66,40 80,44 66,34 62,16"
+             fill="#1746a0" fill-opacity="0.45" stroke="#5b8def"/>
+    <polygon points="48,30 40,40 38,64 40,90 48,102 56,90 58,64 56,40"
+             fill="#e8f1ff" fill-opacity="0.95" stroke="#9ec5f7"/>
+    <path d="M48,4 L48,30 M36,10 L48,30 M62,16 L48,30 M30,26 L40,40
+             M64,48 L56,40 M30,46 L38,64 M64,48 L58,64 M26,72 L38,64
+             M66,70 L58,64 M24,96 L40,90 M70,94 L56,90 M40,114 L48,102
+             M66,110 L48,102 M62,16 L66,40 M66,34 L80,44"
+          stroke="#7fb0f2" stroke-width="1.2"/>
+    <circle cx="48" cy="30" r="3.6" fill="#9ec5f7" stroke="none"/>
+    <circle cx="80" cy="44" r="2.6" fill="#9ec5f7" stroke="none"/>
+    <circle cx="74" cy="104" r="3"  fill="#9ec5f7" stroke="none"/>
+    <path d="M40,114 L74,104 L92,114 M74,104 L60,118"
+          stroke="#7fb0f2" stroke-width="1.2"/>
   </g>
-  <circle cx="32" cy="32" r="5" fill="#81a2be"/>
+
+  <!-- MDE mark -->
+  <text x="128" y="226" text-anchor="middle"
+        font-family="'Roboto', 'Inter', system-ui, sans-serif"
+        font-size="44" font-weight="800" letter-spacing="-1" fill="#ffffff">MDE</text>
 </svg>
