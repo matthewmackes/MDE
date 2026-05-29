@@ -5,6 +5,14 @@ unreleased; tag versions get a date when they ship.
 
 ## Unreleased — v1.0 MackesDE for Workgroups (rebrand cut)
 
+**New MDE logo — also the app icon, panel button, and launcher entries (2026-05-28)**
+- The mesh-penguin app icon now ships as the system icon (`mackes-shell`
+  and `mde`), so the taskbar/launcher, the `mde.desktop` entry (whose
+  icon previously resolved to nothing), and the panel's menu button all
+  show the new mark. The pre-rendered icon PNGs (16–512 px) and the
+  `assets/brand/*` raster fallbacks were re-rendered from the new vector
+  art so nothing ships the old logo anymore.
+
 **New MDE logo — mesh-penguin + wordmark, integrated platform-wide (2026-05-28)**
 - The new brand mark (a low-poly mesh-network penguin beside the "MDE /
   Mackes Desktop Environment for Workgroups" wordmark) is now traced to

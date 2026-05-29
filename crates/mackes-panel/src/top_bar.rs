@@ -30,10 +30,11 @@ const DEFAULT_WEATHER_LON: f64 = -0.128;
 /// confident presence without crowding the row.
 const TOP_BAR_ICON_PX: i32 = 18;
 
-/// Glyph used as the Mackes-menu button. Q23 hinted at a Carbon mark;
-/// we use `applications-system-symbolic` as a stand-in until the real
-/// brand glyph lands.
-const MACKES_BUTTON_ICON: &str = "applications-system-symbolic";
+/// Glyph used as the Mackes-menu button. The brand mark — the MDE
+/// mesh-penguin app icon shipped to the hicolor theme as `mde` (same
+/// art as `data/icons/mde.svg` / `assets/brand/app-icon.svg`). Falls
+/// back to a text "M" if the icon theme isn't present (dev tree).
+const MACKES_BUTTON_ICON: &str = "mde";
 
 /// Build the Mackes-menu button. Click → drops a `gtk::Menu` populated
 /// by `apple_menu::build` of the live `.desktop` scan, plus the canonical
