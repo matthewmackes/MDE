@@ -291,13 +291,16 @@ pub fn run(conn: &Connection, config: &Config) -> anyhow::Result<()> {
 
     info!(
         initial_mimes = state.pending_mimes.len(),
-        "mde-clipd: watching clipboard (BUS-5.2 publish + BUS-5.3 GC enabled)"
+        "mde-clipd: watching clipboard (BUS-5.2 publish + BUS-5.3 GC + BUS-5.4 subscriber enabled)"
     );
 
     // BUS-5.3: initial GC pass to clean up blobs from any previous run.
     if let Err(e) = crate::blobstore::gc_orphaned_blobs(&config.bus_root, &config.data_home) {
         warn!(error = %e, "clipboard: startup GC failed — continuing");
     }
+
+    // BUS-5.4: launch the inbound subscriber thread.
+    crate::subscribe::spawn_subscriber(config.bus_root.clone(), config.peer_id.clone());
 
     loop {
         queue

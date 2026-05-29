@@ -16,6 +16,7 @@ mod blobstore;
 mod proto;
 mod publish;
 mod session;
+mod subscribe;
 
 /// mde-clipd — MDE clipboard daemon
 #[derive(Parser, Debug)]
