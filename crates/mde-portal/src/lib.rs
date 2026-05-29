@@ -12,6 +12,9 @@
 /// `mde://` URI scheme parser (Portal-35).
 pub mod uri;
 
+/// Workspace template → swaymsg batch emitter (SWAY-5 / Portal-51).
+pub mod template;
+
 /// Generated async proxy for `dev.mackes.MDE.Portal`.
 ///
 /// Kept separate from the server-side `dbus.rs` (which lives in the

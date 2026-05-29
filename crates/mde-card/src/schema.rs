@@ -120,10 +120,32 @@ pub enum CardKind {
     /// its nmap-identified product/version). Rendered as a child Card
     /// under its host. Probe facts live in `metadata`.
     Service,
+    /// Saved workspace template — an ordered set of app commands that
+    /// rebuild a workspace layout in one swaymsg call (SWAY-5 /
+    /// Portal-51). The launch payload lives in [`TemplateSpec`]; the
+    /// full template-store (ULID JSON, Hub "Save as template…" modal,
+    /// cascade-card render) is Portal-51's scope.
+    Template,
     /// Forward-compat — an unknown kind from a newer peer. Round-trips
     /// through serde so we never lose it.
     #[serde(untagged)]
     Other(String),
+}
+
+/// Launch payload for a [`CardKind::Template`] card — the minimal schema
+/// the swaymsg batch emitter serializes from (SWAY-5).
+///
+/// A template targets one sway workspace number and launches an ordered
+/// list of app commands into it. The full template-store (ULID-named
+/// JSON under `~/.local/share/mde/templates/`, the Hub "Save as
+/// template…" modal, the cascade-card render) is Portal-51; this struct
+/// is the apply-time contract the emitter consumes.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TemplateSpec {
+    /// Sway workspace number the template's apps launch into.
+    pub workspace: i32,
+    /// Ordered app launch commands (each becomes a sway `exec`).
+    pub apps: Vec<String>,
 }
 
 impl CardKind {
@@ -143,6 +165,7 @@ impl CardKind {
             Self::Note => "note",
             Self::Host => "host",
             Self::Service => "service",
+            Self::Template => "template",
             Self::Other(s) => s.as_str(),
         }
     }
