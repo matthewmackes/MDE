@@ -134,6 +134,13 @@ pub mod nebula_ca_backup;
 // the GF-1.3.a overlay-ip publish file is missing (peer
 // hasn't completed Nebula enrollment).
 pub mod gluster_worker;
+// PRINT-2..PRINT-6 + PRINT-8 (v5.0.0) — auto CUPS print sharing +
+// sync. Converges fleet printers via mesh-storage (write-own-file
+// + import-union as `<queue>@<host>`); jobs route through the host
+// peer's CUPS over the overlay. Headless + full only (lighthouse
+// skips at spawn). Silent no-op without cups/lpadmin or before
+// Nebula enrollment.
+pub mod cups_sync;
 // MESHFS-2.1 (v5.0.0) — LizardFS mesh-storage fleet supervisor.
 // Follows the gluster_worker pattern exactly; silent no-op when
 // the mfsmaster/mfschunkserver binaries are absent or the

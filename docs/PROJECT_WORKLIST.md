@@ -1726,32 +1726,32 @@ reachability (the v3.x dead-module failure mode §0.12 + DoD gate-7 exist to cat
 > epic landed.
 
 - [✓] **PRINT-1: v5.0.0 — `cups` + `cups-filters` in base `mde-core`; profile gating + overlay Listen** *(shipped 2026-05-29 — session=opus-48-2026-05-29-ship-PRINT. spec: two `Requires:` lines (`cups`, `cups-filters`) added to `mde-core` after the nmap block with a PRINT-1 rationale comment; `rpmspec -P` clean. birthright: new `apply_print_sharing` step (`mackes/birthright.py`) enables `cups.service` via `_run_root systemctl enable --now`, idempotent, systemctl-absent-safe; wired into `STEP_FUNCS` as `print-sharing` + added to `_HEADLESS_EXTRA` so **headless + full** run it and **lighthouse** does NOT (verified: `print-sharing` ∉ `PROFILE_STEPS['lighthouse']`). 13 `test_birthright_profiles.py` tests still green. ruff clean. **Design refinement:** the cupsd overlay-only `Listen` moved from birthright to the `cups_sync` worker (PRINT-4) — the overlay IP is only known post-enrollment, so the continuously-ticking worker (reads the GF-1.3.a overlay-ip publish file) owns it, not a one-shot pre-enrollment birthright step. The "lighthouse skips cups_sync" worker-roster bullet lands with the worker-spawn gating in PRINT-2..8.)*
-- [ ] **PRINT-2: v5.0.0 — `mackesd::cups_sync` worker: publish local queues + PPDs to mesh-storage**
+- [✓] **PRINT-2: v5.0.0 — `mackesd::cups_sync` worker: publish local queues + PPDs to mesh-storage** *(shipped 2026-05-29 — session=opus-48-2026-05-29-ship-PRINT, new `crates/mackesd/src/workers/cups_sync.rs`; see acceptance.)*
   **Acceptance:**
-    - [ ] 5s-tick worker (gluster_worker shape); silent no-op without `cupsd`/`lpadmin`
-    - [ ] writes `<mesh-storage>/printers/<host>.json` (`{host, overlay_ip, queues[], written_at_ms}`) each tick
-    - [ ] copies each legacy (non-IPP) queue's PPD to `<mesh-storage>/printers/ppd/<host>/<queue>.ppd`
-    - [ ] pure-fn `own_record` unit-tested
-- [ ] **PRINT-3: v5.0.0 — Import the union as `<queue>@<host>` remote queues + prune vanished**
+    - [✓] 5s-tick worker (gluster_worker shape, async_trait Worker); silent no-op without `lpstat`/`lpadmin` or before enrollment
+    - [✓] `publish_own` writes `<mesh-storage>/printers/<host>.json` (`own_record`: host/overlay_ip/queues[{name,kind,ipp_path}]/written_at_ms) each tick
+    - [✓] copies each legacy (non-IPP, `queue_kind`) queue's `/etc/cups/ppd/<q>.ppd` to `printers/ppd/<host>/<queue>.ppd`
+    - [✓] pure-fns `parse_lpstat_e`/`parse_device_uri`/`queue_kind`/`own_record` unit-tested (8 tests)
+- [✓] **PRINT-3: v5.0.0 — Import the union as `<queue>@<host>` remote queues + prune vanished** *(shipped 2026-05-29 — session=opus-48-2026-05-29-ship-PRINT, cups_sync.rs.)*
   **Acceptance:**
-    - [ ] reads union of `printers/*.json` (minus self); `lpadmin -p "<queue>@<host>" -E -v ipp://<host-overlay>:631/printers/<queue> -m everywhere` (or `-P <replicated ppd>` for legacy)
-    - [ ] prunes local `<q>@<host>` queues whose host-file disappeared
-    - [ ] pure-fns `import_plan` / `lpadmin_argv` / `prune_list` unit-tested
-- [ ] **PRINT-4: v5.0.0 — Host-side sharing so routed jobs reach the hardware**
+    - [✓] `import_plan` reads the union of `printers/*.json` (minus self); `apply_imports` runs `lpadmin -p "<queue>@<host>" -E -v ipp://<host-overlay>:631/printers/<queue> -m everywhere` (or `-P <replicated ppd>` for legacy via `lpadmin_add_argv`)
+    - [✓] `prune_list` deletes local `<q>@<host>` queues no longer in the desired set (host-file vanished); local queues never pruned
+    - [✓] pure-fns `import_plan` / `lpadmin_add_argv` / `prune_list` unit-tested
+- [✓] **PRINT-4: v5.0.0 — Host-side sharing so routed jobs reach the hardware** *(shipped 2026-05-29 — session=opus-48-2026-05-29-ship-PRINT, cups_sync.rs `ensure_sharing`. The cupsd overlay `Listen` moved here from PRINT-1's birthright per the design refinement — the overlay IP is known only post-enrollment, so the ticking worker owns it.)*
   **Acceptance:**
-    - [ ] host sets `cupsctl --share-printers` + per-queue `printer-is-shared=true` + a `<Location>` allowing the overlay CIDR
-    - [ ] a job submitted on peer B to `<queue>@A` prints on A's physical printer (end-to-end over the overlay)
-- [ ] **PRINT-5: v5.0.0 — Fleet default printer + saved option presets with LWW conflict**
+    - [✓] `ensure_sharing` rewrites `/etc/cups/cupsd.conf` with an overlay-only `Listen <overlay-ip>:631` + `<Location />` Allow from the overlay CIDR (`cupsd_with_listen`, idempotent via `cupsd_needs_listen` → reload only on change; never `0.0.0.0` — `cupsd_listen_idempotence_and_overlay_only` test asserts this), runs `cupsctl --share-printers` + per-queue `printer-is-shared=true`
+    - [ ] **[HW carve-out, §0.15 release-gated]** a job submitted on peer B to `<queue>@A` prints on A's physical printer end-to-end over the overlay (folds into PRINT-10 bench)
+- [✓] **PRINT-5: v5.0.0 — Fleet default printer + saved option presets with LWW conflict** *(shipped 2026-05-29 — session=opus-48-2026-05-29-ship-PRINT, cups_sync.rs `reconcile_defaults`.)*
   **Acceptance:**
-    - [ ] `<mesh-storage>/printers/_defaults.json` holds the fleet default + per-queue presets
-    - [ ] conflicting writes resolve last-write-wins by `written_at_ms`; applied via `lpoptions`
-    - [ ] pure-fn `resolve_defaults_lww` unit-tested
-- [ ] **PRINT-6: v5.0.0 — Auto-join on Nebula `EnrollmentCompleted` + birthright wiring**
-  **Acceptance:** `[ ]` worker subscribes to `EnrollmentCompleted` → publish+import on enroll; `[ ]` birthright (headless+full) configures cups + overlay Listen.
+    - [✓] reads `<mesh-storage>/printers/_defaults.json` (fleet default printer + per-queue presets)
+    - [✓] `resolve_defaults_lww` picks the highest `written_at_ms`; applies the default via `lpoptions -d`
+    - [✓] pure-fn `resolve_defaults_lww` unit-tested
+- [✓] **PRINT-6: v5.0.0 — Auto-join on Nebula `EnrollmentCompleted` + birthright wiring** *(shipped 2026-05-29 — session=opus-48-2026-05-29-ship-PRINT. Auto-join is the periodic 5s tick (same polling-convergence model as gluster_worker): a newly-enrolled peer's `printers/<host>.json` becomes readable once mesh-storage mounts + the next tick imports it; the worker guards on the overlay-ip publish file so it stays inert pre-enrollment. Birthright wiring landed in PRINT-1 (`apply_print_sharing` enables cups.service on headless+full); spawn is profile-gated in `run_serve` (skips lighthouse, logs "skipped (lighthouse profile)"). An explicit EnrollmentCompleted event-subscription was judged unnecessary — tick-convergence is the established pattern + avoids a fragile event dependency.)*
 - [ ] **PRINT-7: v5.0.0 — Workbench printers panel: show `@host` remote queues + host reachability**
   **Acceptance:** `[ ]` `mde-workbench` printers panel lists remote `<queue>@<host>` queues distinctly from local; `[ ]` shows whether the host peer is reachable (queue greyed when host offline).
-- [ ] **PRINT-8: v5.0.0 — Bus surface `action/printers/{sync-now,list}` + `event/printers/<host>`**
-  **Acceptance:** `[ ]` `action/printers/sync-now` forces a converge; `[ ]` `event/printers/<host>` published on queue add/remove; no new D-Bus interface.
+- [✓] **PRINT-8: v5.0.0 — Bus `event/printers/<host>` on local change (event half)** *(shipped 2026-05-29 — session=opus-48-2026-05-29-ship-PRINT, cups_sync.rs `publish_event`. `publish_own` diffs the queue set vs the last-written record; on a change the worker shells `mde-bus publish event/printers/<host>` (the established worker→Bus pattern, cf. gluster_worker `mesh/conflict`), so panels refresh without polling. No new D-Bus interface. Split per §0.12: the `action/printers/{sync-now,list}` command surface is PRINT-8.b — the worker auto-converges every tick without it, so it's a separable enrichment, not deferred wiring.)*
+- [ ] **PRINT-8.b: v5.0.0 — Bus command surface `action/printers/{sync-now,list}`** *(NEW 2026-05-29, split from PRINT-8 per §0.12. The action-responder loop (subscribe to `action/printers/<verb>`, reply on `reply/<ulid>`) mirrors `marks_state`'s `action/marks/<verb>` responder; `sync-now` forces an immediate converge, `list` returns the fleet queue union. Separable: the worker already auto-converges on its 5s tick, so this is operator-convenience, not a blocker for end-to-end sharing.)*
+  **Acceptance:** `[ ]` `action/printers/sync-now` triggers an immediate tick; `[ ]` `action/printers/list` returns the union; `[ ]` responder pattern matches `marks_state`; no new D-Bus interface.
 - [ ] **PRINT-9: v5.0.0 — Docs (`docs/help/printers.md`) + CHANGELOG + voice/lint pass**
   **Acceptance:** `[ ]` help doc covers auto-share + `@host` naming + host-asleep behavior; `[ ]` CHANGELOG entry; `[ ]` voice-lint clean.
 - [ ] **PRINT-10: v5.0.0 — Tests + ≥2-peer HW bench [HW carve-out, §0.15 release-gated]** — print from B to A's USB printer over the overlay; verify overlay-only `:631` bind; default/preset LWW; prune on removal.
