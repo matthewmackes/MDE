@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <code>SECURE&nbsp;·&nbsp;SIMPLE&nbsp;·&nbsp;CENTERLESS&nbsp;WORKGROUP</code>
+  <code>SECURE&nbsp;·&nbsp;SIMPLE&nbsp;·&nbsp;NO-FIXED-CENTER&nbsp;WORKGROUP</code>
 </p>
 
 <p align="center">
@@ -40,9 +40,11 @@ join a single mesh — they don't have to be on the same Wi-Fi, or even in the
 same country. The mesh handles the hard network parts (routers, firewalls,
 NAT, encryption) so you don't have to.
 
-There is **no central server**. Every peer is equal — the workgroup is
-*centerless* by design, which means there is no hub to misconfigure, overload,
-or attack.
+There is **no fixed center**. Every peer is equal in identity and trust — any
+peer can take on any role and failover is automatic, so there is no permanent
+hub to misconfigure, overload, or attack. (A few subsystems, such as the
+mesh-storage metadata master, hold a *floating* role that moves between peers —
+never a fixed one.)
 
 ```
    peer ──── peer ──── peer
@@ -132,19 +134,151 @@ way Fedora normally works.
 
 | | |
 |---|---|
-| **Identity**        | Secure · Simple · Centerless Workgroup |
+| **Identity**        | Secure · Simple · No-Fixed-Center Workgroup |
 | **Workgroup unit**  | One person, 3–8 of their own devices |
 | **Fleet cap**       | 8 peers |
 | **Reach**           | Mixed LAN + WAN, always-reachable |
 | **Language**        | Rust |
 | **Display server**  | Wayland (sway) |
 | **Transport**       | Nebula encrypted overlay |
-| **Shared storage**  | Gluster mesh-home |
+| **Shared storage**  | LizardFS mesh-storage (goal = N) |
 | **IPC**             | Message Bus |
 | **Platform**        | Fedora 44+ |
 | **License**         | GPL-3.0 |
 
-## 06 · Install
+## 06 · Under the hood
+
+Five ideas hold the platform together: a **layered network**, a **services
+mesh** running on top of it, one **unified design**, **zero-trust controls** at
+the edge, and continuous **drift detection** that keeps every peer converged.
+
+### Layered network
+
+MDE never touches your physical network — routers, NAT, and firewalls stay
+exactly as they are (the *underlay*). On top of it, Nebula builds one encrypted
+*overlay*: a single flat address space every peer shares, no matter whose Wi-Fi
+or which country each machine is on. The overlay picks the best path
+automatically and falls back when a path dies:
+
+```
+overlay path        when it's used
+─────────────       ──────────────────────────────────────────────
+Direct UDP          peers can reach each other (hole-punched)   ← fastest
+Lighthouse relay    direct fails; a lighthouse relays the frames
+HTTPS/443 tunnel    hostile network; Nebula wrapped in TLS 1.3,
+                    byte-indistinguishable from ordinary HTTPS
+```
+
+Only **two ports** ever face the public internet: **UDP/4242** for the overlay
+and **TCP/443** for the tunnel fallback (lighthouses only). Every other MDE
+listener binds the overlay interface and is invisible from outside the mesh.
+
+Above the wire, the mesh daemon (`mackesd`) is itself layered — each tier reads
+only the one beneath it:
+
+```
+Layer 8  GUI panels — Workbench mesh view + topology renderer
+Layer 7  library facade (mackesd_core)
+Layer 6  service traits
+Layer 5  reconciliation engine                ← drift detection
+Layer 4  domain logic — topology · policy · validation · CA
+Layer 3  telemetry ingest
+Layer 2  persistent store
+Layer 1  process supervisor — leader election · systemd · Nebula lifecycle
+Layer 0  fabric — nebula.service on every peer
+```
+
+### Services mesh
+
+Once the overlay is up, peers stop behaving like separate computers. A small
+set of always-on services makes them act like one:
+
+- **`mded`** folds every long-running job into one supervised process with an
+  in-process worker pool: clipboard sync, file sync, media sync, notification
+  relay, heartbeat, and `org.freedesktop.Notifications`.
+- **Bus** — a per-peer message broker carried over the overlay. Commands go to
+  `action/<domain>/<verb>` topics and replies return on `reply/<id>`; events
+  publish to domain topics (`mesh/conflict`, `mon/cpu`). It moves notifications,
+  clipboard, and audit between peers.
+- **`mesh-storage`** — a LizardFS volume where *every peer holds every chunk*
+  (`goal = N`). Your `~/Documents`, `~/Pictures`, `~/Music`, `~/Videos`, and
+  `~/Downloads` *are* the mesh. Metadata has a single master elected among the
+  lighthouses; every peer also runs an auto-promotable shadow, so failover is
+  automatic and no machine is permanently in charge.
+- **Service catalog** — each peer advertises what it runs (Jellyfin, Plex, Home
+  Assistant, and 30+ more); any peer reaches any other peer's services straight
+  over the overlay.
+
+### Unified design
+
+Every surface — panel, Workbench, file manager, notifications — speaks one
+visual language, so the desktop feels like a single product rather than a bag of
+apps:
+
+| | |
+|---|---|
+| **Language** | ChromeOS Classic — flat, calm, `#202124`-class palette |
+| **Accent**   | Material You indigo |
+| **Icons**    | Material Symbols |
+| **Type**     | Roboto (UI) · Intel One Mono (code) |
+| **Shape**    | 4 px corners; *flat-but-elevated* — windows stay flat, MDE overlays get soft M3 shadows |
+| **Density**  | Three modes — compact 24 px · regular 28 px · comfortable 32 px |
+| **Motion**   | Functional, 150 ms ease-out |
+
+Color, spacing, and motion all come from one set of **design tokens**
+(`data/css/tokens.css`); a pre-commit lint rejects any hardcoded hex so the
+language can't quietly drift. Four presets ship on top (ChromeOS Classic
+Light/Dark + Ableton 12 Light/Dark).
+
+### Zero-trust controls
+
+Inside the mesh, trust is deliberately flat — you own every peer, so they fully
+trust each other. The *boundary*, though, trusts nothing by default: being on
+the same wire grants exactly zero access.
+
+- **No implicit network trust.** Every packet between peers is mutually
+  authenticated and AEAD-encrypted by Nebula. LAN position alone gets you
+  nowhere — a sniffer sees only encrypted overlay traffic.
+- **Per-peer identity.** Each peer carries a certificate minted by the mesh CA;
+  the CA private key lives only on the leader and never leaves it.
+- **One enrollment credential.** A single passcode gates the join, sealed with
+  `systemd-creds` (TPM where available) — the operator's master credential.
+- **Revoke + ban.** A lost or stolen peer is CA-revoked and ban-listed: refused
+  re-join *even with the correct passcode*.
+- **Least privilege.** Every component runs as your user; the only system
+  service (Nebula) is capability-bounded (`CAP_NET_ADMIN` only,
+  `NoNewPrivileges`) under SELinux enforcing.
+- **Bind-scope, enforced.** Every MDE listener binds the overlay interface, and
+  a pre-commit lint blocks any new `0.0.0.0` bind from landing.
+
+Full rationale: [`docs/design/security-posture.md`](docs/design/security-posture.md).
+
+### Drift detection
+
+A mesh is only as good as its ability to notice when reality stops matching
+intent. `mackesd`'s reconciliation engine wakes on a ~30 s tick, compares
+**desired** state against **observed** state, and sorts every difference:
+
+- **Auto-repairable** drift (a transient overlay route dropping, say) is fixed
+  silently — the reconciler re-pushes the desired state, backing off
+  exponentially (1 s → 60 s) if a repair keeps failing.
+- **Manual-review** drift (an *unexpected* peer adjacency that could mean
+  tampering) is never touched automatically; it lands in a **Pending Changes**
+  inbox for you to approve or reject.
+
+Config changes ride a small state machine — *Draft → Validated → Approved →
+Deploying → Applied → Verified* — with explicit *FailedValidation* and
+*RolledBack* exits, so a bad revision rolls back instead of half-applying.
+
+Drift is watched at three levels:
+
+| Scope | What it watches | Where |
+|---|---|---|
+| **Topology** | desired vs. observed peer adjacency | reconciliation engine |
+| **Preset**   | active preset vs. live system — three-way per key (revert · adopt · ignore) | Workbench → Maintain |
+| **Version**  | each peer's `mde-core` version, surfaced as a skew table | `mesh-storage` peer files |
+
+## 07 · Install
 
 You need a Fedora 44 (or newer) machine. The quickest path:
 
@@ -184,7 +318,7 @@ no display: it asks the setup questions in plain text right in the terminal.
 The machine joins the mesh as a **headless peer** (`mde-core` only) — it serves
 files and runs services for your other computers, but never draws a desktop.
 
-## 07 · The Workbench
+## 08 · The Workbench
 
 Workbench is the settings and control center. Nine groups:
 
@@ -203,7 +337,7 @@ Workbench is the settings and control center. Nine groups:
 Every Workbench action also has a `mde` subcommand — run `mde help` for the
 topic list.
 
-## 08 · Build from source
+## 09 · Build from source
 
 ```sh
 git clone https://github.com/matthewmackes/MDE.git
@@ -242,6 +376,6 @@ GPL-3.0. © 2026 Matthew Mackes.
 
 | PROJECT | IDENTITY | LANGUAGE | DISPLAY | LICENSE |
 |---|---|---|---|---|
-| Mackes Desktop Environment | Secure · Simple · Centerless | Rust | Wayland / sway | GPL-3.0 |
+| Mackes Desktop Environment | Secure · Simple · No-Fixed-Center | Rust | Wayland / sway | GPL-3.0 |
 
 </sub>
