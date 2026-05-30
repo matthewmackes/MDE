@@ -682,7 +682,7 @@ reachability (the v3.x dead-module failure mode §0.12 + DoD gate-7 exist to cat
   - **ANIM-8.c: iced-side visual** — split per §0.12:
     - [✓] **ANIM-8.c.1: elevation system (shadows Q29 + mixed-radius 4/8/12 Q30)** — `Elevation` enum (Inline/PopoverMenu/Floating/Modal) in `mde-theme` with `radius()` (4/8/8/12 px) + `shadow()` const methods; `Shadow::floating()` Q29 mid-tier (y=4, blur=12, 22% black); `elevation_container()` in `mde-iced-components` composing Background+Border+IcedShadow for any tier. Shipped cfcae9cf 2026-05-30.
     - [ ] **ANIM-8.c.2: Material Symbols icon fill-morph on active (Q32)** — animate the variable-font fill axis outline→filled via `mde-motion`.
-    - [ ] **ANIM-8.c.3.a: theme-crossfade color helper** — `mde_iced_components::motion::theme_crossfade(from, to, elapsed, dur, reduce)` per-channel RGBA eased lerp (Q33). *(shipped 2026-05-28 — session=opus-47-2026-05-28-ship-SN; the canonical mechanism surfaces call to retint color tokens on preset/dark-light switch, built on `mde-motion` + the existing `lerp`; honors reduced motion. `cargo test -p mde-iced-components` 10/10. The CR-3/SWAY-1 shared-helper-ahead-of-consumers pattern.)*
+    - [✓] **ANIM-8.c.3.a: theme-crossfade color helper** — `mde_iced_components::motion::theme_crossfade(from, to, elapsed, dur, reduce)` per-channel RGBA eased lerp (Q33). *(shipped 2026-05-28 — session=opus-47-2026-05-28-ship-SN; the canonical mechanism surfaces call to retint color tokens on preset/dark-light switch, built on `mde-motion` + the existing `lerp`; honors reduced motion. `cargo test -p mde-iced-components` 10/10. The CR-3/SWAY-1 shared-helper-ahead-of-consumers pattern.)*
     - [ ] **ANIM-8.c.3.b: apply theme-crossfade on preset/dark-light switch across surfaces** — wire each surface's color tokens through `theme_crossfade` on a theme-change event. Needs the surfaces (several in sibling-hot crates).
 - [ ] **ANIM-9: Clipboard signature** — content-morph chip → fly-to-peers (Q43, operator-confirmed); cross-peer file-drop fly (Q65); silent by default (Q67).
 - [ ] **ANIM-10: Workspace experience** — switch indicator + name OSD (Q21), label character-morph (Q22), wallpaper crossfade + parallax (Q24), app-launch icon pulse (Q56), Hub drag-to-tile ghost+highlight (Q34), FLIP drag-reorder (Q96).
@@ -5732,7 +5732,7 @@ disconnected" toasts get a dedicated Nebula vocabulary.
     - Spec: `docs/design/chromeos-classic-spec.md` §Object Cards (12 px corners, M3 shadow).
     - Canvas drawing path doesn't get to use `panel_chrome::object_card` (that returns an Iced `Element`; the canvas needs primitive `Path` calls). Re-implements the visual using the same tokens (`CARD_CORNER_RADIUS`, `CARD_SHADOW_DEFAULT_*`).
     - Blockers: CR-3 ✓.
-- [ ] **CR-6.c: v2.6 — Mesh Topology peer-card click → Peer Connection Card modal.** *(split 2026-05-25)*
+- [>] **CR-6.c: v2.6 — Mesh Topology peer-card click → Peer Connection Card modal.** *(split 2026-05-25)* session=opus-47-2026-05-30-ship
   **As** an operator clicking a peer card in the Mesh Topology Table layout, **I want** the per-peer modal (Peer Connection Card) to open showing addr / kind / transport / latency / actions, **so that** the visible Card affordance fulfills its tangible-object promise. **Acceptance:**
   - [ ] `peer_object_card` wraps the rendered card in a clickable `button(…)` whose `on_press` opens a `Message::OpenPeerModal(node_id)`.
   - [ ] Modal renders the addr + kind currently demoted from the card front + any future per-peer detail surfaces.

@@ -143,13 +143,16 @@ crates/mde-workbench/src/panels/mesh_services.rs:276
 crates/mde-workbench/src/panels/mesh_services.rs:281
 # CR-6.b — PeerStatus::color() semantic status colors (green/yellow/red/grey);
 # no palette token for these. Shadow rgba(0,0,0,0.22) is pure black. Error
-# red in empty_state_card is same pre-existing literal. Re-anchored 2026-05-30.
+# red in empty_state_card is same pre-existing literal.
+# CR-6.c — modal backdrop rgba(0,0,0,0.45) pure black semi-transparent scrim.
+# Re-anchored 2026-05-30 after CR-6.c additions shifted all three line numbers.
 crates/mde-workbench/src/panels/mesh_topology.rs:70
 crates/mde-workbench/src/panels/mesh_topology.rs:71
 crates/mde-workbench/src/panels/mesh_topology.rs:72
 crates/mde-workbench/src/panels/mesh_topology.rs:73
-crates/mde-workbench/src/panels/mesh_topology.rs:452
-crates/mde-workbench/src/panels/mesh_topology.rs:528
+crates/mde-workbench/src/panels/mesh_topology.rs:474
+crates/mde-workbench/src/panels/mesh_topology.rs:629
+crates/mde-workbench/src/panels/mesh_topology.rs:658
 crates/mde-workbench/src/panels/panel_apps.rs:217
 crates/mde-workbench/src/panels/service_publishing.rs:219
 crates/mde-workbench/src/panels/sync_status.rs:164

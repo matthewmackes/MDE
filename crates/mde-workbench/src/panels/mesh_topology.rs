@@ -22,7 +22,7 @@ use std::f32::consts::TAU;
 use std::time::SystemTime;
 
 use iced::widget::canvas::{self, Canvas, Frame, Path, Stroke, Text};
-use iced::widget::{button, column, container, row, scrollable, text, Space};
+use iced::widget::{button, column, container, row, scrollable, stack, text, Space};
 use iced::{Background, Border, Color, Element, Length, Padding, Point, Rectangle, Renderer, Task, Theme};
 use mde_theme::{
     mde_icon, FontSize, Icon, IconSize, ObjectCard, Palette, TypeRole, CARD_GRID_GAP,
@@ -97,6 +97,8 @@ pub struct MeshTopologyPanel {
     pub last_run_at: Option<SystemTime>,
     pub busy: bool,
     pub layout: Layout,
+    /// CR-6.c — peer name of the currently-open Peer Connection Card modal.
+    pub peer_modal: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -104,6 +106,10 @@ pub enum Message {
     Loaded(Result<Vec<PeerRow>, String>),
     RefreshClicked,
     SetLayout(Layout),
+    /// CR-6.c — open the Peer Connection Card modal for `peer_name`.
+    OpenPeerModal(String),
+    /// CR-6.c — close the Peer Connection Card modal.
+    CloseModal,
 }
 
 impl MeshTopologyPanel {
@@ -140,6 +146,14 @@ impl MeshTopologyPanel {
             }
             Message::SetLayout(l) => {
                 self.layout = l;
+                Task::none()
+            }
+            Message::OpenPeerModal(name) => {
+                self.peer_modal = Some(name);
+                Task::none()
+            }
+            Message::CloseModal => {
+                self.peer_modal = None;
                 Task::none()
             }
         }
@@ -257,7 +271,7 @@ impl MeshTopologyPanel {
             .size(10)
             .color(palette.text_muted.into_iced_color());
 
-        container(
+        let base = container(
             column![
                 header,
                 Space::with_height(Length::Fixed(16.0)),
@@ -269,8 +283,16 @@ impl MeshTopologyPanel {
         )
         .padding(Padding::from([24u16, 32u16]))
         .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
+        .height(Length::Fill);
+
+        // CR-6.c — layer the Peer Connection Card modal on top when open.
+        if let Some(ref peer_name) = self.peer_modal {
+            if let Some(p) = self.peers.iter().find(|r| r.name == *peer_name) {
+                return stack![base, peer_modal_overlay(p, palette)].into();
+            }
+        }
+
+        base.into()
     }
 }
 
@@ -510,14 +532,122 @@ impl<Message> canvas::Program<Message> for GraphProgram {
 /// title is the peer name; subtitle is the peer reachability
 /// label (`ONLINE` / `IDLE` / `OFFLINE` / `UNKNOWN`).
 ///
-/// Addr + kind metadata stays accessible via the per-peer modal
-/// (the Peer Connection Card surface from the peer-card design
-/// lock); the card front intentionally stays compact per the
+/// CR-6.c — card wrapped in a transparent button; clicking opens
+/// the Peer Connection Card modal (addr + kind detail surface).
+/// Addr + kind metadata stays accessible via that modal per the
 /// `chromeos-classic-spec.md` §Object Cards "compact content
 /// shape" lock (round-4 re-ask 2026-05-24).
 fn peer_object_card<'a>(p: &'a PeerRow, palette: Palette) -> Element<'a, crate::Message> {
     let card = ObjectCard::medium(p.status.icon(), p.name.clone(), p.status.label());
-    object_card(card, palette)
+    let card_el = object_card(card, palette);
+    button(card_el)
+        .on_press(crate::Message::MeshTopology(Message::OpenPeerModal(
+            p.name.clone(),
+        )))
+        .padding(Padding::from(0u16))
+        .style(|_t: &Theme, _s: iced::widget::button::Status| {
+            iced::widget::button::Style {
+                background: None,
+                text_color: Color::TRANSPARENT,
+                border: Border {
+                    color: Color::TRANSPARENT,
+                    width: 0.0,
+                    radius: 0.0.into(),
+                },
+                shadow: iced::Shadow::default(),
+            }
+        })
+        .into()
+}
+
+/// CR-6.c — overlay rendered on top of the panel (via `stack!`)
+/// when a peer card is clicked. Shows addr + kind demoted from
+/// the compact card front. Close button dismisses; Esc key wiring
+/// is a release-bench item (requires top-level keyboard subscription).
+fn peer_modal_overlay<'a>(p: &'a PeerRow, palette: Palette) -> Element<'a, crate::Message> {
+    let close_btn = button(text("✕").size(13).color(palette.text.into_iced_color()))
+        .on_press(crate::Message::MeshTopology(Message::CloseModal))
+        .padding(Padding::from([2u16, 8u16]))
+        .style(|_t: &Theme, status: iced::widget::button::Status| {
+            let bg = match status {
+                iced::widget::button::Status::Hovered => {
+                    Some(Background::Color(Color { a: 0.10, ..Color::WHITE }))
+                }
+                _ => None,
+            };
+            iced::widget::button::Style {
+                background: bg,
+                text_color: Color::TRANSPARENT,
+                border: Border {
+                    color: Color::TRANSPARENT,
+                    width: 0.0,
+                    radius: 4.0.into(),
+                },
+                shadow: iced::Shadow::default(),
+            }
+        });
+
+    let modal_card = container(
+        column![
+            row![
+                text(p.name.clone())
+                    .size(16)
+                    .color(palette.text.into_iced_color()),
+                Space::with_width(Length::Fill),
+                close_btn,
+            ]
+            .align_y(iced::alignment::Vertical::Center),
+            Space::with_height(Length::Fixed(16.0)),
+            peer_detail_row("Address", &p.addr, palette),
+            Space::with_height(Length::Fixed(8.0)),
+            peer_detail_row("Kind", &p.kind, palette),
+            Space::with_height(Length::Fixed(8.0)),
+            peer_detail_row("Status", p.status.label(), palette),
+        ]
+        .spacing(0),
+    )
+    .padding(Padding::from([24u16, 28u16]))
+    .width(Length::Fixed(320.0))
+    .style(move |_t: &Theme| container::Style {
+        background: Some(Background::Color(palette.surface.into_iced_color())),
+        border: Border {
+            color: palette.border.into_iced_color(),
+            width: 1.0,
+            radius: 8.0.into(),
+        },
+        ..container::Style::default()
+    });
+
+    container(
+        container(modal_card)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill),
+    )
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .style(|_t: &Theme| container::Style {
+        background: Some(Background::Color(Color::from_rgba(
+            0.0, 0.0, 0.0, 0.45,
+        ))),
+        ..container::Style::default()
+    })
+    .into()
+}
+
+fn peer_detail_row<'a>(
+    label: &'a str,
+    value: &'a str,
+    palette: Palette,
+) -> Element<'a, crate::Message> {
+    row![
+        text(label)
+            .size(12)
+            .color(palette.text_muted.into_iced_color())
+            .width(Length::Fixed(80.0)),
+        text(value).size(12).color(palette.text.into_iced_color()),
+    ]
+    .spacing(8)
+    .into()
 }
 
 fn empty_state_card<'a>(palette: Palette, error: Option<&'a str>) -> Element<'a, crate::Message> {
@@ -746,5 +876,42 @@ mod tests {
         p.error = Some("mackesd not installed".into());
         p.last_run_at = Some(SystemTime::now());
         let _ = p.view();
+    }
+
+    // CR-6.c tests
+    #[test]
+    fn open_peer_modal_message_sets_peer_modal() {
+        let mut panel = MeshTopologyPanel::new();
+        panel.peers = vec![PeerRow {
+            name: "pine".into(),
+            addr: "us-west".into(),
+            kind: "peer".into(),
+            status: PeerStatus::Online,
+        }];
+        assert!(panel.peer_modal.is_none());
+        let _ = panel.update(Message::OpenPeerModal("pine".into()));
+        assert_eq!(panel.peer_modal.as_deref(), Some("pine"));
+    }
+
+    #[test]
+    fn close_modal_message_clears_peer_modal() {
+        let mut panel = MeshTopologyPanel::new();
+        panel.peer_modal = Some("pine".into());
+        let _ = panel.update(Message::CloseModal);
+        assert!(panel.peer_modal.is_none());
+    }
+
+    #[test]
+    fn view_with_modal_open_renders_without_panic() {
+        let mut panel = MeshTopologyPanel::new();
+        panel.peers = vec![PeerRow {
+            name: "birch".into(),
+            addr: "eu-west".into(),
+            kind: "host".into(),
+            status: PeerStatus::Idle,
+        }];
+        panel.last_run_at = Some(SystemTime::now());
+        panel.peer_modal = Some("birch".into());
+        let _ = panel.view();
     }
 }
