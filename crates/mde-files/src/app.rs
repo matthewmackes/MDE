@@ -118,6 +118,20 @@ pub enum Message {
     RestoreTrashItem(String),
     /// MESHFS-8.1 — restore operation completed.
     TrashRestored(String, Result<(), String>),
+    /// MESHFS-11.1 — raw JSON from `mackesd meshfs-status --json` loaded.
+    MeshFsHealthLoaded(String),
+    /// MESHFS-11.1 — user clicked the yellow conflict chip: open the
+    /// resolve dialog. `(original_name, conflict_sibling_name)` — both
+    /// are bare filenames, not full paths. The view knows the directory.
+    ConflictResolve(String, String),
+    /// MESHFS-11.1 — user dismissed the resolve dialog without action.
+    DismissConflictDialog,
+    /// MESHFS-11.1 — archive one side of the conflict to
+    /// `~/Local/conflict-archive/`. The caller supplies the loser's
+    /// full path; the winner was already shown to the operator.
+    ArchiveConflictFile(String),
+    /// MESHFS-11.1 — archive operation completed.
+    ConflictArchived(Result<(), String>),
 }
 
 /// MESHFS-8.1 — one recoverable file from the LizardFS `.trash` directory.
@@ -193,6 +207,15 @@ pub struct MdeFiles {
     pub trash_busy: bool,
     /// MESHFS-8.1 — last error from trash load/restore.
     pub trash_error: Option<String>,
+    /// MESHFS-11.1 — true while the LizardFS fleet is healing
+    /// (under-replicated). Applied as the `syncing` badge on every
+    /// mesh-homed `FileRow` in the current listing.
+    pub meshfs_healing: bool,
+    /// MESHFS-11.1 — active resolve dialog: `(original_name,
+    /// conflict_sibling_name)`. `None` means the dialog is closed.
+    pub resolve_dialog: Option<(String, String)>,
+    /// MESHFS-11.1 — error from the most recent archive operation.
+    pub conflict_error: Option<String>,
 }
 
 /// v2.0.0 Phase 5.1 — pane currently receiving keyboard input.
@@ -253,6 +276,9 @@ impl Default for MdeFiles {
             trash_items: Vec::new(),
             trash_busy: false,
             trash_error: None,
+            meshfs_healing: false,
+            resolve_dialog: None,
+            conflict_error: None,
         }
     }
 }
@@ -304,6 +330,7 @@ impl MdeFiles {
             Message::SelectView(v) => {
                 let is_local = matches!(v, View::Local);
                 let is_undelete = matches!(v, View::MeshUndelete);
+                let is_mesh = v.is_mesh();
                 // AF-mesh.3 — clear the path stack whenever we
                 // leave a MeshHomeChild OR switch to a different
                 // slug. Entering MeshHomeChild from the parent
@@ -328,6 +355,11 @@ impl MdeFiles {
                     self.trash_busy = true;
                     self.trash_error = None;
                     pending_task = Some(load_trash());
+                }
+                // MESHFS-11.1 — entering any mesh view refreshes the fleet
+                // health so the sync badge reflects current healing state.
+                if is_mesh && !is_undelete {
+                    pending_task = Some(load_meshfs_health());
                 }
             }
             Message::MeshFolderEnter(name) => {
@@ -499,6 +531,27 @@ impl MdeFiles {
                     Err(e) => self.trash_error = Some(e),
                 }
             }
+            // MESHFS-11.1 — per-file sync badge + conflict chip + resolve.
+            Message::MeshFsHealthLoaded(json) => {
+                self.meshfs_healing = parse_meshfs_healing(&json);
+            }
+            Message::ConflictResolve(orig, sibling) => {
+                self.resolve_dialog = Some((orig, sibling));
+                self.conflict_error = None;
+            }
+            Message::DismissConflictDialog => {
+                self.resolve_dialog = None;
+            }
+            Message::ArchiveConflictFile(path) => {
+                self.resolve_dialog = None;
+                pending_task = Some(archive_conflict_file(path));
+            }
+            Message::ConflictArchived(result) => {
+                match result {
+                    Ok(()) => self.conflict_error = None,
+                    Err(e) => self.conflict_error = Some(e),
+                }
+            }
         }
         self.refresh_snapshot();
         pending_task.unwrap_or_else(Task::none)
@@ -511,7 +564,7 @@ impl MdeFiles {
     /// Iced only re-runs `update()` on Message arrival.
     fn refresh_snapshot(&mut self) {
         self.snapshot = BackendSnapshot::capture(&*self.backend);
-        self.peer_files = match &self.view {
+        let raw_files = match &self.view {
             View::Peer(id) => self.backend.list(&format!("peer:{id}")),
             View::MeshHomeChild(slug) => {
                 let mut p = format!("local:{slug}");
@@ -523,6 +576,8 @@ impl MdeFiles {
             }
             _ => Vec::new(),
         };
+        // MESHFS-11.1 — annotate rows with conflict / syncing state.
+        self.peer_files = annotate_conflict_and_sync(raw_files, self.meshfs_healing);
     }
 
     /// Top-level view tree.
@@ -600,28 +655,41 @@ impl MdeFiles {
             .count();
         let total = snap.peers.len();
 
-        container(
+        let root: Element<'_, Message> = container(
             column![
                 views::titlebar_with_status(online, total, snap.mesh_volume.as_ref()),
                 body
             ]
             .spacing(0),
         )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(|_| container::Style {
+            background: Some(Background::Color(t::WINDOW)),
+            border: Border {
+                color: Color {
+                    a: 0.08,
+                    ..Color::WHITE
+                },
+                width: 1.0,
+                radius: 0.0.into(),
+            },
+            ..container::Style::default()
+        })
+        .into();
+
+        // MESHFS-11.1 — overlay the resolve dialog when active.
+        if let Some((orig, sib)) = &self.resolve_dialog {
+            iced::widget::Stack::with_children(vec![
+                root,
+                views::resolve_conflict_dialog(orig, sib),
+            ])
             .width(Length::Fill)
             .height(Length::Fill)
-            .style(|_| container::Style {
-                background: Some(Background::Color(t::WINDOW)),
-                border: Border {
-                    color: Color {
-                        a: 0.08,
-                        ..Color::WHITE
-                    },
-                    width: 1.0,
-                    radius: 0.0.into(),
-                },
-                ..container::Style::default()
-            })
             .into()
+        } else {
+            root
+        }
     }
 }
 
@@ -816,6 +884,114 @@ fn restore_trash_item(path: String) -> Task<Message> {
             if ok { Ok(()) } else { Err("TRASH-RECOVER failed".to_string()) }
         },
         move |result| Message::TrashRestored(path_msg.clone(), result),
+    )
+}
+
+// ── MESHFS-11.1: sync badge + conflict chip + resolve helpers ────────────────
+
+/// Detect `.conflict-<ts>-<host>` siblings, annotate the parent `FileRow`
+/// with `has_conflict` + `conflict_sibling`, set `syncing` on all mesh-homed
+/// rows when the fleet is healing, and filter out the raw conflict entries.
+fn annotate_conflict_and_sync(
+    rows: Vec<crate::model::FileRow>,
+    healing: bool,
+) -> Vec<crate::model::FileRow> {
+    use std::collections::HashMap;
+    // Find all filenames that look like "<base>.conflict-<ts>-<host>".
+    // Build a map from base name → conflict filename.
+    let mut conflicts: HashMap<String, String> = HashMap::new();
+    for row in &rows {
+        if let Some(base) = strip_conflict_suffix(&row.name) {
+            conflicts.insert(base, row.name.clone());
+        }
+    }
+    rows.into_iter()
+        // Filter out the raw conflict entries (they surface as chips on their parent).
+        .filter(|row| strip_conflict_suffix(&row.name).is_none())
+        .map(|mut row| {
+            if let Some(sibling) = conflicts.get(&row.name) {
+                row.has_conflict = true;
+                row.conflict_sibling = Some(sibling.clone());
+            }
+            if healing && row.is_mesh() {
+                row.syncing = true;
+            }
+            row
+        })
+        .collect()
+}
+
+/// Return the base name if `name` matches `<base>.conflict-<anything>`,
+/// otherwise `None`. The pattern is `.<word>.conflict-` — at least two
+/// dash-separated tokens after `.conflict-` (timestamp + host).
+fn strip_conflict_suffix(name: &str) -> Option<String> {
+    // Find the last `.conflict-` segment.
+    let marker = ".conflict-";
+    let idx = name.rfind(marker)?;
+    let suffix = &name[idx + marker.len()..];
+    // Require at least one non-empty segment after the marker.
+    if suffix.is_empty() {
+        return None;
+    }
+    Some(name[..idx].to_owned())
+}
+
+/// Parse raw meshfs-status JSON to extract whether the fleet is healing.
+fn parse_meshfs_healing(json: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(json)
+        .ok()
+        .and_then(|v| {
+            // master must be reachable for healing to apply.
+            let reachable = v["master_reachable"].as_bool().unwrap_or(false);
+            if !reachable {
+                return Some(false);
+            }
+            let peers = v["peers"].as_array().map(|a| a.len()).unwrap_or(0);
+            let goal = v["goal"].as_u64().unwrap_or(0) as usize;
+            let any_undergoal = v["peers"]
+                .as_array()
+                .unwrap_or(&vec![])
+                .iter()
+                .any(|p| p["undergoal_chunks"].as_u64().unwrap_or(0) > 0);
+            let offline = !v["offline_peers"]
+                .as_array()
+                .map(|a| a.is_empty())
+                .unwrap_or(true);
+            let under_replicated = goal > 0 && peers < goal;
+            Some(under_replicated || any_undergoal || offline)
+        })
+        .unwrap_or(false)
+}
+
+/// Shell `mackesd meshfs-status --json` and emit `Message::MeshFsHealthLoaded`.
+fn load_meshfs_health() -> Task<Message> {
+    Task::perform(
+        async {
+            std::process::Command::new("mackesd")
+                .args(["meshfs-status", "--json"])
+                .output()
+                .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+                .unwrap_or_default()
+        },
+        Message::MeshFsHealthLoaded,
+    )
+}
+
+/// Shell `mackesd meshfs-resolve-conflict --path <path>` and emit
+/// `Message::ConflictArchived`.
+fn archive_conflict_file(path: String) -> Task<Message> {
+    Task::perform(
+        async move {
+            let status = std::process::Command::new("mackesd")
+                .args(["meshfs-resolve-conflict", "--path", &path])
+                .status();
+            match status {
+                Ok(s) if s.success() => Ok(()),
+                Ok(_) => Err("mackesd meshfs-resolve-conflict failed".to_owned()),
+                Err(e) => Err(format!("spawn: {e}")),
+            }
+        },
+        Message::ConflictArchived,
     )
 }
 
@@ -1281,5 +1457,150 @@ mod tests {
         assert_eq!(c[4].label, "MDE");
         // The leaf crumb is rendered without the mesh tint.
         assert!(!c[4].mesh);
+    }
+
+    // ── MESHFS-11.1: conflict chip + sync badge + resolve helpers ────────────
+
+    #[test]
+    fn strip_conflict_suffix_detects_conflict_filenames() {
+        assert_eq!(
+            strip_conflict_suffix("report.pdf.conflict-20260529-oak"),
+            Some("report.pdf".to_owned())
+        );
+        assert_eq!(
+            strip_conflict_suffix("notes.txt.conflict-1234567890-pine"),
+            Some("notes.txt".to_owned())
+        );
+        // Normal filenames — not conflict siblings.
+        assert_eq!(strip_conflict_suffix("report.pdf"), None);
+        assert_eq!(strip_conflict_suffix("notes.txt"), None);
+        // Empty suffix after marker → not valid.
+        assert_eq!(strip_conflict_suffix("file.conflict-"), None);
+    }
+
+    #[test]
+    fn annotate_conflict_and_sync_filters_and_annotates() {
+        use crate::model::{FileRow, Mime};
+
+        let rows = vec![
+            FileRow::local("report.pdf", Mime::Pdf, "100 KB", "now")
+                .with_mesh("oak"),
+            FileRow::local("report.pdf.conflict-20260529-oak", Mime::Pdf, "98 KB", "now")
+                .with_mesh("oak"),
+            FileRow::local("notes.txt", Mime::Doc, "2 KB", "1 h ago")
+                .with_mesh("pine"),
+        ];
+
+        let annotated = annotate_conflict_and_sync(rows, false);
+        // Conflict sibling is filtered out.
+        assert_eq!(annotated.len(), 2);
+        let report = annotated.iter().find(|r| r.name == "report.pdf").unwrap();
+        assert!(report.has_conflict);
+        assert_eq!(
+            report.conflict_sibling.as_deref(),
+            Some("report.pdf.conflict-20260529-oak")
+        );
+        // syncing=false when healing=false.
+        assert!(!report.syncing);
+    }
+
+    #[test]
+    fn annotate_conflict_and_sync_sets_syncing_when_healing() {
+        use crate::model::{FileRow, Mime};
+
+        let rows = vec![
+            FileRow::local("file.txt", Mime::Doc, "1 KB", "now").with_mesh("oak"),
+            FileRow::local("local.txt", Mime::Doc, "1 KB", "now"), // no mesh
+        ];
+        let annotated = annotate_conflict_and_sync(rows, true);
+        let mesh_row = annotated.iter().find(|r| r.name == "file.txt").unwrap();
+        assert!(mesh_row.syncing, "mesh-homed row must be syncing when healing");
+        let local_row = annotated.iter().find(|r| r.name == "local.txt").unwrap();
+        assert!(!local_row.syncing, "local row must not be syncing");
+    }
+
+    #[test]
+    fn parse_meshfs_healing_detects_under_replicated() {
+        let json = r#"{"master_reachable":true,"goal":2,"peers":[{"addr":"10.0.0.1","used_bytes":0,"avail_bytes":0}],"offline_peers":[]}"#;
+        assert!(parse_meshfs_healing(json), "1 peer < goal 2 → healing");
+    }
+
+    #[test]
+    fn parse_meshfs_healing_false_when_healthy() {
+        let json = r#"{"master_reachable":true,"goal":2,"peers":[{"addr":"10.0.0.1","used_bytes":0,"avail_bytes":0,"undergoal_chunks":0},{"addr":"10.0.0.2","used_bytes":0,"avail_bytes":0,"undergoal_chunks":0}],"offline_peers":[]}"#;
+        assert!(!parse_meshfs_healing(json));
+    }
+
+    #[test]
+    fn parse_meshfs_healing_false_when_master_down() {
+        let json = r#"{"master_reachable":false,"goal":2,"peers":[],"offline_peers":["10.0.0.3"]}"#;
+        assert!(
+            !parse_meshfs_healing(json),
+            "master down → cannot judge healing"
+        );
+    }
+
+    #[test]
+    fn parse_meshfs_healing_detects_offline_peers() {
+        let json = r#"{"master_reachable":true,"goal":2,"peers":[{"addr":"10.0.0.1","used_bytes":0,"avail_bytes":0,"undergoal_chunks":0},{"addr":"10.0.0.2","used_bytes":0,"avail_bytes":0,"undergoal_chunks":0}],"offline_peers":["10.0.0.3"]}"#;
+        assert!(parse_meshfs_healing(json), "offline peer → healing");
+    }
+
+    #[test]
+    fn conflict_resolve_message_opens_dialog() {
+        let mut s = MdeFiles::default();
+        let _ = s.update(Message::ConflictResolve(
+            "report.pdf".into(),
+            "report.pdf.conflict-20260529-oak".into(),
+        ));
+        assert_eq!(
+            s.resolve_dialog,
+            Some((
+                "report.pdf".to_owned(),
+                "report.pdf.conflict-20260529-oak".to_owned()
+            ))
+        );
+        assert!(s.conflict_error.is_none());
+    }
+
+    #[test]
+    fn dismiss_conflict_dialog_closes_dialog() {
+        let mut s = MdeFiles::default();
+        let _ = s.update(Message::ConflictResolve("a.txt".into(), "a.txt.conflict-x".into()));
+        assert!(s.resolve_dialog.is_some());
+        let _ = s.update(Message::DismissConflictDialog);
+        assert!(s.resolve_dialog.is_none());
+    }
+
+    #[test]
+    fn archive_conflict_file_clears_dialog() {
+        let mut s = MdeFiles::default();
+        s.resolve_dialog = Some(("a.txt".into(), "a.txt.conflict-x".into()));
+        let _ = s.update(Message::ArchiveConflictFile("a.txt.conflict-x".into()));
+        assert!(s.resolve_dialog.is_none(), "dialog must close on archive action");
+    }
+
+    #[test]
+    fn conflict_archived_ok_clears_error() {
+        let mut s = MdeFiles::default();
+        s.conflict_error = Some("prev error".into());
+        let _ = s.update(Message::ConflictArchived(Ok(())));
+        assert!(s.conflict_error.is_none());
+    }
+
+    #[test]
+    fn conflict_archived_err_stores_error() {
+        let mut s = MdeFiles::default();
+        let _ = s.update(Message::ConflictArchived(Err("archive failed".into())));
+        assert_eq!(s.conflict_error.as_deref(), Some("archive failed"));
+    }
+
+    #[test]
+    fn meshfs_health_loaded_sets_healing_flag() {
+        let mut s = MdeFiles::default();
+        assert!(!s.meshfs_healing);
+        let json = r#"{"master_reachable":true,"goal":2,"peers":[{"addr":"10.0.0.1","used_bytes":0,"avail_bytes":0,"undergoal_chunks":0}],"offline_peers":[]}"#;
+        let _ = s.update(Message::MeshFsHealthLoaded(json.to_owned()));
+        assert!(s.meshfs_healing);
     }
 }

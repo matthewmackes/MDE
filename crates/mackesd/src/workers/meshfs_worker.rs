@@ -1214,6 +1214,24 @@ pub fn dispatch_meshfs_action(
     }
 }
 
+/// Move the conflict file at `path` to `~/Local/conflict-archive/<ts>/`.
+/// Returns `Ok(())` on success, `Err(reason)` on failure. Used directly
+/// by the `mackesd meshfs-resolve-conflict` CLI subcommand.
+///
+/// The same logic is invoked via the Bus `action/resolve-conflict` handler
+/// (which wraps this through `dispatch_resolve_conflict`).
+pub fn resolve_conflict_to_archive(path: &str) -> Result<(), String> {
+    let body = format!(r#"{{"path":{}}}"#, serde_json::Value::String(path.to_owned()));
+    let reply = dispatch_resolve_conflict(&body);
+    let v: serde_json::Value = serde_json::from_str(&reply).unwrap_or_default();
+    if v["ok"].as_bool().unwrap_or(false) {
+        Ok(())
+    } else {
+        let err = v["error"].as_str().unwrap_or("unknown error");
+        Err(err.to_owned())
+    }
+}
+
 /// Move a `.conflict-*` file to `~/Local/conflict-archive/<ts>/`.
 fn dispatch_resolve_conflict(body: &str) -> String {
     let path_str: String = match serde_json::from_str::<serde_json::Value>(body)

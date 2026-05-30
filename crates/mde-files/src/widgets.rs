@@ -403,34 +403,85 @@ pub fn ghost_button_style() -> button::Style {
 // ─── File row (`.fm-row`) ──────────────────────────────────────────────────
 
 pub fn file_row(row_data: FileRow, show_src: bool) -> Element<'static, Message> {
+    // Extract borrowed data before any field moves.
     let is_mesh = row_data.is_mesh();
-    let bg = if is_mesh {
-        t::MESH_ROW_BG
-    } else {
-        Color::TRANSPARENT
-    };
+    let has_conflict = row_data.has_conflict;
+    let syncing = row_data.syncing;
+    let origin_host: Option<String> = row_data.origin().map(str::to_owned);
+
+    let FileRow { name, conflict_sibling, mime, size, age, .. } = row_data;
+    let sibling = conflict_sibling.unwrap_or_default();
+
+    let bg = if is_mesh { t::MESH_ROW_BG } else { Color::TRANSPARENT };
     let mime_color = if is_mesh { t::ACCENT } else { t::FG_FAINT };
 
     let src_cell: Element<'static, Message> = if show_src {
-        if let Some(host) = row_data.origin() {
-            mesh_pill(host)
-        } else {
-            local_pill()
+        match origin_host.as_deref() {
+            Some(host) => mesh_pill(host),
+            None => local_pill(),
         }
     } else {
         Space::with_width(Length::Fixed(0.0)).into()
     };
 
+    // MESHFS-11.1: yellow clickable chip when a .conflict-* sibling exists.
+    let conflict_chip: Element<'static, Message> = if has_conflict {
+        let orig_name = name.clone();
+        button(
+            container(
+                row![
+                    text("⚠").size(10).color(t::ACCENT_HI),
+                    text("conflict").size(10).color(t::ACCENT_HI),
+                ]
+                .spacing(3)
+                .align_y(iced::alignment::Vertical::Center),
+            )
+            .padding(Padding::from([1.0, 6.0])),
+        )
+        .padding(0)
+        .style(|_, status| {
+            let bg = match status {
+                button::Status::Hovered => t::PRIMARY_AMBER_BG_HOVER,
+                _ => t::PRIMARY_AMBER_BG,
+            };
+            button::Style {
+                background: Some(Background::Color(bg)),
+                text_color: t::ACCENT_HI,
+                border: Border {
+                    color: t::PRIMARY_AMBER_BORDER,
+                    width: 1.0,
+                    radius: 0.0.into(),
+                },
+                ..button::Style::default()
+            }
+        })
+        .on_press(Message::ConflictResolve(orig_name, sibling))
+        .into()
+    } else {
+        Space::with_width(Length::Fixed(0.0)).into()
+    };
+
+    // MESHFS-11.1: ⟳ badge on mesh rows while the fleet is healing.
+    let sync_badge: Element<'static, Message> = if syncing {
+        container(text("⟳").size(10).color(t::FG_FAINT))
+            .padding(Padding::from([1.0, 4.0]))
+            .into()
+    } else {
+        Space::with_width(Length::Fixed(0.0)).into()
+    };
+
     let layout = row![
-        container(icon(icons::svg_for_mime(row_data.mime), 16.0, mime_color))
+        container(icon(icons::svg_for_mime(mime), 16.0, mime_color))
             .width(Length::Fixed(22.0))
             .align_x(iced::alignment::Horizontal::Left),
-        container(text(row_data.name.to_string()).size(13).color(t::FG)).width(Length::Fill),
+        container(text(name).size(13).color(t::FG)).width(Length::Fill),
+        container(conflict_chip).width(Length::Shrink),
+        container(sync_badge).width(Length::Shrink),
         container(src_cell).width(Length::Shrink),
-        container(text(row_data.size.to_string()).size(11).color(t::FG_DIM))
+        container(text(size).size(11).color(t::FG_DIM))
             .width(Length::Fixed(120.0))
             .align_x(iced::alignment::Horizontal::Right),
-        container(text(row_data.age.to_string()).size(11).color(t::FG_DIM))
+        container(text(age).size(11).color(t::FG_DIM))
             .width(Length::Fixed(100.0))
             .align_x(iced::alignment::Horizontal::Right),
     ]

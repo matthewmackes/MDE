@@ -1224,6 +1224,153 @@ fn mesh_home_card(
         .into()
 }
 
+// ── MESHFS-11.1: Conflict resolve dialog ────────────────────────────────────
+
+/// Modal overlay for resolving a `.conflict-*` file pair. Renders as a
+/// semi-transparent full-screen backdrop (click to dismiss) with a
+/// centered card showing the two resolution options. Compose via
+/// `iced::widget::Stack::with_children(vec![base_view, resolve_conflict_dialog(...)])`.
+pub fn resolve_conflict_dialog<'a>(
+    original: &'a str,
+    sibling: &'a str,
+) -> Element<'a, Message> {
+    let orig = original.to_owned();
+    let sib = sibling.to_owned();
+
+    let dismiss_backdrop = button(Space::new(Length::Fill, Length::Fill))
+        .padding(0)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(|_, _| button::Style {
+            background: Some(Background::Color(Color {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                a: 0.55,
+            })),
+            text_color: Color::TRANSPARENT,
+            border: Border {
+                color: Color::TRANSPARENT,
+                width: 0.0,
+                radius: 0.0.into(),
+            },
+            ..button::Style::default()
+        })
+        .on_press(Message::DismissConflictDialog);
+
+    let dialog_card = container(
+        column![
+            text("Merge conflict").size(14).color(t::FG),
+            Space::with_height(Length::Fixed(4.0)),
+            text(format!("File: {original}")).size(12).color(t::FG_DIM),
+            Space::with_height(Length::Fixed(16.0)),
+            button(
+                column![
+                    text("Keep original").size(12).color(t::FG),
+                    text(format!("Archive: {sibling}"))
+                        .size(10)
+                        .color(t::FG_FAINT),
+                ]
+                .spacing(2),
+            )
+            .padding(Padding::from([10.0, 14.0]))
+            .width(Length::Fill)
+            .style(|_, status| {
+                let bg = match status {
+                    button::Status::Hovered => t::PRIMARY_AMBER_BG_HOVER,
+                    _ => t::PRIMARY_AMBER_BG,
+                };
+                button::Style {
+                    background: Some(Background::Color(bg)),
+                    text_color: t::FG,
+                    border: Border {
+                        color: t::PRIMARY_AMBER_BORDER,
+                        width: 1.0,
+                        radius: 0.0.into(),
+                    },
+                    ..button::Style::default()
+                }
+            })
+            .on_press(Message::ArchiveConflictFile(sib)),
+            Space::with_height(Length::Fixed(8.0)),
+            button(
+                column![
+                    text("Keep conflict copy").size(12).color(t::FG),
+                    text(format!("Archive: {original}"))
+                        .size(10)
+                        .color(t::FG_FAINT),
+                ]
+                .spacing(2),
+            )
+            .padding(Padding::from([10.0, 14.0]))
+            .width(Length::Fill)
+            .style(|_, status| {
+                let bg = match status {
+                    button::Status::Hovered => Color {
+                        a: 0.08,
+                        ..Color::WHITE
+                    },
+                    _ => Color {
+                        a: 0.04,
+                        ..Color::WHITE
+                    },
+                };
+                button::Style {
+                    background: Some(Background::Color(bg)),
+                    text_color: t::FG,
+                    border: Border {
+                        color: t::DIVIDER,
+                        width: 1.0,
+                        radius: 0.0.into(),
+                    },
+                    ..button::Style::default()
+                }
+            })
+            .on_press(Message::ArchiveConflictFile(orig)),
+            Space::with_height(Length::Fixed(12.0)),
+            button(text("Dismiss").size(11).color(t::FG_FAINT))
+                .padding(Padding::from([4.0, 10.0]))
+                .style(|_, _| button::Style {
+                    background: Some(Background::Color(Color::TRANSPARENT)),
+                    text_color: t::FG_FAINT,
+                    border: Border {
+                        color: Color::TRANSPARENT,
+                        width: 0.0,
+                        radius: 0.0.into(),
+                    },
+                    ..button::Style::default()
+                })
+                .on_press(Message::DismissConflictDialog),
+        ]
+        .spacing(0),
+    )
+    .width(Length::Fixed(420.0))
+    .padding(Padding::from([24.0, 28.0]))
+    .style(|_| container::Style {
+        background: Some(Background::Color(t::PF_BG_200)),
+        border: Border {
+            color: t::PRIMARY_AMBER_BORDER,
+            width: 1.0,
+            radius: 0.0.into(),
+        },
+        ..container::Style::default()
+    });
+
+    let centered_dialog = container(dialog_card)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .align_x(iced::alignment::Horizontal::Center)
+        .align_y(iced::alignment::Vertical::Center);
+
+    iced::widget::Stack::with_children(vec![
+        dismiss_backdrop.into(),
+        centered_dialog.into(),
+    ])
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .into()
+}
+
 fn fmt_bytes_u64(n: u64) -> String {
     const KB: u64 = 1024;
     const MB: u64 = KB * 1024;

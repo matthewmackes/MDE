@@ -128,6 +128,17 @@ enum Cmd {
         admin_binary: String,
     },
 
+    /// MESHFS-11.1 (v5.0.0) — archive a `.conflict-*` file to
+    /// `~/Local/conflict-archive/<ts>/`, completing the Resolve flow
+    /// in mde-files. The mde-files UI calls this with either the
+    /// original or the conflict sibling, depending on which the
+    /// operator chose to discard.
+    MeshFsResolveConflict {
+        /// Full path of the conflict file to archive (the loser).
+        #[clap(long)]
+        path: String,
+    },
+
     /// GF-9.3 (v5.0.0) — restore the Nebula CA + (when
     /// present) the Gluster topology snapshot from an
     /// armored `state-backup.enc` bundle. CA rows go straight
@@ -1270,6 +1281,10 @@ fn main() -> anyhow::Result<()> {
             if !ok {
                 anyhow::bail!("TRASH-RECOVER failed for {path}");
             }
+        }
+        Cmd::MeshFsResolveConflict { path } => {
+            mackesd_core::workers::meshfs_worker::resolve_conflict_to_archive(&path)
+                .map_err(|e| anyhow::anyhow!("resolve-conflict failed: {e}"))?;
         }
         Cmd::GeneratePasscode { store, cred_path } => {
             let code = mackesd_core::passcode::generate();

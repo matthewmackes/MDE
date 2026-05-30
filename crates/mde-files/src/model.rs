@@ -62,6 +62,15 @@ pub struct FileRow {
     pub age: String,
     pub mesh: Option<String>,
     pub from: Option<String>,
+    /// MESHFS-11.1 — true when a `.conflict-<ts>-<host>` sibling exists
+    /// in the same directory. Triggers the yellow conflict chip.
+    pub has_conflict: bool,
+    /// MESHFS-11.1 — filename of the conflict sibling (not a full path;
+    /// relative to the same directory). `None` when `has_conflict` is false.
+    pub conflict_sibling: Option<String>,
+    /// MESHFS-11.1 — true while the LizardFS fleet is healing (under-
+    /// replicated). Triggers the sync indicator badge on mesh-homed rows.
+    pub syncing: bool,
 }
 
 impl FileRow {
@@ -79,6 +88,9 @@ impl FileRow {
             age: age.into(),
             mesh: None,
             from: None,
+            has_conflict: false,
+            conflict_sibling: None,
+            syncing: false,
         }
     }
 
@@ -91,6 +103,21 @@ impl FileRow {
     #[must_use]
     pub fn with_from(mut self, peer_host: impl Into<String>) -> Self {
         self.from = Some(peer_host.into());
+        self
+    }
+
+    /// Mark this row as having a conflict sibling file.
+    #[must_use]
+    pub fn with_conflict(mut self, sibling_name: impl Into<String>) -> Self {
+        self.has_conflict = true;
+        self.conflict_sibling = Some(sibling_name.into());
+        self
+    }
+
+    /// Mark this row as currently syncing (fleet healing).
+    #[must_use]
+    pub fn with_syncing(mut self, syncing: bool) -> Self {
+        self.syncing = syncing;
         self
     }
 
