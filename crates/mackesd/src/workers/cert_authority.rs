@@ -91,6 +91,36 @@ pub struct CertSignRequest {
     /// Optional groups (defaults to `["mde-vms"]` when empty).
     #[serde(default)]
     pub groups: Vec<String>,
+    /// VIRT-6 requester-side keygen (operator lock 2026-05-30): when
+    /// present, the requester (`compute_provision`) generated the
+    /// keypair locally via `nebula-cert keygen` and sends only the
+    /// PUBLIC key here. The CA signs it with `-in-pub` and produces
+    /// no private key — the key never crosses the Bus. When absent
+    /// (legacy / operator-CLI path), `nebula-cert` generates the
+    /// keypair CA-side and the private key is discarded after
+    /// signing (the cert is unusable without a key, so the
+    /// pubkey-present path is the only production flow).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub public_key_pem: Option<String>,
+}
+
+/// How `nebula-cert sign` sources the keypair.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum KeyMode {
+    /// `nebula-cert` generates the keypair, writing the private key
+    /// to this path (legacy path — the key is then discarded by
+    /// [`sign_with_nebula_cert`] since this path has no use for it).
+    Generate {
+        /// `-out-key` path.
+        out_key: String,
+    },
+    /// Sign an externally-generated public key (`-in-pub`); no
+    /// private key is produced CA-side. The VIRT-6 requester-side
+    /// keygen flow (operator lock 2026-05-30).
+    ExternalPub {
+        /// `-in-pub` path.
+        in_pub: String,
+    },
 }
 
 /// Sign-reply payload — `{cert_pem, ca_pem}` on success, `{error}`
@@ -227,6 +257,39 @@ pub fn build_logical_args(req: &CertSignRequest) -> Vec<String> {
     ]
 }
 
+/// Build the full `nebula-cert sign` arg vector: logical args
+/// (name/ip/groups) + CA paths + output cert + the key-source arg.
+/// Pure — paths are passed in so the assembly is testable without
+/// filesystem state. `ExternalPub` emits `-in-pub` and no
+/// `-out-key`; `Generate` emits `-out-key` and no `-in-pub`.
+#[must_use]
+pub fn build_sign_args(
+    req: &CertSignRequest,
+    ca_crt: &str,
+    ca_key: &str,
+    out_crt: &str,
+    key_mode: &KeyMode,
+) -> Vec<String> {
+    let mut args = build_logical_args(req);
+    args.extend([
+        "-ca-crt".into(),
+        ca_crt.to_string(),
+        "-ca-key".into(),
+        ca_key.to_string(),
+        "-out-crt".into(),
+        out_crt.to_string(),
+    ]);
+    match key_mode {
+        KeyMode::Generate { out_key } => {
+            args.extend(["-out-key".into(), out_key.clone()]);
+        }
+        KeyMode::ExternalPub { in_pub } => {
+            args.extend(["-in-pub".into(), in_pub.clone()]);
+        }
+    }
+    args
+}
+
 /// Build an error reply JSON body. Always succeeds (degenerate
 /// fallback when serde encoding itself fails).
 #[must_use]
@@ -261,29 +324,47 @@ fn sign_with_nebula_cert(
     std::fs::create_dir_all(&tmp_dir).map_err(|e| format!("mkdir tmp: {e}"))?;
     let cert_path = tmp_dir.join(format!("{}.crt", req.common_name));
     let key_path = tmp_dir.join(format!("{}.key", req.common_name));
-    let mut args = build_logical_args(req);
-    args.extend([
-        "-ca-crt".into(),
-        ca_cert.to_string_lossy().into_owned(),
-        "-ca-key".into(),
-        ca_key.to_string_lossy().into_owned(),
-        "-out-crt".into(),
-        cert_path.to_string_lossy().into_owned(),
-        "-out-key".into(),
-        key_path.to_string_lossy().into_owned(),
-    ]);
+    let pub_path = tmp_dir.join(format!("{}.pub", req.common_name));
+
+    // VIRT-6 requester-side keygen: when the request carries a public
+    // key, write it to a tmp file + sign with `-in-pub` (no CA-side
+    // private key). Otherwise fall back to the legacy generate path.
+    let key_mode = if let Some(pub_pem) = &req.public_key_pem {
+        std::fs::write(&pub_path, pub_pem).map_err(|e| format!("write pubkey: {e}"))?;
+        KeyMode::ExternalPub {
+            in_pub: pub_path.to_string_lossy().into_owned(),
+        }
+    } else {
+        KeyMode::Generate {
+            out_key: key_path.to_string_lossy().into_owned(),
+        }
+    };
+
+    let args = build_sign_args(
+        req,
+        &ca_cert.to_string_lossy(),
+        &ca_key.to_string_lossy(),
+        &cert_path.to_string_lossy(),
+        &key_mode,
+    );
     let status = Command::new("nebula-cert")
         .args(&args)
         .status()
         .map_err(|e| format!("nebula-cert spawn: {e}"))?;
-    if !status.success() {
+    let cleanup = || {
         let _ = std::fs::remove_file(&cert_path);
         let _ = std::fs::remove_file(&key_path);
+        let _ = std::fs::remove_file(&pub_path);
+    };
+    if !status.success() {
+        cleanup();
         return Err(format!("nebula-cert exited {status}"));
     }
-    let pem = std::fs::read_to_string(&cert_path).map_err(|e| format!("read cert: {e}"))?;
-    let _ = std::fs::remove_file(&cert_path);
-    let _ = std::fs::remove_file(&key_path);
+    let pem = std::fs::read_to_string(&cert_path).map_err(|e| {
+        cleanup();
+        format!("read cert: {e}")
+    })?;
+    cleanup();
     Ok(pem)
 }
 
@@ -460,13 +541,18 @@ mod tests {
 
     // ── build_logical_args ──
 
-    #[test]
-    fn logical_args_explicit_groups() {
-        let req = CertSignRequest {
+    fn req_with(groups: Vec<String>, pubkey: Option<String>) -> CertSignRequest {
+        CertSignRequest {
             common_name: "vm-01".into(),
             ip: "10.42.128.1/17".into(),
-            groups: vec!["mde-vms".into(), "ops".into()],
-        };
+            groups,
+            public_key_pem: pubkey,
+        }
+    }
+
+    #[test]
+    fn logical_args_explicit_groups() {
+        let req = req_with(vec!["mde-vms".into(), "ops".into()], None);
         let args = build_logical_args(&req);
         assert_eq!(
             args,
@@ -478,14 +564,68 @@ mod tests {
 
     #[test]
     fn logical_args_default_group_when_empty() {
-        let req = CertSignRequest {
-            common_name: "vm-01".into(),
-            ip: "10.42.128.1/17".into(),
-            groups: vec![],
-        };
+        let req = req_with(vec![], None);
         let args = build_logical_args(&req);
         // The last arg is the group value.
         assert_eq!(args.last().unwrap(), &"mde-vms".to_string());
+    }
+
+    // ── VIRT-6 requester-side keygen: build_sign_args key modes ──
+
+    #[test]
+    fn sign_args_generate_mode_emits_out_key_not_in_pub() {
+        let req = req_with(vec![], None);
+        let args = build_sign_args(
+            &req,
+            "/ca.crt",
+            "/ca.key",
+            "/out.crt",
+            &KeyMode::Generate {
+                out_key: "/out.key".into(),
+            },
+        );
+        assert!(args.contains(&"-out-key".to_string()));
+        assert!(args.contains(&"/out.key".to_string()));
+        assert!(!args.contains(&"-in-pub".to_string()));
+        // CA paths present.
+        assert!(args.contains(&"/ca.key".to_string()));
+        assert!(args.contains(&"/out.crt".to_string()));
+    }
+
+    #[test]
+    fn sign_args_external_pub_mode_emits_in_pub_not_out_key() {
+        let req = req_with(vec![], Some("PUBKEY".into()));
+        let args = build_sign_args(
+            &req,
+            "/ca.crt",
+            "/ca.key",
+            "/out.crt",
+            &KeyMode::ExternalPub {
+                in_pub: "/host.pub".into(),
+            },
+        );
+        assert!(args.contains(&"-in-pub".to_string()));
+        assert!(args.contains(&"/host.pub".to_string()));
+        assert!(
+            !args.contains(&"-out-key".to_string()),
+            "external-pub signing must NOT generate a CA-side private key"
+        );
+    }
+
+    #[test]
+    fn parse_request_carries_public_key_when_present() {
+        let req = parse_sign_request(
+            r#"{"common_name":"vm-03","ip":"10.42.129.1/17","public_key_pem":"---PUB---"}"#,
+        )
+        .expect("parse");
+        assert_eq!(req.public_key_pem.as_deref(), Some("---PUB---"));
+    }
+
+    #[test]
+    fn parse_request_public_key_defaults_none_for_legacy_clients() {
+        let req = parse_sign_request(r#"{"common_name":"vm-04","ip":"10.42.129.2/17"}"#)
+            .expect("parse");
+        assert!(req.public_key_pem.is_none());
     }
 
     // ── Required scenario 1: CA peer replies (success-shape) ──
