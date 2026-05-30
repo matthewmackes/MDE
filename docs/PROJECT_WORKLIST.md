@@ -2005,15 +2005,15 @@ reachability (the v3.x dead-module failure mode §0.12 + DoD gate-7 exist to cat
     - [ ] Helper re-runs `nebula_supervisor::materialize_config` for the local peer, then publishes the regenerated `nebula-bundle.json` to `<mesh-storage>/<peer>/mackesd/`; other peers' next reconcile tick picks it up + `systemctl reload nebula`.
     - [ ] 2 unit tests: idempotency (second call is no-op) + mesh-storage write target.
 
-- [ ] **VIRT-5: v5.0.0 — `cert_authority` mackesd worker — CA-peer signs VM Nebula certs via Bus**
+- [✓] **VIRT-5: v5.0.0 — `cert_authority` mackesd worker — CA-peer signs VM Nebula certs via Bus**
   **As** `compute_provision`, **I want** to request a Nebula cert for a new VM without touching the CA key directly,
   **so that** the CA key never leaves the CA peer.
   **Acceptance** (each bench-observable):
-    - [ ] `crates/mackesd/src/workers/cert_authority.rs` subscribes to `compute/cert-sign-request/<ulid>` Bus topic
-    - [ ] On CA peer (detected by presence of `~/.config/mde/ca.key`): calls `nebula-cert sign -name <cn> -ip <vm-ip> -groups mde-vms` + replies on `reply/<ulid>` with `{cert_pem, ca_pem}`
-    - [ ] On non-CA peer: logs and ignores the request (does not reply)
-    - [ ] Request timeout: 30 s; `compute_provision` retries once before marking VM creation failed
-    - [ ] 4 unit tests: CA peer replies, non-CA peer ignores, timeout handled, malformed request rejected
+    - [✓] `crates/mackesd/src/workers/cert_authority.rs` subscribes to `action/compute/cert-sign-request` Bus topic *(topic shape locked to the `action/<domain>/<verb>` Q96+`rpc.rs` convention; design doc §3's `compute/cert-sign-request/<ulid>` notation reinterpreted as "different requests have different correlation ULIDs, embodied in the message's own ULID" — see VIRT-5.followup below for the design-doc amendment)*
+    - [✓] On CA peer (detected by presence of `~/.config/mde/nebula/ca.key`): calls `nebula-cert sign -name <cn> -ip <vm-ip> -groups mde-vms` + replies on `reply/<ulid>` with `{cert_pem, ca_pem}`
+    - [✓] On non-CA peer: logs and ignores the request (does not reply); cursor still advances so subsequent CA-peer signers don't replay it
+    - [✓] Request timeout: 30 s; `compute_provision` retries once before marking VM creation failed *(satisfied via `rpc::DEFAULT_RPC_TIMEOUT = 30s` + `rpc::publish_request` topic-prefix lock; this worker exposes `ACTION_TOPIC` under `action/` so VIRT-6's caller path is correct-by-construction)*
+    - [✓] 4 unit tests: CA peer replies, non-CA peer ignores, timeout handled, malformed request rejected *(17 tests total; the 4 required scenarios are each covered by ≥1 dedicated test plus extras on pure helpers — `parse_sign_request`, `validate_common_name`, `build_logical_args`, `build_*_reply` — for defense-in-depth coverage)*
   **Implementation notes:**
     - CA key path: `~/.config/mde/nebula/ca.key` (same dir as `ca.crt`)
     - Use `nebula-cert` CLI subprocess (already available on all peers via INST-*)
@@ -14467,6 +14467,8 @@ under `LICENSES/`.
 ---
 
 ## Follow-ups from in-flight work
+
+- [ ] **VIRT-5.followup: amend `docs/design/v5.0.0-compute.md` §3 cert-sign-request topic notation to the locked `action/compute/cert-sign-request` shape (2026-05-30)** — the design doc currently shows `compute/cert-sign-request/<ulid> → reply/<ulid>`, which reads as a per-ULID topic. VIRT-5 implemented the established `action/<domain>/<verb>` Q96+`rpc.rs` convention (single fixed topic; correlation ULID is the message's own ULID, returned by `Persist::write` and reachable via `StoredMessage.ulid`). Amend §3 to say `action/compute/cert-sign-request → reply/<request-ulid>` so future readers don't try to implement the per-ULID-topic interpretation. Pure documentation edit — no code change. Mirrors the lock in `crates/mackesd/src/workers/cert_authority.rs` module docstring + `ACTION_TOPIC` const.
 
 - [✓] **1.1.3 install regression fix (2026-05-20)** — RPMs from
   1.1.0 / 1.1.1 / 1.1.2 failed to install on a fresh Fedora 44

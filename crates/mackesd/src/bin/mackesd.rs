@@ -3092,6 +3092,23 @@ fn run_serve(
             .expect("worker_names mutex")
             .push("compute_registry".into());
 
+        // VIRT-5 (v5.0.0) — VM Nebula cert signing via Bus. Every peer
+        // spawns the worker; only the CA peer (presence of
+        // ~/.config/mde/nebula/ca.key) actually signs + replies, the
+        // others advance the cursor silently. compute_provision
+        // (VIRT-6) publishes to `action/compute/cert-sign-request`
+        // and awaits the reply via rpc::await_reply with the 30 s
+        // rpc::DEFAULT_RPC_TIMEOUT, retrying once before marking VM
+        // creation failed (per VIRT-5 acceptance bullet 4).
+        sup.spawn(Spawn::new(
+            mackesd_core::workers::cert_authority::CertAuthorityWorker::new(),
+            RestartPolicy::Always,
+        ));
+        worker_names
+            .lock()
+            .expect("worker_names mutex")
+            .push("cert_authority".into());
+
         // EPIC-MESH-PROBE (MESH-PROBE-4) — scheduled two-tier nmap
         // probe worker. Resolves mesh-peer overlay IPs, scans them
         // (fast 60s / deep 10min), writes this peer's

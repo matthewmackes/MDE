@@ -151,6 +151,14 @@ pub mod firewall_monitor;
 // `compute/inventory/<peer-nebula-addr>` per docs/design/v5.0.0-
 // compute.md §3. Silent no-op when virsh/podman are absent.
 pub mod compute_registry;
+// VIRT-5 (v5.0.0) — VM Nebula cert signing via Bus. Every peer
+// drains `action/compute/cert-sign-request`; on the CA peer
+// (detected by ~/.config/mde/nebula/ca.key) calls `nebula-cert
+// sign` and replies on `reply/<ulid>`; non-CA peers advance the
+// cursor and skip. Topic shape locked to `action/<domain>/<verb>`
+// per Q96 + rpc.rs convention (design doc §3's per-ULID notation
+// reinterpreted accordingly).
+pub mod cert_authority;
 // INST-11 + INST-12 + INST-13 (v2.7) — fleet upgrade-barrier
 // worker. Runs on every peer: watches `<mesh-home>/upgrade-
 // intent/*.json` (written by `mde-update --coordinate`), runs
