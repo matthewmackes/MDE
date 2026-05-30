@@ -3126,6 +3126,22 @@ fn run_serve(
             .expect("worker_names mutex")
             .push("compute_expose".into());
 
+        // VIRT-8.a (v5.0.0) — cold VM migration source-side. Each
+        // peer drains `action/compute/migrate`; when own nebula IP
+        // == request.source_peer, runs the shutdown→rsync→publish
+        // migrate-ready→undefine flow over the Nebula overlay.
+        // Target-side handler (VIRT-8.b) ships with VIRT-6
+        // compute_provision and subscribes to
+        // `event/compute/migrate-ready`.
+        sup.spawn(Spawn::new(
+            mackesd_core::workers::compute_migrate::ComputeMigrateWorker::new(),
+            RestartPolicy::Always,
+        ));
+        worker_names
+            .lock()
+            .expect("worker_names mutex")
+            .push("compute_migrate".into());
+
         // EPIC-MESH-PROBE (MESH-PROBE-4) — scheduled two-tier nmap
         // probe worker. Resolves mesh-peer overlay IPs, scans them
         // (fast 60s / deep 10min), writes this peer's

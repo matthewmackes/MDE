@@ -2044,14 +2044,26 @@ reachability (the v3.x dead-module failure mode §0.12 + DoD gate-7 exist to cat
     - WAN zone detection: `nmcli -t -f DEVICE,TYPE,STATE device` to find default-gateway interface
     - `firewall-cmd --reload` after batch rule changes; group multiple rules into one reload
 
-- [ ] **VIRT-8: v5.0.0 — `compute_migrate` mackesd worker — cold VM migration over Nebula overlay**
+- [ ] **VIRT-8: v5.0.0 — `compute_migrate` mackesd worker — cold VM migration over Nebula overlay** *(split per §0.12 into 8.a source-side + 8.b target-side; bullet 2 + bullet-4 "target-provision failure" ship with VIRT-6 compute_provision)*
   **As** an operator, **I want** to cold-migrate a VM from one peer to another,
   **so that** I can rebalance compute load or decommission a peer.
   **Acceptance** (each bench-observable):
-    - [ ] Source peer's `compute_migrate` subscribes to `compute/migrate/<vm-id>`; `virsh shutdown <vm>` → polls for SHUTOFF (120 s timeout) → `rsync --compress` disk to target's `/var/lib/mde-vms/` over Nebula → publishes `compute/migrate-ready/<ulid>`
-    - [ ] Target peer's `compute_provision` receives `migrate-ready`; defines VM with migrated disk + starts it
-    - [ ] Source peer removes VM definition + publishes updated inventory
-    - [ ] 4 unit tests: happy path, shutdown timeout, rsync failure, target-provision failure
+    - [✓] Source peer's `compute_migrate` subscribes to `compute/migrate/<vm-id>`; `virsh shutdown <vm>` → polls for SHUTOFF (120 s timeout) → `rsync --compress` disk to target's `/var/lib/mde-vms/` over Nebula → publishes `compute/migrate-ready/<ulid>` *(VIRT-8.a — topic shape locked to `action/compute/migrate` single topic per Q96; source-peer filter via `source_peer == own_nebula_ip` payload check)*
+    - [ ] Target peer's `compute_provision` receives `migrate-ready`; defines VM with migrated disk + starts it *(VIRT-8.b — ships with VIRT-6 compute_provision)*
+    - [✓] Source peer removes VM definition + publishes updated inventory *(VIRT-8.a — virsh undefine + compute_registry's next 10s tick handles the inventory publish naturally)*
+    - [✓] 4 unit tests: happy path, shutdown timeout, rsync failure, target-provision failure *(VIRT-8.a covers 3 of 4 — happy path / shutdown timeout / rsync failure; target-provision failure ships with VIRT-8.b since the failure mode is on the target side)*
+
+- [✓] **VIRT-8.a: v5.0.0 — `compute_migrate` source-side worker (shutdown + rsync + publish + undefine)** *(opens 2026-05-30 from VIRT-8 split per §0.12)*
+  **Acceptance** (each bench-observable):
+    - [✓] `crates/mackesd/src/workers/compute_migrate.rs` polls `action/compute/migrate` and skips messages where `source_peer != own_nebula_ip` (cursor still advances).
+    - [✓] On match: `virsh shutdown <vm>` → poll `virsh domstate <vm>` every 2s until `shut off` or 120s timeout → `rsync --compress` disk → publish `event/compute/migrate-ready` → `virsh undefine <vm>`.
+    - [✓] Pure helpers (`parse_migrate_request`, `build_virsh_*_args`, `build_rsync_args`, `parse_virsh_domstate`, `is_shutoff`, `is_source_peer`, `build_migrate_ready_event`) testable without subprocess execution.
+    - [✓] 3 of 4 required tests (happy path, shutdown timeout, rsync failure) — the 4th (target-provision failure) ships with VIRT-8.b.
+
+- [ ] **VIRT-8.b: v5.0.0 — `compute_migrate` target-side handler in compute_provision** *(opens 2026-05-30 from VIRT-8 split per §0.12; ships ALONGSIDE VIRT-6 compute_provision)*
+  **Acceptance** (each bench-observable):
+    - [ ] `compute_provision` subscribes to `event/compute/migrate-ready` and on `target_peer == own_nebula_ip` defines the VM with the migrated disk + starts it.
+    - [ ] 1 test: target-provision failure (define-VM rejects → publishes `event/compute/migrate-failed`).
   **Implementation notes:**
     - rsync destination: `<target-nebula-ip>::mde-vms` or `rsync://` over SSH via Nebula
     - Progress published via `compute/migrate-progress/<ulid>` for Workbench status display

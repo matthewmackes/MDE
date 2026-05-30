@@ -167,6 +167,13 @@ pub mod cert_authority;
 // `compute/exposed/<own-peer-addr>` for the Workbench display.
 // Silent no-op when firewall-cmd is absent.
 pub mod compute_expose;
+// VIRT-8.a (v5.0.0) — cold VM migration source-side worker.
+// Each peer drains `action/compute/migrate`; when own nebula
+// IP == request.source_peer, runs virsh shutdown + 120s SHUTOFF
+// poll + rsync --compress over Nebula + publishes
+// `event/compute/migrate-ready` + virsh undefine. VIRT-8.b
+// (target-side compute_provision handler) ships with VIRT-6.
+pub mod compute_migrate;
 // INST-11 + INST-12 + INST-13 (v2.7) — fleet upgrade-barrier
 // worker. Runs on every peer: watches `<mesh-home>/upgrade-
 // intent/*.json` (written by `mde-update --coordinate`), runs
