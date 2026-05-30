@@ -59,7 +59,7 @@ jobs:
             make
 
       - name: Checkout mde repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Cache LizardFS build artifact
         id: cache-lfs
