@@ -5769,7 +5769,7 @@ disconnected" toasts get a dedicated Nebula vocabulary.
   - [✓] Focus ring: FOCUS_RING_WIDTH=2, FOCUS_RING_OFFSET=1 (was 2 in UX-7).
   - [ ] Bench-verify: a sample Settings panel renders every control type per spec.
   **Ship:** `crates/mde-workbench/src/controls.rs` — 697 tests pass. Bench-verify is §0.15 release-gate item.
-- [ ] **CR-10: v2.6 — Right-click context menu + Dialog modal + Toast chip retrofit.**
+- [>] **CR-10: v2.6 — Right-click context menu + Dialog modal + Toast chip retrofit.** `session=opus-47-2026-05-30-ship`
   **As** an operator triggering any context menu, dialog, or toast, **I want** all three overlay surfaces to match the Classic ChromeOS spec, **so that** overlays feel consistent across every app. **Acceptance:**
   - [ ] Context menu: min 220 px wide, 4 px corners, 1 px #3c4043 border, #2d2e30 bg, 28 px rows, kbd shortcut col right-aligned 11 px muted.
   - [ ] Dialog modal: 4 px corners, #2d2e30 bg, 60% black backdrop, 480 px default width, 48 px title row + 64 px button row, Primary right of Cancel.

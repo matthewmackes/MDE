@@ -369,6 +369,233 @@ pub fn elevation_container<'a, Message: 'a>(
         .into()
 }
 
+/// CR-10 — one item in a right-click context menu.
+///
+/// Pass a slice of these to [`context_menu_surface`].
+#[derive(Clone, Debug)]
+pub struct ContextMenuItem {
+    /// Primary label displayed in the menu row.
+    pub label: String,
+    /// Optional keyboard shortcut shown right-aligned.
+    pub shortcut: Option<String>,
+    /// Disabled rows render at 40% opacity and don't respond
+    /// to interaction.
+    pub disabled: bool,
+    /// When true the row renders as a 1 px horizontal rule;
+    /// all other fields are ignored.
+    pub is_separator: bool,
+}
+
+impl ContextMenuItem {
+    /// Convenience constructor for a standard enabled row.
+    pub fn item(label: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            shortcut: None,
+            disabled: false,
+            is_separator: false,
+        }
+    }
+
+    /// Add an optional keyboard shortcut hint.
+    pub fn with_shortcut(mut self, shortcut: impl Into<String>) -> Self {
+        self.shortcut = Some(shortcut.into());
+        self
+    }
+
+    /// Mark this item as disabled (40% opacity, no interaction).
+    pub fn disabled(mut self) -> Self {
+        self.disabled = true;
+        self
+    }
+
+    /// A horizontal 1 px separator rule.
+    pub fn separator() -> Self {
+        Self {
+            label: String::new(),
+            shortcut: None,
+            disabled: false,
+            is_separator: true,
+        }
+    }
+}
+
+fn context_menu_item_row<'a, Message: 'a>(
+    item: &ContextMenuItem,
+    palette: Palette,
+) -> Element<'a, Message> {
+    use mde_theme::motion::context_menu as cm;
+    if item.is_separator {
+        return container(Space::new(Length::Fill, Length::Fixed(1.0)))
+            .width(Length::Fill)
+            .style(move |_| container::Style {
+                background: Some(Background::Color(palette.border.into_iced_color())),
+                ..container::Style::default()
+            })
+            .into();
+    }
+    let opacity = if item.disabled { 0.4_f32 } else { 1.0_f32 };
+    let label_color = Color {
+        a: palette.text.into_iced_color().a * opacity,
+        ..palette.text.into_iced_color()
+    };
+    let muted_color = Color {
+        a: palette.text_muted.into_iced_color().a * opacity,
+        ..palette.text_muted.into_iced_color()
+    };
+    let label_el: Element<'a, Message> = text(item.label.clone())
+        .size(cm::LABEL_SIZE)
+        .color(label_color)
+        .into();
+    let shortcut_el: Option<Element<'a, Message>> = item.shortcut.as_ref().map(|s| {
+        text(s.clone())
+            .size(cm::KBD_SIZE)
+            .color(muted_color)
+            .into()
+    });
+    let inner: Element<'a, Message> = match shortcut_el {
+        None => row![
+            Space::with_width(Length::Fixed(cm::ICON_L_PAD + cm::LABEL_L_PAD)),
+            label_el,
+        ]
+        .align_y(alignment::Vertical::Center)
+        .into(),
+        Some(kbd) => row![
+            Space::with_width(Length::Fixed(cm::ICON_L_PAD + cm::LABEL_L_PAD)),
+            label_el,
+            Space::with_width(Length::Fill),
+            kbd,
+            Space::with_width(Length::Fixed(cm::KBD_R_PAD)),
+        ]
+        .align_y(alignment::Vertical::Center)
+        .into(),
+    };
+    container(inner)
+        .width(Length::Fill)
+        .height(Length::Fixed(cm::ROW_HEIGHT))
+        .align_y(alignment::Vertical::Center)
+        .into()
+}
+
+/// CR-10 — Classic ChromeOS right-click context menu surface.
+///
+/// Returns a styled container (min 220 px wide, 4 px corners,
+/// 1 px border, raised background) holding a column of rows
+/// built from `items`. The caller is responsible for positioning
+/// the returned element as a floating overlay via their
+/// compositor's stack mechanism.
+pub fn context_menu_surface<'a, Message: 'a>(
+    items: &[ContextMenuItem],
+    palette: Palette,
+) -> Element<'a, Message> {
+    use mde_theme::motion::context_menu as cm;
+    let rows: Vec<Element<'a, Message>> = items
+        .iter()
+        .map(|item| context_menu_item_row(item, palette))
+        .collect();
+    let bg = palette.raised.into_iced_color();
+    let border_color = palette.border.into_iced_color();
+    // Iced 0.13 has no min_width; enforce via fixed base width.
+    // Rows will expand if content is wider via Length::Fill.
+    container(column(rows))
+        .width(Length::Fixed(cm::MIN_WIDTH))
+        .style(move |_| container::Style {
+            background: Some(Background::Color(bg)),
+            border: Border {
+                color: border_color,
+                width: 1.0,
+                radius: 4.0_f32.into(),
+            },
+            ..container::Style::default()
+        })
+        .into()
+}
+
+/// CR-10 — Classic ChromeOS toast / notification chip.
+///
+/// Returns a 320 px wide chip container (4 px corners, 1 px border,
+/// raised background) with a title, optional body text, and a
+/// 2 px indigo bottom progress strip that reflects the remaining
+/// display time.
+///
+/// `remaining_0_1` = 1.0 when the toast just appeared (full bar),
+/// 0.0 when about to auto-dismiss (empty bar). The caller drives
+/// this from a subscription ticked at the desired framerate.
+pub fn toast_chip<'a, Message: 'a>(
+    title: impl Into<String>,
+    body: Option<String>,
+    remaining_0_1: f32,
+    palette: Palette,
+) -> Element<'a, Message> {
+    use mde_theme::motion::toast as tk;
+    let r = remaining_0_1.clamp(0.0, 1.0);
+    let bar_width = tk::WIDTH * r;
+    let accent = palette.accent.into_iced_color();
+    let bg = palette.raised.into_iced_color();
+    let border_color = palette.border.into_iced_color();
+
+    let title_el: Element<'a, Message> = container(
+        text(title.into())
+            .size(13.0)
+            .font(iced::Font {
+                weight: iced::font::Weight::Medium,
+                ..iced::Font::DEFAULT
+            })
+            .color(palette.text.into_iced_color()),
+    )
+    .padding(Padding {
+        top: 12.0,
+        right: 12.0,
+        bottom: 4.0,
+        left: 12.0,
+    })
+    .width(Length::Fill)
+    .into();
+
+    let mut rows: Vec<Element<'a, Message>> = vec![title_el];
+
+    if let Some(body_text) = body {
+        let body_el: Element<'a, Message> = container(
+            text(body_text)
+                .size(13.0)
+                .color(palette.text.into_iced_color()),
+        )
+        .padding(Padding {
+            top: 0.0,
+            right: 12.0,
+            bottom: 8.0,
+            left: 12.0,
+        })
+        .width(Length::Fill)
+        .into();
+        rows.push(body_el);
+    }
+
+    // 2 px progress strip at the bottom of the chip.
+    let progress_strip: Element<'a, Message> = container(Space::with_width(0))
+        .width(Length::Fixed(bar_width))
+        .height(Length::Fixed(tk::PROGRESS_HEIGHT))
+        .style(move |_| container::Style {
+            background: Some(Background::Color(accent)),
+            ..container::Style::default()
+        })
+        .into();
+    rows.push(progress_strip);
+
+    container(column(rows))
+        .width(Length::Fixed(tk::WIDTH))
+        .style(move |_| container::Style {
+            background: Some(Background::Color(bg)),
+            border: Border {
+                color: border_color,
+                width: 1.0,
+                radius: 4.0_f32.into(),
+            },
+            ..container::Style::default()
+        })
+        .into()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -495,5 +722,34 @@ mod tests {
             let content = Space::with_width(Length::Fixed(100.0));
             let _: Element<'_, ()> = elevation_container(content, tier, palette);
         }
+    }
+
+    #[test]
+    fn context_menu_surface_constructs_with_mixed_items() {
+        let palette = Palette::dark();
+        let items = vec![
+            ContextMenuItem::item("Copy").with_shortcut("Ctrl+C"),
+            ContextMenuItem::item("Paste").with_shortcut("Ctrl+V"),
+            ContextMenuItem::separator(),
+            ContextMenuItem::item("Delete").disabled(),
+        ];
+        let _: Element<'_, ()> = context_menu_surface(&items, palette);
+    }
+
+    #[test]
+    fn toast_chip_constructs_full_and_empty_bar() {
+        let palette = Palette::dark();
+        let _: Element<'_, ()> =
+            toast_chip("Download complete", Some("file.tar.gz saved".to_string()), 1.0, palette);
+        let _: Element<'_, ()> =
+            toast_chip("Update ready", None, 0.0, palette);
+    }
+
+    #[test]
+    fn toast_chip_clamps_remaining_to_0_1() {
+        let palette = Palette::dark();
+        // Should not panic on out-of-range inputs.
+        let _: Element<'_, ()> = toast_chip("x", None, -0.5, palette);
+        let _: Element<'_, ()> = toast_chip("x", None, 1.5, palette);
     }
 }

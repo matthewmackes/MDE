@@ -118,9 +118,9 @@ crates/mde-workbench/src/panel_chrome.rs:162
 crates/mde-workbench/src/panel_chrome.rs:163
 crates/mde-workbench/src/panel_chrome.rs:166
 crates/mde-workbench/src/panel_chrome.rs:167
-crates/mde-workbench/src/panel_chrome.rs:484
-crates/mde-workbench/src/panel_chrome.rs:488
-crates/mde-workbench/src/panel_chrome.rs:494
+crates/mde-workbench/src/panel_chrome.rs:536
+crates/mde-workbench/src/panel_chrome.rs:540
+crates/mde-workbench/src/panel_chrome.rs:546
 crates/mde-workbench/src/panels/drift.rs:260
 crates/mde-workbench/src/panels/drift.rs:267
 crates/mde-workbench/src/panels/drift.rs:44
@@ -211,10 +211,9 @@ crates/mde-portal/src/portal_full_main.rs:2225
 crates/mde-portal/src/portal_full_main.rs:2226
 crates/mde-iced-components/src/lib.rs:353
 crates/mde-iced-components/src/lib.rs:354
-crates/mde-iced-components/src/lib.rs:394
-crates/mde-iced-components/src/lib.rs:395
-crates/mde-iced-components/src/lib.rs:438
-crates/mde-iced-components/src/lib.rs:479
+crates/mde-iced-components/src/lib.rs:621
+crates/mde-iced-components/src/lib.rs:622
+crates/mde-iced-components/src/lib.rs:706
 crates/mde-workbench/src/app.rs:1532
 crates/mde-workbench/src/app.rs:1533
 crates/mde-workbench/src/app.rs:1567

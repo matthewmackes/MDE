@@ -97,13 +97,56 @@ pub const PULSE_MAX_SCALE: f32 = 1.15;
 /// Component dimension, not density-scaled.
 pub const PANEL_MOUNT_TRANSLATE_Y_PX: f32 = 4.0;
 
-/// UX-9 (c) — dialog spec constants. Locked component
-/// dimensions, not density-scaled per UX-24 sub-lock.
+/// UX-9 (c) + CR-10 — dialog spec constants.
+/// Locked component dimensions, not density-scaled per UX-24.
 pub mod dialog {
-    /// Maximum dialog width (px).
+    /// Maximum dialog width (px). Classic ChromeOS: 480 px.
     pub const MAX_WIDTH: f32 = 480.0;
-    /// Backdrop opacity (0.0 = transparent, 1.0 = opaque black).
-    pub const BACKDROP_OPACITY: f32 = 0.50;
+    /// Backdrop opacity. CR-10 (2026-05-24) overrides UX-9 0.50 →
+    /// 0.60 per the Classic ChromeOS 60 % black spec.
+    pub const BACKDROP_OPACITY: f32 = 0.60;
+    /// Title row height (px). Classic ChromeOS 48 px.
+    pub const TITLE_ROW_HEIGHT: f32 = 48.0;
+    /// Button row height (px). Classic ChromeOS 64 px.
+    pub const BUTTON_ROW_HEIGHT: f32 = 64.0;
+    /// Title font size (sp). Classic ChromeOS 18 sp weight 500.
+    pub const TITLE_FONT_SIZE: f32 = 18.0;
+    /// Horizontal inner padding (px). Classic ChromeOS 16 px.
+    pub const H_PAD: f32 = 16.0;
+    /// Gap between action buttons (px).
+    pub const BUTTON_GAP: f32 = 8.0;
+}
+
+/// CR-10 — toast / notification chip constants.
+/// Classic ChromeOS spec 2026-05-24.
+pub mod toast {
+    /// Fixed chip width (px).
+    pub const WIDTH: f32 = 320.0;
+    /// Auto-dismiss after this many milliseconds.
+    pub const DISMISS_MS: u64 = 5000;
+    /// Height of the bottom progress strip (px).
+    pub const PROGRESS_HEIGHT: f32 = 2.0;
+    /// Gap above the Shelf (px).
+    pub const POSITION_GAP: f32 = 8.0;
+}
+
+/// CR-10 — right-click context menu constants.
+/// Classic ChromeOS spec 2026-05-24.
+pub mod context_menu {
+    /// Minimum menu width (px).
+    pub const MIN_WIDTH: f32 = 220.0;
+    /// Height of each non-separator row (px).
+    pub const ROW_HEIGHT: f32 = 28.0;
+    /// Keyboard-shortcut label font size (sp).
+    pub const KBD_SIZE: f32 = 11.0;
+    /// Primary label font size (sp).
+    pub const LABEL_SIZE: f32 = 13.0;
+    /// Left padding for the icon column (px).
+    pub const ICON_L_PAD: f32 = 12.0;
+    /// Left padding between icon and label (px).
+    pub const LABEL_L_PAD: f32 = 8.0;
+    /// Right padding for the kbd shortcut column (px).
+    pub const KBD_R_PAD: f32 = 12.0;
 }
 
 #[cfg(test)]
@@ -150,7 +193,26 @@ mod tests {
     }
 
     #[test]
-    fn dialog_backdrop_is_fifty_percent() {
-        assert!((dialog::BACKDROP_OPACITY - 0.50).abs() < f32::EPSILON);
+    fn dialog_backdrop_is_sixty_percent() {
+        // CR-10 Classic ChromeOS spec: 60 % black (was UX-9 50 %).
+        assert!((dialog::BACKDROP_OPACITY - 0.60).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn dialog_title_row_is_48px_and_button_row_64px() {
+        assert!((dialog::TITLE_ROW_HEIGHT - 48.0).abs() < f32::EPSILON);
+        assert!((dialog::BUTTON_ROW_HEIGHT - 64.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn toast_width_is_320_and_dismiss_5s() {
+        assert!((toast::WIDTH - 320.0).abs() < f32::EPSILON);
+        assert_eq!(toast::DISMISS_MS, 5000);
+    }
+
+    #[test]
+    fn context_menu_min_width_is_220_and_row_28() {
+        assert!((context_menu::MIN_WIDTH - 220.0).abs() < f32::EPSILON);
+        assert!((context_menu::ROW_HEIGHT - 28.0).abs() < f32::EPSILON);
     }
 }

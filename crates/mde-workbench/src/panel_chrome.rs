@@ -21,7 +21,7 @@
 
 use iced::widget::button::Status as ButtonStatus;
 use iced::widget::{button, column, container, row, text, Column, Space};
-use iced::{alignment, Background, Border, Color, Element, Length, Padding, Shadow as IcedShadow};
+use iced::{alignment, Background, Border, Color, Element, Font, Length, Padding, Shadow as IcedShadow};
 
 use mde_theme::{
     components::empty_state::{BODY_CTA_GAP, EMPTY_ICON_SIZE, HEADING_BODY_GAP, VERTICAL_PADDING},
@@ -356,12 +356,11 @@ fn brighten(c: Color, factor: f32) -> Color {
     }
 }
 
-/// UX-9 (c) — dialog chrome. Wraps an arbitrary body in the
-/// locked modal shell: SPACE_24 inner padding, 480 px max-width,
-/// `Radii::modal` (16 px) corners, `Shadow::modal()` drop
-/// shadow, palette.raised background, 50% black backdrop
-/// surrounding it. Esc-key dismiss + focus-trap live at the
-/// reducer level — this builder is the visual chrome only.
+/// CR-10 — dialog chrome. Wraps an arbitrary body in the
+/// Classic ChromeOS modal shell: 16 px H padding, 480 px
+/// max-width, 4 px corners (Radii::sm per chromeos-classic-spec
+/// §Dialog 2026-05-24), `Shadow::modal()` drop shadow,
+/// palette.raised background, 1 px border.
 ///
 /// Pair with a backdrop overlay in the app's top-level view —
 /// the caller composes `stack![backdrop, dialog]` or uses
@@ -370,30 +369,83 @@ fn brighten(c: Color, factor: f32) -> Color {
 pub fn dialog<'a, Message: 'a>(
     body: Element<'a, Message>,
     palette: Palette,
-    density: Density,
+    _density: Density,
 ) -> Element<'a, Message> {
     let radii = Radii::defaults();
-    let space = MdeSpace::for_density(density);
     container(body)
         .max_width(dialog_tokens::MAX_WIDTH)
         .width(Length::Shrink)
         .padding(Padding {
-            top: f32::from(space.lg2),
-            right: f32::from(space.lg2),
-            bottom: f32::from(space.lg2),
-            left: f32::from(space.lg2),
+            top: dialog_tokens::H_PAD,
+            right: dialog_tokens::H_PAD,
+            bottom: dialog_tokens::H_PAD,
+            left: dialog_tokens::H_PAD,
         })
         .style(move |_theme| container::Style {
             background: Some(Background::Color(palette.raised.into_iced_color())),
             border: Border {
                 color: palette.border.into_iced_color(),
                 width: 1.0,
-                radius: f32::from(radii.modal).into(),
+                radius: f32::from(radii.sm).into(),
             },
             shadow: mde_shadow_to_iced(MdeShadow::modal()),
             text_color: Some(palette.text.into_iced_color()),
         })
         .into()
+}
+
+/// CR-10 — dialog title row. 48 px tall, 18 sp Roboto weight-500
+/// title text, 16 px horizontal padding.
+pub fn dialog_title_row<'a, Message: 'a>(
+    title: impl Into<String>,
+    palette: Palette,
+) -> Element<'a, Message> {
+    container(
+        text(title.into())
+            .size(dialog_tokens::TITLE_FONT_SIZE)
+            .font(Font {
+                weight: iced::font::Weight::Medium,
+                ..Font::DEFAULT
+            })
+            .color(palette.text.into_iced_color()),
+    )
+    .width(Length::Fill)
+    .height(dialog_tokens::TITLE_ROW_HEIGHT)
+    .padding(Padding {
+        top: 0.0,
+        right: dialog_tokens::H_PAD,
+        bottom: 0.0,
+        left: dialog_tokens::H_PAD,
+    })
+    .align_y(alignment::Vertical::Center)
+    .into()
+}
+
+/// CR-10 — dialog button row. 64 px tall, right-aligned,
+/// 8 px gap between buttons, 16 px horizontal padding.
+/// Pass the action buttons in order (primary last — it renders
+/// rightmost per the Classic ChromeOS "Primary right of Cancel"
+/// spec).
+pub fn dialog_button_row<'a, Message: 'a>(
+    actions: Vec<Element<'a, Message>>,
+) -> Element<'a, Message> {
+    let spacer: Element<'a, Message> = Space::new(Length::Fill, Length::Shrink).into();
+    let mut items = vec![spacer];
+    items.extend(actions);
+    container(
+        row(items)
+            .spacing(dialog_tokens::BUTTON_GAP)
+            .align_y(alignment::Vertical::Center),
+    )
+    .width(Length::Fill)
+    .height(dialog_tokens::BUTTON_ROW_HEIGHT)
+    .padding(Padding {
+        top: 0.0,
+        right: dialog_tokens::H_PAD,
+        bottom: 0.0,
+        left: dialog_tokens::H_PAD,
+    })
+    .into()
 }
 
 /// UX-9 (c) — dialog backdrop. A full-fill 50%-black surface
