@@ -38,6 +38,23 @@ const ACCENT: Color = Color { r: 0.357, g: 0.416, b: 0.961, a: 1.0 }; // indigo
 const DOT_UP: Color = Color { r: 0.345, g: 0.871, b: 0.475, a: 1.0 }; // soft green
 const DOT_DOWN: Color = Color { r: 0.498, g: 0.498, b: 0.498, a: 1.0 };
 
+// ── Crossfade (ANIM-7.d, Q48) ─────────────────────────────────────────────────
+// 200 ms grid tier (sway-native-shell.md Q3 timing grid).
+// 16 ms ticks × 13 steps ≈ 208 ms — close enough to the 200 ms tier.
+
+const FADE_STEP: f32 = 0.08; // per 16 ms tick → 13 ticks ≈ 208 ms
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FadePhase {
+    In,
+    Steady,
+    Out,
+}
+
+fn fade_color(c: Color, opacity: f32) -> Color {
+    Color { a: c.a * opacity, ..c }
+}
+
 // ── Data collection ───────────────────────────────────────────────────────────
 
 fn read_hostname() -> String {
@@ -169,6 +186,7 @@ fn format_date(y: i32, m: u32, d: u32) -> String {
 #[derive(Debug, Clone)]
 pub enum Message {
     Tick,
+    FadeStep,
     Exit,
 }
 
@@ -180,6 +198,8 @@ pub struct App {
     network_up: bool,
     battery_pct: Option<u8>,
     weather: String,
+    fade: f32,
+    phase: FadePhase,
 }
 
 impl App {
@@ -195,6 +215,8 @@ impl App {
             network_up: read_network_up(),
             battery_pct: read_battery_pct(),
             weather: read_weather_summary(),
+            fade: 1.0,
+            phase: FadePhase::Steady,
         }
     }
 }
@@ -206,7 +228,9 @@ impl iced_layershell::Application for App {
     type Flags = ();
 
     fn new(_flags: ()) -> (Self, Task<Message>) {
-        let app = App::refresh();
+        let mut app = App::refresh();
+        app.fade = 0.0;
+        app.phase = FadePhase::In;
         tracing::info!(hostname = %app.hostname, clock = %app.clock, "lock popover open");
         (app, Task::none())
     }
@@ -227,39 +251,59 @@ impl iced_layershell::Application for App {
                 self.battery_pct = fresh.battery_pct;
                 self.weather = fresh.weather;
             }
-            Message::Exit => std::process::exit(0),
+            Message::FadeStep => match self.phase {
+                FadePhase::In => {
+                    self.fade = (self.fade + FADE_STEP).min(1.0);
+                    if self.fade >= 1.0 {
+                        self.phase = FadePhase::Steady;
+                    }
+                }
+                FadePhase::Out => {
+                    self.fade = (self.fade - FADE_STEP).max(0.0);
+                    if self.fade <= 0.0 {
+                        std::process::exit(0);
+                    }
+                }
+                FadePhase::Steady => {}
+            },
+            Message::Exit => {
+                self.phase = FadePhase::Out;
+            }
             _ => {}
         }
         Task::none()
     }
 
     fn view(&self) -> Element<'_, Message> {
+        let fade = self.fade;
+
         let breadcrumb: Element<'_, Message> = row![
             text("M")
                 .size(13)
-                .color(ACCENT),
+                .color(fade_color(ACCENT, fade)),
             Space::with_width(Length::Fixed(6.0)),
-            text("›").size(13).color(FG_LABEL),
+            text("›").size(13).color(fade_color(FG_LABEL, fade)),
             Space::with_width(Length::Fixed(6.0)),
-            text(self.hostname.clone()).size(13).color(FG_DIM),
+            text(self.hostname.clone()).size(13).color(fade_color(FG_DIM, fade)),
         ]
         .align_y(iced::Alignment::Center)
         .into();
 
         let big_clock: Element<'_, Message> =
-            text(self.clock.clone()).size(96).color(FG).into();
+            text(self.clock.clone()).size(96).color(fade_color(FG, fade)).into();
 
         let date_line: Element<'_, Message> =
-            text(self.date.clone()).size(18).color(FG_DIM).into();
+            text(self.date.clone()).size(18).color(fade_color(FG_DIM, fade)).into();
 
         // ── Indicator row (mesh / net / battery / weather) ────────────────────
-        let dot = |label: &str, up: bool| -> Element<'static, Message> {
+        let dot = move |label: &str, up: bool| -> Element<'static, Message> {
+            let dot_color = if up { DOT_UP } else { DOT_DOWN };
             row![
                 container(Space::with_width(Length::Fill))
                     .width(Length::Fixed(8.0))
                     .height(Length::Fixed(8.0))
                     .style(move |_: &Theme| ContainerStyle {
-                        background: Some(Background::Color(if up { DOT_UP } else { DOT_DOWN })),
+                        background: Some(Background::Color(fade_color(dot_color, fade))),
                         border: Border {
                             color: Color::TRANSPARENT,
                             width: 0.0,
@@ -268,7 +312,7 @@ impl iced_layershell::Application for App {
                         ..Default::default()
                     }),
                 Space::with_width(Length::Fixed(6.0)),
-                text(label.to_string()).size(12).color(FG_DIM),
+                text(label.to_string()).size(12).color(fade_color(FG_DIM, fade)),
             ]
             .align_y(iced::Alignment::Center)
             .into()
@@ -276,13 +320,13 @@ impl iced_layershell::Application for App {
 
         let battery_chip: Element<'_, Message> = match self.battery_pct {
             Some(p) => row![
-                text("bat").size(10).color(FG_LABEL),
+                text("bat").size(10).color(fade_color(FG_LABEL, fade)),
                 Space::with_width(Length::Fixed(4.0)),
-                text(format!("{p}%")).size(12).color(FG_DIM),
+                text(format!("{p}%")).size(12).color(fade_color(FG_DIM, fade)),
             ]
             .align_y(iced::Alignment::Center)
             .into(),
-            None => row![text("bat —").size(12).color(FG_LABEL)]
+            None => row![text("bat —").size(12).color(fade_color(FG_LABEL, fade))]
                 .align_y(iced::Alignment::Center)
                 .into(),
         };
@@ -294,7 +338,7 @@ impl iced_layershell::Application for App {
             Space::with_width(Length::Fixed(20.0)),
             battery_chip,
             Space::with_width(Length::Fixed(20.0)),
-            text(self.weather.clone()).size(12).color(FG_DIM),
+            text(self.weather.clone()).size(12).color(fade_color(FG_DIM, fade)),
         ]
         .align_y(iced::Alignment::Center)
         .into();
@@ -312,7 +356,7 @@ impl iced_layershell::Application for App {
         .align_x(iced::Alignment::Center);
 
         let footer: Element<'_, Message> =
-            text("Press Esc or Enter to unlock").size(11).color(FG_LABEL).into();
+            text("Press Esc or Enter to unlock").size(11).color(fade_color(FG_LABEL, fade)).into();
 
         let centered = column![
             Space::with_height(Length::Fill),
@@ -330,8 +374,8 @@ impl iced_layershell::Application for App {
             container(centered)
                 .width(Length::Fill)
                 .height(Length::Fill)
-                .style(|_: &Theme| ContainerStyle {
-                    background: Some(Background::Color(CHARCOAL)),
+                .style(move |_: &Theme| ContainerStyle {
+                    background: Some(Background::Color(fade_color(CHARCOAL, fade))),
                     ..Default::default()
                 }),
         )
@@ -357,7 +401,14 @@ impl iced_layershell::Application for App {
         let tick = iced::time::every(std::time::Duration::from_secs(10))
             .map(|_| Message::Tick);
 
-        Subscription::batch([keys, tick])
+        // 16 ms fade ticker — active only during In/Out phases (Q48 crossfade).
+        if self.phase != FadePhase::Steady {
+            let fade_tick = iced::time::every(std::time::Duration::from_millis(16))
+                .map(|_| Message::FadeStep);
+            Subscription::batch([keys, tick, fade_tick])
+        } else {
+            Subscription::batch([keys, tick])
+        }
     }
 }
 
@@ -464,5 +515,70 @@ mod tests {
         let g = (CHARCOAL.g * 255.0).round() as u8;
         let b = (CHARCOAL.b * 255.0).round() as u8;
         assert_eq!((r, g, b), (32, 33, 36), "#202124 charcoal lock");
+    }
+
+    #[test]
+    fn fade_color_preserves_rgb_scales_alpha() {
+        let c = fade_color(FG_DIM, 0.5);
+        assert!((c.r - FG_DIM.r).abs() < f32::EPSILON);
+        assert!((c.g - FG_DIM.g).abs() < f32::EPSILON);
+        assert!((c.b - FG_DIM.b).abs() < f32::EPSILON);
+        assert!((c.a - FG_DIM.a * 0.5).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn fade_color_fully_transparent_at_zero() {
+        let c = fade_color(FG, 0.0);
+        assert_eq!(c.a, 0.0);
+    }
+
+    #[test]
+    fn fade_color_fully_opaque_at_one() {
+        let c = fade_color(CHARCOAL, 1.0);
+        assert!((c.a - CHARCOAL.a).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn fade_step_increments_during_phase_in() {
+        let mut app = App::refresh();
+        app.fade = 0.0;
+        app.phase = FadePhase::In;
+        // Simulate one FadeStep
+        match FadePhase::In {
+            FadePhase::In => {
+                app.fade = (app.fade + FADE_STEP).min(1.0);
+                if app.fade >= 1.0 { app.phase = FadePhase::Steady; }
+            }
+            _ => {}
+        }
+        assert!((app.fade - FADE_STEP).abs() < f32::EPSILON);
+        assert_eq!(app.phase, FadePhase::In);
+    }
+
+    #[test]
+    fn fade_step_clamps_at_one_and_transitions_to_steady() {
+        let mut app = App::refresh();
+        app.fade = 1.0 - FADE_STEP * 0.5; // just below 1.0
+        app.phase = FadePhase::In;
+        app.fade = (app.fade + FADE_STEP).min(1.0);
+        if app.fade >= 1.0 { app.phase = FadePhase::Steady; }
+        assert_eq!(app.fade, 1.0);
+        assert_eq!(app.phase, FadePhase::Steady);
+    }
+
+    #[test]
+    fn fade_step_clamps_at_zero_during_phase_out() {
+        let mut app = App::refresh();
+        app.fade = FADE_STEP * 0.5; // just above 0.0
+        app.phase = FadePhase::Out;
+        app.fade = (app.fade - FADE_STEP).max(0.0);
+        assert_eq!(app.fade, 0.0);
+    }
+
+    #[test]
+    fn new_starts_with_fade_in_phase() {
+        let (app, _) = <App as iced_layershell::Application>::new(());
+        assert_eq!(app.phase, FadePhase::In);
+        assert_eq!(app.fade, 0.0);
     }
 }

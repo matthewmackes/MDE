@@ -56,7 +56,8 @@ crates/mde-panel/src/top_bar.rs:509
 crates/mde-popover/src/app_switcher.rs:288
 crates/mde-popover/src/app_switcher.rs:289
 crates/mde-popover/src/hostname_info.rs:271
-crates/mde-popover/src/lock.rs:466
+# ANIM-7.d: lock.rs test assertion re-anchored (+51 lines from crossfade additions)
+crates/mde-popover/src/lock.rs:517
 crates/mde-popover/src/minimized.rs:243
 crates/mde-popover/src/minimized.rs:244
 crates/mde-popover/src/network.rs:473
