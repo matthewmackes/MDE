@@ -6,12 +6,12 @@
 //! path (AIR-10.b / AIR-2); this shell is the §0.12 runtime-reachable
 //! entry point that makes the [`hub`]/[`nav`] models live.
 
-use iced::widget::{button, column, container, row, text, Space};
+use iced::widget::{button, column, container, row, text, text_input, Space};
 use iced::{Element, Length, Size, Task};
 
 use mde_music::hub::HubCard;
 use mde_music::nav::{NavState, Route};
-use mde_musicd::creds;
+use mde_musicd::creds::{self, Creds};
 
 fn main() -> iced::Result {
     iced::application(
@@ -23,9 +23,22 @@ fn main() -> iced::Result {
     .run_with(|| (State::new(), Task::none()))
 }
 
+/// The first-run "connect your Airsonic server" form, shown until valid
+/// creds exist.
+#[derive(Default)]
+struct FirstRunForm {
+    url: String,
+    user: String,
+    pass: String,
+    error: Option<String>,
+}
+
 struct State {
     nav: NavState,
-    /// The Airsonic connection status line (read once at launch).
+    /// `Some` until the operator connects a server (first run); `None`
+    /// once creds exist and the library shell is shown.
+    form: Option<FirstRunForm>,
+    /// The Airsonic connection status line (set once connected).
     connection: String,
 }
 
@@ -35,28 +48,114 @@ enum Message {
     OpenCard(HubCard),
     /// Jump to a breadcrumb segment (0 = Library root).
     Ascend(usize),
+    /// First-run form field edits.
+    UrlChanged(String),
+    UserChanged(String),
+    PassChanged(String),
+    /// Validate + save the first-run creds, then show the library.
+    Connect,
 }
 
 impl State {
     fn new() -> Self {
-        let connection = match creds::load() {
-            Ok(c) => format!("Connected to {}", c.server_url),
-            Err(_) => {
-                "No Airsonic server configured — run `mde-music --first-run` to connect".to_string()
-            }
-        };
-        Self { nav: NavState::new(), connection }
+        match creds::load() {
+            Ok(c) => Self {
+                nav: NavState::new(),
+                form: None,
+                connection: format!("Connected to {}", c.server_url),
+            },
+            Err(_) => Self {
+                nav: NavState::new(),
+                form: Some(FirstRunForm::default()),
+                connection: String::new(),
+            },
+        }
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::OpenCard(card) => self.nav.push(Route::Category(card)),
             Message::Ascend(index) => self.nav.ascend_to(index),
+            Message::UrlChanged(s) => {
+                if let Some(f) = &mut self.form {
+                    f.url = s;
+                }
+            }
+            Message::UserChanged(s) => {
+                if let Some(f) = &mut self.form {
+                    f.user = s;
+                }
+            }
+            Message::PassChanged(s) => {
+                if let Some(f) = &mut self.form {
+                    f.pass = s;
+                }
+            }
+            Message::Connect => {
+                if let Some(f) = &mut self.form {
+                    if creds::is_valid(&f.url, &f.user) {
+                        let c = Creds {
+                            server_url: f.url.trim().to_string(),
+                            username: f.user.trim().to_string(),
+                            password: f.pass.clone(),
+                        };
+                        match creds::save(&c) {
+                            Ok(()) => {
+                                self.connection = format!("Connected to {}", c.server_url);
+                                self.nav = NavState::new();
+                                self.form = None;
+                            }
+                            Err(e) => f.error = Some(format!("Couldn't save: {e}")),
+                        }
+                    } else {
+                        f.error = Some(
+                            "Enter an http(s):// server URL and a username.".to_string(),
+                        );
+                    }
+                }
+            }
         }
         Task::none()
     }
 
     fn view(&self) -> Element<'_, Message> {
+        if let Some(f) = &self.form {
+            return self.first_run_view(f);
+        }
+        self.library_view()
+    }
+
+    /// The first-run connect form.
+    fn first_run_view(&self, f: &FirstRunForm) -> Element<'_, Message> {
+        let mut col = column![
+            text("Connect your music").size(22),
+            Space::with_height(Length::Fixed(8.0)),
+            text("Point MDE Music at your Airsonic / Navidrome server.").size(13),
+            Space::with_height(Length::Fixed(16.0)),
+            text_input("https://music.your-mesh:4040", &f.url)
+                .on_input(Message::UrlChanged),
+            text_input("username", &f.user).on_input(Message::UserChanged),
+            text_input("password", &f.pass)
+                .secure(true)
+                .on_input(Message::PassChanged),
+            Space::with_height(Length::Fixed(12.0)),
+            button(text("Connect")).on_press(Message::Connect),
+        ]
+        .spacing(8)
+        .padding(28)
+        .max_width(440);
+        if let Some(err) = &f.error {
+            col = col.push(Space::with_height(Length::Fixed(8.0)));
+            col = col.push(text(err.clone()).size(13));
+        }
+        container(col)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
+    }
+
+    /// The library shell (hub + breadcrumb).
+    fn library_view(&self) -> Element<'_, Message> {
         // Breadcrumb — each segment is a button that ascends to it.
         let mut crumbs = row![].spacing(6);
         let segments = self.nav.breadcrumb();

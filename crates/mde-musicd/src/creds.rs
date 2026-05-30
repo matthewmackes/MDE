@@ -79,6 +79,37 @@ pub fn load() -> Result<Creds, CredsError> {
     load_from(&default_path())
 }
 
+/// Whether a candidate server URL + username are well-formed enough to
+/// save: a non-empty `http(s)://…` URL + a non-empty username. (The
+/// password may legitimately be empty on an open server.)
+#[must_use]
+pub fn is_valid(server_url: &str, username: &str) -> bool {
+    let url = server_url.trim();
+    !username.trim().is_empty()
+        && (url.starts_with("http://") || url.starts_with("https://"))
+        && url.len() > "https://".len()
+}
+
+/// Write `creds` to `path` (creating the parent dir), pretty-printed.
+///
+/// # Errors
+/// IO / serialization failures.
+pub fn save_to(path: &Path, creds: &Creds) -> Result<(), CredsError> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(CredsError::Io)?;
+    }
+    let json = serde_json::to_string_pretty(creds).map_err(CredsError::Parse)?;
+    std::fs::write(path, json).map_err(CredsError::Io)
+}
+
+/// Write `creds` to the [`default_path`].
+///
+/// # Errors
+/// As [`save_to`].
+pub fn save(creds: &Creds) -> Result<(), CredsError> {
+    save_to(&default_path(), creds)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -133,5 +164,31 @@ mod tests {
             default_path(),
             Path::new("/home/tester/.local/share/mde/airsonic-creds.json")
         );
+    }
+
+    #[test]
+    fn is_valid_requires_http_url_and_username() {
+        assert!(is_valid("http://airsonic.mesh:4040", "alice"));
+        assert!(is_valid("https://music.example.com", "bob"));
+        // Empty password is allowed (open server).
+        assert!(is_valid("http://h:4040", "u"));
+        // Rejections.
+        assert!(!is_valid("airsonic.mesh:4040", "alice")); // no scheme
+        assert!(!is_valid("http://h", "")); // no username
+        assert!(!is_valid("https://", "alice")); // scheme only
+        assert!(!is_valid("", "alice"));
+    }
+
+    #[test]
+    fn save_then_load_round_trips() {
+        let dir = tempdir().unwrap();
+        let p = dir.path().join("sub").join("airsonic-creds.json"); // parent created
+        let creds = Creds {
+            server_url: "http://airsonic.mesh:4040".into(),
+            username: "alice".into(),
+            password: "sesame".into(),
+        };
+        save_to(&p, &creds).unwrap();
+        assert_eq!(load_from(&p).unwrap(), creds);
     }
 }
