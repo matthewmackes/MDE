@@ -117,7 +117,7 @@ jobs:
           echo "Artifact size: $(du -sh lizardfs-binaries.tar.gz)"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lizardfs-binaries-${{ env.LIZARDFS_TAG }}
           path: lizardfs-binaries.tar.gz
