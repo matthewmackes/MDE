@@ -10,7 +10,7 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 
 use mde_musicd::airsonic::Client;
-use mde_musicd::creds;
+use mde_musicd::{cache, creds};
 
 #[derive(Parser)]
 #[command(name = "mde-musicd", about = "MDE native Airsonic music daemon.")]
@@ -25,12 +25,64 @@ enum Cmd {
     /// its reported API version. Exits non-zero when creds are missing
     /// or the server is unreachable.
     Ping,
+    /// Inspect or trim the mesh-shared audio cache (AIR-7).
+    Cache {
+        #[command(subcommand)]
+        op: CacheOp,
+    },
+}
+
+#[derive(Subcommand)]
+enum CacheOp {
+    /// Print the cache size, track count, and cap.
+    Status {
+        /// Cap in GiB (default 10).
+        #[arg(long, default_value_t = 10)]
+        cap_gb: u64,
+    },
+    /// Evict least-recently-played non-starred tracks to fit the cap.
+    Gc {
+        /// Cap in GiB (default 10).
+        #[arg(long, default_value_t = 10)]
+        cap_gb: u64,
+    },
 }
 
 fn main() -> ExitCode {
     let args = Args::parse();
     match args.cmd {
         Cmd::Ping => ping(),
+        Cmd::Cache { op } => cache_cmd(&op),
+    }
+}
+
+fn cache_cmd(op: &CacheOp) -> ExitCode {
+    let dir = cache::cache_dir();
+    match op {
+        CacheOp::Status { cap_gb } => {
+            let index = cache::read_index(&dir);
+            let cap = cap_gb * 1024 * 1024 * 1024;
+            println!(
+                "music cache: {} across {} track(s) (cap {})",
+                cache::human_bytes(index.total_bytes()),
+                index.entries.len(),
+                cache::human_bytes(cap),
+            );
+            ExitCode::SUCCESS
+        }
+        CacheOp::Gc { cap_gb } => {
+            let cap = cap_gb * 1024 * 1024 * 1024;
+            match cache::run_gc(&dir, cap) {
+                Ok(evicted) => {
+                    println!("music cache: evicted {} track(s)", evicted.len());
+                    ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("mde-musicd: cache gc failed: {e}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
     }
 }
 

@@ -11,4 +11,5 @@
 //! * AIR-7/8 — mesh-shared cache + exclusive-playback handoff.
 
 pub mod airsonic;
+pub mod cache;
 pub mod creds;
