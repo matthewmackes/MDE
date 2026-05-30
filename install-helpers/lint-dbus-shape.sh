@@ -21,10 +21,10 @@
 # - `crates/mde-kdc*/src/dbus*.rs` — KDC2 KDE Connect uses D-Bus
 #   for the per-app dispatch layer; that's a vendor protocol,
 #   not MDE-internal
-# - Existing services in `crates/mackesd/src/ipc/{nebula,gluster,
-#   portal,notifications,shell}*.rs` — pre-existing surface
-#   awaiting EPIC-RETIRE-DBUS migration; new methods on those
-#   are TOLERATED until migration ships
+# - Existing services in `crates/mackesd/src/ipc/{nebula,portal,
+#   notifications,shell}*.rs` — pre-existing surface awaiting
+#   EPIC-RETIRE-DBUS migration; new methods on those are TOLERATED
+#   until migration ships
 #
 # Per `.claude/CLAUDE.md` §0.7 gate #8.
 #
@@ -52,7 +52,6 @@ crates/mded/src/fdo_
 crates/mde-kdc/src/dbus
 crates/mde-kdc-proto/
 crates/mackesd/src/ipc/nebula
-crates/mackesd/src/ipc/gluster
 crates/mackesd/src/ipc/portal
 crates/mackesd/src/ipc/notifications
 crates/mackesd/src/ipc/shell

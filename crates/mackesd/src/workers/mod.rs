@@ -126,14 +126,6 @@ pub mod nebula_https_listener;
 // Opt-in: requires MDE_BACKUP_PASSPHRASE env var; silently
 // skips when unset.
 pub mod nebula_ca_backup;
-// GF-2.1 + GF-2.3 + GF-2.4 (v5.0.0) — gluster fleet
-// supervisor. 5s tick: probes glusterd state, bootstraps the
-// `mesh-home` volume on first run when no peer in the
-// Nebula has it. Silent no-op when the `gluster` CLI isn't
-// installed (operator hasn't opted into v5.0.0 yet) and when
-// the GF-1.3.a overlay-ip publish file is missing (peer
-// hasn't completed Nebula enrollment).
-pub mod gluster_worker;
 // PRINT-2..PRINT-6 + PRINT-8 (v5.0.0) — auto CUPS print sharing +
 // sync. Converges fleet printers via mesh-storage (write-own-file
 // + import-union as `<queue>@<host>`); jobs route through the host
@@ -142,9 +134,8 @@ pub mod gluster_worker;
 // Nebula enrollment.
 pub mod cups_sync;
 // MESHFS-2.1 (v5.0.0) — LizardFS mesh-storage fleet supervisor.
-// Follows the gluster_worker pattern exactly; silent no-op when
-// the mfsmaster/mfschunkserver binaries are absent or the
-// overlay-ip publish file doesn't yet exist.
+// Silent no-op when the mfsmaster/mfschunkserver binaries are
+// absent or the overlay-ip publish file doesn't yet exist.
 pub mod meshfs_worker;
 // FWMON-2..4 (v5.0.0) — firewall-denied event monitor. Reads
 // kernel journal entries logged by firewalld's LogDenied=all

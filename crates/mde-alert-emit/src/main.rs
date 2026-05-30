@@ -45,7 +45,7 @@ pub struct AlertEvent {
     /// `WARNING`, `CRITICAL`, `CLEAR`, etc.
     pub severity: String,
     /// Category (`NETDATA_ALARM_CHART_CONTEXT`) — e.g.
-    /// `nebula.process` / `gluster.heal`.
+    /// `nebula.process` / `meshfs.chunkserver`.
     pub category: String,
     /// Alert name (`NETDATA_ALARM_NAME`).
     pub alert: String,
@@ -298,8 +298,8 @@ fn main() -> std::io::Result<()> {
 /// to a Bus topic under the `mon/*` namespace. Per BUS-1.6's
 /// 12-topic seed lock, the four canonical mon topics are
 /// `mon/cpu` / `mon/memory` / `mon/disk` / `mon/network`;
-/// Nebula + Gluster contexts route to dedicated `mon/nebula`
-/// / `mon/gluster` topics that auto-create on first publish
+/// Nebula + meshfs contexts route to dedicated `mon/nebula`
+/// / `mon/meshfs` topics that auto-create on first publish
 /// (Round 3 self-serve creation lock).
 ///
 /// Pure helper — exposed for unit tests.
@@ -309,7 +309,7 @@ pub fn bus_topic_for(category: &str) -> String {
     let prefix = parts.next().filter(|s| !s.is_empty()).unwrap_or("system");
     match prefix {
         "nebula" => "mon/nebula".to_string(),
-        "gluster" | "glusterfs" => "mon/gluster".to_string(),
+        "meshfs" | "lizardfs" => "mon/meshfs".to_string(),
         "mackesd" => "mon/mackesd".to_string(),
         "system" => {
             let sub = parts.next().unwrap_or("misc");
@@ -544,8 +544,8 @@ mod tests {
     #[test]
     fn bus_topic_for_routes_dedicated_prefixes() {
         assert_eq!(bus_topic_for("nebula.process"), "mon/nebula");
-        assert_eq!(bus_topic_for("gluster.heal"), "mon/gluster");
-        assert_eq!(bus_topic_for("glusterfs.heal"), "mon/gluster");
+        assert_eq!(bus_topic_for("meshfs.chunkserver"), "mon/meshfs");
+        assert_eq!(bus_topic_for("lizardfs.heal"), "mon/meshfs");
         assert_eq!(bus_topic_for("mackesd.workers"), "mon/mackesd");
     }
 

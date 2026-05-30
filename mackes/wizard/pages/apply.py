@@ -48,7 +48,7 @@ from mackes.logging import log_action
 from mackes.birthright import (
     apply_apps, apply_clipboard_daemon, apply_dnf_update, apply_drawer,
     apply_enforce_i3, apply_flathub, apply_fleet, apply_fonts,
-    apply_display_manager, apply_gluster_bootstrap, apply_hotkey, apply_media_clients,
+    apply_display_manager, apply_hotkey, apply_media_clients,
     apply_netdata_monitor, apply_panel_archive, apply_panel_layout,
     apply_panel_swap, apply_plymouth, apply_qnm, apply_remote_desktop,
     apply_sway_config,
@@ -381,12 +381,6 @@ class ApplyPage(Gtk.Box):
             # log line when uid 1000 is held by a different user
             # rather than silently chowning their data). FS-agnostic.
             _Step("Normalize UID",     lambda: apply_uid_normalize(merged)),
-            # GF-3.2 (v5.0.0) — confirm the v5.0.0 gluster
-            # substrate is in place; report what the
-            # gluster_worker daemon will do on its next tick.
-            # Does NOT bootstrap the volume itself — the daemon
-            # owns that per GF-2.4.
-            _Step("Gluster substrate", lambda: apply_gluster_bootstrap(merged)),
             # MON-1 (v2.6) — write the locked Netdata baseline
             # config + reload. Fail-soft per the 2026-05-24
             # design lock: each peer self-parents with 7d

@@ -4,10 +4,10 @@
 //! source:
 //!
 //! 1. `$MDE_VOICE_HUD_ROSTER` — explicit override path (dev/testing).
-//! 2. `<gluster_mesh_home>/voip/peers.toml` — the live VOIP-26
-//!    Auto-Connect roster, GFS-replicated across the mesh.
+//! 2. `<mesh_storage_home>/voip/peers.toml` — the live VOIP-26
+//!    Auto-Connect roster, LizardFS-replicated across the mesh.
 //! 3. `~/.config/mde/voip/peers.toml` — per-peer local fallback,
-//!    refreshed every time the GFS read succeeds.
+//!    refreshed every time the mesh-storage read succeeds.
 //! 4. Embedded compile-time fixture (`test-fixtures/roster.toml`).
 //!
 //! Returning the embedded fixture as the last resort matches
@@ -65,8 +65,8 @@ pub struct RosterLoad {
 pub enum RosterSource {
     /// Loaded from `$MDE_VOICE_HUD_ROSTER`.
     EnvOverride,
-    /// Loaded from `<gluster_mesh_home>/voip/peers.toml`.
-    GlusterMesh,
+    /// Loaded from `<mesh_storage_home>/voip/peers.toml`.
+    MeshStorage,
     /// Loaded from `~/.config/mde/voip/peers.toml`.
     LocalFallback,
     /// Loaded from the compile-time embedded fixture.
@@ -79,7 +79,7 @@ impl RosterSource {
     pub const fn label(self) -> &'static str {
         match self {
             RosterSource::EnvOverride => "roster · env",
-            RosterSource::GlusterMesh => "roster · mesh-home",
+            RosterSource::MeshStorage => "roster · mesh-storage",
             RosterSource::LocalFallback => "roster · local",
             RosterSource::EmbeddedFixture => "roster · fixture",
         }
@@ -99,13 +99,13 @@ pub fn load() -> RosterLoad {
         }
     }
 
-    if let Some(home) = gluster_mesh_home() {
+    if let Some(home) = mesh_storage_home() {
         let p = home.join("voip/peers.toml");
         if let Some(peers) = try_load(&p) {
-            tracing::info!(path = %p.display(), count = peers.len(), "loaded roster from mesh-home");
+            tracing::info!(path = %p.display(), count = peers.len(), "loaded roster from mesh-storage");
             return RosterLoad {
                 peers,
-                source: RosterSource::GlusterMesh,
+                source: RosterSource::MeshStorage,
             };
         }
     }
@@ -138,20 +138,19 @@ fn parse(body: &str) -> Result<Vec<Peer>, toml::de::Error> {
     toml::from_str::<RosterFile>(body).map(|f| f.peers)
 }
 
-/// Best-effort resolution of `<gluster_mesh_home>` per the
-/// [[project_v5_0_0_gluster_mesh]] FUSE-mount convention.
+/// Best-effort resolution of `<mesh_storage_home>` per the
+/// [[project_v5_0_0_lizardfs_mesh_storage]] FUSE-mount convention.
 ///
-/// Honors `$MDE_GLUSTER_MESH_HOME` if set; otherwise falls back to
-/// `~/mesh-home` (the v5.0 default mount target).
-fn gluster_mesh_home() -> Option<PathBuf> {
-    if let Ok(p) = std::env::var("MDE_GLUSTER_MESH_HOME") {
+/// Honors `$MDE_MESH_STORAGE_HOME` if set; otherwise falls back to
+/// `/mnt/mesh-storage` (the MESHFS v5.0 default mount target).
+fn mesh_storage_home() -> Option<PathBuf> {
+    if let Ok(p) = std::env::var("MDE_MESH_STORAGE_HOME") {
         let pb = PathBuf::from(p);
         if pb.exists() {
             return Some(pb);
         }
     }
-    let home = dirs::home_dir()?;
-    let p = home.join("mesh-home");
+    let p = PathBuf::from("/mnt/mesh-storage");
     p.exists().then_some(p)
 }
 
@@ -173,7 +172,7 @@ mod tests {
         // unset the override + use a dirs::config_dir that almost
         // certainly doesn't contain a real peers.toml.)
         std::env::remove_var("MDE_VOICE_HUD_ROSTER");
-        std::env::remove_var("MDE_GLUSTER_MESH_HOME");
+        std::env::remove_var("MDE_MESH_STORAGE_HOME");
         let r = load();
         assert!(!r.peers.is_empty());
     }

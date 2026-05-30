@@ -53,7 +53,7 @@ use mde_bus::persist::Persist;
 use mde_bus::rpc::reply_topic;
 use serde_json::{json, Value};
 
-use super::gluster_worker::DEFAULT_OVERLAY_IP_PATH;
+use super::meshfs_worker::DEFAULT_OVERLAY_IP_PATH;
 use super::{ShutdownToken, Worker};
 
 /// PRINT-8.b — the two `action/printers/<verb>` topics this worker serves.

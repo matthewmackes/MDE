@@ -2,14 +2,14 @@
 //! installed-profile marker.
 //!
 //! **Scope note (INST-7, 2026-05-29):** mesh-departure steps — cert
-//! revoke + GlusterFS brick teardown — are now complete. The wipe
+//! revoke + LizardFS data teardown — are now complete. The wipe
 //! sequence in `mde-install` calls them when `--keep-mesh` is NOT set.
-//! On a clean Fedora Server build-up there is no cert or brick, so the
-//! calls are safe no-ops. The `mackesd ca revoke <node-id>` CLI (INST-7
-//! prerequisite, shipped in `crates/mackesd/src/ca/revoke.rs`) replaces
-//! the previously-planned `dev.mackes.MDE.Ca.Revoke` D-Bus method which
-//! was never built and will not be (D-Bus retires by 1.0 per
-//! AI_GOVERNANCE §3.3).
+//! On a clean Fedora Server build-up there is no cert or data dir, so
+//! the calls are safe no-ops. The `mackesd ca revoke <node-id>` CLI
+//! (INST-7 prerequisite, shipped in `crates/mackesd/src/ca/revoke.rs`)
+//! replaces the previously-planned `dev.mackes.MDE.Ca.Revoke` D-Bus
+//! method which was never built and will not be (D-Bus retires by 1.0
+//! per AI_GOVERNANCE §3.3).
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -19,7 +19,7 @@ use walkdir::WalkDir;
 use crate::profile::Profile;
 
 /// Services stopped before the wipe and re-started after (best-effort).
-pub const MANAGED_SERVICES: &[&str] = &["mackesd", "nebula", "glusterd", "netdata"];
+pub const MANAGED_SERVICES: &[&str] = &["mackesd", "nebula", "mfschunkserver", "netdata"];
 
 /// The installed-profile marker file.
 pub const PROFILE_MARKER: &str = "/var/lib/mde/installed-profile";
@@ -166,13 +166,13 @@ pub fn revoke_own_cert(node_id: &str) -> String {
 }
 
 /// INST-7 mesh-departure step 3: pause briefly (≤ `timeout_secs`) to
-/// give other peers time to notice the local glusterd/mackesd going
-/// offline before the brick is torn down.
+/// give other peers time to notice the local mfschunkserver/mackesd
+/// going offline before the data dir is torn down.
 ///
-/// Implementation: after `systemctl stop glusterd`, other peers' 5 s
-/// `gluster_worker` ticks will observe the peer disconnect within one
+/// Implementation: after `systemctl stop mfschunkserver`, other peers'
+/// `meshfs_worker` ticks will observe the peer disconnect within one
 /// tick. We sleep up to `timeout_secs` here, but short-circuit once
-/// glusterd is confirmed inactive (so a fast stop exits immediately).
+/// mfschunkserver is confirmed inactive (so a fast stop exits immediately).
 ///
 /// Returns a one-line log string.
 #[must_use]
@@ -182,13 +182,13 @@ pub fn wait_for_peer_detach(timeout_secs: u64) -> String {
     loop {
         let elapsed = start.elapsed();
         let still_active = Command::new("systemctl")
-            .args(["is-active", "--quiet", "glusterd.service"])
+            .args(["is-active", "--quiet", "mfschunkserver.service"])
             .status()
             .map(|s| s.success())
             .unwrap_or(false);
         if !still_active {
             return format!(
-                "peer detach: glusterd inactive after {}ms — proceeding",
+                "peer detach: mfschunkserver inactive after {}ms — proceeding",
                 elapsed.as_millis()
             );
         }
@@ -199,24 +199,24 @@ pub fn wait_for_peer_detach(timeout_secs: u64) -> String {
     }
 }
 
-/// INST-7 mesh-departure step 4: remove the local GlusterFS brick at
-/// `/var/lib/gluster/bricks/mesh-home/`.
+/// INST-7 mesh-departure step 4: remove the local LizardFS data dir at
+/// `/var/lib/mde/meshfs`.
 ///
 /// No-op when the path doesn't exist (clean install). On failure the
-/// error is logged; the caller continues the wipe sequence (the brick
-/// may already be partially gone, and `/var/lib/mde/` will be wiped
+/// error is logged; the caller continues the wipe sequence (the data
+/// dir may already be partially gone, and `/var/lib/mde/` will be wiped
 /// in the next step anyway).
 #[must_use]
-pub fn wipe_gluster_brick() -> Vec<String> {
-    let brick = PathBuf::from("/var/lib/gluster/bricks/mesh-home");
-    if !brick.exists() {
-        return vec!["gluster brick: absent — nothing to remove".to_string()];
+pub fn wipe_meshfs_data() -> Vec<String> {
+    let data = PathBuf::from("/var/lib/mde/meshfs");
+    if !data.exists() {
+        return vec!["meshfs data dir: absent — nothing to remove".to_string()];
     }
-    match std::fs::remove_dir_all(&brick) {
-        Ok(()) => vec![format!("removed gluster brick: {}", brick.display())],
+    match std::fs::remove_dir_all(&data) {
+        Ok(()) => vec![format!("removed meshfs data dir: {}", data.display())],
         Err(e) => vec![format!(
-            "FAILED to remove gluster brick {}: {e}",
-            brick.display()
+            "FAILED to remove meshfs data dir {}: {e}",
+            data.display()
         )],
     }
 }
@@ -304,9 +304,9 @@ mod tests {
     }
 
     #[test]
-    fn wait_for_peer_detach_resolves_quickly_when_glusterd_absent() {
-        // In a clean test environment glusterd is inactive or not installed —
-        // the first `systemctl is-active` poll exits non-zero, so the function
+    fn wait_for_peer_detach_resolves_quickly_when_mfschunkserver_absent() {
+        // In a clean test environment mfschunkserver is inactive or not installed
+        // — the first `systemctl is-active` poll exits non-zero, so the function
         // returns immediately with "proceeding". Also handles the case where
         // systemctl is absent (CI containers): spawn failure → `unwrap_or(false)`
         // → "not still_active" → immediate return.
@@ -315,13 +315,13 @@ mod tests {
     }
 
     #[test]
-    fn wipe_gluster_brick_noop_when_absent() {
-        let brick = PathBuf::from("/var/lib/gluster/bricks/mesh-home");
-        if brick.exists() {
-            // Running on a real mesh peer — skip so we don't tear down the brick.
+    fn wipe_meshfs_data_noop_when_absent() {
+        let data = PathBuf::from("/var/lib/mde/meshfs");
+        if data.exists() {
+            // Running on a real mesh peer — skip so we don't tear down the data.
             return;
         }
-        let lines = wipe_gluster_brick();
+        let lines = wipe_meshfs_data();
         assert_eq!(lines.len(), 1);
         assert!(
             lines[0].contains("absent"),
@@ -331,16 +331,13 @@ mod tests {
     }
 
     #[test]
-    fn wipe_gluster_brick_removes_present_brick() {
+    fn wipe_meshfs_data_removes_present_dir() {
         let dir = tempdir().unwrap();
-        // Validate the removal logic using a tempdir stand-in for the brick.
-        // (The real brick path is hardcoded; this tests the fs::remove_dir_all branch.)
-        let fake_brick = dir.path().join("mesh-home");
-        fs::create_dir_all(fake_brick.join("data")).unwrap();
-        fs::write(fake_brick.join("data/file.db"), b"content").unwrap();
-        // Call remove_dir_all directly to mirror what wipe_gluster_brick does.
-        let result = fs::remove_dir_all(&fake_brick);
+        let fake_data = dir.path().join("meshfs");
+        fs::create_dir_all(fake_data.join("chunks")).unwrap();
+        fs::write(fake_data.join("chunks/data.mfs"), b"content").unwrap();
+        let result = fs::remove_dir_all(&fake_data);
         assert!(result.is_ok());
-        assert!(!fake_brick.exists());
+        assert!(!fake_data.exists());
     }
 }

@@ -1,6 +1,6 @@
 [package]
 name        = "mde-installer"
-description = "INST-3 (v2.7) — the MDE installation manager + paired updater. `mde-install` converges a node to a known-clean state for a given install profile (lighthouse/headless/full) and runs birthrights; `mde-update` coordinates fleet-wide upgrades via a GlusterFS intent-file barrier. Shipped by the base `mde-core` RPM (the headless substrate), not `mde-desktop`."
+description = "INST-3 (v2.7) — the MDE installation manager + paired updater. `mde-install` converges a node to a known-clean state for a given install profile (lighthouse/headless/full) and runs birthrights; `mde-update` coordinates fleet-wide upgrades via a mesh-storage intent-file barrier. Shipped by the base `mde-core` RPM (the headless substrate), not `mde-desktop`."
 version.workspace      = true
 edition.workspace      = true
 rust-version.workspace = true

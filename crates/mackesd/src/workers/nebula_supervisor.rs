@@ -227,43 +227,6 @@ impl NebulaSupervisor {
                 "nebula-supervisor: publishing overlay-ip failed",
             );
         }
-        // GF-1.3.b — rewrite /etc/glusterfs/glusterd.vol so
-        // glusterd binds to the overlay IP on its next reload.
-        // Best-effort + idempotent: the rewriter no-ops when
-        // the file is missing (glusterfs-server not installed
-        // yet) or already has the right bind. Triggers a
-        // glusterd reload only when content actually changed.
-        match crate::gluster::bind::apply_bind(
-            std::path::Path::new(crate::gluster::bind::DEFAULT_GLUSTERD_VOL),
-            &bundle.overlay_ip,
-        ) {
-            Ok(crate::gluster::bind::ApplyOutcome::Wrote) => {
-                tracing::info!(
-                    overlay_ip = %bundle.overlay_ip,
-                    "nebula-supervisor: glusterd.vol rewritten to bind on overlay; reloading glusterd",
-                );
-                let _ = systemctl_reload("glusterd.service");
-            }
-            Ok(crate::gluster::bind::ApplyOutcome::Unchanged) => {
-                tracing::debug!("nebula-supervisor: glusterd.vol already binds to overlay");
-            }
-            Ok(crate::gluster::bind::ApplyOutcome::Missing) => {
-                tracing::debug!(
-                    "nebula-supervisor: glusterd.vol missing (glusterfs-server not installed); skipping bind rewrite",
-                );
-            }
-            Ok(crate::gluster::bind::ApplyOutcome::UnrecognizedFormat) => {
-                tracing::warn!(
-                    "nebula-supervisor: /etc/glusterfs/glusterd.vol shape unfamiliar; refusing to edit",
-                );
-            }
-            Err(e) => {
-                tracing::warn!(
-                    error = %e,
-                    "nebula-supervisor: glusterd.vol rewrite failed; will retry next tick",
-                );
-            }
-        }
         let _ = systemctl_reload("nebula.service");
         if self.last_is_leader {
             let _ = systemctl_reload("nebula-lighthouse.service");

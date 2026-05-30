@@ -657,7 +657,7 @@ impl MdeFiles {
 
         let root: Element<'_, Message> = container(
             column![
-                views::titlebar_with_status(online, total, snap.mesh_volume.as_ref()),
+                views::titlebar_with_status(online, total),
                 body
             ]
             .spacing(0),

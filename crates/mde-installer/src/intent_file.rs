@@ -1,9 +1,10 @@
-//! GlusterFS upgrade-intent barrier files (INST-10).
+//! Mesh-storage upgrade-intent barrier files (INST-10).
 //!
 //! `mde-update --coordinate <version>` writes
-//! `<mesh-home>/upgrade-intent/<version>.json`. Every peer's mackesd
-//! polls the dir; on a new intent it upgrades on its own schedule and
-//! writes its hostname into `ready`. Rollback = delete the file.
+//! `/mnt/mesh-storage/upgrade-intent/<version>.json`. Every peer's
+//! mackesd polls the dir; on a new intent it upgrades on its own
+//! schedule and writes its hostname into `ready`. Rollback = delete
+//! the file.
 
 use std::fs;
 use std::io;

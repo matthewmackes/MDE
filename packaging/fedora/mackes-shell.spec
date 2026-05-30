@@ -186,17 +186,14 @@ Requires:       conky
 # workspace builds.
 Requires:       nebula >= 1.9.0
 
-# Mesh storage (GF-1.1, v5.0.0): GlusterFS over the Nebula
-# overlay. `glusterfs-server` ships the `glusterd` daemon that
-# owns the cluster + volume topology; `glusterfs-fuse` is the
-# FUSE client every peer mounts to serve `~/Documents`,
-# `~/Pictures`, etc. from the replicated `mesh-home` volume
-# (see `docs/PROJECT_WORKLIST.md` GF-2.x / GF-4.x for the
-# bootstrap + mount wiring). The %post block below enables
-# glusterd at install time so subsequent gluster-worker ticks
-# can hand the daemon CLI work without a manual operator step.
-Requires:       glusterfs-server
-Requires:       glusterfs-fuse
+# Mesh storage (MESHFS-1, v5.0.0): LizardFS over the Nebula
+# overlay. `lizardfs-chunkserver` is the per-peer storage daemon;
+# `lizardfs-client` provides the FUSE client that mounts
+# /mnt/mesh-storage (shared file plane for all peers).
+# See docs/design/v5.0.0-mesh-storage-lizardfs.md for the
+# bootstrap + mount wiring.
+Requires:       lizardfs-chunkserver
+Requires:       lizardfs-client
 
 # Monitoring (MON-1, v2.6): Netdata for per-peer metrics +
 # alerting. The 25-Q monitoring design lock (2026-05-24) reuses
@@ -679,7 +676,7 @@ install -m 0644 data/systemd/mde-session.service             %{buildroot}%{_user
 install -m 0644 data/systemd/mde-mesh-mount@.service        %{buildroot}%{_userunitdir}/
 # MON-2 (v2.6) — Netdata health.d alert configs. Five files:
 #   nebula.conf        — overlay process / peer / relay / handshake / latency
-#   gluster.conf       — brick / heal-queue / split-brain / quota / quorum
+#   meshfs.conf        — chunkserver down / brick free-space low
 #   mackesd.conf       — Healthz ping / leader flap / no-leader
 #   workstation.conf   — boot disk / swap thrash / thermal throttle / dnf pending
 #   mde-suppressions.conf — disable stock alerts that don't fit MDE's failure model
@@ -688,7 +685,7 @@ install -m 0644 data/systemd/mde-mesh-mount@.service        %{buildroot}%{_useru
 # the daemon; the MON-1.b stream-block rewriter will trigger reload-health
 # on every CA-leader transition once it ships.
 install -d -m 0755 %{buildroot}%{_sysconfdir}/netdata/health.d
-for healthconf in nebula gluster mackesd workstation mde-suppressions; do
+for healthconf in nebula meshfs mackesd workstation mde-suppressions; do
     install -m 0644 data/netdata/health.d/${healthconf}.conf \
         %{buildroot}%{_sysconfdir}/netdata/health.d/${healthconf}.conf
 done
@@ -1191,9 +1188,8 @@ systemctl daemon-reload || :
 # mde-install's start_services step runs, whichever is first.
 # Phase 12.1 — mackesd store init is idempotent (migrate on start).
 systemctl enable mackesd.service 2>/dev/null || :
-# GF-1.2 (v5.0.0) — glusterd for the mesh-home volume (binds
-# locally until GF-1.3's Nebula-overlay drop-in lands).
-systemctl enable glusterd.service 2>/dev/null || :
+# MESHFS-1 (v5.0.0) — LizardFS chunkserver for the mesh-storage volume.
+systemctl enable mfschunkserver.service 2>/dev/null || :
 # MON-1 (v2.6) — netdata for the apply_netdata_monitor birthright
 # step (bound to 127.0.0.1 until birthright writes the overlay bind).
 systemctl enable netdata.service 2>/dev/null || :
@@ -1375,7 +1371,7 @@ echo ">>> mde-desktop installed. Run \`sudo mde-install --profile=full\` to fini
 # defaults match the v2.6 MON-2 design lock.
 %dir %{_sysconfdir}/netdata/health.d
 %config(noreplace) %{_sysconfdir}/netdata/health.d/nebula.conf
-%config(noreplace) %{_sysconfdir}/netdata/health.d/gluster.conf
+%config(noreplace) %{_sysconfdir}/netdata/health.d/meshfs.conf
 %config(noreplace) %{_sysconfdir}/netdata/health.d/mackesd.conf
 %config(noreplace) %{_sysconfdir}/netdata/health.d/workstation.conf
 %config(noreplace) %{_sysconfdir}/netdata/health.d/mde-suppressions.conf

@@ -133,12 +133,11 @@ fn run(args: &Args) -> Result<u8, String> {
             println!("[dry-run] would tar existing MDE state to /var/lib/mde/backups/ before wiping.");
         }
         if args.keep_mesh {
-            println!("[dry-run] --keep-mesh: cert revoke + GlusterFS brick teardown will be SKIPPED.");
+            println!("[dry-run] --keep-mesh: cert revoke + LizardFS data teardown will be SKIPPED.");
         } else {
             println!(
                 "[dry-run] would revoke this node's Nebula cert, wait up to 10s for peer \
-                 detach, then remove the GlusterFS brick at \
-                 /var/lib/gluster/bricks/mesh-home/."
+                 detach, then remove the LizardFS data dir at /var/lib/mde/meshfs/."
             );
         }
         println!("\n[dry-run] would stop {:?}, wipe the paths above, write the \
@@ -155,7 +154,7 @@ fn run(args: &Args) -> Result<u8, String> {
         if args.keep_mesh {
             println!(
                 "(Mesh enrollment will be kept (--keep-mesh): cert revoke + \
-                 GlusterFS brick teardown skipped.)"
+                 LizardFS data teardown skipped.)"
             );
         }
         let ok = confirm::require_typed(
@@ -226,17 +225,17 @@ fn run(args: &Args) -> Result<u8, String> {
         audit.push(line);
     }
     // INST-7 — mesh-departure steps 2-4: cert revoke → peer-detach wait →
-    // GlusterFS brick teardown. Skipped when --keep-mesh is set (node stays
+    // LizardFS data teardown. Skipped when --keep-mesh is set (node stays
     // a valid mesh peer with local config wiped but cert intact).
     if args.keep_mesh {
         audit.push(
-            "keep-mesh: cert revoke + GlusterFS brick teardown skipped".to_string(),
+            "keep-mesh: cert revoke + LizardFS data teardown skipped".to_string(),
         );
     } else {
         let local_node_id = mde_installer::peers::local_hostname();
         audit.push(wipe::revoke_own_cert(&local_node_id));
         audit.push(wipe::wait_for_peer_detach(10));
-        for line in wipe::wipe_gluster_brick() {
+        for line in wipe::wipe_meshfs_data() {
             audit.push(line);
         }
     }

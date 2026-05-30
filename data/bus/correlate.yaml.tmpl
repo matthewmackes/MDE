@@ -45,7 +45,7 @@
 #   power/*       — NUT/UPS webhook adapter (data/bus/hooks/nut.yaml)
 #   mon/*         — Netdata alerts via mde-alert-emit (BUS-4.3)
 #                   (mon/cpu, mon/memory, mon/disk, mon/network,
-#                    mon/nebula, mon/gluster)
+#                    mon/nebula, mon/meshfs)
 #   mesh/peers    — mesh peer-state changes (seeded topic, BUS-1.6)
 
 rules:
@@ -74,14 +74,13 @@ rules:
     emits: incident/disk-pressure
     priority: high
 
-  # 3. Mesh degraded — a peer-state change AND a GlusterFS heal alert
-  #    within five minutes means a peer dropped and the mesh is now
-  #    healing around it. High priority — the operator wants to know a
-  #    peer left even if it self-heals.
+  # 3. Mesh degraded — a peer-state change AND a meshfs alert within
+  #    five minutes means a peer dropped and the storage is affected.
+  #    High priority — the operator wants to know a peer left.
   - name: mesh-degraded
     sources:
       - mesh/peers
-      - mon/gluster
+      - mon/meshfs
     window_seconds: 300
     emits: incident/mesh-degraded
     priority: high
@@ -98,14 +97,13 @@ rules:
     emits: incident/vpn-flap
     priority: high
 
-  # 5. GFS quota trending — disk-fill alerts AND GlusterFS heal
-  #    backlog within ten minutes mean the mesh store is filling while
-  #    healing falls behind, trending toward the quota cap. Default
-  #    priority — informational early-warning, not an emergency yet.
-  - name: gfs-quota-trending
+  # 5. Mesh storage trending — disk-fill alerts AND meshfs alerts
+  #    within ten minutes mean the storage plane is filling.
+  #    Default priority — informational early-warning.
+  - name: meshfs-quota-trending
     sources:
       - mon/disk
-      - mon/gluster
+      - mon/meshfs
     window_seconds: 600
     emits: incident/gfs-quota-trending
     priority: default

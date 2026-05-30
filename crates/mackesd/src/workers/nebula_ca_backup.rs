@@ -202,19 +202,6 @@ impl NebulaCaBackup {
         // Drop the lock before doing CPU-bound Argon2 work — let
         // the rest of the daemon proceed.
         drop(conn);
-        // GF-9.2 — fold a glusterd snapshot into the bundle if
-        // the CLI is available. `collect` is best-effort and
-        // returns None on hosts without `glusterfs-server`
-        // installed (peer-only roles, dev boxes). When present,
-        // we bump the bundle schema version to 2 so the
-        // restore CLI knows to honor the new field.
-        let snapshot = crate::gluster::snapshot::collect(
-            &crate::gluster::snapshot::SnapshotConfig::default(),
-        );
-        if snapshot.is_some() {
-            plaintext.schema_version = 2;
-            plaintext.gluster_snapshot = snapshot;
-        }
         // MESHFS-14.1 — fold a LizardFS snapshot into the bundle.
         // Returns None when mfsmetadump + mfsadmin are both absent.
         // Bumps schema_version to 3 so the restore CLI knows to

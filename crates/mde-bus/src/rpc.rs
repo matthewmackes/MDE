@@ -9,7 +9,7 @@
 //! ## The convention
 //!
 //! - Commands publish to the **`action/<domain>/<verb>`** namespace
-//!   (e.g. `action/gluster/resolve-conflict`).
+//!   (e.g. `action/meshfs/rebalance`).
 //! - The published action message's **ULID is the correlation key**.
 //!   No side-channel metadata is needed: the requester knows its own
 //!   message's ULID (it's the `Persist::write` return), and a
@@ -23,7 +23,7 @@
 //! A responder is any worker that subscribes to its `action/<domain>/+`
 //! topics, does the work, and publishes its result to
 //! `reply/<action-msg-ulid>`. This module ships the **caller** side +
-//! the convention; the per-domain responders (gluster, marks, …)
+//! the convention; the per-domain responders (meshfs, marks, …)
 //! land with their respective epics. The `mde-bus request` CLI verb
 //! makes the caller path operator-reachable today (an operator can
 //! fire an action + watch for the reply or time out), and the
@@ -79,7 +79,7 @@ impl std::fmt::Display for RpcError {
             Self::BadActionTopic(t) => write!(
                 f,
                 "RPC action topic {t:?} must start with `action/` \
-                 (e.g. action/gluster/resolve-conflict)",
+                 (e.g. action/meshfs/rebalance)",
             ),
             Self::Persist(e) => write!(f, "RPC persist: {e}"),
             Self::Timeout {
@@ -205,15 +205,15 @@ mod tests {
         let (_tmp, p) = persist();
         let ulid = publish_request(
             &p,
-            "action/gluster/resolve-conflict",
+            "action/meshfs/rebalance",
             Priority::Default,
             Some("resolve"),
-            Some("gfid:abc"),
+            Some("chunk:abc"),
         )
         .unwrap();
         assert_eq!(ulid.len(), 26, "ULID is 26 Crockford-base32 chars");
         // The action message is in the persist tree on its topic.
-        let msgs = p.list_since("action/gluster/resolve-conflict", None).unwrap();
+        let msgs = p.list_since("action/meshfs/rebalance", None).unwrap();
         assert_eq!(msgs.len(), 1);
         assert_eq!(msgs[0].ulid, ulid);
     }
@@ -261,17 +261,17 @@ mod tests {
         // Publish first so the responder can find the action message.
         let ulid = publish_request(
             &p,
-            "action/gluster/dismiss-conflict",
+            "action/meshfs/probe-health",
             Priority::Default,
             None,
-            Some("gfid:xyz"),
+            Some("chunk:xyz"),
         )
         .unwrap();
         // Simulate the responder: reply to reply/<ulid>.
-        p.write(&reply_topic(&ulid), Priority::Default, None, Some("dismissed"))
+        p.write(&reply_topic(&ulid), Priority::Default, None, Some("healthy"))
             .unwrap();
         let reply = await_reply(&p, &ulid, Duration::from_secs(5)).await.unwrap();
-        assert_eq!(reply.body.as_deref(), Some("dismissed"));
+        assert_eq!(reply.body.as_deref(), Some("healthy"));
     }
 
     #[tokio::test]

@@ -5,7 +5,7 @@
 //! mesh-home replicated where applicable, the desktop session live for
 //! `full`. Each decision is a **pure classifier** (`classify_*`) taking
 //! already-gathered facts, so the logic is unit-tested without touching
-//! the system; [`run`] gathers the facts (systemctl / gluster / env)
+//! the system; [`run`] gathers the facts (systemctl / mfsmaster / env)
 //! and applies the classifiers.
 
 use std::process::Command;
@@ -54,14 +54,14 @@ pub fn classify_service(active: bool) -> Outcome {
     }
 }
 
-/// `gluster volume info mesh-home` type line: `Ok` only for a replicated
-/// volume, else `Fail`. `None` = volume not found.
+/// LizardFS mesh-storage: `Ok` when `/mnt/mesh-storage` is mounted and
+/// accessible, else `Fail`.
 #[must_use]
-pub fn classify_gluster(volume_type: Option<&str>) -> Outcome {
-    match volume_type {
-        Some(t) if t.eq_ignore_ascii_case("Replicate") => Outcome::Ok,
-        Some(t) => Outcome::Fail(format!("mesh-home is {t}, expected Replicate")),
-        None => Outcome::Fail("mesh-home volume not found".to_string()),
+pub fn classify_meshfs(mounted: bool) -> Outcome {
+    if mounted {
+        Outcome::Ok
+    } else {
+        Outcome::Fail("mesh-storage not mounted at /mnt/mesh-storage".to_string())
     }
 }
 
@@ -104,12 +104,12 @@ pub fn run(profile: Profile) -> Vec<CheckResult> {
     ];
     if matches!(profile, Profile::Headless | Profile::Full) {
         out.push(CheckResult::new(
-            "glusterd",
-            classify_service(service_active("glusterd.service")),
+            "mfschunkserver",
+            classify_service(service_active("mfschunkserver.service")),
         ));
         out.push(CheckResult::new(
-            "mesh-home",
-            classify_gluster(gluster_volume_type("mesh-home").as_deref()),
+            "mesh-storage",
+            classify_meshfs(meshfs_mounted()),
         ));
     }
     if matches!(profile, Profile::Full) {
@@ -160,21 +160,8 @@ fn service_active(unit: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn gluster_volume_type(volume: &str) -> Option<String> {
-    let out = Command::new("gluster")
-        .args(["volume", "info", volume])
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let text = String::from_utf8_lossy(&out.stdout);
-    for line in text.lines() {
-        if let Some(rest) = line.trim().strip_prefix("Type:") {
-            return Some(rest.trim().to_string());
-        }
-    }
-    None
+fn meshfs_mounted() -> bool {
+    std::path::Path::new("/mnt/mesh-storage").exists()
 }
 
 fn other_peer_count() -> usize {
@@ -196,11 +183,9 @@ mod tests {
     }
 
     #[test]
-    fn gluster_replicate_ok_other_fail() {
-        assert_eq!(classify_gluster(Some("Replicate")), Outcome::Ok);
-        assert_eq!(classify_gluster(Some("replicate")), Outcome::Ok);
-        assert!(matches!(classify_gluster(Some("Distribute")), Outcome::Fail(_)));
-        assert!(matches!(classify_gluster(None), Outcome::Fail(_)));
+    fn meshfs_mounted_ok_unmounted_fail() {
+        assert_eq!(classify_meshfs(true), Outcome::Ok);
+        assert!(matches!(classify_meshfs(false), Outcome::Fail(_)));
     }
 
     #[test]

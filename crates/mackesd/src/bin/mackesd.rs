@@ -49,26 +49,6 @@ enum Cmd {
         action: ProbeCmd,
     },
 
-    /// GF-12.2 (v5.0.0) — pre-flight check for the GlusterFS
-    /// mesh-home rollout. Walks the user's XDG dirs, sums on-
-    /// disk bytes, queries `/var/lib/gluster/bricks` free
-    /// space, prints a one-line OK / WARN / NoBrick verdict
-    /// + emits the full structured report as a JSON line to
-    /// stdout. Exits 0 on OK, 1 on WARN / NoBrick. Operators
-    /// can run this before an upgrade to v5.0.0; the
-    /// Workbench Mesh Storage panel (GF-8.x) will surface the
-    /// same report as a banner once it lands.
-    PreflightGlusterHeadroom {
-        /// Override the brick parent dir. Defaults to
-        /// `/var/lib/gluster/bricks` per the design lock.
-        #[clap(long, default_value = "/var/lib/gluster/bricks")]
-        brick_dir: std::path::PathBuf,
-        /// Override `$HOME` (used to locate the five XDG
-        /// dirs). Defaults to the env-var `$HOME`.
-        #[clap(long)]
-        home: Option<std::path::PathBuf>,
-    },
-
     /// MESHFS-1.2 (v5.0.0) — pre-flight check for the LizardFS
     /// mesh-storage rollout. Walks the user's XDG dirs, sums
     /// on-disk bytes, queries `/var/lib/mde/meshfs` free space,
@@ -139,18 +119,17 @@ enum Cmd {
         path: String,
     },
 
-    /// GF-9.3 (v5.0.0) — restore the Nebula CA + (when
-    /// present) the Gluster topology snapshot from an
+    /// MESHFS-14.1 (v5.0.0) — restore the Nebula CA + (when
+    /// present) the LizardFS mesh-storage snapshot from an
     /// armored `state-backup.enc` bundle. CA rows go straight
     /// into the local SQLite store via
-    /// `ca::backup::restore_to_store`; the optional gluster
-    /// XMLs land at `<recovery-dir>/gluster/*.xml` for the
-    /// operator to apply manually with `gluster volume create
-    /// --xml-input`. Automatic volume replay is intentionally
-    /// out of scope — replaying a stale `volume info` against
-    /// a live cluster requires careful peer-by-peer
-    /// reconciliation that's an operator-driven step, not a
-    /// silent CLI action.
+    /// `ca::backup::restore_to_store`; the optional LizardFS
+    /// artifacts land at `<recovery-dir>/` for the operator
+    /// to apply with `mfsmaster --import-metadata`. Automatic
+    /// volume replay is intentionally out of scope — replaying
+    /// a metadata dump against a live cluster requires careful
+    /// peer-by-peer reconciliation that's an operator-driven
+    /// step, not a silent CLI action.
     StateRestore {
         /// Path to the armored `state-backup.enc` bundle.
         bundle: std::path::PathBuf,
@@ -159,11 +138,10 @@ enum Cmd {
         /// worker's env).
         #[clap(long, default_value = "MDE_BACKUP_PASSPHRASE")]
         passphrase_env: String,
-        /// Directory to write the gluster XML payloads into
+        /// Directory to write the LizardFS recovery artifacts
         /// for the operator-side manual replay. Created if
-        /// missing. Default
-        /// `/var/lib/mackesd/restore/gluster`.
-        #[clap(long, default_value = "/var/lib/mackesd/restore/gluster")]
+        /// missing. Default `/var/lib/mackesd/restore/meshfs`.
+        #[clap(long, default_value = "/var/lib/mackesd/restore/meshfs")]
         recovery_dir: std::path::PathBuf,
     },
 
@@ -1066,12 +1044,11 @@ fn main() -> anyhow::Result<()> {
             }
         }
         Cmd::StateRestore { bundle, passphrase_env, recovery_dir } => {
-            // GF-9.3 — bundle decode + CA restore + gluster
-            // XML extraction. We deliberately do NOT replay
-            // the gluster volume config automatically;
-            // operator-driven `gluster volume create
-            // --xml-input` against the extracted XMLs lets the
-            // operator reconcile peer-by-peer.
+            // MESHFS-14.1 — bundle decode + CA restore + LizardFS
+            // metadata extraction. We deliberately do NOT replay
+            // the LizardFS volume config automatically; operator
+            // runs `mfsmaster --import-metadata` against the
+            // extracted dump.
             let passphrase = std::env::var(&passphrase_env).with_context(|| {
                 format!(
                     "passphrase env-var {passphrase_env} unset — \
@@ -1095,49 +1072,6 @@ fn main() -> anyhow::Result<()> {
                 ca_n = plaintext.ca_certs.len(),
                 peer_n = plaintext.peer_certs.len(),
             );
-
-            match plaintext.gluster_snapshot.as_ref() {
-                None => {
-                    eprintln!(
-                        "[state-restore] bundle has no gluster snapshot (CA-only or pre-v5.0.0) — skipping gluster step",
-                    );
-                }
-                Some(snap) => {
-                    std::fs::create_dir_all(&recovery_dir).with_context(|| {
-                        format!("mkdir {}", recovery_dir.display())
-                    })?;
-                    let mut wrote = 0usize;
-                    for (name, payload) in [
-                        ("volume-info.xml", snap.volume_info_xml.as_deref()),
-                        ("peer-status.xml", snap.peer_status_xml.as_deref()),
-                        ("volume-status.xml", snap.volume_status_xml.as_deref()),
-                    ] {
-                        if let Some(body) = payload {
-                            let path = recovery_dir.join(name);
-                            std::fs::write(&path, body).with_context(|| {
-                                format!("writing {}", path.display())
-                            })?;
-                            wrote += 1;
-                            eprintln!(
-                                "[state-restore] gluster: wrote {} ({} bytes)",
-                                path.display(),
-                                body.len(),
-                            );
-                        }
-                    }
-                    if wrote == 0 {
-                        eprintln!(
-                            "[state-restore] gluster snapshot present but every section was empty — nothing to apply",
-                        );
-                    } else {
-                        eprintln!(
-                            "[state-restore] gluster: {wrote} XML payload(s) at {dir}; replay manually with \
-                             `gluster volume create --xml-input <volume-info.xml>` (see docs/help/mesh-recovery.md)",
-                            dir = recovery_dir.display(),
-                        );
-                    }
-                }
-            }
 
             // MESHFS-14.1 — extract LizardFS snapshot if present.
             match plaintext.meshfs_snapshot.as_ref() {
@@ -1207,25 +1141,6 @@ fn main() -> anyhow::Result<()> {
                         );
                     }
                 }
-            }
-        }
-        Cmd::PreflightGlusterHeadroom { brick_dir, home } => {
-            // GF-12.2 — pre-flight headroom check for the
-            // mesh-home rollout. Operator runs this before
-            // upgrading to v5.0.0; the Workbench Mesh Storage
-            // panel (GF-8.x) consumes the same JSON when it
-            // lands.
-            let home_dir = home.clone().or_else(|| {
-                std::env::var_os("HOME").map(std::path::PathBuf::from)
-            }).context("no HOME env var; pass --home <dir>")?;
-            let xdg = mackesd_core::gluster::headroom::default_xdg_dirs(&home_dir);
-            let report = mackesd_core::gluster::headroom::check(&brick_dir, &xdg);
-            eprintln!("{}", report.summary());
-            println!("{}", serde_json::to_string(&report).context("encode report")?);
-            match report.verdict {
-                mackesd_core::gluster::headroom::Verdict::Ok => {}
-                mackesd_core::gluster::headroom::Verdict::Warn
-                | mackesd_core::gluster::headroom::Verdict::NoBrick => std::process::exit(1),
             }
         }
         Cmd::PreflightMeshFsHeadroom { data_dir, home } => {
@@ -3079,43 +2994,8 @@ fn run_serve(
             .expect("worker_names mutex")
             .push("alert_relay".into());
 
-        // GF-2.1 + GF-2.3 + GF-2.4 (v5.0.0) — gluster fleet
-        // supervisor. Spawned unconditionally; the worker
-        // silently no-ops when the `gluster` CLI isn't on
-        // PATH (operator hasn't enabled the v5.0.0 substrate)
-        // OR when the GF-1.3.a overlay-ip publish file is
-        // missing (peer hasn't completed Nebula enrollment).
-        // Once both are in place, the first tick bootstraps
-        // the mesh-home volume per the design-doc § 3.4
-        // genesis path. Opens its own SQLite handle so the
-        // future GF-2.7 quota probe + GF-2.8 conflict detector
-        // can audit-log findings without contending with the
-        // backup worker's lock.
-        match mackesd_core::store::open(&db_path) {
-            Ok(conn) => {
-                let gluster_store = Arc::new(tokio::sync::Mutex::new(conn));
-                sup.spawn(Spawn::new(
-                    mackesd_core::workers::gluster_worker::GlusterWorker::new(gluster_store)
-                        .with_qnm_peer_discovery(qnm_root.clone(), node_id.clone()),
-                    RestartPolicy::Always,
-                ));
-                worker_names
-                    .lock()
-                    .expect("worker_names mutex")
-                    .push("gluster_worker".into());
-            }
-            Err(e) => {
-                tracing::warn!(
-                    error = %e,
-                    db_path = %db_path.display(),
-                    "gluster_worker: sqlite open failed; worker skipped"
-                );
-            }
-        }
-
         // MESHFS-2.1 (v5.0.0) — LizardFS mesh-storage fleet supervisor.
-        // Follows the gluster_worker pattern: silent no-op when the
-        // mfsmaster/mfschunkserver binaries are absent.
+        // Silent no-op when mfsmaster/mfschunkserver binaries are absent.
         sup.spawn(Spawn::new(
             mackesd_core::workers::meshfs_worker::MeshFsWorker::new()
                 .with_qnm_peer_discovery(qnm_root.clone(), node_id.clone()),
@@ -3414,58 +3294,6 @@ fn run_serve(
                                 );
                             }
                         }
-                        // GF-2.2 (v5.0.0) — Gluster.Status surface on
-                        // the same shared connection so Workbench
-                        // mesh-storage / mde-files / panel applet
-                        // consumers reach it without claiming a
-                        // second bus name. Signal dispatcher spawns
-                        // immediately after registration; the
-                        // GlusterSignalSender it returns is the
-                        // hook GF-2.2.b will wire into the
-                        // gluster_worker tick.
-                        let gluster_svc = mackesd_core::ipc::gluster::GlusterStatusService::new();
-                        match mackesd_core::ipc::gluster::register_gluster_status_on(
-                            &conn, gluster_svc,
-                        )
-                        .await
-                        {
-                            Ok(()) => {
-                                tracing::info!(
-                                    "Gluster.Status dbus surface registered at {}",
-                                    mackesd_core::ipc::gluster::GLUSTER_STATUS_OBJECT_PATH
-                                );
-                                match mackesd_core::ipc::gluster::spawn_signal_dispatcher(
-                                    conn.clone(),
-                                )
-                                .await
-                                {
-                                    Ok(_sender) => {
-                                        // GF-2.2.b will plumb _sender
-                                        // into GlusterWorker::with_signal_sender
-                                        // and emit on state transitions.
-                                        tracing::info!(
-                                            "Gluster signal dispatcher spawned; GF-2.2.b will wire the worker hook"
-                                        );
-                                    }
-                                    Err(e) => {
-                                        tracing::warn!(
-                                            error = %e,
-                                            "Gluster signal dispatcher spawn failed; \
-                                             signals will not fire until next mackesd restart"
-                                        );
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                tracing::warn!(
-                                    error = %e,
-                                    "Gluster.Status dbus registration failed; \
-                                     mesh-storage panel + mde-files gluster awareness \
-                                     will fall back to direct CLI shell-outs"
-                                );
-                            }
-                        }
-
                         // v4.1 (2026-05-24) — Shell.{Healthz,Workers}
                         // surface on the same shared connection.
                         // Workers list is the shared Arc<Mutex<>>

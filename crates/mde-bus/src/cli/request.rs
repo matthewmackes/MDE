@@ -22,7 +22,7 @@ use crate::rpc;
 #[derive(Args, Debug, Default)]
 pub struct RequestArgs {
     /// Action topic — must be in the `action/<domain>/<verb>`
-    /// namespace (e.g. `action/gluster/resolve-conflict`).
+    /// namespace (e.g. `action/meshfs/rebalance`).
     pub action_topic: String,
     /// Optional request body (e.g. a gfid or a window address).
     pub body: Option<String>,

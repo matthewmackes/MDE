@@ -6,7 +6,7 @@ use iced::{Background, Border, Color, Element, Length, Padding, Theme};
 
 use crate::a11y_labels::{self, A11yAction};
 use crate::app::{Crumb, Message, TrashItem};
-use crate::backend::{BackendSnapshot, MeshVolumeBadge};
+use crate::backend::BackendSnapshot;
 use crate::grid;
 use crate::icons;
 use crate::model::{fmt_count, FileRow, Layout, LocalPin, Peer, PeerStatus, SelfNode, View};
@@ -19,53 +19,21 @@ use crate::widgets::{
 
 // ─── Titlebar ──────────────────────────────────────────────────────────────
 
-/// Pre-mesh-aware titlebar that callers without a live snapshot
-/// can still use (tests + the panel-boot smoke gate). The
-/// production app uses `titlebar_with_status` so the operator
-/// sees the live Gluster volume state next to the peer count.
+/// Titlebar with live peer-count status pill.
 pub fn titlebar(online: usize, total: usize) -> Element<'static, Message> {
-    titlebar_inner(online, total, None)
+    titlebar_inner(online, total)
 }
 
-/// Titlebar carrying a live Gluster snapshot. When `volume` is
-/// `Some`, the status pill reads
-/// `mesh up · N/M peers · <vol> · K healing` (the volume name,
-/// heal-queue depth + conflict count surface inline when
-/// non-zero); when `None`, falls back to the older
-/// `mesh up · N/M peers` shape so the panel still renders if
-/// mackesd hasn't started yet.
-pub fn titlebar_with_status<'a>(
+/// Titlebar carrying live peer-count status.
+pub fn titlebar_with_status(
     online: usize,
     total: usize,
-    volume: Option<&'a MeshVolumeBadge>,
-) -> Element<'a, Message> {
-    titlebar_inner(online, total, volume)
+) -> Element<'static, Message> {
+    titlebar_inner(online, total)
 }
 
-fn titlebar_inner<'a>(
-    online: usize,
-    total: usize,
-    volume: Option<&'a MeshVolumeBadge>,
-) -> Element<'a, Message> {
-    let mesh_text = match volume {
-        Some(v) if v.volume_online => {
-            let mut parts = vec![
-                format!("mesh up · {online}/{total} peers"),
-                v.volume_name.clone(),
-            ];
-            if v.heal_pending_count > 0 {
-                parts.push(format!("{} healing", v.heal_pending_count));
-            }
-            if v.conflict_count > 0 {
-                parts.push(format!("⚠ {} conflict", v.conflict_count));
-            }
-            parts.join(" · ")
-        }
-        Some(_) => format!(
-            "mesh up · {online}/{total} peers · volume offline"
-        ),
-        None => format!("mesh up · {online}/{total} peers"),
-    };
+fn titlebar_inner(online: usize, total: usize) -> Element<'static, Message> {
+    let mesh_text = format!("mesh up · {online}/{total} peers");
 
     let title = row![
         text("Artifact Manager").size(12).color(t::FG),
@@ -961,32 +929,17 @@ pub fn local_veil<'a>(snap: &'a BackendSnapshot) -> Element<'a, Message> {
 /// local files. The page is the operator's primary entry into
 /// the shared file plane.
 pub fn mesh_home<'a>(snap: &'a BackendSnapshot) -> Element<'a, Message> {
-    let (vol_summary, mount_subtitle) =
-        match (snap.mesh_volume.as_ref(), snap.mesh_mount.as_ref()) {
-            (Some(v), Some(m)) if v.volume_online && m.is_mounted => (
-                vec![
-                    BannerStat::new(fmt_bytes_u64(v.total_bytes), "Total"),
-                    BannerStat::new(fmt_bytes_u64(v.free_bytes), "Free"),
-                    BannerStat::new(v.bricks_count.to_string(), "Bricks"),
-                ],
-                format!("GlusterFS mounted at {}", m.mount_point),
-            ),
-            (Some(v), _) if v.volume_online => (
-                vec![
-                    BannerStat::new(fmt_bytes_u64(v.total_bytes), "Total"),
-                    BannerStat::new(fmt_bytes_u64(v.free_bytes), "Free"),
-                ],
-                "GlusterFS volume online; FUSE mount pending".into(),
-            ),
-            _ => (
-                vec![BannerStat::new("—".to_string(), "No mesh".to_string())],
-                "Local-only mode · gluster bootstrap pending".into(),
-            ),
-        };
+    let peer_count = snap.peers.len();
+    let vol_summary = vec![BannerStat::new(peer_count.to_string(), "Peers")];
+    let mount_subtitle = if peer_count > 0 {
+        "mesh-storage active · /mnt/mesh-storage".into()
+    } else {
+        "mesh-storage pending · no peers enrolled yet".into()
+    };
 
     let banner_widget = banner(
         icons::MESH_HUB,
-        "Mesh Home".to_string(),
+        "Mesh Storage".to_string(),
         mount_subtitle,
         vol_summary,
     );
@@ -1042,7 +995,7 @@ pub fn mesh_home_child<'a>(
     let sub = path.join("/");
     let banner_subtitle = if path.is_empty() {
         format!(
-            "{count} item{plural} · mesh-replicated via GlusterFS",
+            "{count} item{plural} · mesh-replicated via mesh-storage",
             plural = if count == 1 { "" } else { "s" }
         )
     } else {
@@ -1369,24 +1322,6 @@ pub fn resolve_conflict_dialog<'a>(
     .width(Length::Fill)
     .height(Length::Fill)
     .into()
-}
-
-fn fmt_bytes_u64(n: u64) -> String {
-    const KB: u64 = 1024;
-    const MB: u64 = KB * 1024;
-    const GB: u64 = MB * 1024;
-    const TB: u64 = GB * 1024;
-    if n >= TB {
-        format!("{:.1} TB", n as f64 / TB as f64)
-    } else if n >= GB {
-        format!("{:.1} GB", n as f64 / GB as f64)
-    } else if n >= MB {
-        format!("{:.1} MB", n as f64 / MB as f64)
-    } else if n >= KB {
-        format!("{} KB", n / KB)
-    } else {
-        format!("{n} B")
-    }
 }
 
 fn local_pin_tile(pin: LocalPin) -> Element<'static, Message> {

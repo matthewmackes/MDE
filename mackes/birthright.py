@@ -1470,8 +1470,8 @@ def apply_netdata_monitor(_preset: Preset) -> List[str]:
         "    enabled = no\n"
         "\n"
         "[plugins]\n"
-        "    # python.d collector is what powers gluster +\n"
-        "    # nebula source data; keep it enabled.\n"
+        "    # python.d collector is what powers nebula +\n"
+        "    # other source data; keep it enabled.\n"
         "    python.d = yes\n"
         "\n"
         "[web]\n"
@@ -1513,81 +1513,6 @@ def apply_netdata_monitor(_preset: Preset) -> List[str]:
                 f"netdata: reload + restart both failed (reload: {last}; restart: {last2})"
             )
 
-    for line in actions:
-        log_action(line)
-    return actions
-
-
-# ---------------------------------------------------------------------------
-# GF-3.2 (v5.0.0) — gluster bootstrap status step. Per the
-# v5.0.0 25-Q lock, the gluster_worker daemon (GF-2.x) owns
-# the actual volume bootstrap; this birthright step is the
-# operator-visible probe that confirms the substrate is in
-# place + reports what the worker will do on its next tick.
-# No worker invocation here — the wholesale-Python-retire
-# directive moved daemon work to mackesd, not Python.
-# ---------------------------------------------------------------------------
-
-
-def apply_gluster_bootstrap(_preset: Preset) -> List[str]:
-    """GF-3.2: Confirm the v5.0.0 gluster substrate is in place.
-
-    Probes whether the `glusterd` service is reachable + whether
-    `gluster pool list` succeeds. Reports the state via the
-    wizard's apply rail. Does NOT bootstrap the mesh-home
-    volume itself — that's the `mackesd::workers::gluster_worker`
-    daemon's job (GF-2.4 genesis path); this step gives the
-    operator confidence the daemon will succeed when it runs.
-
-    Idempotent + safe to re-run. Returns a clean log when:
-      - gluster CLI not installed (operator on a v4.x install
-        without the v5.0.0 substrate; not an error)
-      - glusterd reachable + mesh-home volume already exists
-        (gluster_worker has bootstrapped successfully)
-      - glusterd reachable + mesh-home volume missing
-        (gluster_worker will bootstrap on its next tick)
-    """
-    actions: List[str] = []
-
-    if shutil.which("gluster") is None:
-        actions.append(
-            "gluster: CLI not installed — v5.0.0 substrate inactive. "
-            "Install glusterfs-server (RPM `Requires:` pulls it in on next install)."
-        )
-        log_action(actions[-1])
-        return actions
-
-    rc, out = _run(["systemctl", "is-active", "glusterd.service"], timeout=10)
-    if rc != 0 or "active" not in out:
-        actions.append(
-            "gluster: glusterd.service not active. "
-            "Try `systemctl enable --now glusterd.service` (the RPM %post does this on install)."
-        )
-        log_action(actions[-1])
-        return actions
-
-    rc, out = _run(["gluster", "pool", "list"], timeout=15)
-    if rc != 0:
-        last = out.strip().splitlines()[-1] if out.strip() else f"rc={rc}"
-        actions.append(f"gluster: pool list failed: {last}")
-        log_action(actions[-1])
-        return actions
-    actions.append("gluster: glusterd reachable; pool list ok")
-
-    rc, out = _run(["gluster", "volume", "info", "mesh-home"], timeout=15)
-    if rc == 0:
-        actions.append(
-            "gluster: mesh-home volume already exists "
-            "(gluster_worker bootstrapped it on a previous tick)"
-        )
-    else:
-        actions.append(
-            "gluster: mesh-home volume not yet created — "
-            "mackesd's gluster_worker will bootstrap it on the next tick "
-            "(needs the Nebula overlay-ip publish file at "
-            "/var/lib/mackesd/nebula/overlay-ip, written by nebula_supervisor "
-            "after first peer enrollment)."
-        )
     for line in actions:
         log_action(line)
     return actions
@@ -2746,7 +2671,6 @@ STEP_FUNCS: "dict[str, Callable[[Preset], List[str]]]" = {
     "uid-normalize":     apply_uid_normalize,
     "user-dirs":         apply_user_dirs,
     "mesh":              apply_qnm,
-    "gluster":           apply_gluster_bootstrap,
     "firewall-log-denied": apply_firewall_log_denied,
     # --- headless + full ---
     "fleet":             apply_fleet,
@@ -2772,7 +2696,7 @@ STEP_FUNCS: "dict[str, Callable[[Preset], List[str]]]" = {
     "thunar-autostart":  apply_thunar_autostart,
 }
 
-_MESH_STEPS: tuple[str, ...] = ("uid-normalize", "user-dirs", "mesh", "gluster", "firewall-log-denied")
+_MESH_STEPS: tuple[str, ...] = ("uid-normalize", "user-dirs", "mesh", "firewall-log-denied")
 _HEADLESS_EXTRA: tuple[str, ...] = ("fleet", "monitor", "clipboard", "print-sharing")
 _DESKTOP_EXTRA: tuple[str, ...] = (
     "third-party-repos", "system-update", "flathub", "themes", "fonts",

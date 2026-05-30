@@ -111,9 +111,8 @@ pub const DEFAULT_ROLE_HOST_MARKER: &str = "/var/lib/mackesd/nebula/role.host";
 /// Cross-thread events workers hand to the signal dispatcher so
 /// the matching `dev.mackes.MDE.Nebula.Status.*` D-Bus signals
 /// fan out to every subscribed consumer (Workbench Overview,
-/// applets, mde-files). Mirrors the GF-2.2
-/// [`crate::ipc::gluster::GlusterSignal`] pattern so the
-/// daemon's worker→IPC plumbing is consistent across surfaces.
+/// applets, mde-files). The daemon's worker→IPC plumbing follows
+/// the same signal-enum pattern as the meshfs worker (MESHFS-1).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NebulaSignal {
     /// A peer's reachability flipped. Fired by the
