@@ -29,6 +29,7 @@ mod clipboard;
 mod clock;
 mod dismiss;
 mod expose;
+mod farewell;
 mod fonts;
 mod hostname_info;
 mod icon_mapper;
@@ -148,6 +149,13 @@ enum Kind {
     /// workspace; Esc to dismiss. No wlr-screencopy thumbnails.
     /// Bind with `bindsym $mod+Tab exec mde-popover overview`.
     Overview,
+    /// ANIM-7.c — session-end fade-out overlay (Q40). Fullscreen
+    /// Layer::Overlay that fades transparent → opaque charcoal
+    /// (~200 ms) then executes the session action (logout/restart/
+    /// shutdown). Reads `--action <slug>` CLI arg. Bound to
+    /// `bindsym $mod+Shift+e exec mde-popover farewell --action logout`
+    /// in data/sway/config.d/mackes-defaults.conf.
+    Farewell,
 }
 
 fn main() -> iced_layershell::Result {
@@ -184,5 +192,6 @@ fn main() -> iced_layershell::Result {
         Kind::Urgent => urgent::run(),
         Kind::WhichKey => which_key::run(),
         Kind::Overview => overview::run(),
+        Kind::Farewell => farewell::run(),
     }
 }
