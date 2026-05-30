@@ -12,9 +12,9 @@ use std::path::PathBuf;
 use iced::widget::button::Status as ButtonStatus;
 use iced::widget::{button, column, row, text, text_editor, text_input, Space};
 use iced::{alignment, Background, Border, Color, Element, Length, Task};
-use mde_theme::{Density, EmptyState, FontSize, Icon, Palette, Radii, TypeRole};
+use mde_theme::{CardState, Density, EmptyState, FontSize, Icon, ObjectCard, Palette, Radii, TypeRole};
 
-use crate::panel_chrome::{empty_state, panel_container};
+use crate::panel_chrome::{empty_state, object_card, panel_container};
 
 // ─── local mirror types ──────────────────────────────────────────────────────
 // These shadow the mde-bus structs so the workbench crate does not
@@ -54,6 +54,35 @@ struct SubsYaml {
 struct QuietHoursYaml {
     start: String,
     end: String,
+}
+
+// ─── Topics tab data ─────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Default)]
+struct TopicInfo {
+    name: String,
+    message_count: usize,
+    last_activity_ms: i64,
+    priority: String,
+}
+
+#[derive(Debug, Clone, Default)]
+struct TopicMessage {
+    title: String,
+    body_preview: String,
+    published_at_ms: i64,
+    publisher: String,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct TopicsTabState {
+    pub list: Vec<TopicInfo>,
+    pub expanded: Option<String>,
+    pub messages: Vec<TopicMessage>,
+    pub loading: bool,
+    pub messages_loading: bool,
+    pub error: Option<String>,
+    pub loaded: bool,
 }
 
 // ─── Hook samples ────────────────────────────────────────────────────────────
@@ -220,6 +249,7 @@ impl Tab {
 #[derive(Debug, Clone, Default)]
 pub struct MeshBusPanel {
     pub active_tab: Tab,
+    pub topics: TopicsTabState,
     pub subs: SubsTabState,
     pub hooks: HooksTabState,
     pub dnd: DndTabState,
@@ -230,6 +260,12 @@ pub struct MeshBusPanel {
 #[derive(Debug, Clone)]
 pub enum Message {
     SelectTab(Tab),
+    // Topics tab
+    TopicsLoaded(Result<Vec<TopicInfo>, String>),
+    TopicSelected(String),
+    TopicDeselected,
+    TopicMessagesLoaded(Result<Vec<TopicMessage>, String>),
+    TopicsRefreshClicked,
     // Hooks tab
     HooksLoaded(Result<String, String>),
     HooksEdited(text_editor::Action),
@@ -268,6 +304,184 @@ fn bus_root() -> Option<PathBuf> {
                 .map(|h| PathBuf::from(h).join(".local").join("share"))
         })
         .map(|d| d.join("mde").join("bus"))
+}
+
+/// Walk `bus_root()/topics/` (BFS, depth ≤ 4) and return one
+/// [`TopicInfo`] per leaf directory that contains `.json` files.
+async fn load_topics() -> Result<Vec<TopicInfo>, String> {
+    let root = bus_root().ok_or_else(|| "no data dir".to_string())?;
+    let topics_dir = root.join("topics");
+
+    if tokio::fs::metadata(&topics_dir).await.is_err() {
+        return Ok(Vec::new());
+    }
+
+    let mut queue: std::collections::VecDeque<(PathBuf, usize)> = Default::default();
+    queue.push_back((topics_dir.clone(), 0));
+    let mut leaf_dirs: Vec<(PathBuf, String)> = Vec::new();
+
+    while let Some((dir, depth)) = queue.pop_front() {
+        if depth > 4 {
+            continue;
+        }
+        let rel = dir
+            .strip_prefix(&topics_dir)
+            .unwrap_or(std::path::Path::new(""))
+            .to_string_lossy()
+            .replace(std::path::MAIN_SEPARATOR, "/");
+
+        let mut rd = match tokio::fs::read_dir(&dir).await {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        let mut has_json = false;
+        let mut subdirs = Vec::new();
+        while let Ok(Some(entry)) = rd.next_entry().await {
+            let path = entry.path();
+            let ft = match entry.file_type().await {
+                Ok(ft) => ft,
+                Err(_) => continue,
+            };
+            if ft.is_dir() {
+                subdirs.push(path);
+            } else if path.extension().map(|e| e == "json").unwrap_or(false) {
+                has_json = true;
+            }
+        }
+        if has_json && !rel.is_empty() {
+            leaf_dirs.push((dir.clone(), rel));
+        }
+        for sub in subdirs {
+            queue.push_back((sub, depth + 1));
+        }
+    }
+
+    let mut infos = Vec::new();
+    for (dir, name) in leaf_dirs {
+        infos.push(stat_topic_dir(name, &dir).await);
+    }
+    infos.sort_by(|a, b| b.last_activity_ms.cmp(&a.last_activity_ms));
+    Ok(infos)
+}
+
+/// Stat a single topic directory: count `.json` files + extract
+/// the priority from the newest file.
+async fn stat_topic_dir(name: String, dir: &PathBuf) -> TopicInfo {
+    let mut message_count = 0usize;
+    let mut newest_ms = 0i64;
+    let mut newest_path: Option<PathBuf> = None;
+
+    if let Ok(mut rd) = tokio::fs::read_dir(dir).await {
+        while let Ok(Some(entry)) = rd.next_entry().await {
+            let path = entry.path();
+            if path.extension().map(|e| e == "json").unwrap_or(false) {
+                message_count += 1;
+                if let Ok(meta) = entry.metadata().await {
+                    if let Ok(modified) = meta.modified() {
+                        let ms = modified
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis() as i64;
+                        if ms > newest_ms {
+                            newest_ms = ms;
+                            newest_path = Some(path);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let priority = if let Some(p) = newest_path {
+        tokio::fs::read_to_string(&p)
+            .await
+            .ok()
+            .and_then(|txt| serde_json::from_str::<serde_json::Value>(&txt).ok())
+            .and_then(|v| v["priority"].as_str().map(String::from))
+            .unwrap_or_else(|| "default".to_string())
+    } else {
+        String::new()
+    };
+
+    TopicInfo {
+        name,
+        message_count,
+        last_activity_ms: newest_ms,
+        priority,
+    }
+}
+
+/// Load the 5 most-recent messages from a topic directory.
+async fn load_topic_messages(topic: String) -> Result<Vec<TopicMessage>, String> {
+    let root = bus_root().ok_or_else(|| "no data dir".to_string())?;
+    let topic_dir = root.join("topics").join(
+        std::path::Path::new(&topic.replace('/', &std::path::MAIN_SEPARATOR.to_string())),
+    );
+
+    let mut files: Vec<(i64, PathBuf)> = Vec::new();
+    if let Ok(mut rd) = tokio::fs::read_dir(&topic_dir).await {
+        while let Ok(Some(entry)) = rd.next_entry().await {
+            let path = entry.path();
+            if path.extension().map(|e| e == "json").unwrap_or(false) {
+                if let Ok(meta) = entry.metadata().await {
+                    if let Ok(modified) = meta.modified() {
+                        let ms = modified
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis() as i64;
+                        files.push((ms, path));
+                    }
+                }
+            }
+        }
+    }
+    files.sort_by(|a, b| b.0.cmp(&a.0));
+    files.truncate(5);
+
+    let mut messages = Vec::new();
+    for (_ms, path) in files {
+        if let Ok(txt) = tokio::fs::read_to_string(&path).await {
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&txt) {
+                let title = val["title"].as_str().unwrap_or("(no title)").to_string();
+                let body = val["body"].as_str().unwrap_or("").to_string();
+                let body_preview = if body.len() > 80 {
+                    format!("{}…", &body[..80])
+                } else {
+                    body
+                };
+                let published_at_ms = val["ts_unix_ms"].as_i64().unwrap_or(0);
+                let publisher = val["publisher"].as_str().unwrap_or("").to_string();
+                messages.push(TopicMessage {
+                    title,
+                    body_preview,
+                    published_at_ms,
+                    publisher,
+                });
+            }
+        }
+    }
+    Ok(messages)
+}
+
+/// Format a Unix-ms timestamp as a human-readable relative time string.
+fn format_relative_time(ms: i64) -> String {
+    if ms == 0 {
+        return "never".to_string();
+    }
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64;
+    let diff_s = (now_ms - ms).max(0) / 1000;
+    if diff_s < 60 {
+        "just now".to_string()
+    } else if diff_s < 3600 {
+        format!("{} min ago", diff_s / 60)
+    } else if diff_s < 86400 {
+        format!("{}h ago", diff_s / 3600)
+    } else {
+        format!("{}d ago", diff_s / 86400)
+    }
 }
 
 async fn load_subs() -> Result<(Vec<String>, Vec<String>), String> {
@@ -464,6 +678,15 @@ impl MeshBusPanel {
         match msg {
             Message::SelectTab(tab) => {
                 self.active_tab = tab;
+                if tab == Tab::Topics
+                    && !self.topics.loaded
+                    && !self.topics.loading
+                {
+                    self.topics.loading = true;
+                    return Task::perform(load_topics(), |r| {
+                        crate::Message::MeshBus(Message::TopicsLoaded(r))
+                    });
+                }
                 if tab == Tab::Subscriptions
                     && !self.subs.loaded
                     && !self.subs.loading
@@ -486,6 +709,59 @@ impl MeshBusPanel {
                     });
                 }
                 Task::none()
+            }
+
+            Message::TopicsLoaded(result) => {
+                self.topics.loading = false;
+                self.topics.loaded = true;
+                match result {
+                    Ok(list) => {
+                        self.topics.list = list;
+                        self.topics.error = None;
+                    }
+                    Err(e) => {
+                        self.topics.error = Some(e);
+                    }
+                }
+                Task::none()
+            }
+
+            Message::TopicSelected(name) => {
+                if self.topics.expanded.as_deref() == Some(&name) {
+                    self.topics.expanded = None;
+                    self.topics.messages.clear();
+                    return Task::none();
+                }
+                self.topics.expanded = Some(name.clone());
+                self.topics.messages_loading = true;
+                Task::perform(load_topic_messages(name), |r| {
+                    crate::Message::MeshBus(Message::TopicMessagesLoaded(r))
+                })
+            }
+
+            Message::TopicDeselected => {
+                self.topics.expanded = None;
+                self.topics.messages.clear();
+                Task::none()
+            }
+
+            Message::TopicMessagesLoaded(result) => {
+                self.topics.messages_loading = false;
+                match result {
+                    Ok(msgs) => self.topics.messages = msgs,
+                    Err(_) => self.topics.messages.clear(),
+                }
+                Task::none()
+            }
+
+            Message::TopicsRefreshClicked => {
+                self.topics.loaded = false;
+                self.topics.loading = true;
+                self.topics.expanded = None;
+                self.topics.messages.clear();
+                Task::perform(load_topics(), |r| {
+                    crate::Message::MeshBus(Message::TopicsLoaded(r))
+                })
             }
 
             Message::HooksLoaded(result) => {
@@ -801,15 +1077,7 @@ impl MeshBusPanel {
         };
 
         let body: Element<'_, crate::Message> = match self.active_tab {
-            Tab::Topics => empty_state(
-                EmptyState::info(
-                    "No topics active yet",
-                    "Publish a message or start a webhook to create the first topic.",
-                )
-                .with_icon(Icon::Notification),
-                palette,
-                || crate::Message::Noop,
-            ),
+            Tab::Topics => self.view_topics_tab(palette, sizes),
             Tab::Subscriptions => self.view_subscriptions_tab(palette, sizes),
             Tab::Hooks => self.view_hooks_tab(palette, sizes),
             Tab::Audit => empty_state(
@@ -838,6 +1106,162 @@ impl MeshBusPanel {
         .align_x(alignment::Horizontal::Left);
 
         panel_container(content.into(), density)
+    }
+
+    fn view_topics_tab(
+        &self,
+        palette: Palette,
+        sizes: FontSize,
+    ) -> Element<'_, crate::Message> {
+        if self.topics.loading {
+            return text("Loading…")
+                .size(TypeRole::Body.size_in(sizes))
+                .color(palette.text_muted.into_iced_color())
+                .into();
+        }
+
+        if !self.topics.loaded || self.topics.list.is_empty() {
+            return empty_state(
+                EmptyState::info(
+                    "No topics active yet",
+                    "Publish a message or start a webhook to create the first topic.",
+                )
+                .with_icon(Icon::Notification),
+                palette,
+                || crate::Message::Noop,
+            );
+        }
+
+        let radii = Radii::defaults();
+        let r = f32::from(radii.sm);
+        let raised = palette.raised.into_iced_color();
+
+        // Build the cascading topic list.
+        let mut items: Vec<Element<'_, crate::Message>> = Vec::new();
+
+        for info in &self.topics.list {
+            let is_expanded = self.topics.expanded.as_deref() == Some(info.name.as_str());
+            let card_state = if is_expanded {
+                CardState::Selected
+            } else {
+                CardState::Default
+            };
+
+            let subtitle = {
+                let count_str = if info.message_count == 1 {
+                    "1 message".to_string()
+                } else {
+                    format!("{} messages", info.message_count)
+                };
+                let pri = if info.priority.is_empty() {
+                    String::new()
+                } else {
+                    format!(" · {}", info.priority)
+                };
+                let age = format!(" · {}", format_relative_time(info.last_activity_ms));
+                format!("{count_str}{pri}{age}")
+            };
+
+            let card = ObjectCard::small(Icon::Notification, info.name.as_str())
+                .with_subtitle(subtitle)
+                .with_state(card_state);
+
+            let topic_name = info.name.clone();
+            let press_msg = if is_expanded {
+                crate::Message::MeshBus(Message::TopicDeselected)
+            } else {
+                crate::Message::MeshBus(Message::TopicSelected(topic_name))
+            };
+
+            let card_btn: Element<'_, crate::Message> = button(object_card(card, palette))
+                .padding(0)
+                .style(move |_t, _s: ButtonStatus| button::Style {
+                    background: None,
+                    text_color: Color::TRANSPARENT,
+                    border: Border {
+                        color: Color::TRANSPARENT,
+                        width: 0.0,
+                        radius: r.into(),
+                    },
+                    shadow: iced::Shadow::default(),
+                })
+                .on_press(press_msg)
+                .into();
+
+            items.push(card_btn);
+
+            // Cascade: message list below the selected card.
+            if is_expanded {
+                if self.topics.messages_loading {
+                    items.push(
+                        text("Loading messages…")
+                            .size(TypeRole::Caption.size_in(sizes))
+                            .color(palette.text_muted.into_iced_color())
+                            .into(),
+                    );
+                } else if self.topics.messages.is_empty() {
+                    items.push(
+                        text("No messages stored for this topic yet.")
+                            .size(TypeRole::Caption.size_in(sizes))
+                            .color(palette.text_muted.into_iced_color())
+                            .into(),
+                    );
+                } else {
+                    use iced::widget::container;
+                    let msg_rows: Vec<Element<'_, crate::Message>> = self
+                        .topics
+                        .messages
+                        .iter()
+                        .map(|m| {
+                            let age = format_relative_time(m.published_at_ms);
+                            let by = if m.publisher.is_empty() {
+                                String::new()
+                            } else {
+                                format!(" · @{}", m.publisher)
+                            };
+                            column![
+                                text(m.title.as_str())
+                                    .size(TypeRole::Body.size_in(sizes))
+                                    .color(palette.text.into_iced_color()),
+                                text(format!("{}{} · {}", age, by, m.body_preview.as_str()))
+                                    .size(TypeRole::Caption.size_in(sizes))
+                                    .color(palette.text_muted.into_iced_color()),
+                            ]
+                            .spacing(2)
+                            .into()
+                        })
+                        .collect();
+                    let msg_list = column(msg_rows).spacing(10);
+                    items.push(
+                        container(msg_list)
+                            .padding(iced::Padding { top: 8.0, right: 16.0, bottom: 8.0, left: 16.0 })
+                            .style(move |_t: &iced::Theme| iced::widget::container::Style {
+                                background: Some(Background::Color(raised)),
+                                border: Border {
+                                    color: Color::TRANSPARENT,
+                                    width: 0.0,
+                                    radius: r.into(),
+                                },
+                                ..Default::default()
+                            })
+                            .width(Length::Fill)
+                            .into(),
+                    );
+                }
+                items.push(Space::with_height(4).into());
+            }
+        }
+
+        if let Some(e) = &self.topics.error {
+            items.push(
+                text(format!("Error: {e}"))
+                    .size(TypeRole::Caption.size_in(sizes))
+                    .color(Color { r: 0.9, g: 0.2, b: 0.2, a: 1.0 })
+                    .into(),
+            );
+        }
+
+        column(items).spacing(4).into()
     }
 
     fn view_subscriptions_tab(
@@ -1575,6 +1999,140 @@ mod tests {
         let _ = panel.update(Message::SubsMatchPeerDone(Ok(vec![])));
         assert!(panel.subs.error.is_some());
         assert!(panel.subs.loaded);
+    }
+
+    // ─── Topics tab tests ─────────────────────────────────────────────────────
+
+    #[test]
+    fn topics_loading_set_on_topics_tab_switch() {
+        let mut panel = MeshBusPanel::new();
+        let _ = panel.update(Message::SelectTab(Tab::Topics));
+        assert!(panel.topics.loading);
+        assert!(!panel.topics.loaded);
+    }
+
+    #[test]
+    fn topics_not_loaded_on_dnd_tab() {
+        let mut panel = MeshBusPanel::new();
+        let _ = panel.update(Message::SelectTab(Tab::Dnd));
+        assert!(!panel.topics.loaded);
+        assert!(!panel.topics.loading);
+    }
+
+    #[test]
+    fn topics_loaded_ok_populates_list() {
+        let mut panel = MeshBusPanel::new();
+        let list = vec![
+            TopicInfo {
+                name: "fleet/announce".to_string(),
+                message_count: 3,
+                last_activity_ms: 1_700_000_000_000,
+                priority: "default".to_string(),
+            },
+        ];
+        let _ = panel.update(Message::TopicsLoaded(Ok(list.clone())));
+        assert!(panel.topics.loaded);
+        assert!(!panel.topics.loading);
+        assert_eq!(panel.topics.list.len(), 1);
+        assert_eq!(panel.topics.list[0].name, "fleet/announce");
+        assert!(panel.topics.error.is_none());
+    }
+
+    #[test]
+    fn topics_loaded_err_sets_error() {
+        let mut panel = MeshBusPanel::new();
+        let _ = panel.update(Message::TopicsLoaded(Err("no data dir".to_string())));
+        assert!(panel.topics.error.is_some());
+        assert!(panel.topics.list.is_empty());
+        assert!(panel.topics.loaded);
+    }
+
+    #[test]
+    fn topic_selected_sets_expanded_and_triggers_messages_load() {
+        let mut panel = MeshBusPanel::new();
+        panel.topics.loaded = true;
+        panel.topics.list = vec![TopicInfo {
+            name: "fleet/announce".to_string(),
+            ..Default::default()
+        }];
+        let _ = panel.update(Message::TopicSelected("fleet/announce".to_string()));
+        assert_eq!(panel.topics.expanded.as_deref(), Some("fleet/announce"));
+        assert!(panel.topics.messages_loading);
+    }
+
+    #[test]
+    fn topic_selected_twice_deselects() {
+        let mut panel = MeshBusPanel::new();
+        panel.topics.expanded = Some("fleet/announce".to_string());
+        let _ = panel.update(Message::TopicSelected("fleet/announce".to_string()));
+        assert!(panel.topics.expanded.is_none());
+        assert!(!panel.topics.messages_loading);
+    }
+
+    #[test]
+    fn topic_deselected_clears_expanded() {
+        let mut panel = MeshBusPanel::new();
+        panel.topics.expanded = Some("mon/cpu".to_string());
+        panel.topics.messages = vec![TopicMessage {
+            title: "CPU spike".to_string(),
+            ..Default::default()
+        }];
+        let _ = panel.update(Message::TopicDeselected);
+        assert!(panel.topics.expanded.is_none());
+        assert!(panel.topics.messages.is_empty());
+    }
+
+    #[test]
+    fn topic_messages_loaded_ok_populates_messages() {
+        let mut panel = MeshBusPanel::new();
+        panel.topics.messages_loading = true;
+        let msgs = vec![TopicMessage {
+            title: "Alert fired".to_string(),
+            body_preview: "CPU > 90%".to_string(),
+            published_at_ms: 1_700_000_000_000,
+            publisher: "desktop-1".to_string(),
+        }];
+        let _ = panel.update(Message::TopicMessagesLoaded(Ok(msgs)));
+        assert!(!panel.topics.messages_loading);
+        assert_eq!(panel.topics.messages.len(), 1);
+        assert_eq!(panel.topics.messages[0].title, "Alert fired");
+    }
+
+    #[test]
+    fn topic_messages_loaded_err_clears_messages() {
+        let mut panel = MeshBusPanel::new();
+        panel.topics.messages_loading = true;
+        panel.topics.messages = vec![TopicMessage::default()];
+        let _ = panel.update(Message::TopicMessagesLoaded(Err("io error".to_string())));
+        assert!(!panel.topics.messages_loading);
+        assert!(panel.topics.messages.is_empty());
+    }
+
+    #[test]
+    fn topics_refresh_clears_and_reloads() {
+        let mut panel = MeshBusPanel::new();
+        panel.topics.loaded = true;
+        panel.topics.expanded = Some("fleet/sec".to_string());
+        panel.topics.list = vec![TopicInfo::default()];
+        let _ = panel.update(Message::TopicsRefreshClicked);
+        assert!(panel.topics.loading);
+        assert!(!panel.topics.loaded);
+        assert!(panel.topics.expanded.is_none());
+        assert!(panel.topics.messages.is_empty());
+    }
+
+    #[test]
+    fn format_relative_time_zero_is_never() {
+        assert_eq!(format_relative_time(0), "never");
+    }
+
+    #[test]
+    fn format_relative_time_recent_is_just_now() {
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        assert_eq!(format_relative_time(now_ms - 5_000), "just now");
     }
 
     // ─── Hooks tab tests ──────────────────────────────────────────────────────
