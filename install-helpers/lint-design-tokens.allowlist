@@ -66,32 +66,32 @@ crates/mde-popover/src/toasts.rs:392
 crates/mde-popover/src/toasts.rs:393
 # Portal-5.b workspace cell + Portal-49 mark-pill + Portal-57.b/.c pulse
 # tier-red + BUS-2.2.a/b breadcrumb tints + Portal-14.a.consumers Cyan
-# constant + tests + docstring hex examples (re-anchored 2026-05-27).
-crates/mde-portal/src/app.rs:97
-crates/mde-portal/src/app.rs:105
-crates/mde-portal/src/app.rs:113
-crates/mde-portal/src/app.rs:121
-crates/mde-portal/src/app.rs:129
-crates/mde-portal/src/app.rs:137
-crates/mde-portal/src/app.rs:145
-crates/mde-portal/src/app.rs:469
-crates/mde-portal/src/app.rs:1635
-crates/mde-portal/src/app.rs:1637
-crates/mde-portal/src/app.rs:1825
-crates/mde-portal/src/app.rs:2142
-crates/mde-portal/src/app.rs:2144
-crates/mde-portal/src/app.rs:2146
-crates/mde-portal/src/app.rs:2148
-crates/mde-portal/src/app.rs:2150
-crates/mde-portal/src/app.rs:2365
-crates/mde-portal/src/app.rs:2367
-crates/mde-portal/src/app.rs:2369
-crates/mde-portal/src/app.rs:2384
-crates/mde-portal/src/app.rs:2518
-crates/mde-portal/src/app.rs:2526
-crates/mde-portal/src/app.rs:2531
-crates/mde-portal/src/app.rs:2535
-crates/mde-portal/src/app.rs:3415
+# constant + tests + docstring hex examples (re-anchored 2026-05-29).
+crates/mde-portal/src/app.rs:101
+crates/mde-portal/src/app.rs:109
+crates/mde-portal/src/app.rs:117
+crates/mde-portal/src/app.rs:125
+crates/mde-portal/src/app.rs:133
+crates/mde-portal/src/app.rs:141
+crates/mde-portal/src/app.rs:149
+crates/mde-portal/src/app.rs:519
+crates/mde-portal/src/app.rs:2021
+crates/mde-portal/src/app.rs:2023
+crates/mde-portal/src/app.rs:2211
+crates/mde-portal/src/app.rs:2528
+crates/mde-portal/src/app.rs:2530
+crates/mde-portal/src/app.rs:2532
+crates/mde-portal/src/app.rs:2534
+crates/mde-portal/src/app.rs:2536
+crates/mde-portal/src/app.rs:2827
+crates/mde-portal/src/app.rs:2829
+crates/mde-portal/src/app.rs:2831
+crates/mde-portal/src/app.rs:2846
+crates/mde-portal/src/app.rs:2980
+crates/mde-portal/src/app.rs:2988
+crates/mde-portal/src/app.rs:2993
+crates/mde-portal/src/app.rs:2997
+crates/mde-portal/src/app.rs:3937
 # Portal-17.a/.c + Portal-18.b — docstring hex examples, charcoal
 # const docstring, hex-parser tests, Edit-tag form #42be65 fixtures
 # (re-anchored 2026-05-27 after Portal-18.b modal landed).
@@ -163,22 +163,6 @@ data/css/accents/ableton-12-dark.css:30
 data/css/accents/ableton-12-dark.css:31
 data/css/accents/ableton-12-dark.css:32
 data/css/accents/ableton-12-dark.css:5
-crates/mde-portal/src/app.rs:2161
-crates/mde-portal/src/app.rs:2163
-crates/mde-portal/src/app.rs:2165
-crates/mde-portal/src/app.rs:2167
-crates/mde-portal/src/app.rs:2169
-crates/mde-portal/src/app.rs:2537
-crates/mde-portal/src/app.rs:2545
-crates/mde-portal/src/app.rs:2550
-crates/mde-portal/src/app.rs:2554
-crates/mde-portal/src/app.rs:3434
-crates/mde-portal/src/app.rs:1654
-crates/mde-portal/src/app.rs:1656
-crates/mde-portal/src/app.rs:1844
-crates/mde-portal/src/app.rs:2386
-crates/mde-portal/src/app.rs:2388
-crates/mde-portal/src/app.rs:2403
 crates/mde-portal/src/portal_full_main.rs:178
 crates/mde-portal/src/portal_full_main.rs:1139
 crates/mde-portal/src/portal_full_main.rs:1143
@@ -215,28 +199,9 @@ crates/mde-portal/src/portal_full_main.rs:2175
 crates/mde-portal/src/portal_full_main.rs:2183
 crates/mde-portal/src/portal_full_main.rs:2225
 crates/mde-portal/src/portal_full_main.rs:2226
-# Portal app.rs: new token-drift entries from prior commits (EPIC-UI-MATERIAL.token-sweep)
-crates/mde-portal/src/app.rs:496
-crates/mde-portal/src/app.rs:2391
-crates/mde-portal/src/app.rs:2393
-crates/mde-portal/src/app.rs:2395
-crates/mde-portal/src/app.rs:2397
 crates/mde-iced-components/src/lib.rs:353
 crates/mde-iced-components/src/lib.rs:354
 crates/mde-iced-components/src/lib.rs:438
-crates/mde-portal/src/app.rs:1884
-crates/mde-portal/src/app.rs:1886
-crates/mde-portal/src/app.rs:2074
-crates/mde-portal/src/app.rs:2399
-crates/mde-portal/src/app.rs:2690
-crates/mde-portal/src/app.rs:2692
-crates/mde-portal/src/app.rs:2694
-crates/mde-portal/src/app.rs:2709
-crates/mde-portal/src/app.rs:2843
-crates/mde-portal/src/app.rs:2851
-crates/mde-portal/src/app.rs:2856
-crates/mde-portal/src/app.rs:2860
-crates/mde-portal/src/app.rs:3740
 crates/mde-workbench/src/app.rs:1532
 crates/mde-workbench/src/app.rs:1533
 crates/mde-workbench/src/app.rs:1567

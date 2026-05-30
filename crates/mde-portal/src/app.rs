@@ -65,6 +65,10 @@ pub const PREV_WS_LRU_CAP: usize = 5;
 /// resets on every focus change).
 pub const PREV_WS_SEGMENT_TTL_SECS: i64 = 5;
 
+/// Portal-14.c.interactions: fixed display-width (in Unicode scalar values)
+/// of the prev-workspace breadcrumb marquee viewport.
+pub const PREV_WS_VIEWPORT_CHARS: usize = 16;
+
 /// Portal-50 (R12-Q11): TTL for the prompt-on-change layout banner.
 /// Click ✓ / ✕ or the timer firing dismisses the banner. Repeated
 /// layout flips within the TTL window collapse — last layout wins —
@@ -231,7 +235,17 @@ pub enum Message {
     /// breadcrumb segment. Routes through swayipc `workspace number <n>`
     /// to jump back. `num` is the i3/sway workspace number; the rename
     /// worker (Portal-41) preserves it even when the name is prefixed.
+    /// Portal-14.c.interactions: when the marquee is scrolling a long label,
+    /// the click jumps the scroll offset to the label's tail instead of
+    /// navigating, so the operator can read the end of the name; a short
+    /// label (no marquee) still navigates on click.
     PrevWorkspaceClicked(i32),
+    /// Portal-14.c.interactions: cursor entered the prev-workspace marquee
+    /// segment. Freezes the scroll offset while the cursor is over it.
+    PrevWorkspaceMarqueeEntered,
+    /// Portal-14.c.interactions: cursor left the prev-workspace marquee
+    /// segment. Resumes scrolling from the same offset.
+    PrevWorkspaceMarqueeExited,
     /// Portal-45 (R12-Q5): sway entered a non-default binding mode (or
     /// returned to the default). `None` clears the mode segment;
     /// `Some(name)` renders it on the far-left of the Dock.
@@ -426,6 +440,15 @@ pub struct DockApp {
     /// clock to compute the sweep's horizontal position each frame.
     /// Initialized to the Dock spawn time; never updated after.
     dock_started_at: chrono::DateTime<chrono::Local>,
+    /// Portal-14.c.interactions: cumulative milliseconds during which the
+    /// prev-workspace marquee was paused by hover. Subtracted from the
+    /// raw elapsed time so the scroll offset is preserved across pauses.
+    /// Reset to 0 when a new workspace focus event spawns a new segment.
+    prev_ws_marquee_pause_debt_ms: i64,
+    /// Portal-14.c.interactions: instant the cursor entered the prev-
+    /// workspace marquee segment. `None` when the cursor is not over it.
+    /// On exit the hover duration is added to `prev_ws_marquee_pause_debt_ms`.
+    prev_ws_marquee_hover_entered_at: Option<chrono::DateTime<chrono::Local>>,
 }
 
 /// BUS-2.2.a: one breadcrumb segment from the Bus
@@ -527,6 +550,8 @@ impl Default for DockApp {
             bus_high_cards: Vec::new(),
             high_sound_played: false,
             dock_started_at: chrono::Local::now(),
+            prev_ws_marquee_pause_debt_ms: 0,
+            prev_ws_marquee_hover_entered_at: None,
         }
     }
 }
@@ -549,6 +574,68 @@ impl DockApp {
             },
             default_font: FONT_INTEL_ONE_MONO,
             ..Default::default()
+        }
+    }
+
+    /// Portal-14.c.interactions: adjust `prev_ws_marquee_pause_debt_ms` so the
+    /// marquee scroll offset jumps forward to the label's tail (the last
+    /// `PREV_WS_VIEWPORT_CHARS` of the label). Call inside `PrevWorkspaceClicked`
+    /// when `marquee_active` is true for the current prev-workspace label.
+    ///
+    /// Uses the same time-based math as `marquee_visible_window`: reducing the
+    /// pause debt is equivalent to making the elapsed time appear larger, which
+    /// advances the offset. The delta is the forward arc (wrapping) from the
+    /// current offset to `label.len() - viewport` (the tail-visible position).
+    fn prev_ws_marquee_jump_to_end(&mut self) {
+        let Some((_, ref name)) = self.visited_workspaces_lru.first().cloned() else {
+            return;
+        };
+        let full_label = format!("‹ {name}");
+        let chars: Vec<char> = full_label.chars().collect();
+        if chars.len() <= PREV_WS_VIEWPORT_CHARS {
+            return; // nothing to jump
+        }
+        let track_len = chars.len() + crate::marquee::MARQUEE_GAP_CHARS;
+        let target_offset = chars.len().saturating_sub(PREV_WS_VIEWPORT_CHARS);
+
+        let now = chrono::Local::now();
+        let Some(spawned_at) = self.last_workspace_change else {
+            return;
+        };
+        let typewriter_ms = (chars.len() as f64
+            * 1000.0
+            / crate::typewriter::DEFAULT_CHARS_PER_SEC)
+            .ceil() as i64;
+        let marquee_started_at =
+            spawned_at + chrono::Duration::milliseconds(typewriter_ms.max(0));
+        let hover_debt_ms = self
+            .prev_ws_marquee_hover_entered_at
+            .map(|e| now.signed_duration_since(e).num_milliseconds())
+            .unwrap_or(0);
+        let total_debt = self.prev_ws_marquee_pause_debt_ms + hover_debt_ms;
+        let raw_elapsed_ms = now
+            .signed_duration_since(marquee_started_at)
+            .num_milliseconds()
+            .max(0);
+        let effective_elapsed_ms = (raw_elapsed_ms - total_debt).max(0);
+        let current_offset = ((effective_elapsed_ms as f64
+            * crate::marquee::DEFAULT_CHARS_PER_SEC as f64
+            / 1000.0) as usize)
+            % track_len;
+        // Forward arc from current to target (wrapping over track).
+        let delta_chars = if target_offset >= current_offset {
+            target_offset - current_offset
+        } else {
+            track_len - current_offset + target_offset
+        };
+        let delta_ms =
+            (delta_chars as f64 / crate::marquee::DEFAULT_CHARS_PER_SEC as f64 * 1000.0) as i64;
+        // Reduce debt by delta → effective elapsed grows → offset jumps forward.
+        self.prev_ws_marquee_pause_debt_ms -= delta_ms;
+        // Restamp hover_entered_at to now so the hover pause restarts cleanly
+        // from the new position (offset is now at the tail).
+        if self.prev_ws_marquee_hover_entered_at.is_some() {
+            self.prev_ws_marquee_hover_entered_at = Some(now);
         }
     }
 
@@ -647,6 +734,10 @@ impl iced_layershell::Application for DockApp {
                     if old.0 != new.0 {
                         push_visited_workspace(&mut self.visited_workspaces_lru, old.clone());
                         self.last_workspace_change = Some(chrono::Local::now());
+                        // Portal-14.c.interactions: new workspace focus spawns
+                        // a fresh marquee — reset pause debt and hover state.
+                        self.prev_ws_marquee_pause_debt_ms = 0;
+                        self.prev_ws_marquee_hover_entered_at = None;
                     }
                 } else if old_focused.is_none() && new_focused.is_some() {
                     // Very first focus event seeds the timestamp so
@@ -656,14 +747,47 @@ impl iced_layershell::Application for DockApp {
                 self.workspaces = list;
             }
             Message::PrevWorkspaceClicked(num) => {
-                // Jump back to the previous workspace. swayipc's
-                // numeric `workspace number <n>` accepts the bare
-                // number even when the rename worker has prefixed
-                // the name; sway treats `<n>` as a workspace ID.
+                // Portal-14.c.interactions: when the prev-workspace marquee
+                // is scrolling a long label, a click jumps the offset to the
+                // tail so the operator can read the end of the name without
+                // waiting for the scroll. Short labels (marquee inactive)
+                // still navigate on click.
+                let is_marquee = self
+                    .visited_workspaces_lru
+                    .first()
+                    .map(|(_, name)| {
+                        crate::marquee::marquee_active(
+                            &format!("‹ {name}"),
+                            PREV_WS_VIEWPORT_CHARS,
+                        )
+                    })
+                    .unwrap_or(false);
+                if is_marquee {
+                    self.prev_ws_marquee_jump_to_end();
+                    return Task::none();
+                }
+                // Short label: navigate back to the previous workspace.
                 return Task::perform(
                     crate::workspace::focus_workspace_by_num(num),
                     |_| Message::Noop,
                 );
+            }
+            Message::PrevWorkspaceMarqueeEntered => {
+                // Freeze the scroll offset while the cursor is over the segment.
+                if self.prev_ws_marquee_hover_entered_at.is_none() {
+                    self.prev_ws_marquee_hover_entered_at = Some(chrono::Local::now());
+                }
+            }
+            Message::PrevWorkspaceMarqueeExited => {
+                // Add the hovered duration to the pause debt so the scroll
+                // resumes from the same offset.
+                if let Some(entered_at) = self.prev_ws_marquee_hover_entered_at.take() {
+                    let paused_ms = chrono::Local::now()
+                        .signed_duration_since(entered_at)
+                        .num_milliseconds();
+                    self.prev_ws_marquee_pause_debt_ms =
+                        self.prev_ws_marquee_pause_debt_ms.saturating_add(paused_ms);
+                }
             }
             Message::ModeChanged(next) => {
                 // Portal-45 (R12-Q5): sway emitted a binding-mode
@@ -1774,14 +1898,25 @@ fn build_prev_workspace_segment<'a>(app: &DockApp, fg: Color) -> Element<'a, Mes
     // it has revealed the full label, the marquee primitive takes
     // over and scrolls long labels through a 16-char viewport so
     // the operator can read names that exceed the breadcrumb width.
-    const PREV_WS_VIEWPORT_CHARS: usize = 16;
+    //
+    // Portal-14.c.interactions: compute a pause-adjusted `effective_now`
+    // that subtracts accumulated hover-pause time from elapsed. When the
+    // cursor is over the segment, `hover_entered_at` is set and its
+    // duration is included in the pause debt, freezing the offset.
+    let hover_debt_ms = app
+        .prev_ws_marquee_hover_entered_at
+        .map(|entered| now.signed_duration_since(entered).num_milliseconds())
+        .unwrap_or(0);
+    let total_debt_ms = app.prev_ws_marquee_pause_debt_ms + hover_debt_ms;
+    let effective_now = now
+        - chrono::Duration::milliseconds(total_debt_ms.max(0));
     let full_label = format!("‹ {prev_name}");
     let label = match app.last_workspace_change {
         Some(spawned_at) => {
             let revealed = crate::typewriter::typewriter_visible_text(
                 &full_label,
                 spawned_at,
-                now,
+                effective_now,
                 crate::typewriter::DEFAULT_CHARS_PER_SEC,
             );
             let typewriter_done = revealed.chars().count() >= full_label.chars().count();
@@ -1800,7 +1935,7 @@ fn build_prev_workspace_segment<'a>(app: &DockApp, fg: Color) -> Element<'a, Mes
                     &full_label,
                     PREV_WS_VIEWPORT_CHARS,
                     marquee_started_at,
-                    now,
+                    effective_now,
                     crate::marquee::DEFAULT_CHARS_PER_SEC,
                 )
             } else {
@@ -1828,6 +1963,8 @@ fn build_prev_workspace_segment<'a>(app: &DockApp, fg: Color) -> Element<'a, Mes
         .padding(Padding::from([2, 8])),
     )
     .on_press(Message::PrevWorkspaceClicked(prev_num))
+    .on_enter(Message::PrevWorkspaceMarqueeEntered)
+    .on_exit(Message::PrevWorkspaceMarqueeExited)
     .into()
 }
 
@@ -3630,9 +3767,69 @@ mod tests {
     /// Task without panicking even when sway isn't running.
     #[test]
     fn prev_workspace_clicked_fires_task_without_panic() {
+        // Default app has no LRU entry → marquee inactive → navigation path.
         let mut app = DockApp::default();
         let _task =
             iced_layershell::Application::update(&mut app, Message::PrevWorkspaceClicked(1));
+    }
+
+    // ── Portal-14.c.interactions: marquee pause-on-hover + click-jump ──────
+
+    /// Entering hover records `hover_entered_at` once; a second enter is idempotent.
+    #[test]
+    fn marquee_hover_entered_sets_timestamp() {
+        let mut app = DockApp::default();
+        assert!(app.prev_ws_marquee_hover_entered_at.is_none());
+        let _ = iced_layershell::Application::update(&mut app, Message::PrevWorkspaceMarqueeEntered);
+        assert!(app.prev_ws_marquee_hover_entered_at.is_some());
+        let first_ts = app.prev_ws_marquee_hover_entered_at;
+        // Second enter while already hovering is idempotent (original ts kept).
+        let _ = iced_layershell::Application::update(&mut app, Message::PrevWorkspaceMarqueeEntered);
+        assert_eq!(app.prev_ws_marquee_hover_entered_at, first_ts);
+    }
+
+    /// Exiting hover adds the paused duration to the debt and clears the timestamp.
+    #[test]
+    fn marquee_hover_exited_accumulates_debt() {
+        let mut app = DockApp::default();
+        assert_eq!(app.prev_ws_marquee_pause_debt_ms, 0);
+        // Simulate entering hover 200 ms in the past.
+        let past = chrono::Local::now() - chrono::Duration::milliseconds(200);
+        app.prev_ws_marquee_hover_entered_at = Some(past);
+        let _ = iced_layershell::Application::update(&mut app, Message::PrevWorkspaceMarqueeExited);
+        assert!(app.prev_ws_marquee_hover_entered_at.is_none());
+        // Debt must be ≥ 200 ms (it will be slightly more due to test latency).
+        assert!(app.prev_ws_marquee_pause_debt_ms >= 200, "debt={}", app.prev_ws_marquee_pause_debt_ms);
+    }
+
+    /// Workspace focus reset clears pause debt and hover state.
+    #[test]
+    fn workspace_change_resets_marquee_pause_state() {
+        let mut app = DockApp::default();
+        app.prev_ws_marquee_pause_debt_ms = 500;
+        app.prev_ws_marquee_hover_entered_at = Some(chrono::Local::now());
+        // Drive a workspace focus change via WorkspaceList with two different focused workspaces.
+        let ws_old: Vec<WorkspaceInfo> = vec![WorkspaceInfo { num: 1, name: "1".into(), focused: true, visible: true, output: "DP-1".into(), urgent: false }];
+        let ws_new: Vec<WorkspaceInfo> = vec![WorkspaceInfo { num: 2, name: "2".into(), focused: true, visible: true, output: "DP-1".into(), urgent: false }];
+        app.workspaces = ws_old;
+        let _ = iced_layershell::Application::update(&mut app, Message::WorkspaceList(ws_new));
+        assert_eq!(app.prev_ws_marquee_pause_debt_ms, 0, "debt should reset on workspace change");
+        assert!(app.prev_ws_marquee_hover_entered_at.is_none(), "hover should reset on workspace change");
+    }
+
+    /// When marquee is inactive (short label), PrevWorkspaceClicked navigates
+    /// (returns a Task) rather than jumping to end.
+    #[test]
+    fn prev_workspace_clicked_navigates_for_short_label() {
+        let mut app = DockApp::default();
+        // LRU entry with a short name (≤ 16 chars → marquee_active = false).
+        app.visited_workspaces_lru = vec![(1, "Web".into())];
+        app.last_workspace_change = Some(chrono::Local::now());
+        // Click: expects navigation (Task != Task::none) — we can only check
+        // the pause debt stays at 0 (no jump-to-end path taken).
+        let _task = iced_layershell::Application::update(&mut app, Message::PrevWorkspaceClicked(1));
+        // pause debt untouched: jump_to_end was not called.
+        assert_eq!(app.prev_ws_marquee_pause_debt_ms, 0);
     }
 
     // ── Portal-45 (R12-Q5) mode-segment tests ──────────────────────────────
