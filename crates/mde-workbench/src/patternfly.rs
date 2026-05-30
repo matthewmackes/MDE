@@ -164,11 +164,13 @@ mod tests {
 
     #[test]
     fn page_subtitle_counts_panels_for_group_view() {
-        // 12 panels in Network: 11 from CB-1.8 (post-KDC2-5.8
-        // retirement) + 1 NF-13.8 Service Publishing entry
-        // (v2.5, 2026-05-24). See
-        // `crates/mde-workbench/src/model.rs:235` for the lock.
-        assert_eq!(page_subtitle(View::Group(Group::Network)), "12 panels");
+        // 13 panels in Network: wifi, mesh_control, mesh_pending,
+        // mesh_history, mesh_join, mesh_ssh, mesh_topology,
+        // mesh_services, mesh_bus (9 mesh/net panels post-KDC2-5.8
+        // retirement) + service_publishing (NF-13.8, v2.5) + vpn
+        // + firewall + remote_desktop. See
+        // `crates/mde-workbench/src/model.rs:239` for the lock.
+        assert_eq!(page_subtitle(View::Group(Group::Network)), "13 panels");
     }
 
     #[test]

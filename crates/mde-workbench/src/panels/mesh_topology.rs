@@ -63,6 +63,16 @@ impl PeerStatus {
             Self::Unknown => "UNKNOWN",
         }
     }
+    // CR-6.b — re-introduced (dropped by CR-6 Table-only refactor).
+    // Graph canvas uses this directly; Table uses icon() instead.
+    pub fn color(self) -> Color {
+        match self {
+            Self::Online => Color::from_rgb(0.20, 0.80, 0.40),
+            Self::Idle => Color::from_rgb(0.95, 0.70, 0.20),
+            Self::Offline => Color::from_rgb(0.92, 0.32, 0.30),
+            Self::Unknown => Color::from_rgba(0.60, 0.60, 0.60, 0.80),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -309,11 +319,49 @@ fn layout_toggle_btn<'a>(
     })
 }
 
+/// CR-6.b — canvas rounded-rect path centered at (cx, cy).
+/// Uses cubic-bezier arc approximation (k ≈ 0.5523) so only
+/// `move_to` / `line_to` / `bezier_curve_to` / `close` are needed.
+fn card_path(cx: f32, cy: f32, w: f32, h: f32, r: f32) -> Path {
+    let x = cx - w * 0.5;
+    let y = cy - h * 0.5;
+    let k = r * 0.5523; // bezier magic number for a 90° arc
+    Path::new(|b| {
+        b.move_to(Point::new(x + r, y));
+        b.line_to(Point::new(x + w - r, y));
+        b.bezier_curve_to(
+            Point::new(x + w - r + k, y),
+            Point::new(x + w, y + r - k),
+            Point::new(x + w, y + r),
+        );
+        b.line_to(Point::new(x + w, y + h - r));
+        b.bezier_curve_to(
+            Point::new(x + w, y + h - r + k),
+            Point::new(x + w - r + k, y + h),
+            Point::new(x + w - r, y + h),
+        );
+        b.line_to(Point::new(x + r, y + h));
+        b.bezier_curve_to(
+            Point::new(x + r - k, y + h),
+            Point::new(x, y + h - r + k),
+            Point::new(x, y + h - r),
+        );
+        b.line_to(Point::new(x, y + r));
+        b.bezier_curve_to(
+            Point::new(x, y + r - k),
+            Point::new(x + r - k, y),
+            Point::new(x + r, y),
+        );
+        b.close();
+    })
+}
+
 /// WB-2.k.a (2026-05-23) — canvas program that draws the mesh
 /// graph: local node at center as a filled circle, each peer
-/// arrayed around it in a ring with a connecting edge. Status
-/// color tints the peer circles. Edge thickness is uniform for
-/// now (no inter-peer-latency data yet — AF-NET-2 fills that in).
+/// arrayed around it in a ring with a connecting edge.
+/// CR-6.b (2026-05-30) — peers now rendered as 12 px card-shaped
+/// nodes (shadow + surface fill + status dot + name + label) instead
+/// of circles/diamonds. Edge thickness is uniform for now.
 pub struct GraphProgram {
     pub peers: Vec<PeerRow>,
     pub palette: Palette,
@@ -340,18 +388,23 @@ impl<Message> canvas::Program<Message> for GraphProgram {
             return vec![frame.into_geometry()];
         }
 
-        // Layout: peers arrayed on a ring at radius = min(W,H)*0.36
-        // around the center node.
-        let ring_radius = (size.width.min(size.height) * 0.36).max(60.0);
+        // CR-6.b: card nodes are 108×48 px — ring radius must be large
+        // enough that cards don't overlap at the max 8-peer cap.
+        // 0.38 of the shorter canvas dimension, floor 160 px.
+        let ring_radius = (size.width.min(size.height) * 0.38).max(160.0);
         let n = self.peers.len() as f32;
         let center_radius = 28.0;
-        let peer_radius = 22.0;
+        const CARD_W: f32 = 108.0;
+        const CARD_H: f32 = 48.0;
+        const CARD_R: f32 = 12.0;
         let edge_color = self.palette.border.into_iced_color();
         let text_color = self.palette.text.into_iced_color();
         let muted = self.palette.text_muted.into_iced_color();
         let accent = self.palette.accent.into_iced_color();
+        // Card body fill — Classic ChromeOS surface-2 token via palette.
+        let card_surface = self.palette.surface.into_iced_color();
 
-        // Draw edges first (so circles render on top).
+        // Draw edges first (so cards render on top).
         for i in 0..self.peers.len() {
             let angle = (i as f32 / n) * TAU - std::f32::consts::FRAC_PI_2;
             let px = center.x + angle.cos() * ring_radius;
@@ -367,7 +420,8 @@ impl<Message> canvas::Program<Message> for GraphProgram {
             );
         }
 
-        // Draw center (local) node.
+        // Draw center (local) node — filled accent circle; stays circular
+        // to visually distinguish the local machine from the peer cards.
         let center_circle = Path::circle(center, center_radius);
         frame.fill(&center_circle, accent);
         let center_label = Text {
@@ -382,61 +436,69 @@ impl<Message> canvas::Program<Message> for GraphProgram {
         };
         frame.fill_text(center_label);
 
-        // Draw peers + their labels.
+        // CR-6.b — Draw peers as card-shaped nodes (12 px corners,
+        // shadow, status dot + name + label inside).
+        // NF-11.2 lighthouse distinction migrated from diamond to
+        // accent border stroke on the card.
         for (i, p) in self.peers.iter().enumerate() {
             let angle = (i as f32 / n) * TAU - std::f32::consts::FRAC_PI_2;
             let pos = Point::new(
                 center.x + angle.cos() * ring_radius,
                 center.y + angle.sin() * ring_radius,
             );
-            let fill = match p.status {
-                PeerStatus::Online => Color::from_rgb(0.20, 0.80, 0.40),
-                PeerStatus::Idle => Color::from_rgb(0.95, 0.70, 0.20),
-                PeerStatus::Offline => Color::from_rgb(0.92, 0.32, 0.30),
-                PeerStatus::Unknown => muted,
-            };
-            // NF-11.2 (v2.5) — lighthouse-distinct rendering.
-            // host-kind peers (the v2.5 Nebula lighthouse
-            // roster) render as a diamond + accent halo so
-            // operators see the rendezvous-server role at a
-            // glance. Non-lighthouse hosts keep the half-halo
-            // hinted by the spec; plain peers stay circular.
+
+            // Shadow — slightly larger card, offset 2×3 px, 22% alpha.
+            let shadow = card_path(pos.x + 2.0, pos.y + 3.0, CARD_W + 3.0, CARD_H + 3.0, CARD_R);
+            frame.fill(&shadow, Color::from_rgba(0.0, 0.0, 0.0, 0.22));
+
+            // Card body.
+            let card = card_path(pos.x, pos.y, CARD_W, CARD_H, CARD_R);
+            frame.fill(&card, card_surface);
+
+            // NF-11.2 — lighthouse (host-kind) gets accent border.
             if p.kind == "host" {
-                // Diamond: rotate a square 45°. Build via a
-                // 4-vertex Path::new.
-                let halo = Path::circle(pos, peer_radius + 6.0);
                 frame.stroke(
-                    &halo,
+                    &card,
                     Stroke {
                         style: canvas::Style::Solid(accent),
                         width: 2.0,
                         ..Stroke::default()
                     },
                 );
-                let diamond = Path::new(|b| {
-                    let r = peer_radius;
-                    b.move_to(Point::new(pos.x, pos.y - r));
-                    b.line_to(Point::new(pos.x + r, pos.y));
-                    b.line_to(Point::new(pos.x, pos.y + r));
-                    b.line_to(Point::new(pos.x - r, pos.y));
-                    b.close();
-                });
-                frame.fill(&diamond, fill);
-            } else {
-                let circle = Path::circle(pos, peer_radius);
-                frame.fill(&circle, fill);
             }
-            let name = Text {
+
+            // Status dot — 5 px circle, top-left inside card.
+            let dot = Path::circle(
+                Point::new(pos.x - CARD_W * 0.5 + 14.0, pos.y - CARD_H * 0.5 + 14.0),
+                5.0,
+            );
+            frame.fill(&dot, p.status.color());
+
+            // Peer name (13 px, leading edge offset right of dot).
+            let name_label = Text {
                 content: p.name.clone(),
-                position: Point::new(pos.x, pos.y + peer_radius + 14.0),
+                position: Point::new(pos.x + 6.0, pos.y - 7.0),
                 color: text_color,
-                size: 11.0.into(),
+                size: 12.0.into(),
                 font: iced::Font::DEFAULT,
                 horizontal_alignment: iced::alignment::Horizontal::Center,
                 vertical_alignment: iced::alignment::Vertical::Center,
                 ..Text::default()
             };
-            frame.fill_text(name);
+            frame.fill_text(name_label);
+
+            // Status label (10 px, muted, below name).
+            let status_label = Text {
+                content: p.status.label().to_string(),
+                position: Point::new(pos.x + 6.0, pos.y + 9.0),
+                color: muted,
+                size: 10.0.into(),
+                font: iced::Font::DEFAULT,
+                horizontal_alignment: iced::alignment::Horizontal::Center,
+                vertical_alignment: iced::alignment::Vertical::Center,
+                ..Text::default()
+            };
+            frame.fill_text(status_label);
         }
 
         vec![frame.into_geometry()]
@@ -593,6 +655,29 @@ fn fmt_age(t: SystemTime) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn peer_status_color_is_status_distinct() {
+        // CR-6.b — PeerStatus::color() re-introduced; verify
+        // each variant produces a visually distinct dominant channel.
+        let online = PeerStatus::Online.color();
+        let idle = PeerStatus::Idle.color();
+        let offline = PeerStatus::Offline.color();
+        let unknown = PeerStatus::Unknown.color();
+        // Online is greenish.
+        assert!(online.g > online.r && online.g > online.b, "online should be green-dominant");
+        // Idle is yellowish (high R + G, low B).
+        assert!(idle.r > idle.b && idle.g > idle.b, "idle should be yellow-dominant");
+        // Offline is reddish.
+        assert!(offline.r > offline.g && offline.r > offline.b, "offline should be red-dominant");
+        // Unknown is grey (equal-ish channels).
+        assert!((unknown.r - unknown.g).abs() < 0.05, "unknown should be grey");
+        // All four are distinct from each other.
+        assert_ne!(online, idle);
+        assert_ne!(online, offline);
+        assert_ne!(idle, offline);
+        assert_ne!(offline, unknown);
+    }
 
     #[test]
     fn peer_status_from_str_known_values() {

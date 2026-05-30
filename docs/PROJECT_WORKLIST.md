@@ -5716,7 +5716,7 @@ disconnected" toasts get a dedicated Nebula vocabulary.
     - Used the existing `panel_chrome::object_card` from CR-3 — single canonical renderer; addr + kind metadata now lives behind the per-peer modal (CR-6.c) per the compact-content-shape lock.
     - Dropped the now-empty `table_head` (column headers don't fit a card grid); also dropped the now-dead `PeerStatus::color()` helper (card chrome owns status visualization via icon).
     - Blockers: CR-1 ✓, CR-3 ✓.
-- [ ] **CR-6.b: v2.6 — Mesh Topology canvas-graph peer-node card rendering.** *(split 2026-05-25)*
+- [>] **CR-6.b: v2.6 — Mesh Topology canvas-graph peer-node card rendering.** *(split 2026-05-25)*
   **As** an operator switching the Mesh Topology view to the
   Graph layout, **I want** each peer NODE on the graph to render
   as a 12 px rounded-rect Card with icon + name + status pill

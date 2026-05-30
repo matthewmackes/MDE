@@ -69,7 +69,9 @@ crates/mde-popover/src/toasts.rs:393
 # constant + tests + docstring hex examples (re-anchored 2026-05-29).
 # Portal-17.a/.c + Portal-18.b — docstring hex examples, charcoal
 # const docstring, hex-parser tests, Edit-tag form #42be65 fixtures
-# (re-anchored 2026-05-27 after Portal-18.b modal landed).
+# + battery status Color::from_rgb green/amber/red + mark_pill_color
+# + tag-validation error reds. Re-anchored 2026-05-30 after
+# ANIM-13 / Portal-18.b / BUS-* additions shifted all line numbers.
 crates/mde-portal/src/app.rs:101
 crates/mde-portal/src/app.rs:109
 crates/mde-portal/src/app.rs:117
@@ -77,27 +79,27 @@ crates/mde-portal/src/app.rs:125
 crates/mde-portal/src/app.rs:133
 crates/mde-portal/src/app.rs:141
 crates/mde-portal/src/app.rs:149
-crates/mde-portal/src/app.rs:523
-crates/mde-portal/src/app.rs:2078
-crates/mde-portal/src/app.rs:2080
-crates/mde-portal/src/app.rs:2268
-crates/mde-portal/src/app.rs:2585
-crates/mde-portal/src/app.rs:2587
-crates/mde-portal/src/app.rs:2589
-crates/mde-portal/src/app.rs:2591
-crates/mde-portal/src/app.rs:2593
-crates/mde-portal/src/app.rs:2884
-crates/mde-portal/src/app.rs:2886
-crates/mde-portal/src/app.rs:2888
-crates/mde-portal/src/app.rs:2903
-crates/mde-portal/src/app.rs:3037
-crates/mde-portal/src/app.rs:3045
-crates/mde-portal/src/app.rs:3050
-crates/mde-portal/src/app.rs:3054
-crates/mde-portal/src/app.rs:3994
-crates/mde-portal/src/app.rs:4854
-crates/mde-portal/src/app.rs:4862
-crates/mde-portal/src/app.rs:4872
+crates/mde-portal/src/app.rs:527
+crates/mde-portal/src/app.rs:2096
+crates/mde-portal/src/app.rs:2098
+crates/mde-portal/src/app.rs:2286
+crates/mde-portal/src/app.rs:2603
+crates/mde-portal/src/app.rs:2605
+crates/mde-portal/src/app.rs:2607
+crates/mde-portal/src/app.rs:2609
+crates/mde-portal/src/app.rs:2611
+crates/mde-portal/src/app.rs:2907
+crates/mde-portal/src/app.rs:2909
+crates/mde-portal/src/app.rs:2911
+crates/mde-portal/src/app.rs:2926
+crates/mde-portal/src/app.rs:3060
+crates/mde-portal/src/app.rs:3068
+crates/mde-portal/src/app.rs:3073
+crates/mde-portal/src/app.rs:3077
+crates/mde-portal/src/app.rs:4017
+crates/mde-portal/src/app.rs:4883
+crates/mde-portal/src/app.rs:4891
+crates/mde-portal/src/app.rs:4901
 crates/mde-wizard/src/pages/preset.rs:12
 crates/mde-wizard/src/pages/preset.rs:18
 crates/mde-wizard/src/pages/preset.rs:24
@@ -139,10 +141,15 @@ crates/mde-workbench/src/panels/mesh_pending.rs:331
 crates/mde-workbench/src/panels/mesh_services.rs:271
 crates/mde-workbench/src/panels/mesh_services.rs:276
 crates/mde-workbench/src/panels/mesh_services.rs:281
-crates/mde-workbench/src/panels/mesh_topology.rs:393
-crates/mde-workbench/src/panels/mesh_topology.rs:394
-crates/mde-workbench/src/panels/mesh_topology.rs:395
-crates/mde-workbench/src/panels/mesh_topology.rs:466
+# CR-6.b — PeerStatus::color() semantic status colors (green/yellow/red/grey);
+# no palette token for these. Shadow rgba(0,0,0,0.22) is pure black. Error
+# red in empty_state_card is same pre-existing literal. Re-anchored 2026-05-30.
+crates/mde-workbench/src/panels/mesh_topology.rs:70
+crates/mde-workbench/src/panels/mesh_topology.rs:71
+crates/mde-workbench/src/panels/mesh_topology.rs:72
+crates/mde-workbench/src/panels/mesh_topology.rs:73
+crates/mde-workbench/src/panels/mesh_topology.rs:452
+crates/mde-workbench/src/panels/mesh_topology.rs:528
 crates/mde-workbench/src/panels/panel_apps.rs:217
 crates/mde-workbench/src/panels/service_publishing.rs:219
 crates/mde-workbench/src/panels/sync_status.rs:164
