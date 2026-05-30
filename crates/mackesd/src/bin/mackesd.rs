@@ -3082,7 +3082,7 @@ fn run_serve(
         // interface at tick time (empty hint = runtime detect).
         sup.spawn(Spawn::new(
             mackesd_core::workers::compute_registry::ComputeRegistryWorker::new(
-                fw_host,
+                fw_host.clone(),
                 String::new(),
             ),
             RestartPolicy::Always,
@@ -3141,6 +3141,28 @@ fn run_serve(
             .lock()
             .expect("worker_names mutex")
             .push("compute_migrate".into());
+
+        // VIRT-6 (v5.0.0) — compute_provision. Drains this peer's
+        // `compute/create/<addr>` topic: ensures the mde-vms pool,
+        // allocates a per-peer /24 VM IP, runs requester-side
+        // nebula-cert keygen + the cert-sign RPC, builds the NoCloud
+        // seed, virt-installs the VM (with virtiofs MeshFS share when
+        // requested + mounted), acks on compute/create-ack/<ulid>, and
+        // fires an immediate inventory publish. qnm_root + node_id
+        // locate this peer's nebula-bundle.json for the guest
+        // lighthouse roster.
+        sup.spawn(Spawn::new(
+            mackesd_core::workers::compute_provision::ComputeProvisionWorker::new(
+                fw_host,
+                qnm_root.clone(),
+                node_id.clone(),
+            ),
+            RestartPolicy::Always,
+        ));
+        worker_names
+            .lock()
+            .expect("worker_names mutex")
+            .push("compute_provision".into());
 
         // EPIC-MESH-PROBE (MESH-PROBE-4) — scheduled two-tier nmap
         // probe worker. Resolves mesh-peer overlay IPs, scans them

@@ -174,6 +174,15 @@ pub mod compute_expose;
 // `event/compute/migrate-ready` + virsh undefine. VIRT-8.b
 // (target-side compute_provision handler) ships with VIRT-6.
 pub mod compute_migrate;
+// VIRT-6 (v5.0.0) — compute_provision. Drains
+// `compute/create/<own-addr>`: ensures the mde-vms pool (VIRT-3),
+// allocates a per-peer /24 VM IP, requester-side nebula-cert keygen
+// + cert-sign RPC (VIRT-5), builds the NoCloud cloud-init seed,
+// virt-installs (libvirt-managed virtiofs when share_meshfs +
+// mounted), acks on compute/create-ack/<ulid>, fires an immediate
+// compute/inventory publish. Guest config via
+// nebula_supervisor::render_guest_config_yaml.
+pub mod compute_provision;
 // INST-11 + INST-12 + INST-13 (v2.7) — fleet upgrade-barrier
 // worker. Runs on every peer: watches `<mesh-home>/upgrade-
 // intent/*.json` (written by `mde-update --coordinate`), runs

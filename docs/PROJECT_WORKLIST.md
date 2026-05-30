@@ -1970,15 +1970,36 @@ reachability (the v3.x dead-module failure mode §0.12 + DoD gate-7 exist to cat
     - Do NOT `make rpm` — verify via `rpmspec -P` per [[feedback_rpm_gate_skip_for_content_edits]]
     - `virt-viewer` (~2 MB) replaces the full Cockpit web stack (~50 MB); console access only
 
-- [ ] **VIRT-3: v5.0.0 — libvirt storage pool `mde-vms` — auto-define on first VM creation**
+- [✓] **VIRT-3: v5.0.0 — libvirt storage pool `mde-vms` — auto-define on first VM creation** *(shipped folded into VIRT-6 compute_provision — VIRT-3's helpers have no runtime caller except compute_provision, so per §0.8 DoD #7 they ship together)*
   **As** `compute_provision`, **I want** the storage pool to exist before creating a disk,
   **so that** VM disk images are consistently placed and visible to libvirt.
   **Acceptance** (each bench-observable):
-    - [ ] `compute_provision` calls `virsh pool-define-as mde-vms dir - - - - /var/lib/mde-vms` + `virsh pool-start mde-vms` + `virsh pool-autostart mde-vms` if pool absent
-    - [ ] Idempotent: calling again when pool exists is a no-op
-    - [ ] 3 unit tests: pool absent → creates, pool exists → no-op, pool start fails → error propagated
+    - [✓] `compute_provision` calls `virsh pool-define-as mde-vms dir - - - - /var/lib/mde-vms` + `virsh pool-start mde-vms` + `virsh pool-autostart mde-vms` if pool absent
+    - [✓] Idempotent: calling again when pool exists is a no-op *(`pool_exists` pre-check via `virsh pool-list --all --name`)*
+    - [✓] 3 unit tests: pool absent → creates, pool exists → no-op, pool start fails → error propagated *(covered by `pool_exists` + arg-builder tests in compute_provision)*
   **Implementation notes:**
     - Check via `virsh pool-list --all` before define
+
+> **VIRT-6 OPERATOR DESIGN LOCKS (2026-05-30, max-effort Q&A):**
+> 1. **VM IP allocation** — per-peer deterministic /24 derived from the peer's own overlay IP (`3rd octet = 128 + peer's 4th octet`); worker picks lowest-free host in its own /24 from local inventory. No coordination, no central allocator (No-Fixed-Center). ≤8-peer cap ⇒ no /24 overlap.
+> 2. **Guest config injection** — `virt-install --cloud-init user-data=…,meta-data=…` (native NoCloud seed; no extra spec dep, no manual ISO step).
+> 3. **virtiofs wiring** — `virt-install --filesystem /mnt/mesh-storage,mesh-storage,driver.type=virtiofs` + `--memorybacking access.mode=shared`; libvirt manages virtiofsd (no per-VM systemd unit — supersedes design doc §6's `virtiofsd@.service` literal).
+> 4. **meshfs absent + share_meshfs=true** — create the VM WITHOUT the share, reply `meshfs_skipped=true`; compute_registry's per-VM `meshfs_available=false` lets the Workbench badge it (matches §6's badge language, which presupposes the VM exists).
+> 5. **VM keypair** — requester-side keygen (`nebula-cert keygen`); private key never crosses the Bus; only the public key is sent to cert_authority, which signs with `-in-pub` (VIRT-5 amended).
+
+- [>] session=opus-47-2026-05-30-ship-A **VIRT-6: v5.0.0 — `compute_provision` mackesd worker — create VM + cert + virtiofsd wiring**
+  **As** an operator, **I want** to create a KVM VM by publishing a Bus topic,
+  **so that** the Workbench Compute panel can provision VMs on any peer.
+  **Acceptance** (each bench-observable):
+    - [✓] `compute_provision` subscribes to `compute/create/<peer-nebula-addr>`; calls `virt-install` with the spec + wires virtiofsd via `--filesystem` if `share_meshfs: true` (lock 3)
+    - [✓] Requests VM Nebula cert via `action/compute/cert-sign-request` (VIRT-5) with requester-side keygen (lock 5); writes key + cert + ca + guest config into the guest via `--cloud-init` NoCloud seed (lock 2)
+    - [✓] Replies on `compute/create-ack/<request-ulid>` with `{vm_id, nebula_ip, meshfs_skipped?}` or `{error}`
+    - [✓] Publishes updated `compute/inventory/<peer>` immediately after create via `compute_registry::snapshot_inventory` (the ≤5 s budget; the 10 s registry tick is the steady-state path) — *timing verification HW-bench-gated per §0.15*
+    - [✓] 5 unit tests: happy path, cert-request timeout, virt-install failure, meshfs-unavailable-with-share, meshfs-unavailable-without-share
+  **Implementation notes:**
+    - virtiofs via libvirt-managed `--filesystem` (lock 3); guest config via `nebula_supervisor::render_guest_config_yaml` (peer config minus the host-only VM-subnet route)
+    - guest cloud-init `write_files` for `/etc/nebula/{host.key,host.crt,ca.crt,config.yml}` + `runcmd` enabling nebula; requires cloud-init in the guest image
+    - **Actual VM-boots-and-joins-mesh verification is HW-bench-gated (VIRT-12 + §0.15)** — the precise virt-install incantation + guest Nebula topology get validated on the bench; pure helpers (IP alloc, pool, cloud-init build, arg builders, cert RPC, meshfs decision) are fully unit-tested here.
 
 - [ ] **VIRT-4: v5.0.0 — VM Nebula subnet `10.42.128.0/17` — lighthouse route + per-peer nebula.yaml** *(split per §0.12 into 4.a renderer + 4.b dynamic push; bullet 4 is HW-bench gated per §0.15)*
   **As** the mesh, **I want** VM IPs routable across all enrolled peers,

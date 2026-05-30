@@ -411,7 +411,11 @@ fn run_podman(args: &[&str]) -> String {
         .unwrap_or_default()
 }
 
-fn publish_inventory(peer: &str, inv: &Inventory) {
+/// Publish an inventory document to `compute/inventory/<peer>` via
+/// the `mde-bus` CLI. Pub so `compute_provision` (VIRT-6) can fire
+/// an immediate post-create publish without instantiating a full
+/// registry worker.
+pub fn publish_inventory(peer: &str, inv: &Inventory) {
     let topic = format!("compute/inventory/{peer}");
     let Ok(body) = serde_json::to_string(inv) else {
         return;
@@ -419,6 +423,86 @@ fn publish_inventory(peer: &str, inv: &Inventory) {
     let _ = Command::new("mde-bus")
         .args(["publish", &topic, "--body-flag", &body])
         .spawn();
+}
+
+/// Collect VM entries via virsh. `prev` carries cumulative
+/// vcpu-time-ns per uuid across calls so `cpu_pct` is a true
+/// per-interval delta; pass a fresh empty map for a one-shot
+/// snapshot (every VM then reports `cpu_pct = 0.0`, which is correct
+/// since there's no prior sample). `meshfs_available` is left
+/// `false` on each entry here and overwritten by [`build_inventory`].
+pub fn collect_vm_entries(
+    vm_storage: &Path,
+    interval_secs: f64,
+    prev: &mut BTreeMap<String, u64>,
+) -> Vec<VmEntry> {
+    if !binary_present("virsh") {
+        return vec![];
+    }
+    let list_stdout = run_virsh(&["list", "--all", "--uuid"]);
+    let uuids = parse_virsh_uuid_list(&list_stdout);
+    let mut entries = Vec::with_capacity(uuids.len());
+    for uuid in uuids {
+        let info_stdout = run_virsh(&["dominfo", &uuid]);
+        let Some(info) = parse_virsh_dominfo(&info_stdout) else {
+            continue;
+        };
+        let blk_stdout = run_virsh(&["domblklist", "--details", &uuid]);
+        let disk_path = parse_virsh_domblklist(&blk_stdout).unwrap_or_default();
+        let stats_stdout = run_virsh(&["domstats", &uuid, "--vcpu"]);
+        let cur_ns = parse_virsh_domstats_vcpu_time(&stats_stdout).unwrap_or(0);
+        let prev_ns = prev.get(&uuid).copied();
+        let cpu_pct = cpu_pct_delta(prev_ns, cur_ns, interval_secs, info.vcpus);
+        prev.insert(uuid.clone(), cur_ns);
+        entries.push(VmEntry {
+            id: uuid.clone(),
+            name: info.name,
+            state: info.state,
+            cpu_pct,
+            ram_mb: info.ram_mb,
+            disk_path,
+            nebula_ip: read_vm_nebula_ip(vm_storage, &uuid),
+            meshfs_available: false, // overwritten in build_inventory
+        });
+    }
+    entries
+}
+
+/// Collect container entries via podman (`ps` + `stats` merge).
+pub fn collect_container_entries() -> Vec<ContainerEntry> {
+    if !binary_present("podman") {
+        return vec![];
+    }
+    let ps_stdout = run_podman(&["ps", "--all", "--format", "json"]);
+    let mut containers = parse_podman_ps_json(&ps_stdout);
+    let stats_stdout = run_podman(&["stats", "--no-stream", "--format", "json", "--no-trunc"]);
+    let stats = parse_podman_stats_json(&stats_stdout);
+    for c in &mut containers {
+        if let Some((cpu, ram)) = stats.get(&c.id) {
+            c.cpu_pct = *cpu;
+            c.ram_mb = *ram;
+        }
+    }
+    containers
+}
+
+/// One-shot inventory snapshot with `cpu_pct = 0.0` on every VM (no
+/// prior sample). Used by `compute_provision` (VIRT-6) for the
+/// immediate post-create `compute/inventory/<peer>` publish so a
+/// freshly-created VM appears within the §3 5 s budget rather than
+/// waiting up to a full 10 s registry tick.
+#[must_use]
+pub fn snapshot_inventory(
+    hostname: &str,
+    nebula_addr: &str,
+    meshfs_mount: &Path,
+    vm_storage: &Path,
+) -> Inventory {
+    let meshfs_available = is_meshfs_mounted(meshfs_mount);
+    let mut empty = BTreeMap::new();
+    let vms = collect_vm_entries(vm_storage, 0.0, &mut empty);
+    let containers = collect_container_entries();
+    build_inventory(nebula_addr, hostname, vms, containers, meshfs_available)
 }
 
 /// Worker handle.
@@ -471,67 +555,15 @@ impl ComputeRegistryWorker {
     }
 
     fn collect_vms(&self, interval_secs: f64) -> Vec<VmEntry> {
-        if !binary_present("virsh") {
-            return vec![];
-        }
-        let list_stdout = run_virsh(&["list", "--all", "--uuid"]);
-        let uuids = parse_virsh_uuid_list(&list_stdout);
-        let mut entries = Vec::with_capacity(uuids.len());
         let mut prev = self.prev_cpu_ns.lock().expect("prev_cpu_ns mutex");
-        for uuid in uuids {
-            let info_stdout = run_virsh(&["dominfo", &uuid]);
-            let Some(info) = parse_virsh_dominfo(&info_stdout) else {
-                continue;
-            };
-            let blk_stdout = run_virsh(&["domblklist", "--details", &uuid]);
-            let disk_path = parse_virsh_domblklist(&blk_stdout).unwrap_or_default();
-            let stats_stdout = run_virsh(&["domstats", &uuid, "--vcpu"]);
-            let cur_ns = parse_virsh_domstats_vcpu_time(&stats_stdout).unwrap_or(0);
-            let prev_ns = prev.get(&uuid).copied();
-            let cpu_pct = cpu_pct_delta(prev_ns, cur_ns, interval_secs, info.vcpus);
-            prev.insert(uuid.clone(), cur_ns);
-            entries.push(VmEntry {
-                id: uuid.clone(),
-                name: info.name,
-                state: info.state,
-                cpu_pct,
-                ram_mb: info.ram_mb,
-                disk_path,
-                nebula_ip: read_vm_nebula_ip(&self.vm_storage, &uuid),
-                meshfs_available: false, // overwritten in build_inventory
-            });
-        }
-        entries
-    }
-
-    fn collect_containers(&self) -> Vec<ContainerEntry> {
-        if !binary_present("podman") {
-            return vec![];
-        }
-        let ps_stdout = run_podman(&["ps", "--all", "--format", "json"]);
-        let mut containers = parse_podman_ps_json(&ps_stdout);
-        let stats_stdout = run_podman(&[
-            "stats",
-            "--no-stream",
-            "--format",
-            "json",
-            "--no-trunc",
-        ]);
-        let stats = parse_podman_stats_json(&stats_stdout);
-        for c in &mut containers {
-            if let Some((cpu, ram)) = stats.get(&c.id) {
-                c.cpu_pct = *cpu;
-                c.ram_mb = *ram;
-            }
-        }
-        containers
+        collect_vm_entries(&self.vm_storage, interval_secs, &mut prev)
     }
 
     fn tick_once(&self) {
         let peer = self.resolve_nebula_addr();
         let meshfs_available = is_meshfs_mounted(&self.meshfs_mount);
         let vms = self.collect_vms(self.tick.as_secs_f64());
-        let containers = self.collect_containers();
+        let containers = collect_container_entries();
         let inventory = build_inventory(&peer, &self.hostname, vms, containers, meshfs_available);
         // Publish even when peer is empty (Nebula not yet up) so the
         // topic-shape is consistent — subscribers can ignore peer=="".
