@@ -205,6 +205,25 @@ pub mod context_menu {
     pub const ITEM_REVEAL_MS: u32 = 80;
 }
 
+/// ANIM-8.c.2 — icon fill-morph timing tokens (Q32).
+/// Material Symbols fill axis animated outline→filled on active.
+pub mod icon {
+    /// Q32: fill-morph duration (ms). Outline→filled in ~150 ms ease-out.
+    pub const FILL_MORPH_MS: u32 = 150;
+
+    /// Compute the fill axis `t` value (0.0=outlined → 1.0=filled) at
+    /// `elapsed_ms` into the morph. Easing: ease-out (√t). Snaps to 1.0
+    /// under reduced motion.
+    #[must_use]
+    pub fn fill_morph_t(elapsed_ms: u64, reduce_motion: bool) -> f32 {
+        if reduce_motion {
+            return 1.0;
+        }
+        let raw = (elapsed_ms as f32 / FILL_MORPH_MS as f32).clamp(0.0, 1.0);
+        raw.sqrt()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -291,6 +310,37 @@ mod tests {
     fn list_shimmer_period_is_1200ms() {
         // Q19: shimmer sweeps once per 1200ms.
         assert_eq!(list::SHIMMER_PERIOD_MS, 1200);
+    }
+
+    // ANIM-8.c.2 — icon fill-morph acceptance (Q32).
+
+    #[test]
+    fn icon_fill_morph_duration_locked_to_150ms() {
+        assert_eq!(icon::FILL_MORPH_MS, 150);
+    }
+
+    #[test]
+    fn icon_fill_morph_t_at_zero_is_outlined() {
+        let t = icon::fill_morph_t(0, false);
+        assert!((t - 0.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn icon_fill_morph_t_at_duration_is_filled() {
+        let t = icon::fill_morph_t(u64::from(icon::FILL_MORPH_MS), false);
+        assert!((t - 1.0).abs() < f32::EPSILON, "expected 1.0 got {t}");
+    }
+
+    #[test]
+    fn icon_fill_morph_t_reduce_motion_snaps_to_filled() {
+        assert_eq!(icon::fill_morph_t(0, true), 1.0);
+        assert_eq!(icon::fill_morph_t(50, true), 1.0);
+    }
+
+    #[test]
+    fn icon_fill_morph_t_midpoint_is_between_0_and_1() {
+        let t = icon::fill_morph_t(75, false);
+        assert!(t > 0.0 && t < 1.0, "midpoint t should be (0,1), got {t}");
     }
 
     #[test]

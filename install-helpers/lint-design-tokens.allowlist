@@ -231,7 +231,8 @@ crates/mde-workbench/src/app.rs:71
 crates/mde-workbench/src/app.rs:76
 # mde-iced-components — test-only fixture colors inside #[cfg(test)] module.
 # These are abstract black/white/grey math fixtures, not design tokens.
-# Re-anchored ANIM-3.b.1 2026-05-30 (+75 lines from 7 new tests + action-btn code).
-crates/mde-iced-components/src/lib.rs:833
-crates/mde-iced-components/src/lib.rs:834
-crates/mde-iced-components/src/lib.rs:918
+# Re-anchored ANIM-8.c.2 2026-05-30 (+69 lines from icon_fill_morph + 5 tests
+# inserted before #[cfg(test)] block; test block moved from line 811 → 880).
+crates/mde-iced-components/src/lib.rs:902
+crates/mde-iced-components/src/lib.rs:903
+crates/mde-iced-components/src/lib.rs:987

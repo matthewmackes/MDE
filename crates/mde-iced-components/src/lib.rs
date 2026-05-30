@@ -21,8 +21,8 @@ use iced::widget::{button, column, container, row, text, Column, Space};
 use iced::{alignment, Background, Border, Color, Element, Length, Padding, Shadow as IcedShadow};
 
 use mde_theme::{
-    mde_icon, CardSize, CardState, Elevation, IconPlacement, IconSize, IconState, ObjectCard,
-    Palette, CARD_CORNER_RADIUS, CARD_DISABLED_OPACITY, CARD_FOCUS_OUTLINE_OFFSET,
+    mde_icon, CardSize, CardState, Elevation, FillMode, Icon, IconPlacement, IconSize, IconState,
+    ObjectCard, Palette, CARD_CORNER_RADIUS, CARD_DISABLED_OPACITY, CARD_FOCUS_OUTLINE_OFFSET,
     CARD_FOCUS_OUTLINE_WIDTH, CARD_HOVER_OVERLAY_ALPHA, CARD_PADDING,
     CARD_SELECTED_BORDER_WIDTH, CARD_SELECTED_OVERLAY_ALPHA, CARD_SHADOW_DEFAULT_ALPHA,
     CARD_SHADOW_DEFAULT_BLUR, CARD_SHADOW_DEFAULT_OFFSET_Y, CARD_SHADOW_HOVER_ALPHA,
@@ -808,6 +808,75 @@ pub fn toast_chip<'a, Message: 'a + Clone>(
         .into()
 }
 
+/// ANIM-8.c.2 — Material Symbols icon fill-morph (Q32).
+///
+/// Renders an `Icon` cross-fading between its outlined and filled SVG
+/// variants as `fill_t` goes 0.0 (fully outlined) → 1.0 (fully filled).
+/// Drive `fill_t` with [`mde_theme::motion::icon::fill_morph_t`] ticked
+/// each frame via a 16 ms subscription.
+///
+/// Icons with `FillMode::NeverFill` always render outlined (fill_t
+/// ignored); icons with `FillMode::AlwaysFill` always render filled.
+/// Only `FillMode::OnActive` icons cross-fade.
+pub fn icon_fill_morph<'a, Message: 'a>(
+    icon: Icon,
+    size: IconSize,
+    fill_t: f32,
+    fg_color: Color,
+) -> Element<'a, Message> {
+    use iced::widget::{stack, svg as widget_svg};
+
+    let resolved = mde_icon(icon, size);
+    let px = size.px();
+
+    match resolved.fill_mode {
+        FillMode::NeverFill => {
+            let bytes = resolved.svg_bytes_for_state(IconState::Idle);
+            return widget_svg(widget_svg::Handle::from_memory(bytes))
+                .width(Length::Fixed(px))
+                .height(Length::Fixed(px))
+                .style(move |_t: &iced::Theme, _s: widget_svg::Status| widget_svg::Style {
+                    color: Some(fg_color),
+                })
+                .into();
+        }
+        FillMode::AlwaysFill => {
+            let bytes = resolved.svg_bytes_for_state(IconState::Active);
+            return widget_svg(widget_svg::Handle::from_memory(bytes))
+                .width(Length::Fixed(px))
+                .height(Length::Fixed(px))
+                .style(move |_t: &iced::Theme, _s: widget_svg::Status| widget_svg::Style {
+                    color: Some(fg_color),
+                })
+                .into();
+        }
+        FillMode::OnActive => {}
+    }
+
+    // OnActive: cross-fade outline (alpha = 1-t) with filled (alpha = t).
+    let t = fill_t.clamp(0.0, 1.0);
+    let outline_bytes = resolved.svg_bytes_for_state(IconState::Idle);
+    let filled_bytes = resolved.svg_bytes_for_state(IconState::Active);
+    let outline_color = Color { a: fg_color.a * (1.0 - t), ..fg_color };
+    let filled_color = Color { a: fg_color.a * t, ..fg_color };
+
+    stack![
+        widget_svg(widget_svg::Handle::from_memory(outline_bytes))
+            .width(Length::Fixed(px))
+            .height(Length::Fixed(px))
+            .style(move |_t: &iced::Theme, _s: widget_svg::Status| widget_svg::Style {
+                color: Some(outline_color),
+            }),
+        widget_svg(widget_svg::Handle::from_memory(filled_bytes))
+            .width(Length::Fixed(px))
+            .height(Length::Fixed(px))
+            .style(move |_t: &iced::Theme, _s: widget_svg::Status| widget_svg::Style {
+                color: Some(filled_color),
+            }),
+    ]
+    .into()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1063,6 +1132,63 @@ mod tests {
         // `from_y` should be mid-flight position (not 0 or 100).
         let y = slider.current_y(mid);
         assert!(y > 0.0 && y < 100.0, "retarget from_y should be intermediate, got {y}");
+    }
+
+    // ANIM-8.c.2 acceptance tests.
+
+    #[test]
+    fn icon_fill_morph_on_active_at_zero_constructs() {
+        // fill_t=0 → outlined only; filled SVG is invisible.
+        let _: Element<'_, ()> = icon_fill_morph(
+            mde_theme::Icon::Dashboard,
+            mde_theme::IconSize::Nav,
+            0.0,
+            Color::WHITE,
+        );
+    }
+
+    #[test]
+    fn icon_fill_morph_on_active_at_one_constructs() {
+        // fill_t=1 → filled only; outline SVG is invisible.
+        let _: Element<'_, ()> = icon_fill_morph(
+            mde_theme::Icon::Fleet,
+            mde_theme::IconSize::Nav,
+            1.0,
+            Color::WHITE,
+        );
+    }
+
+    #[test]
+    fn icon_fill_morph_on_active_midpoint_constructs() {
+        // fill_t=0.5 → both layers half-visible.
+        let _: Element<'_, ()> = icon_fill_morph(
+            mde_theme::Icon::Apps,
+            mde_theme::IconSize::Nav,
+            0.5,
+            Color::WHITE,
+        );
+    }
+
+    #[test]
+    fn icon_fill_morph_never_fill_constructs() {
+        // NeverFill: only one SVG layer, no cross-fade.
+        let _: Element<'_, ()> = icon_fill_morph(
+            mde_theme::Icon::Snapshot,
+            mde_theme::IconSize::Nav,
+            0.5,
+            Color::WHITE,
+        );
+    }
+
+    #[test]
+    fn icon_fill_morph_always_fill_constructs() {
+        // AlwaysFill: only one (filled) SVG layer, no cross-fade.
+        let _: Element<'_, ()> = icon_fill_morph(
+            mde_theme::Icon::Notification,
+            mde_theme::IconSize::Nav,
+            0.5,
+            Color::WHITE,
+        );
     }
 
     #[test]
