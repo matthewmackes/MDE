@@ -225,3 +225,9 @@ crates/mde-workbench/src/panels/home.rs:101
 crates/mde-workbench/src/panels/home.rs:1160
 crates/mde-workbench/src/app.rs:71
 crates/mde-workbench/src/app.rs:76
+# mde-iced-components — test-only fixture colors inside #[cfg(test)] module.
+# These are abstract black/white/grey math fixtures, not design tokens.
+# ANIM-4 / 2026-05-30.
+crates/mde-iced-components/src/lib.rs:758
+crates/mde-iced-components/src/lib.rs:759
+crates/mde-iced-components/src/lib.rs:843

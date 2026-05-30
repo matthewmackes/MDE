@@ -130,6 +130,38 @@ pub mod toast {
     pub const POSITION_GAP: f32 = 8.0;
 }
 
+/// ANIM-4 — list/stagger + skeleton + selection timing tokens.
+/// Cite: motion-language.md §2.4, §2.6, §2.8, §2.9.
+/// Locks: Q15 (capped-8 stagger), Q18 (selection slide),
+/// Q19 (skeleton shimmer → crossfade).
+pub mod list {
+    /// Maximum number of items that stagger individually (Q15).
+    /// Items at or beyond this index appear at the cap delay so
+    /// long lists don't crawl. With step=20ms the spread is 0–140ms.
+    pub const STAGGER_CAP: usize = 8;
+
+    /// Per-item stagger step (ms). Item i gets delay
+    /// `min(i, STAGGER_CAP - 1) * STAGGER_STEP_MS`.
+    pub const STAGGER_STEP_MS: u32 = 20;
+
+    /// Reveal fade-in duration for each staggered list item (ms).
+    /// Shorter than the standard 150ms so staggered items feel crisp
+    /// even at the tail of the cap.
+    pub const STAGGER_REVEAL_MS: u32 = 120;
+
+    /// Selection indicator slide duration (ms). Q18.
+    /// Matches motion-language.md §2.6: 150ms ease-out.
+    pub const SELECTION_SLIDE_MS: u32 = 150;
+
+    /// Skeleton shimmer oscillation period (ms). Q19.
+    /// One full sweep of the shimmer highlight across the placeholder.
+    pub const SHIMMER_PERIOD_MS: u64 = 1200;
+
+    /// Duration to crossfade from skeleton shimmer to loaded content
+    /// (ms). Q19. Matches the standard 150ms transition.
+    pub const SKELETON_CROSSFADE_MS: u32 = 150;
+}
+
 /// CR-10 — right-click context menu constants.
 /// Classic ChromeOS spec 2026-05-24.
 pub mod context_menu {
@@ -214,5 +246,26 @@ mod tests {
     fn context_menu_min_width_is_220_and_row_28() {
         assert!((context_menu::MIN_WIDTH - 220.0).abs() < f32::EPSILON);
         assert!((context_menu::ROW_HEIGHT - 28.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn list_stagger_cap_is_8_and_step_20ms() {
+        // Q15 acceptance: capped at 8, 20ms step → 0..140ms spread.
+        assert_eq!(list::STAGGER_CAP, 8);
+        assert_eq!(list::STAGGER_STEP_MS, 20);
+        let last_stagger_ms = (list::STAGGER_CAP as u32 - 1) * list::STAGGER_STEP_MS;
+        assert_eq!(last_stagger_ms, 140);
+    }
+
+    #[test]
+    fn list_selection_slide_matches_motion_language_spec() {
+        // motion-language.md §2.6: selection underlay slides 150ms ease-out.
+        assert_eq!(list::SELECTION_SLIDE_MS, 150);
+    }
+
+    #[test]
+    fn list_shimmer_period_is_1200ms() {
+        // Q19: shimmer sweeps once per 1200ms.
+        assert_eq!(list::SHIMMER_PERIOD_MS, 1200);
     }
 }

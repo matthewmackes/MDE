@@ -70,6 +70,37 @@ When operator clicks the DND toggle (per BUS-2.8) → glyph swap
 fades cross-fade over `120ms ease-in` (out) + `120ms ease-out`
 (in). No rotation/scale.
 
+### 2.8 Stagger list reveal (ANIM-4, Q15)
+
+When a list or grid of items enters, items reveal individually with a
+staggered delay. Cap: **8 items** max stagger; items at or beyond the
+cap appear at the same maximum delay (`7 × 20ms = 140ms`) so long
+lists don't crawl.
+
+- Per-item delay step: **20ms**
+- Each item's reveal: **120ms ease-out** fade-in
+- Items ≥ cap: appear at the cap's delay (instant relative to each
+  other — they all start at 140ms)
+
+Implementation: `mde_iced_components::motion::stagger_delay_ms(index)`
++ `motion::fade_in_alpha(elapsed_ms - stagger_delay_ms(i), 120, reduce)`.
+
+### 2.9 Skeleton shimmer → content crossfade (ANIM-4, Q19)
+
+While content is loading, a placeholder rectangle oscillates between
+the `raised` surface tier and a lighter band to indicate activity.
+
+- Shimmer: sine-wave alpha in **[0.15, 0.50]** over a **1200ms**
+  loop period — sweeps once per 1.2 s.
+- Corner radius: **4 px** (matches Inline elevation tier).
+- On content arrival: crossfade from shimmer to real content over
+  **150ms ease-out**.
+- Reduced motion: shimmer holds a flat **0.15** alpha (visible but
+  static); crossfade remains at 150ms (functional state change).
+
+Implementation: `mde_iced_components::skeleton_shimmer(width, height,
+motion::shimmer_alpha(now_ms, reduce), palette)`.
+
 ## 3. Forbidden motion (voice-and-tone lint)
 
 The following motion verbs + descriptors must not appear in

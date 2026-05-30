@@ -259,7 +259,9 @@ fn lerp(a: f32, b: f32, t: f32) -> f32 {
 /// `data/css/motion-vocabulary.css`. (SWAY-1's standalone `mde-motion`
 /// crate was retired here — it duplicated `mde_theme::animation`.)
 pub mod motion {
-    use mde_theme::{ease, lerp_f32, Easing};
+    use std::time::{Duration, Instant};
+
+    use mde_theme::{ease, lerp_f32, Easing, Tween};
 
     /// Linear progress in `[0, 1]` for `elapsed_ms` against `duration_ms`.
     fn progress(elapsed_ms: u64, duration_ms: u32) -> f32 {
@@ -326,6 +328,99 @@ pub mod motion {
             a: lerp_f32(from.a, to.a, t),
         }
     }
+
+    // ---------------------------------------------------------------
+    // ANIM-4 — list stagger (Q15), selection slide (Q18), shimmer (Q19)
+    // Cite: motion-language.md §2.4, §2.6, §2.8, §2.9; ref: Linear
+    // ---------------------------------------------------------------
+
+    /// Q15 — stagger delay (ms) for item at `index` in a list.
+    ///
+    /// Items 0..`STAGGER_CAP-1` each receive an incremental
+    /// `STAGGER_STEP_MS` delay; items at or beyond the cap all get the
+    /// maximum delay so long lists don't crawl (Q15 policy).
+    ///
+    /// Use the return value as a start-offset when computing fade-in /
+    /// slide-in alpha for a list item. Item `index=0` has delay `0` ms,
+    /// `index=7` has `140` ms, `index=100` also has `140` ms.
+    #[must_use]
+    pub fn stagger_delay_ms(index: usize) -> u64 {
+        let capped = index.min(mde_theme::motion::list::STAGGER_CAP.saturating_sub(1));
+        u64::from(capped as u32 * mde_theme::motion::list::STAGGER_STEP_MS)
+    }
+
+    /// Q19 — shimmer wave opacity in `[0.15, 0.50]` at `now_ms` for a
+    /// looping skeleton placeholder.
+    ///
+    /// Feeds [`crate::skeleton_shimmer`]. Honors reduced motion (returns
+    /// a flat `0.15` — visible but static).
+    #[must_use]
+    pub fn shimmer_alpha(now_ms: u64, reduce: bool) -> f32 {
+        if reduce {
+            return 0.15;
+        }
+        let period = mde_theme::motion::list::SHIMMER_PERIOD_MS as f32;
+        let phase = (now_ms as f32 / period) * std::f32::consts::TAU;
+        // sine ∈ [−1, 1] → scaled to [0.15, 0.50]
+        phase.sin() * 0.175 + 0.325
+    }
+
+    /// Q18 — state for a sliding selection indicator (motion-language.md §2.6).
+    ///
+    /// Call [`SelectionSlider::set_target`] when the selected item changes;
+    /// call [`SelectionSlider::current_y`] each frame to get the indicator's
+    /// current pixel offset. Re-targeting mid-flight is smooth (no visual pop).
+    ///
+    /// # Example
+    /// ```no_run
+    /// use std::time::Instant;
+    /// use mde_iced_components::motion::SelectionSlider;
+    ///
+    /// let mut slider = SelectionSlider::at(0.0);
+    /// slider.set_target(28.0, Instant::now()); // move to second row (28 px)
+    /// let _y = slider.current_y(Instant::now());
+    /// ```
+    #[derive(Clone, Copy, Debug)]
+    pub struct SelectionSlider {
+        from_y: f32,
+        to_y: f32,
+        tween: Option<Tween>,
+    }
+
+    impl SelectionSlider {
+        /// Create a slider resting at `y` with no animation in flight.
+        #[must_use]
+        pub fn at(y: f32) -> Self {
+            Self { from_y: y, to_y: y, tween: None }
+        }
+
+        /// Animate to `new_y` starting from the current position at `now`.
+        /// Calling again mid-flight re-targets smoothly.
+        pub fn set_target(&mut self, new_y: f32, now: Instant) {
+            self.from_y = self.current_y(now);
+            self.to_y = new_y;
+            self.tween = Some(Tween::starting_at(
+                now,
+                Duration::from_millis(u64::from(
+                    mde_theme::motion::list::SELECTION_SLIDE_MS,
+                )),
+            ));
+        }
+
+        /// Interpolated Y position at `now`. Returns `to_y` once settled.
+        #[must_use]
+        pub fn current_y(&self, now: Instant) -> f32 {
+            let Some(t) = self.tween else { return self.to_y };
+            let p = ease(t.progress(now), Easing::EaseOut);
+            lerp_f32(self.from_y, self.to_y, p)
+        }
+
+        /// `true` once the slide animation has completed.
+        #[must_use]
+        pub fn is_complete(&self, now: Instant) -> bool {
+            self.tween.map_or(true, |t| t.is_complete(now))
+        }
+    }
 }
 
 /// ANIM-8.c.1 — Elevated surface container using Q29 shadow + Q30 radius
@@ -363,6 +458,48 @@ pub fn elevation_container<'a, Message: 'a>(
                 color: shadow.color.into_iced_color(),
                 offset: iced::Vector::new(shadow.offset_x, shadow.offset_y),
                 blur_radius: shadow.blur,
+            },
+            ..container::Style::default()
+        })
+        .into()
+}
+
+/// ANIM-4 (Q19) — skeleton shimmer placeholder widget.
+///
+/// Renders a `width × height` rounded rectangle (4 px corners) whose
+/// background oscillates between `palette.raised` and a brighter band to
+/// signal "content loading." Drive `shimmer_alpha_val` from
+/// [`motion::shimmer_alpha`] on a subscription tick.
+///
+/// When content arrives, crossfade by blending this widget out while the
+/// real content fades in via [`motion::fade_in_alpha`] /
+/// [`motion::fade_out_alpha`] over `motion::list::SKELETON_CROSSFADE_MS`.
+///
+/// Cite: motion-language.md §2.9; ref: Linear (skeleton cards)
+pub fn skeleton_shimmer<'a, Message: 'a>(
+    width: f32,
+    height: f32,
+    shimmer_alpha_val: f32,
+    palette: Palette,
+) -> Element<'a, Message> {
+    let base = palette.raised.into_iced_color();
+    let highlight = palette.surface.into_iced_color();
+    let a = shimmer_alpha_val.clamp(0.0, 1.0);
+    let bg = iced::Color {
+        r: lerp(base.r, highlight.r, a),
+        g: lerp(base.g, highlight.g, a),
+        b: lerp(base.b, highlight.b, a),
+        a: 1.0,
+    };
+    container(Space::new(Length::Fill, Length::Shrink))
+        .width(Length::Fixed(width))
+        .height(Length::Fixed(height))
+        .style(move |_| container::Style {
+            background: Some(Background::Color(bg)),
+            border: Border {
+                color: Color::TRANSPARENT,
+                width: 0.0,
+                radius: 4.0_f32.into(),
             },
             ..container::Style::default()
         })
@@ -751,5 +888,68 @@ mod tests {
         // Should not panic on out-of-range inputs.
         let _: Element<'_, ()> = toast_chip("x", None, -0.5, palette);
         let _: Element<'_, ()> = toast_chip("x", None, 1.5, palette);
+    }
+
+    // ANIM-4 acceptance tests.
+
+    #[test]
+    fn stagger_delay_caps_at_8_items() {
+        // Q15: items 0..7 get incremental delays; items ≥8 get same as item 7.
+        assert_eq!(motion::stagger_delay_ms(0), 0);
+        assert_eq!(motion::stagger_delay_ms(1), 20);
+        assert_eq!(motion::stagger_delay_ms(7), 140);
+        // Items beyond the cap return the same max delay (not higher).
+        assert_eq!(motion::stagger_delay_ms(8), 140);
+        assert_eq!(motion::stagger_delay_ms(100), 140);
+    }
+
+    #[test]
+    fn shimmer_alpha_stays_in_range() {
+        // Q19: shimmer oscillates in [0.15, 0.50].
+        for ms in [0_u64, 300, 600, 900, 1200, 1500] {
+            let a = motion::shimmer_alpha(ms, false);
+            assert!(a >= 0.14 && a <= 0.51, "shimmer_alpha({ms}) = {a} out of range");
+        }
+        // Reduced motion returns flat value in range.
+        assert!((motion::shimmer_alpha(0, true) - 0.15).abs() < 1e-6);
+    }
+
+    #[test]
+    fn selection_slider_settles_to_target() {
+        use std::time::{Duration, Instant};
+        let now = Instant::now();
+        let mut slider = motion::SelectionSlider::at(0.0);
+        slider.set_target(28.0, now);
+        // Immediately after: close to origin.
+        let y_start = slider.current_y(now);
+        assert!(y_start < 5.0, "expected near 0 at start, got {y_start}");
+        // Well after the slide duration: settled at target.
+        let later = now + Duration::from_millis(300);
+        let y_end = slider.current_y(later);
+        assert!((y_end - 28.0).abs() < 0.5, "expected ~28 at end, got {y_end}");
+        assert!(slider.is_complete(later));
+    }
+
+    #[test]
+    fn selection_slider_retargets_smoothly() {
+        use std::time::{Duration, Instant};
+        let now = Instant::now();
+        let mut slider = motion::SelectionSlider::at(0.0);
+        slider.set_target(100.0, now);
+        // Retarget mid-flight.
+        let mid = now + Duration::from_millis(50);
+        slider.set_target(50.0, mid);
+        // `from_y` should be mid-flight position (not 0 or 100).
+        let y = slider.current_y(mid);
+        assert!(y > 0.0 && y < 100.0, "retarget from_y should be intermediate, got {y}");
+    }
+
+    #[test]
+    fn skeleton_shimmer_constructs() {
+        let palette = Palette::dark();
+        // Round-trip through the renderer at various alpha values.
+        for a in [0.0_f32, 0.15, 0.35, 0.50, 1.0] {
+            let _: Element<'_, ()> = skeleton_shimmer(200.0, 16.0, a, palette);
+        }
     }
 }
