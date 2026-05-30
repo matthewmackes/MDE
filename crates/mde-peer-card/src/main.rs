@@ -137,10 +137,12 @@ impl PeerCard {
         let space = self.tokens.space;
 
         // Hero strip — full identity, ~280 px.
+        let peer_kind = self.data.connect.as_ref().map(|c| c.kind);
         let hero_block = hero::view::<Message>(
             &self.data.probe,
             &self.data.enrichment,
             self.data.federation.as_ref(),
+            peer_kind,
             &self.tokens,
         );
 

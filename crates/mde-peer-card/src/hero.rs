@@ -27,7 +27,7 @@ use mde_theme::{Tokens, TypeRole};
 
 use crate::enrich::Enrichment;
 use crate::probe::PeerProbe;
-use crate::FederationInfo;
+use crate::{FederationInfo, PeerKind};
 
 /// Hero strip height in logical pixels. Locked at 280 — the
 /// upper third of an 840 px-tall modal surface.
@@ -44,19 +44,35 @@ pub const WORDMARK_MAX_CHARS: usize = 24;
 /// mesh: an "External mesh" badge appears above the hostname + a
 /// direction chip (↓ subscribe-only or ⇄ two-way) appears in the
 /// opposite corner (TUNE-15.d / `docs/design/v1.0-federation-pairing.md §6`).
+///
+/// `peer_kind` — when `Some(PeerKind::Phone)` or `Some(PeerKind::Tablet)`,
+/// adds a "Mesh peer (phone)" / "Mesh peer (tablet)" subtitle below the
+/// hostname per the TUNE-16.g voice-and-tone lock
+/// (`docs/design/v1.0-phone-nebula-peer.md §7`).
 pub fn view<'a, Msg: 'a + Clone>(
     probe: &'a PeerProbe,
     enrichment: &'a Enrichment,
     federation: Option<&'a FederationInfo>,
+    peer_kind: Option<PeerKind>,
     tokens: &'a Tokens,
 ) -> Element<'a, Msg> {
     let palette = tokens.palette;
     let space = tokens.space;
 
-    // Hostname — display tier (28 sp medium).
-    let hostname = text(probe.hostname.clone())
+    // Hostname — display tier (28 sp medium). For handheld peers
+    // (phone/tablet) a "Mesh peer (phone/tablet)" subtitle is added
+    // below the hostname per the TUNE-16.g voice-and-tone lock.
+    let hostname_label = text(probe.hostname.clone())
         .size(TypeRole::Display.size_in(tokens.font_size))
         .color(rgba_to_color(palette.text));
+    let hostname: Element<'a, Msg> = if let Some(kind) = peer_kind.filter(|k| k.is_handheld()) {
+        let subtitle = text(peer_kind_label(kind))
+            .size(TypeRole::Caption.size_in(tokens.font_size))
+            .color(rgba_to_color(palette.text_muted));
+        column![hostname_label, subtitle].into()
+    } else {
+        hostname_label.into()
+    };
 
     // Manufacturer wordmark with truncation.
     let manuf = enrichment
@@ -170,6 +186,21 @@ fn federation_row<'a, Msg: 'a>(
         .into()
 }
 
+/// TUNE-16.g — voice-and-tone subtitle for handheld peer kinds.
+///
+/// Per `docs/design/v1.0-phone-nebula-peer.md §7`:
+/// - Never "Phone" alone (collides with VOIP PSTN labels).
+/// - Never "Phone peer" (grammatically jarring).
+/// - Use "Mesh peer (phone)" / "Mesh peer (tablet)".
+#[must_use]
+pub fn peer_kind_label(kind: PeerKind) -> &'static str {
+    match kind {
+        PeerKind::Phone => "Mesh peer (phone)",
+        PeerKind::Tablet => "Mesh peer (tablet)",
+        _ => "",
+    }
+}
+
 /// Truncate a string to `max` chars, appending `…` if shortened.
 fn truncate(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
@@ -233,5 +264,26 @@ mod tests {
     #[test]
     fn short_kernel_handles_empty() {
         assert_eq!(short_kernel(""), "unknown");
+    }
+
+    #[test]
+    fn peer_kind_label_phone_uses_mesh_peer_term() {
+        // TUNE-16.g acceptance: never "Phone" alone; always "Mesh peer (phone)".
+        let label = peer_kind_label(PeerKind::Phone);
+        assert_eq!(label, "Mesh peer (phone)");
+        assert!(!label.starts_with("Phone"));
+    }
+
+    #[test]
+    fn peer_kind_label_tablet_uses_mesh_peer_term() {
+        let label = peer_kind_label(PeerKind::Tablet);
+        assert_eq!(label, "Mesh peer (tablet)");
+        assert!(!label.starts_with("Tablet"));
+    }
+
+    #[test]
+    fn peer_kind_label_non_handheld_returns_empty() {
+        assert_eq!(peer_kind_label(PeerKind::Desktop), "");
+        assert_eq!(peer_kind_label(PeerKind::Server), "");
     }
 }

@@ -926,8 +926,8 @@ fn build_services_row(p: &ProbeOutcome) -> CapabilityRow {
 fn build_phone_row() -> CapabilityRow {
     CapabilityRow {
         id: CapabilityId::Phone,
-        name: "Phone Pairing",
-        description: "Connect your phone to mirror notifications, SMS, and clipboard.",
+        name: "Mesh peer (phone)",
+        description: "Add a phone to your mesh to mirror notifications, SMS, and clipboard.",
         icon: Icon::Devices,
         status: CapabilityStatus::ComingSoon { version: "2.1" },
         sub_status: None,
