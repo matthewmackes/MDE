@@ -10,6 +10,11 @@
 //! - Type-to-filter: the filter input at the top narrows the list.
 //! - j/k navigation: arrow keys or j/k move the cursor; Enter pastes.
 //! - Enter pastes the highlighted entry via `wl-copy` and dismisses.
+//!
+//! Features added in BUS-5.7:
+//! - Right-click any entry → inline "Pin / Unpin" context menu.
+//! - Pinned entries appear above rolling history and survive GC TTL.
+//! - Pin state persisted to `<data_home>/mde/clipboard/pins.json`.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -71,6 +76,57 @@ pub struct ClipEntry {
     pub body: String,
     /// Originating peer hostname.
     pub origin_peer: String,
+}
+
+// ── Pin store (BUS-5.7 — mirrors crates/mde-clipd/src/pin.rs) ────────────
+
+mod pin {
+    use std::collections::HashSet;
+    use std::path::Path;
+
+    #[derive(Default, serde::Serialize, serde::Deserialize)]
+    pub struct PinStore {
+        pub pinned: HashSet<String>,
+    }
+
+    impl PinStore {
+        pub fn load_from(path: &Path) -> Self {
+            std::fs::read_to_string(path)
+                .ok()
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or_default()
+        }
+
+        pub fn save_to(&self, path: &Path) -> std::io::Result<()> {
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            let json =
+                serde_json::to_string(self).map_err(std::io::Error::other)?;
+            let tmp = path.with_extension("tmp");
+            std::fs::write(&tmp, json.as_bytes())?;
+            std::fs::rename(&tmp, path)?;
+            Ok(())
+        }
+
+        pub fn pin(&mut self, ulid: &str) {
+            self.pinned.insert(ulid.to_owned());
+        }
+
+        pub fn unpin(&mut self, ulid: &str) {
+            self.pinned.remove(ulid);
+        }
+
+        pub fn is_pinned(&self, ulid: &str) -> bool {
+            self.pinned.contains(ulid)
+        }
+    }
+}
+
+fn clipboard_pin_path() -> PathBuf {
+    dirs::data_dir()
+        .unwrap_or_else(|| PathBuf::from("/tmp"))
+        .join("mde/clipboard/pins.json")
 }
 
 // ── Loaders ───────────────────────────────────────────────────────────────
@@ -191,6 +247,27 @@ fn load_history() -> Vec<ClipEntry> {
     load_from_legacy(&raw)
 }
 
+// ── Split helper (public for tests) ───────────────────────────────────────
+
+/// Partition `indices` into (pinned, history), preserving relative order
+/// within each group. Pinned entries appear first in the combined list.
+pub fn split_by_pin<'a>(
+    entries: &'a [ClipEntry],
+    indices: &'a [usize],
+    pin_store: &'a pin::PinStore,
+) -> (Vec<usize>, Vec<usize>) {
+    let mut pinned = Vec::new();
+    let mut history = Vec::new();
+    for &i in indices {
+        if pin_store.is_pinned(&entries[i].ulid) {
+            pinned.push(i);
+        } else {
+            history.push(i);
+        }
+    }
+    (pinned, history)
+}
+
 // ── Iced layer-shell popover ───────────────────────────────────────────────
 
 use iced::widget::{button, column, container, mouse_area, row, scrollable, text, text_input,
@@ -218,6 +295,10 @@ pub enum Message {
     CursorUp,
     CursorDown,
     PasteSelected,
+    // BUS-5.7 — right-click pin actions.
+    ShowContext(usize),  // real_idx into all_entries
+    HideContext,
+    TogglePin(String),  // ULID
     Exit,
 }
 
@@ -225,12 +306,17 @@ pub struct App {
     all_entries: Vec<ClipEntry>,
     filter: String,
     cursor: usize,
+    // BUS-5.7 — pin state.
+    pin_store: pin::PinStore,
+    pin_path: PathBuf,
+    context_entry: Option<usize>,  // real_idx of entry showing context menu
 }
 
 impl App {
+    /// Returns matching entry indices, pinned first, then newest-first history.
     fn filtered_indices(&self) -> Vec<usize> {
         let q = self.filter.to_lowercase();
-        self.all_entries
+        let mut indices: Vec<usize> = self.all_entries
             .iter()
             .enumerate()
             .filter(|(_, e)| {
@@ -241,7 +327,10 @@ impl App {
             })
             .map(|(i, _)| i)
             .take(100)
-            .collect()
+            .collect();
+        // Stable sort: pinned first (false < true for !is_pinned key).
+        indices.sort_by_key(|&i| !self.pin_store.is_pinned(&self.all_entries[i].ulid));
+        indices
     }
 
     fn paste_entry(&self, idx: usize) {
@@ -273,9 +362,18 @@ impl iced_layershell::Application for App {
 
     fn new(_flags: ()) -> (Self, Task<Message>) {
         let all_entries = load_history();
+        let pin_path = clipboard_pin_path();
+        let pin_store = pin::PinStore::load_from(&pin_path);
         tracing::info!(count = all_entries.len(), "clipboard popover loaded");
         (
-            Self { all_entries, filter: String::new(), cursor: 0 },
+            Self {
+                all_entries,
+                filter: String::new(),
+                cursor: 0,
+                pin_store,
+                pin_path,
+                context_entry: None,
+            },
             Task::none(),
         )
     }
@@ -289,6 +387,7 @@ impl iced_layershell::Application for App {
             Message::FilterChanged(s) => {
                 self.filter = s;
                 self.cursor = 0;
+                self.context_entry = None;
                 Task::none()
             }
             Message::CursorUp => {
@@ -315,6 +414,27 @@ impl iced_layershell::Application for App {
                 self.paste_entry(real_idx);
                 std::process::exit(0);
             }
+            // BUS-5.7 pin messages.
+            Message::ShowContext(real_idx) => {
+                self.context_entry = Some(real_idx);
+                Task::none()
+            }
+            Message::HideContext => {
+                self.context_entry = None;
+                Task::none()
+            }
+            Message::TogglePin(ulid) => {
+                if self.pin_store.is_pinned(&ulid) {
+                    self.pin_store.unpin(&ulid);
+                } else {
+                    self.pin_store.pin(&ulid);
+                }
+                if let Err(e) = self.pin_store.save_to(&self.pin_path) {
+                    tracing::warn!(error = %e, "clipboard: failed to save pin store");
+                }
+                self.context_entry = None;
+                Task::none()
+            }
             Message::Exit => std::process::exit(0),
             _ => Task::none(),
         }
@@ -323,15 +443,23 @@ impl iced_layershell::Application for App {
     fn view(&self) -> Element<'_, Message> {
         let indices = self.filtered_indices();
         let count = self.all_entries.len();
+        let pinned_count = self
+            .all_entries
+            .iter()
+            .filter(|e| self.pin_store.is_pinned(&e.ulid))
+            .count();
 
         // Header
+        let header_label = if pinned_count > 0 {
+            format!("{count} entries · {pinned_count} pinned")
+        } else {
+            format!("{count} entries · bus-synced")
+        };
         let header = container(
             row![
                 text("Clipboard").size(13).color(FG_TEXT),
                 Space::with_width(Length::Fixed(8.0)),
-                text(format!("{count} entries · bus-synced"))
-                    .size(10)
-                    .color(FG_MUTED),
+                text(header_label).size(10).color(FG_MUTED),
                 Space::with_width(Length::Fill),
                 crate::dismiss::close_button(Message::Exit),
             ]
@@ -365,8 +493,11 @@ impl iced_layershell::Application for App {
         )
         .padding(Padding { top: 0.0, right: 12.0, bottom: 6.0, left: 12.0 });
 
-        // Entry list
+        // Entry list — pinned section first, then history.
+        let (pinned_real, history_real) = split_by_pin(&self.all_entries, &indices, &self.pin_store);
+        let cursor = self.cursor;
         let mut list = column![].spacing(2);
+
         if indices.is_empty() {
             list = list.push(
                 container(
@@ -381,32 +512,42 @@ impl iced_layershell::Application for App {
                 .padding(Padding { top: 28.0, right: 0.0, bottom: 0.0, left: 12.0 }),
             );
         }
-        let cursor = self.cursor;
-        for (list_pos, &real_idx) in indices.iter().enumerate() {
+
+        let mut list_pos: usize = 0;
+
+        // Pinned section.
+        if !pinned_real.is_empty() {
+            list = list.push(section_label("Pinned"));
+            for &real_idx in &pinned_real {
+                let entry = &self.all_entries[real_idx];
+                let is_cursor = list_pos == cursor;
+                list = list.push(entry_row(entry, real_idx, is_cursor, true));
+                if self.context_entry == Some(real_idx) {
+                    list = list.push(context_menu_row(entry.ulid.clone(), true));
+                }
+                list_pos += 1;
+            }
+            if !history_real.is_empty() {
+                list = list.push(section_label("History"));
+            }
+        }
+
+        // History section.
+        for &real_idx in &history_real {
             let entry = &self.all_entries[real_idx];
             let is_cursor = list_pos == cursor;
-            let preview_text = preview(&entry.body, 80);
-            let row_btn = button(
-                column![
-                    text(preview_text).size(13).color(FG_TEXT),
-                    Space::with_height(Length::Fixed(2.0)),
-                    text(format!("{} · {}", &entry.origin_peer, &entry.mime))
-                        .size(10)
-                        .color(FG_MUTED),
-                ]
-                .padding(Padding { top: 6.0, right: 12.0, bottom: 6.0, left: 12.0 }),
-            )
-            .width(Length::Fill)
-            .style(move |_theme, status| history_row_style(status, is_cursor))
-            .on_press(Message::Select(real_idx));
-            list = list.push(row_btn);
+            list = list.push(entry_row(entry, real_idx, is_cursor, false));
+            if self.context_entry == Some(real_idx) {
+                list = list.push(context_menu_row(entry.ulid.clone(), false));
+            }
+            list_pos += 1;
         }
 
         let scroll = scrollable(list).height(Length::Fill);
 
         // Footer hint
         let footer = container(
-            text("↑↓/jk navigate · Enter paste · Esc close · type to filter")
+            text("↑↓/jk navigate · Enter paste · right-click pin · Esc close")
                 .size(10)
                 .color(FG_MUTED),
         )
@@ -493,6 +634,122 @@ pub fn run() -> iced_layershell::Result {
     })
 }
 
+// ── Widget helpers ────────────────────────────────────────────────────────
+
+/// One clipboard entry row wrapped in a mouse_area for right-click detection.
+fn entry_row<'a>(
+    entry: &'a ClipEntry,
+    real_idx: usize,
+    is_cursor: bool,
+    is_pinned: bool,
+) -> Element<'a, Message> {
+    let pin_mark: Element<'_, Message> = if is_pinned {
+        text("📌").size(10).color(ACCENT).into()
+    } else {
+        Space::with_width(Length::Fixed(0.0)).into()
+    };
+
+    let row_btn = button(
+        row![
+            column![
+                text(preview(&entry.body, 72)).size(13).color(FG_TEXT),
+                Space::with_height(Length::Fixed(2.0)),
+                text(format!("{} · {}", &entry.origin_peer, &entry.mime))
+                    .size(10)
+                    .color(FG_MUTED),
+            ]
+            .width(Length::Fill),
+            pin_mark,
+        ]
+        .align_y(Alignment::Center)
+        .padding(Padding { top: 6.0, right: 12.0, bottom: 6.0, left: 12.0 }),
+    )
+    .width(Length::Fill)
+    .style(move |_theme, status| history_row_style(status, is_cursor))
+    .on_press(Message::Select(real_idx));
+
+    mouse_area(row_btn)
+        .on_right_press(Message::ShowContext(real_idx))
+        .into()
+}
+
+/// Inline context menu that appears below the right-clicked row.
+fn context_menu_row<'a>(ulid: String, is_pinned: bool) -> Element<'a, Message> {
+    let pin_label = if is_pinned { "Unpin" } else { "Pin" };
+    let ulid_for_btn = ulid;
+    container(
+        row![
+            button(text(pin_label).size(12).color(FG_TEXT))
+                .on_press(Message::TogglePin(ulid_for_btn))
+                .style(|_theme, status| {
+                    let bg = match status {
+                        button::Status::Hovered | button::Status::Pressed => {
+                            Some(Background::Color(Color {
+                                r: ACCENT.r, g: ACCENT.g, b: ACCENT.b, a: 0.20,
+                            }))
+                        }
+                        _ => Some(Background::Color(Color {
+                            r: ACCENT.r, g: ACCENT.g, b: ACCENT.b, a: 0.10,
+                        })),
+                    };
+                    button::Style {
+                        background: bg,
+                        text_color: FG_TEXT,
+                        border: Border {
+                            color: Color { r: ACCENT.r, g: ACCENT.g, b: ACCENT.b, a: 0.40 },
+                            width: 1.0,
+                            radius: 4.0.into(),
+                        },
+                        shadow: Shadow::default(),
+                    }
+                }),
+            Space::with_width(Length::Fill),
+            button(text("✕").size(11).color(FG_MUTED))
+                .on_press(Message::HideContext)
+                .style(|_theme, status| {
+                    let alpha = match status {
+                        button::Status::Hovered | button::Status::Pressed => 0.12,
+                        _ => 0.0,
+                    };
+                    button::Style {
+                        background: Some(Background::Color(Color {
+                            r: FG_MUTED.r, g: FG_MUTED.g, b: FG_MUTED.b, a: alpha,
+                        })),
+                        text_color: FG_MUTED,
+                        border: Border::default(),
+                        shadow: Shadow::default(),
+                    }
+                }),
+        ]
+        .align_y(Alignment::Center),
+    )
+    .padding(Padding { top: 3.0, right: 8.0, bottom: 3.0, left: 8.0 })
+    .style(|_| container::Style {
+        background: Some(Background::Color(Color {
+            r: ACCENT.r, g: ACCENT.g, b: ACCENT.b, a: 0.08,
+        })),
+        border: Border {
+            color: Color { r: ACCENT.r, g: ACCENT.g, b: ACCENT.b, a: 0.25 },
+            width: 1.0,
+            radius: 4.0.into(),
+        },
+        shadow: Shadow::default(),
+        text_color: None,
+    })
+    .into()
+}
+
+/// Section label row ("Pinned" / "History").
+fn section_label<'a>(label: &'static str) -> Element<'a, Message> {
+    container(
+        text(label)
+            .size(10)
+            .color(FG_MUTED),
+    )
+    .padding(Padding { top: 4.0, right: 12.0, bottom: 1.0, left: 12.0 })
+    .into()
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 /// Truncate `body` to `max` chars + collapse newlines.
@@ -550,6 +807,18 @@ fn history_row_style(status: button::Status, is_cursor: bool) -> button::Style {
 mod tests {
     use super::*;
 
+    fn make_entry(ulid: &str, body: &str) -> ClipEntry {
+        ClipEntry {
+            ulid: ulid.to_string(),
+            ts_iso: String::new(),
+            mime: "text/plain".into(),
+            body: body.to_string(),
+            origin_peer: "local".into(),
+        }
+    }
+
+    // ── load_from_legacy ──────────────────────────────────────────────────
+
     #[test]
     fn load_from_legacy_empty_string_returns_empty() {
         assert!(load_from_legacy("").is_empty());
@@ -578,6 +847,8 @@ mod tests {
         assert_eq!(entries[0].body, "second");
         assert_eq!(entries[1].body, "first");
     }
+
+    // ── load_from_bus ─────────────────────────────────────────────────────
 
     #[test]
     fn load_from_bus_empty_dir_returns_empty() {
@@ -668,6 +939,81 @@ mod tests {
         std::fs::write(dir.path().join("bad.json"), "not json").unwrap();
         assert!(load_from_bus(dir.path()).is_empty());
     }
+
+    // ── split_by_pin (BUS-5.7) ────────────────────────────────────────────
+
+    #[test]
+    fn split_pinned_first_then_history() {
+        let entries = vec![
+            make_entry("ULID-A", "first"),
+            make_entry("ULID-B", "second"),
+            make_entry("ULID-C", "third"),
+        ];
+        let mut ps = pin::PinStore::default();
+        ps.pin("ULID-B");
+        let all_indices = vec![0usize, 1, 2];
+        let (pinned, history) = split_by_pin(&entries, &all_indices, &ps);
+        assert_eq!(pinned, vec![1]);       // ULID-B is pinned
+        assert_eq!(history, vec![0, 2]);   // A and C are history
+    }
+
+    #[test]
+    fn split_all_unpinned_returns_empty_pinned() {
+        let entries = vec![make_entry("A", "x"), make_entry("B", "y")];
+        let ps = pin::PinStore::default();
+        let (pinned, history) = split_by_pin(&entries, &[0, 1], &ps);
+        assert!(pinned.is_empty());
+        assert_eq!(history, vec![0, 1]);
+    }
+
+    #[test]
+    fn split_all_pinned_returns_empty_history() {
+        let entries = vec![make_entry("A", "x"), make_entry("B", "y")];
+        let mut ps = pin::PinStore::default();
+        ps.pin("A");
+        ps.pin("B");
+        let (pinned, history) = split_by_pin(&entries, &[0, 1], &ps);
+        assert_eq!(pinned, vec![0, 1]);
+        assert!(history.is_empty());
+    }
+
+    #[test]
+    fn split_empty_indices_returns_empty() {
+        let entries: Vec<ClipEntry> = Vec::new();
+        let ps = pin::PinStore::default();
+        let (pinned, history) = split_by_pin(&entries, &[], &ps);
+        assert!(pinned.is_empty());
+        assert!(history.is_empty());
+    }
+
+    // ── pin store round-trip (BUS-5.7) ────────────────────────────────────
+
+    #[test]
+    fn pin_store_save_load_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pins.json");
+        let mut ps = pin::PinStore::default();
+        ps.pin("ULID-X");
+        ps.save_to(&path).unwrap();
+        let loaded = pin::PinStore::load_from(&path);
+        assert!(loaded.is_pinned("ULID-X"));
+        assert!(!loaded.is_pinned("ULID-NEVER"));
+    }
+
+    #[test]
+    fn pin_store_unpin_persists() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pins.json");
+        let mut ps = pin::PinStore::default();
+        ps.pin("ULID-X");
+        ps.save_to(&path).unwrap();
+        ps.unpin("ULID-X");
+        ps.save_to(&path).unwrap();
+        let loaded = pin::PinStore::load_from(&path);
+        assert!(!loaded.is_pinned("ULID-X"));
+    }
+
+    // ── preview ───────────────────────────────────────────────────────────
 
     #[test]
     fn preview_truncates_long_text() {

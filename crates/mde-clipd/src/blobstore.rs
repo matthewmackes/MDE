@@ -12,6 +12,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
+use crate::pin::{pin_store_path, PinStore};
 use crate::publish::{blob_dir, ClipboardPayload, ClipboardSyncMsg};
 
 /// Run one GC pass over `<data_home>/mde/clipboard/blobs/`.
@@ -68,7 +69,23 @@ pub fn gc_orphaned_blobs(bus_root: &Path, data_home: &Path) -> anyhow::Result<us
         }
     }
 
-    // 3. Delete unreferenced blobs.
+    // 3. BUS-5.7 pin protection: blobs referenced by pinned entries survive
+    //    even when BUS-1.9 retention-evicts the bus message. We attempt to
+    //    read the message path for each pinned ULID and add its BlobRef (if
+    //    any) to the referenced set. If the message is already gone there is
+    //    nothing to protect — the blob path is irrecoverable from the ULID
+    //    alone without the message.
+    let pin_path = pin_store_path(data_home);
+    let pins = PinStore::load_from(&pin_path);
+    let topic_dir_for_pins = bus_root.join("clipboard/sync");
+    for ulid in &pins.pinned {
+        let msg = topic_dir_for_pins.join(format!("{ulid}.json"));
+        if let Some(blob_path) = extract_blob_ref(&msg) {
+            referenced.insert(blob_path);
+        }
+    }
+
+    // 4. Delete unreferenced blobs.
     let mut deleted = 0;
     for blob_path in &on_disk {
         if !referenced.contains(blob_path) {
@@ -113,6 +130,7 @@ fn extract_blob_ref(msg_path: &Path) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pin::PinStore;
     use crate::publish::{publish_clipboard, INLINE_THRESHOLD};
 
     #[test]
@@ -238,6 +256,53 @@ mod tests {
             std::fs::read_dir(&blobs).unwrap().count(),
             0,
             "no blobs after GC"
+        );
+    }
+
+    #[test]
+    fn pinned_blob_survives_when_pinned_message_exists() {
+        let tmp = tempfile::tempdir().unwrap();
+        let bus_root = tmp.path().join("bus");
+        let data_home = tmp.path().to_path_buf();
+        let big = vec![0u8; INLINE_THRESHOLD + 1];
+
+        // Publish a large blob so a BlobRef message is created.
+        publish_clipboard(
+            &bus_root,
+            &data_home,
+            "p",
+            &["image/png".to_string()],
+            "image/png",
+            &big,
+        )
+        .unwrap();
+
+        // Pin the message ULID by reading the topic dir for the file name.
+        let topic_dir = bus_root.join("clipboard/sync");
+        let msg_file = std::fs::read_dir(&topic_dir)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        let ulid = msg_file
+            .file_stem()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
+
+        let pin_path = pin_store_path(&data_home);
+        let mut pins = PinStore::default();
+        pins.pin(&ulid);
+        pins.save_to(&pin_path).unwrap();
+
+        // GC must not delete the blob because the message is pinned.
+        assert_eq!(gc_orphaned_blobs(&bus_root, &data_home).unwrap(), 0);
+        let blobs = blob_dir(&data_home);
+        assert_eq!(
+            std::fs::read_dir(&blobs).unwrap().count(),
+            1,
+            "pinned blob must survive"
         );
     }
 

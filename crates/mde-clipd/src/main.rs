@@ -14,6 +14,8 @@ use wayland_client::Connection;
 
 mod blobstore;
 mod conflict;
+// BUS-5.7 — pin store for GC protection + mde-popover reads same file path.
+mod pin;
 mod proto;
 mod publish;
 mod session;
