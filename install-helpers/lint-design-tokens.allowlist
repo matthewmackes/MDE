@@ -211,7 +211,10 @@ crates/mde-portal/src/portal_full_main.rs:2225
 crates/mde-portal/src/portal_full_main.rs:2226
 crates/mde-iced-components/src/lib.rs:353
 crates/mde-iced-components/src/lib.rs:354
+crates/mde-iced-components/src/lib.rs:394
+crates/mde-iced-components/src/lib.rs:395
 crates/mde-iced-components/src/lib.rs:438
+crates/mde-iced-components/src/lib.rs:479
 crates/mde-workbench/src/app.rs:1532
 crates/mde-workbench/src/app.rs:1533
 crates/mde-workbench/src/app.rs:1567

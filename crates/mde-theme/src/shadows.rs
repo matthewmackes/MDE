@@ -59,10 +59,22 @@ impl Shadow {
         }
     }
 
-    /// `SHADOW_3` — modal. Dialogs, command palette, sheets.
-    /// Q20 layered shadow's drop-shadow half (the 1 px hairline
-    /// ring is rendered separately by the consumer via the
-    /// adaptive-border palette token).
+    /// `SHADOW_2b` — floating overlay. OSDs, toasts, compact overlays
+    /// (Q29 — between raised and modal in visual weight).
+    pub const fn floating() -> Self {
+        Self {
+            offset_x: 0.0,
+            offset_y: 4.0,
+            blur: 12.0,
+            spread: 0.0,
+            color: Rgba::rgba(0, 0, 0, 0.22),
+        }
+    }
+
+    /// `SHADOW_3` — modal. Dialogs, command palette, Portal-full sheets.
+    /// Q20 + Q29: the drop-shadow half of the layered spec (the 1 px
+    /// hairline ring is rendered by the consumer via the adaptive-border
+    /// palette token).
     pub const fn modal() -> Self {
         Self {
             offset_x: 0.0,
@@ -86,7 +98,19 @@ mod tests {
     #[test]
     fn elevations_increase_in_blur() {
         assert!(Shadow::lift().blur < Shadow::raised().blur);
-        assert!(Shadow::raised().blur < Shadow::modal().blur);
+        assert!(Shadow::raised().blur < Shadow::floating().blur);
+        assert!(Shadow::floating().blur < Shadow::modal().blur);
+    }
+
+    #[test]
+    fn floating_shadow_is_between_raised_and_modal() {
+        let f = Shadow::floating();
+        assert!(f.blur > Shadow::raised().blur);
+        assert!(f.blur < Shadow::modal().blur);
+        // Q29: 22 % black, 4 px y, 12 px blur.
+        assert_eq!(f.offset_y as i32, 4);
+        assert_eq!(f.blur as i32, 12);
+        assert!((f.color.a - 0.22).abs() < 0.001);
     }
 
     #[test]

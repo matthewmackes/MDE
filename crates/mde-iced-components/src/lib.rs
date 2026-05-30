@@ -21,8 +21,8 @@ use iced::widget::{column, container, row, text, Column, Space};
 use iced::{alignment, Background, Border, Color, Element, Length, Padding, Shadow as IcedShadow};
 
 use mde_theme::{
-    mde_icon, CardSize, CardState, IconPlacement, IconSize, IconState, ObjectCard, Palette,
-    CARD_CORNER_RADIUS, CARD_DISABLED_OPACITY, CARD_FOCUS_OUTLINE_OFFSET,
+    mde_icon, CardSize, CardState, Elevation, IconPlacement, IconSize, IconState, ObjectCard,
+    Palette, CARD_CORNER_RADIUS, CARD_DISABLED_OPACITY, CARD_FOCUS_OUTLINE_OFFSET,
     CARD_FOCUS_OUTLINE_WIDTH, CARD_HOVER_OVERLAY_ALPHA, CARD_PADDING,
     CARD_SELECTED_BORDER_WIDTH, CARD_SELECTED_OVERLAY_ALPHA, CARD_SHADOW_DEFAULT_ALPHA,
     CARD_SHADOW_DEFAULT_BLUR, CARD_SHADOW_DEFAULT_OFFSET_Y, CARD_SHADOW_HOVER_ALPHA,
@@ -328,6 +328,47 @@ pub mod motion {
     }
 }
 
+/// ANIM-8.c.1 — Elevated surface container using Q29 shadow + Q30 radius
+/// for the given tier (docs/design/sway-native-shell.md §5).
+///
+/// Returns a styled `container` with the tier's background (`palette.raised`),
+/// 1 px border (`palette.border`), corner radius, and drop-shadow. Callers
+/// compose it with `.width()` / `.height()` / `.padding()` before calling
+/// `.into()`.
+///
+/// | Tier          | Radius | Shadow  | Use                              |
+/// |---------------|--------|---------|----------------------------------|
+/// | `Inline`      | 4 px   | none    | rows, badges, chips              |
+/// | `PopoverMenu` | 8 px   | raised  | dropdown menus, popovers         |
+/// | `Floating`    | 8 px   | float   | OSDs, toasts, compact overlays   |
+/// | `Modal`       | 12 px  | modal   | dialogs, sheets, palette         |
+pub fn elevation_container<'a, Message: 'a>(
+    content: impl Into<Element<'a, Message>>,
+    elevation: Elevation,
+    palette: Palette,
+) -> Element<'a, Message> {
+    let bg = palette.raised.into_iced_color();
+    let border_color = palette.border.into_iced_color();
+    let shadow = elevation.shadow();
+    let radius = f32::from(elevation.radius()).into();
+    container(content)
+        .style(move |_| container::Style {
+            background: Some(Background::Color(bg)),
+            border: Border {
+                color: border_color,
+                width: 1.0,
+                radius,
+            },
+            shadow: IcedShadow {
+                color: shadow.color.into_iced_color(),
+                offset: iced::Vector::new(shadow.offset_x, shadow.offset_y),
+                blur_radius: shadow.blur,
+            },
+            ..container::Style::default()
+        })
+        .into()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -440,5 +481,19 @@ mod tests {
         assert!((half.a - 0.4).abs() < 0.001);
         // RGB channels unchanged.
         assert!((half.r - 0.5).abs() < 0.001);
+    }
+
+    #[test]
+    fn elevation_container_constructs_all_tiers() {
+        let palette = Palette::dark();
+        for tier in [
+            Elevation::Inline,
+            Elevation::PopoverMenu,
+            Elevation::Floating,
+            Elevation::Modal,
+        ] {
+            let content = Space::with_width(Length::Fixed(100.0));
+            let _: Element<'_, ()> = elevation_container(content, tier, palette);
+        }
     }
 }

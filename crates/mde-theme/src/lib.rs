@@ -14,6 +14,7 @@
 //! - [`typography`] — type-scale sizes + font-stack constants.
 //! - [`radii`] — corner-radius tokens.
 //! - [`shadows`] — elevation shadow specs.
+//! - [`elevation`] — per-tier radius + shadow bundles (Q29 + Q30).
 //! - [`Theme`] — Dark / Light enum.
 //! - [`Density`] — Compact / Comfortable / Spacious enum
 //!   (UX-15). UX-24 sub-lock: density scales spacing tokens only,
@@ -42,6 +43,7 @@ pub mod brand;
 pub mod color;
 pub mod components;
 pub mod density;
+pub mod elevation;
 pub mod icons;
 pub mod motion;
 pub mod palette;
@@ -67,6 +69,7 @@ pub use components::{
     CARD_SHADOW_PRESSED_OFFSET_Y, CARD_SUBTITLE_SIZE, CARD_TITLE_SIZE,
 };
 pub use density::Density;
+pub use elevation::Elevation;
 pub use icons::{
     icon_for_device_type, mde_icon, FillMode, Icon, IconSize, IconState, ResolvedIcon,
     MATERIAL_LINE_WEIGHT_PX,
