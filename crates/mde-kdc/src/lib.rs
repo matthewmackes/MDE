@@ -47,3 +47,9 @@ pub mod transport;
 // mde_kdc_proto separately for the basics.
 pub use mde_kdc_proto::wire::{CapabilitiesHeader, Packet};
 pub use mde_kdc_proto::PROTOCOL_VERSION;
+
+// BUS-5.9: re-export clip_bridge entry points so consumers of
+// mde-kdc can call phone_to_bus + new_bus_entries_since without
+// importing the sub-module directly. Satisfies §0.12 runtime-
+// reachability: these are the canonical KDC2 host APIs.
+pub use clip_bridge::{new_bus_entries_since, phone_to_bus};

@@ -205,6 +205,47 @@ jobs:
           install-helpers/bench-panel.sh
           kill $BENCH_XVFB_PID 2>/dev/null || true
 
+  wayland-smoke:
+    # SWAY-3 (Q5/Q81/Q99) — headless Wayland CI smoke.
+    #
+    # Runs the HW-3 harness (tests/hardware/hw3_wayland_smoke.sh) inside
+    # a Fedora container that has sway + wlr-randr.  The script starts a
+    # headless sway session (WLR_BACKENDS=headless), asserts sway outputs,
+    # and — if mackesd is built — exercises the marks_state Bus action
+    # responder (worker-exercise gates 4 + 5).
+    #
+    # The Q99 reduce-motion static-render assertions live in the Rust test
+    # suite (mde-theme animation.rs) and are covered by the `rust` job above.
+    name: wayland smoke (headless sway, Fedora 44)
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:44
+    needs: rust
+    steps:
+      - name: Install sway + Wayland test tools
+        run: |
+          dnf install -y --setopt=install_weak_deps=False \
+            git \
+            sway wlr-randr \
+            xorg-x11-server-Xvfb \
+            rust cargo gcc make pkgconfig gtk3-devel
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Mark workspace safe for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Run HW-3 headless Wayland smoke
+        env:
+          WLR_BACKENDS: headless
+          WLR_LIBINPUT_NO_DEVICES: "1"
+          XDG_RUNTIME_DIR: /tmp/hw3-ci-runtime
+        run: |
+          mkdir -p /tmp/hw3-ci-runtime
+          chmod 700 /tmp/hw3-ci-runtime
+          bash tests/hardware/hw3_wayland_smoke.sh
+
   acceptance:
     # NF-9.x — v2.5 Nebula-fabric bench acceptance gate.
     #

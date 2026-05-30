@@ -10,7 +10,8 @@
 //!
 //! ```
 //! use std::time::Instant;
-//! use mde_theme::animation::{ease, Easing, Tween};
+//! use mde_theme::animation::{ease, Tween};
+//! use mde_theme::motion::Easing;
 //!
 //! let mut t = Tween::starting_at(Instant::now(), std::time::Duration::from_millis(180));
 //! // Each tick: progress 0.0 → 1.0 (clamped at 1.0 when done).
@@ -69,6 +70,15 @@ impl Tween {
     #[must_use]
     pub fn duration(self) -> Duration {
         self.duration
+    }
+
+    /// Build a static (zero-duration) tween for use under
+    /// `reduce_motion`. `is_complete` returns `true` immediately;
+    /// `progress` returns `1.0` immediately — the consumer renders
+    /// the final/static frame without any interpolation. Q99.
+    #[must_use]
+    pub fn static_frame(now: Instant) -> Self {
+        Self { start: now, duration: Duration::ZERO }
     }
 }
 
@@ -248,5 +258,61 @@ mod tests {
         let m = Motion::panel_mount();
         let tw = Tween::starting_at(Instant::now(), m.duration);
         assert_eq!(tw.duration(), Duration::from_millis(180));
+    }
+
+    // ── Q99 reduce-motion static-render assertions ────────────────────────
+
+    #[test]
+    fn static_frame_tween_is_immediately_complete() {
+        // Q99: reduce-motion path. Tween::static_frame() must report
+        // complete + progress=1.0 at the instant it's created so the
+        // consumer renders the final static frame without interpolation.
+        let now = Instant::now();
+        let tw = Tween::static_frame(now);
+        assert!(tw.is_complete(now), "static_frame must be complete at t=start");
+        assert!(
+            (tw.progress(now) - 1.0).abs() < 1e-6,
+            "static_frame progress must be 1.0 at t=start"
+        );
+    }
+
+    #[test]
+    fn static_frame_tween_has_zero_duration() {
+        let tw = Tween::static_frame(Instant::now());
+        assert_eq!(tw.duration(), Duration::ZERO);
+    }
+
+    #[test]
+    fn reduce_motion_a11y_tween_completes_at_80ms() {
+        // Q4 + Q99: when A11y::reduce_motion=true, transition_duration_ms
+        // caps to 80 ms. A tween built with that cap must be complete
+        // at exactly t=start+80ms — the consumer sees the static/final
+        // frame no later than 80 ms after the animation begins.
+        use crate::accessibility::A11y;
+        let a11y = A11y { reduce_motion: true, ..A11y::default() };
+        let cap_ms = a11y.transition_duration_ms(180) as u64;
+        assert_eq!(cap_ms, 80, "Q4: reduce_motion must cap at 80 ms");
+        let now = Instant::now();
+        let tw = Tween::starting_at(now, Duration::from_millis(cap_ms));
+        let at_cap = now + Duration::from_millis(cap_ms);
+        assert!(
+            tw.is_complete(at_cap),
+            "reduce_motion tween must be complete at t=start+80ms"
+        );
+        assert!(
+            (tw.progress(at_cap) - 1.0).abs() < 1e-6,
+            "reduce_motion tween progress must be 1.0 at the cap"
+        );
+    }
+
+    #[test]
+    fn reduce_motion_off_does_not_collapse_duration() {
+        // Normal motion must NOT collapse. Guards against accidental
+        // always-static renders if the reduce_motion flag defaults wrong.
+        use crate::accessibility::A11y;
+        let a11y = A11y::default();
+        assert!(!a11y.reduce_motion);
+        let cap_ms = a11y.transition_duration_ms(180) as u64;
+        assert_eq!(cap_ms, 180, "reduce_motion=false must preserve standard duration");
     }
 }
