@@ -36,7 +36,7 @@ $ mackes init
 
 → Preset: chromeos-classic-dark (auto-selected; node-style headless variant)
    Mesh:       enabled (Nebula overlay; legacy Tailscale retired)
-   File sync:  enabled (gluster mesh-home — XDG dirs FUSE-mounted; was SSHFS via ~/QNM-Shared)
+   File sync:  enabled (LizardFS mesh-storage — XDG dirs FUSE-mounted; was GlusterFS mesh-home)
    Event bus:  enabled (Mackes Bus over ntfy + Nebula; was NATS)
 
 → Mesh setup
@@ -51,7 +51,7 @@ $ mackes init
    ✓ snapshot created: 2026-05-16T22-08-12_node-baseline
    ✓ mded started (supervisor + workers)
    ✓ nebula.service started
-   ✓ gluster mesh-home enabled (XDG dirs FUSE-mounted)
+   ✓ LizardFS mesh-storage enabled (XDG dirs FUSE-mounted)
    ✓ Mackes Bus enabled (ntfy broker on nebula0)
    ✓ mesh-ssh keys distributed
 

@@ -85,7 +85,7 @@ upper-right. Three states:
 |----------|-------------|----------------------------------------|
 | Online   | indigo dot  | Nebula overlay is up, peers reachable. |
 | Joining  | amber dot   | Overlay starting; not yet routable.    |
-| Offline  | grey dot    | No overlay; mesh-home unavailable.     |
+| Offline  | grey dot    | No overlay; mesh-storage unavailable.  |
 
 The chip is informational only — login works regardless of mesh
 state, and the chip doesn't gate authentication. Click it to view

@@ -11,8 +11,8 @@
 # trust. Binding to the overlay IP makes the broker unreachable
 # from the underlay; that's the security boundary.
 #
-# Persistence rides BUS-1.4's GFS-mesh-home file tree (rendered as
-# the `cache-file` pointer + `cache-startup-queries`). BUS-1.2
+# Persistence rides BUS-1.4's LizardFS mesh-storage file tree (rendered
+# as the `cache-file` pointer + `cache-startup-queries`). BUS-1.2
 # ships the broker; BUS-1.4 plugs in the actual replicated cache.
 
 # Bind on the Nebula overlay IP only. {{overlay_ip}} is rendered
@@ -22,8 +22,8 @@
 listen-http: "{{ overlay_ip }}:8443"
 
 # Per-peer file-backed cache so messages survive a daemon restart.
-# Lives in the user's cache dir today; BUS-1.4 moves it onto GFS
-# mesh-home for fleet-wide replication.
+# Lives in the user's cache dir today; BUS-1.4 moves it onto LizardFS
+# mesh-storage for fleet-wide replication.
 cache-file: "{{ cache_dir }}/ntfy.db"
 cache-duration: "168h"  # 7 days — matches BUS-1.9 default retention.
 

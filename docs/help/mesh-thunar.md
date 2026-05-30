@@ -9,6 +9,8 @@
 > `~/Downloads/` directly onto the mesh-home volume per GF-4.1.
 > No URI scheme, no bookmarks, no per-peer SSHFS mounts —
 > every peer holds every file, and your XDG dirs ARE the mesh.
+> (The underlying filesystem is LizardFS mesh-storage per MESHFS-4.1 —
+> was GlusterFS mesh-home per GF-4.1.)
 >
 > The pre-DEAD-2.11 mesh:// behavior below is retained only
 > for archeology + cross-referencing legacy code paths still

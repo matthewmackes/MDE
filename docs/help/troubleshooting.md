@@ -158,8 +158,8 @@ that survives.
   authorized_keys                    (appended with mesh peer pubkeys)
 
 ~/.mde-mesh/                         MDE-Workgroup coordination root (v5+; was ~/QNM-Shared/)
-~/Documents, ~/Pictures, ~/Music,    XDG dirs FUSE-mounted on the gluster mesh-home volume —
-~/Videos, ~/Downloads                every peer holds every file (GF-4.1; was per-peer SSHFS at ~/QNM-Mesh/)
+~/Documents, ~/Pictures, ~/Music,    XDG dirs FUSE-mounted on the LizardFS mesh-storage volume —
+~/Videos, ~/Downloads                every peer holds every file (MESHFS-4.1; was GlusterFS GF-4.1)
 ```
 
 System paths Mackes installs to:

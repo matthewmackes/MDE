@@ -115,7 +115,7 @@ mackesd ca ban-list                 # print the enforced mesh-wide union
 mackesd ca unban <node-id>          # lift THIS peer's ban entry
 ```
 
-Bans propagate via GFS-replicated mesh-home and the enrolment gate
+Bans propagate via LizardFS mesh-storage and the enrolment gate
 enforces the **union** of every peer's list — there is no override, so a
 single peer banning a stolen node-id protects the whole fleet. `unban`
 only lifts the entry the local peer set; a ban another peer set must be

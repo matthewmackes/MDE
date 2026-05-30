@@ -165,7 +165,7 @@ mackesd ca import                        # import a CA backup bundle (stdin)
 
 A ban refuses a node-id enrolment mesh-wide — even with a valid
 passcode and across a CA rotation. Bans propagate to every peer via
-GFS-replicated mesh-home; the enrolment gate enforces the *union* of
+LizardFS mesh-storage; the enrolment gate enforces the *union* of
 every peer's list, so there is no override. `ca unban` only lifts the
 entry the local peer set — a ban another peer set must be lifted there.
 

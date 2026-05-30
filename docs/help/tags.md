@@ -17,7 +17,7 @@ The `<tag-name>` portion is by convention the same as the
 `name` field inside the file (the loader uses the file stem as
 the default `name`; an explicit `name = "..."` in the body
 overrides). Mesh peers all see the same tags because
-`~/.config/` is replicated by GlusterFS per the v5.0.0 mesh-home
+`~/.config/` is replicated by LizardFS per the v5.0.0 mesh-storage
 design.
 
 ## Schema

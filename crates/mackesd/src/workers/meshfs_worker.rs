@@ -927,6 +927,80 @@ pub fn parse_cslist_output(text: &str) -> Vec<String> {
     out
 }
 
+// ── MESHFS-13.1: status report (Workbench "Mesh Storage" panel) ─────────────
+
+/// Per-chunkserver row from `mfsadmin CS-LIST`.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ChunkserverStatus {
+    pub addr: String,
+    pub used_bytes: u64,
+    pub avail_bytes: u64,
+}
+
+/// Parse `mfsadmin CS-LIST` output into per-chunkserver status rows.
+/// Extends `parse_cslist_output` with the used/avail byte columns.
+#[must_use]
+pub fn parse_cslist_full(text: &str) -> Vec<ChunkserverStatus> {
+    text.lines()
+        .skip(1)
+        .filter_map(|line| {
+            let cols: Vec<&str> = line.split_whitespace().collect();
+            if cols.len() < 4 {
+                return None;
+            }
+            let addr = cols[0].to_owned();
+            if !addr.contains('.') && !addr.contains(':') {
+                return None;
+            }
+            let used_bytes = cols[2].parse::<u64>().ok()?;
+            let avail_bytes = cols[3].parse::<u64>().ok()?;
+            Some(ChunkserverStatus { addr, used_bytes, avail_bytes })
+        })
+        .collect()
+}
+
+/// Fleet status report emitted by `mackesd meshfs-status --json`.
+#[derive(Debug, serde::Serialize)]
+pub struct MeshFsStatusReport {
+    pub master_reachable: bool,
+    pub peers: Vec<ChunkserverStatus>,
+    /// Replication goal = current peer count (converges on tick).
+    pub goal: usize,
+    /// Hard quota cap in bytes (0.8 × min(avail)), absent when no CS data.
+    pub quota_cap_bytes: Option<u64>,
+    /// Overlay IP of the chunkserver with the least available space.
+    pub limiting_peer_addr: Option<String>,
+}
+
+/// Query the active LizardFS master via `mfsadmin CS-LIST` and return a
+/// `MeshFsStatusReport`. Gracefully returns empty peers when LizardFS is
+/// not running or the master is unreachable.
+#[must_use]
+pub fn meshfs_status_report(admin_binary: &str, vip: &str) -> MeshFsStatusReport {
+    let master_reachable = master_reachable(vip);
+    let peers = if master_reachable {
+        match Command::new(admin_binary).args([vip, "CS-LIST"]).output() {
+            Ok(out) if out.status.success() => {
+                parse_cslist_full(&String::from_utf8_lossy(&out.stdout))
+            }
+            _ => Vec::new(),
+        }
+    } else {
+        Vec::new()
+    };
+    let limiting = peers.iter().min_by_key(|p| p.avail_bytes);
+    let quota_cap_bytes = limiting.map(|p| p.avail_bytes * 4 / 5);
+    let limiting_peer_addr = limiting.map(|p| p.addr.clone());
+    let goal = peers.len();
+    MeshFsStatusReport {
+        master_reachable,
+        peers,
+        goal,
+        quota_cap_bytes,
+        limiting_peer_addr,
+    }
+}
+
 /// Bus root for the per-peer ntfy persist layer. Mirrors `marks_state`.
 fn default_meshfs_bus_root() -> Option<PathBuf> {
     Some(dirs::data_dir()?.join("mde").join("bus"))
@@ -1513,5 +1587,53 @@ ip              port  used       avail\n\
         let log = replay_all_staged(stage_dir.path(), mesh_dir.path(), "testpeer");
         assert_eq!(log.len(), 2, "expected 2 log lines, got: {log:?}");
         assert!(log.iter().all(|l| l.contains("meshfs replay")));
+    }
+
+    // ── MESHFS-13.1: parse_cslist_full + meshfs_status_report ──────────────
+
+    #[test]
+    fn parse_cslist_full_extracts_addr_used_avail() {
+        let output = "\
+ip              port  used       avail\n\
+10.42.0.5       9422  1234567    8765432\n\
+10.42.0.7       9422  987654     9012345\n";
+        let rows = parse_cslist_full(output);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].addr, "10.42.0.5");
+        assert_eq!(rows[0].used_bytes, 1_234_567);
+        assert_eq!(rows[0].avail_bytes, 8_765_432);
+        assert_eq!(rows[1].addr, "10.42.0.7");
+        assert_eq!(rows[1].used_bytes, 987_654);
+        assert_eq!(rows[1].avail_bytes, 9_012_345);
+    }
+
+    #[test]
+    fn parse_cslist_full_empty_returns_empty() {
+        assert!(parse_cslist_full("").is_empty());
+    }
+
+    #[test]
+    fn parse_cslist_full_header_only_returns_empty() {
+        assert!(parse_cslist_full("ip  port  used  avail\n").is_empty());
+    }
+
+    #[test]
+    fn meshfs_status_report_unreachable_returns_empty_peers() {
+        // Use a VIP that is certain not to answer in the test env.
+        let report = meshfs_status_report("mfsadmin", "192.0.2.1");
+        assert!(!report.master_reachable);
+        assert!(report.peers.is_empty());
+        assert!(report.quota_cap_bytes.is_none());
+        assert!(report.limiting_peer_addr.is_none());
+        assert_eq!(report.goal, 0);
+    }
+
+    #[test]
+    fn meshfs_status_report_json_serializable() {
+        let report = meshfs_status_report("mfsadmin", "192.0.2.1");
+        let json = serde_json::to_string(&report).expect("serialize");
+        assert!(json.contains("\"master_reachable\""));
+        assert!(json.contains("\"peers\""));
+        assert!(json.contains("\"goal\""));
     }
 }

@@ -89,6 +89,19 @@ enum Cmd {
         home: Option<std::path::PathBuf>,
     },
 
+    /// MESHFS-13.1 (v5.0.0) — query the active LizardFS master
+    /// and emit a fleet status JSON blob (peers, goal, quota cap,
+    /// limiting peer). Printed to stdout as a single JSON line.
+    /// Exits 0 when the master is reachable, 1 otherwise.
+    MeshFsStatus {
+        /// Floating overlay VIP the active master listens on.
+        #[clap(long, default_value = "10.42.0.1")]
+        vip: String,
+        /// `mfsadmin` binary name (must be on PATH).
+        #[clap(long, default_value = "mfsadmin")]
+        admin_binary: String,
+    },
+
     /// GF-9.3 (v5.0.0) — restore the Nebula CA + (when
     /// present) the Gluster topology snapshot from an
     /// armored `state-backup.enc` bundle. CA rows go straight
@@ -1194,6 +1207,18 @@ fn main() -> anyhow::Result<()> {
                 mackesd_core::meshfs::headroom::Verdict::Ok => {}
                 mackesd_core::meshfs::headroom::Verdict::Warn
                 | mackesd_core::meshfs::headroom::Verdict::NoDataDir => std::process::exit(1),
+            }
+        }
+        Cmd::MeshFsStatus { vip, admin_binary } => {
+            let report =
+                mackesd_core::workers::meshfs_worker::meshfs_status_report(&admin_binary, &vip);
+            let reachable = report.master_reachable;
+            println!(
+                "{}",
+                serde_json::to_string(&report).context("encode meshfs status")?
+            );
+            if !reachable {
+                std::process::exit(1);
             }
         }
         Cmd::GeneratePasscode { store, cred_path } => {

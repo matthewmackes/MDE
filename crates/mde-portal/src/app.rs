@@ -817,7 +817,7 @@ impl iced_layershell::Application for DockApp {
             }
             Message::HostnameClicked => {
                 // Portal-6.c: spawn the hostname-info tooltip popover.
-                // Portal-6.b cross-peer cycling activates when mesh-home is live.
+                // Portal-6.b cross-peer cycling activates when mesh-storage is live.
                 return Task::perform(
                     async {
                         let _ = tokio::process::Command::new("mde-popover")
@@ -1191,9 +1191,9 @@ fn build_clock_segment<'a>(app: &DockApp, fg: Color) -> Element<'a, Message> {
 
 /// Build the hostname segment (Portal-6): `host:output (local-only)`.
 ///
-/// Format per R4-Q6 / R4-Q46. Pre-mesh-home state always shows `(local-only)`;
+/// Format per R4-Q6 / R4-Q46. Pre-mesh-storage state always shows `(local-only)`;
 /// cross-peer cycling and the leader indicator `[leader]` activate in Portal-6.b
-/// once GlusterFS mesh-home is established.
+/// once LizardFS mesh-storage is established.
 fn build_hostname_segment<'a>(app: &DockApp, fg: Color) -> Element<'a, Message> {
     let output = app
         .workspaces

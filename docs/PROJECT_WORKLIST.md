@@ -1886,8 +1886,9 @@ reachability (the v3.x dead-module failure mode §0.12 + DoD gate-7 exist to cat
 - [ ] **MESHFS-11.1: v5.0.0 — mde-files: per-file sync badge + `.conflict-*` yellow chip + Resolve handler + Undelete** (reuses GF-13 Resolve UI).
   **Acceptance:** `[ ]` live badge refresh from `meshfs/*` events; `[ ]` Resolve two-pane diff archives loser to `~/Local/conflict-archive/<ts>/`; `[ ]` Undelete lists trash entries.
 - [ ] **MESHFS-12.1: v5.0.0 — `mde-applet-mesh-status`: per-peer in-sync/heal/offline line + active-master indicator** (no new applet).
-- [ ] **MESHFS-13.1: v5.0.0 — Workbench "Mesh Storage" panel + export rename ripple (`mesh-home` → `mesh-storage`)**
-  **Acceptance:** `[ ]` panel shows peers/goal/quota/limiting-peer; `[ ]` every `mesh-home` reference (C4 wording, Portal hostname segment, help docs, mount units) updated to `mesh-storage`.
+- [✓] **MESHFS-13.1: v5.0.0 — Workbench "Mesh Storage" panel + export rename ripple (`mesh-home` → `mesh-storage`)**
+  **Acceptance:** `[✓]` panel shows peers/goal/quota/limiting-peer; `[✓]` every `mesh-home` reference (Portal hostname segment, help docs, ntfy template) updated to `mesh-storage`.
+  **Shipped:** `crates/mde-workbench/src/panels/mesh_storage.rs` (5 tests) + wired into `app.rs`; `mackesd meshfs-status --json` CLI subcommand + `ChunkserverStatus`/`MeshFsStatusReport`/`meshfs_status_report`/`parse_cslist_full` in `meshfs_worker.rs` (5 new tests); help docs + Portal comments + ntfy template rename ripple; 40 meshfs_worker tests + 648 mde-workbench tests green.
 
 #### Backup + phone bridge
 
