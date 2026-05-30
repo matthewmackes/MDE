@@ -23,14 +23,21 @@ use mde_bus::persist::Persist;
 use mde_bus::rpc::reply_topic;
 use serde_json::json;
 
+use crate::airsonic::Client;
+use crate::creds;
 use crate::queue::{self, Queue};
 
 /// Poll cadence for the action topics.
 pub const POLL_INTERVAL: Duration = Duration::from_millis(500);
 
-/// The queue-control verbs served on `action/music/<verb>`.
+/// The queue-control verbs served on `action/music/<verb>` (synchronous
+/// — they only touch the local queue file).
 pub const ACTION_VERBS: [&str; 6] =
     ["enqueue", "enqueue-after", "clear", "next", "prev", "get-queue"];
+
+/// The library-browse verbs served on `action/music/<verb>`
+/// (asynchronous — each proxies an Airsonic REST call).
+pub const BROWSE_VERBS: [&str; 3] = ["list-albums", "list-artists", "search"];
 
 /// Result of dispatching one action: the JSON reply + whether the queue
 /// changed (and so must be persisted).
@@ -117,14 +124,79 @@ pub fn dispatch_queue_action(verb: &str, body: &str, q: &mut Queue) -> Dispatch 
     }
 }
 
-/// Run the Bus responder loop: poll each `action/music/<verb>` topic for
-/// new requests, dispatch them against the persisted queue, and reply on
-/// `reply/<ulid>`. Loops until `should_stop()` returns true (the daemon
-/// supervisor / signal handler flips it).
+/// Reply JSON for a library-browse verb. Proxies the Airsonic REST call
+/// via the shared [`Client`]; missing creds / server errors become an
+/// `{ok:false,error}` reply rather than a panic. I/O, so not pure — the
+/// URL-building + parse logic it leans on is unit-tested in [`crate::airsonic`].
+fn dispatch_browse(verb: &str, body: &str, client: &Client, rt: &tokio::runtime::Runtime) -> String {
+    let result: Result<serde_json::Value, String> = rt.block_on(async {
+        match verb {
+            "list-albums" => client
+                .get_album_list2("newest", 100)
+                .await
+                .map(|a| json!({ "albums": a }))
+                .map_err(|e| e.to_string()),
+            "list-artists" => client
+                .get_artists()
+                .await
+                .map(|a| json!({ "artists": a }))
+                .map_err(|e| e.to_string()),
+            "search" => {
+                let query = song_id_from(body).unwrap_or_default();
+                client
+                    .search3(&query)
+                    .await
+                    .map(|r| json!({ "artists": r.artists, "albums": r.albums, "songs": r.songs }))
+                    .map_err(|e| e.to_string())
+            }
+            other => Err(format!("unknown browse verb: {other}")),
+        }
+    });
+    match result {
+        Ok(v) => json!({ "ok": true, "result": v }).to_string(),
+        Err(e) => json!({ "ok": false, "error": e }).to_string(),
+    }
+}
+
+/// One browse-poll sweep: for each browse verb, dispatch new requests
+/// against a freshly-built Airsonic client. A missing-creds state replies
+/// with an error (the GUI prompts the operator to connect).
+pub fn poll_browse(
+    persist: &Persist,
+    rt: &tokio::runtime::Runtime,
+    cursors: &mut HashMap<String, String>,
+) {
+    let client = creds::load().ok().map(|c| Client::new(&c.server_url, &c.username, &c.password));
+    for verb in BROWSE_VERBS {
+        let topic = format!("action/music/{verb}");
+        let since = cursors.get(&topic).map(String::as_str);
+        let msgs = match persist.list_since(&topic, since) {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        for msg in msgs {
+            cursors.insert(topic.clone(), msg.ulid.clone());
+            let reply = match &client {
+                Some(c) => dispatch_browse(verb, msg.body.as_deref().unwrap_or(""), c, rt),
+                None => json!({ "ok": false, "error": "no Airsonic server configured" }).to_string(),
+            };
+            let _ = persist.write(&reply_topic(&msg.ulid), Priority::Default, None, Some(&reply));
+        }
+    }
+}
+
+/// Run the Bus responder loop: poll the queue-control + library-browse
+/// `action/music/<verb>` topics for new requests, dispatch them, and
+/// reply on `reply/<ulid>`. Loops until `should_stop()` returns true.
 pub fn serve<F: Fn() -> bool>(persist: &Persist, queue_path: &Path, should_stop: F) {
     let mut cursors: HashMap<String, String> = HashMap::new();
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime for browse proxy");
     while !should_stop() {
         poll_once(persist, queue_path, &mut cursors);
+        poll_browse(persist, &rt, &mut cursors);
         std::thread::sleep(POLL_INTERVAL);
     }
 }

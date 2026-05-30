@@ -67,7 +67,7 @@ impl fmt::Display for AirsonicError {
 impl std::error::Error for AirsonicError {}
 
 /// An artist row from `getArtists`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, Deserialize)]
 pub struct Artist {
     pub id: String,
     pub name: String,
@@ -76,7 +76,7 @@ pub struct Artist {
 }
 
 /// An album row from `getAlbumList2` / `search3`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, Deserialize)]
 pub struct Album {
     pub id: String,
     pub name: String,
@@ -93,7 +93,7 @@ pub struct Album {
 }
 
 /// A song row from `search3` (and, later, `getAlbum`).
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, Deserialize)]
 pub struct Song {
     pub id: String,
     pub title: String,
