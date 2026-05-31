@@ -140,6 +140,12 @@ enum Cmd {
         expected: Vec<String>,
     },
 
+    /// MESH-A-6.3 (v5.0.0) — scan WiFi for evil-twin APs (R8-Q60): a
+    /// known SSID advertised by a BSSID not in the learned baseline
+    /// (`surrounding/wifi-baseline.json`). Prints `<ssid>\t<bssid>` per
+    /// suspect + exits 1; learns the current scan into the baseline.
+    EvilTwinCheck,
+
     /// EPIC-MESH-PROBE — run the nmap probe engine (MESH-PROBE-2).
     Probe {
         #[command(subcommand)]
@@ -1182,6 +1188,30 @@ fn main() -> anyhow::Result<()> {
             }
             if !leaked.is_empty() {
                 eprintln!("DNS-LEAK: {} resolver(s) outside the expected mesh set", leaked.len());
+                std::process::exit(1);
+            }
+        }
+        Cmd::EvilTwinCheck => {
+            use mackesd_core::surrounding_hosts::{
+                evil_twin_suspects, learn_wifi, load_wifi_baseline, save_wifi_baseline,
+                scan_wifi_bssids,
+            };
+            let scan = scan_wifi_bssids();
+            let suspects = if let Some(data_dir) = dirs::data_dir() {
+                let path = data_dir.join("mde").join("surrounding").join("wifi-baseline.json");
+                let mut baseline = load_wifi_baseline(&path);
+                let suspects = evil_twin_suspects(&scan, &baseline);
+                learn_wifi(&mut baseline, &scan); // detect-then-learn
+                let _ = save_wifi_baseline(&path, &baseline);
+                suspects
+            } else {
+                Vec::new()
+            };
+            for (ssid, bssid) in &suspects {
+                println!("{ssid}\t{bssid}");
+            }
+            if !suspects.is_empty() {
+                eprintln!("EVIL-TWIN: {} known SSID(s) on unexpected BSSIDs", suspects.len());
                 std::process::exit(1);
             }
         }

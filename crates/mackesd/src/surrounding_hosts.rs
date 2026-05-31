@@ -33,7 +33,7 @@
 //! signals (SNMP sysObjectID, LLDP) deferred to MESH-A-4.b; they are
 //! valid taxonomy members reachable for manual assignment today.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 use std::process::Command;
 
@@ -1039,6 +1039,125 @@ pub fn dns_leak(current: &[String], expected: &[String]) -> Vec<String> {
         .collect()
 }
 
+/// SSID → known-BSSIDs baseline for evil-twin detection (MESH-A-6.3).
+/// Persisted at `<surrounding-base>/wifi-baseline.json` + learned over
+/// time; a known SSID seen on a BSSID absent from its set is a possible
+/// evil twin (R8-Q60).
+pub type WifiBaseline = BTreeMap<String, BTreeSet<String>>;
+
+/// Split a terse `nmcli` line into fields on unescaped `:` (nmcli
+/// escapes a literal colon as `\:`), unescaping each field.
+fn split_terse(line: &str) -> Vec<String> {
+    let mut fields = Vec::new();
+    let mut cur = String::new();
+    let mut chars = line.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            if let Some(&next) = chars.peek() {
+                cur.push(next);
+                chars.next();
+                continue;
+            }
+        }
+        if c == ':' {
+            fields.push(std::mem::take(&mut cur));
+        } else {
+            cur.push(c);
+        }
+    }
+    fields.push(cur);
+    fields
+}
+
+/// Parse `nmcli -t -f SSID,BSSID dev wifi` into `(ssid, bssid)` pairs
+/// (BSSID upper-cased). Handles nmcli's `\:` colon-escaping; skips
+/// lines without both fields or with an empty SSID/BSSID. Pure.
+#[must_use]
+pub fn parse_wifi_bssids(stdout: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    for line in stdout.lines() {
+        let f = split_terse(line);
+        if f.len() < 2 {
+            continue;
+        }
+        let ssid = f[0].trim().to_string();
+        let bssid = f[1].trim().to_ascii_uppercase();
+        if !ssid.is_empty() && !bssid.is_empty() {
+            out.push((ssid, bssid));
+        }
+    }
+    out
+}
+
+/// Evil-twin suspects: a scanned `(ssid, bssid)` whose SSID is already
+/// in the baseline (a known network) but whose BSSID is NOT one of its
+/// known APs — a known SSID impersonated by a rogue AP (R8-Q60). Pure;
+/// a never-seen SSID is not flagged (its first sighting is just
+/// learned).
+#[must_use]
+pub fn evil_twin_suspects(
+    scan: &[(String, String)],
+    baseline: &WifiBaseline,
+) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    for (ssid, bssid) in scan {
+        if let Some(known) = baseline.get(ssid) {
+            if !known.contains(bssid) {
+                out.push((ssid.clone(), bssid.clone()));
+            }
+        }
+    }
+    out
+}
+
+/// Learn the scanned APs into the baseline (record each `(ssid,
+/// bssid)`). Call AFTER [`evil_twin_suspects`] so a new BSSID is
+/// flagged before it is learned.
+pub fn learn_wifi(baseline: &mut WifiBaseline, scan: &[(String, String)]) {
+    for (ssid, bssid) in scan {
+        baseline.entry(ssid.clone()).or_default().insert(bssid.clone());
+    }
+}
+
+/// Load the WiFi baseline from `path` (empty when absent / malformed).
+#[must_use]
+pub fn load_wifi_baseline(path: &Path) -> WifiBaseline {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+/// Persist the WiFi baseline to `path` (creates the parent dir).
+///
+/// # Errors
+///
+/// I/O errors creating the parent dir or writing the file.
+pub fn save_wifi_baseline(path: &Path, baseline: &WifiBaseline) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let body = serde_json::to_string_pretty(baseline).unwrap_or_else(|_| "{}".to_string());
+    std::fs::write(path, body)
+}
+
+/// Scan visible WiFi APs via `nmcli -t -f SSID,BSSID dev wifi`. Empty
+/// when nmcli is absent / no WiFi. HW-bench-gated; the pure half is
+/// [`parse_wifi_bssids`].
+#[must_use]
+pub fn scan_wifi_bssids() -> Vec<(String, String)> {
+    let Ok(out) = Command::new("nmcli")
+        .args(["-t", "-f", "SSID,BSSID", "dev", "wifi"])
+        .output()
+    else {
+        return Vec::new();
+    };
+    if !out.status.success() {
+        return Vec::new();
+    }
+    parse_wifi_bssids(&String::from_utf8_lossy(&out.stdout))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1595,5 +1714,38 @@ mod tests {
         let current = vec!["10.42.0.1".to_string(), "8.8.8.8".to_string()];
         assert_eq!(dns_leak(&current, &expected), vec!["8.8.8.8"]);
         assert!(dns_leak(&["10.42.0.1".to_string()], &expected).is_empty());
+    }
+
+    // ── MESH-A-6.3: evil-twin AP detection ──
+
+    #[test]
+    fn split_terse_unescapes_colons() {
+        assert_eq!(
+            split_terse(r"Coffee\:Shop:AA\:BB\:CC\:DD\:EE\:FF"),
+            vec!["Coffee:Shop", "AA:BB:CC:DD:EE:FF"]
+        );
+    }
+
+    #[test]
+    fn parse_wifi_bssids_pairs_and_skips_hidden() {
+        let out = "HomeNet:AA\\:BB\\:CC\\:DD\\:EE\\:FF\n:11\\:22\\:33\\:44\\:55\\:66\n";
+        let aps = parse_wifi_bssids(out);
+        assert_eq!(aps.len(), 1, "empty-SSID hidden network skipped");
+        assert_eq!(aps[0], ("HomeNet".to_string(), "AA:BB:CC:DD:EE:FF".to_string()));
+    }
+
+    #[test]
+    fn evil_twin_flags_known_ssid_on_new_bssid() {
+        let mut baseline = WifiBaseline::new();
+        learn_wifi(&mut baseline, &[("HomeNet".into(), "AA:BB:CC:DD:EE:FF".into())]);
+        // Same SSID, attacker BSSID → evil twin.
+        let attack = vec![("HomeNet".to_string(), "DE:AD:BE:EF:00:00".to_string())];
+        assert_eq!(evil_twin_suspects(&attack, &baseline), attack);
+        // Same SSID + known BSSID → not flagged.
+        let ok = vec![("HomeNet".to_string(), "AA:BB:CC:DD:EE:FF".to_string())];
+        assert!(evil_twin_suspects(&ok, &baseline).is_empty());
+        // Never-seen SSID → not flagged (first sighting only learned).
+        let fresh = vec![("Cafe".to_string(), "11:22:33:44:55:66".to_string())];
+        assert!(evil_twin_suspects(&fresh, &baseline).is_empty());
     }
 }
