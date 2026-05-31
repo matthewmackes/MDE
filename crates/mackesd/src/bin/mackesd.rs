@@ -3277,7 +3277,7 @@ fn run_serve(
         if let Some(data_dir) = dirs::data_dir() {
             let netassess_base = data_dir.join("mde").join("netassess");
             sup.spawn(Spawn::new(
-                mackesd_core::workers::netassess::NetAssessWorker::new(fw_host, netassess_base)
+                mackesd_core::workers::netassess::NetAssessWorker::new(fw_host.clone(), netassess_base)
                     .with_mesh_context(qnm_root.clone(), node_id.clone(), db_path.clone()),
                 RestartPolicy::Always,
             ));
@@ -3285,6 +3285,24 @@ fn run_serve(
                 .lock()
                 .expect("worker_names mutex")
                 .push("netassess".into());
+
+            // MESH-A-4.c.2 (v5.0.0) — surrounding-host discovery worker.
+            // Sweeps the LAN (mDNS + ARP-MAC + OUI) every 10 min and
+            // writes a per-peer snapshot under
+            // ~/.local/share/mde/surrounding/<host>/ (mesh-synced;
+            // every peer reads the union per R8-Q13).
+            let surrounding_base = data_dir.join("mde").join("surrounding");
+            sup.spawn(Spawn::new(
+                mackesd_core::workers::surrounding_worker::SurroundingWorker::new(
+                    fw_host,
+                    surrounding_base,
+                ),
+                RestartPolicy::Always,
+            ));
+            worker_names
+                .lock()
+                .expect("worker_names mutex")
+                .push("surrounding_hosts".into());
         } else {
             tracing::warn!("netassess: no XDG data dir; skipping network assessment worker");
         }

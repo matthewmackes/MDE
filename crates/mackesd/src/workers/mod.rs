@@ -182,6 +182,10 @@ pub mod compute_migrate;
 // the 30-day rolling window. Pure parsers per item; shell-outs
 // degrade to None when a tool is absent.
 pub mod netassess;
+// MESH-A-4.c.2 (v5.0.0) — surrounding_worker. Sweeps the LAN for
+// non-mesh-peer neighbours (mDNS + ARP-MAC + OUI) every 10 min and
+// writes a per-peer snapshot under ~/.local/share/mde/surrounding/.
+pub mod surrounding_worker;
 // VIRT-6 (v5.0.0) — compute_provision. Drains
 // `compute/create/<own-addr>`: ensures the mde-vms pool (VIRT-3),
 // allocates a per-peer /24 VM IP, requester-side nebula-cert keygen
