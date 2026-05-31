@@ -186,6 +186,9 @@ pub mod netassess;
 // non-mesh-peer neighbours (mDNS + ARP-MAC + OUI) every 10 min and
 // writes a per-peer snapshot under ~/.local/share/mde/surrounding/.
 pub mod surrounding_worker;
+// VOIP-4.b (v5.0.0) — voip_rtt_worker. Broadcasts this peer's Vitelity-link
+// RTT to voip/link-rtt/<peer> every 60s for the dialer route override.
+pub mod voip_rtt_worker;
 // MESH-A-5.2 (v5.0.0) — mesh_firewall. Reconciles firewalld source-DROP
 // rich-rules against the mesh-synced Blocked-host consensus every minute.
 pub mod mesh_firewall;

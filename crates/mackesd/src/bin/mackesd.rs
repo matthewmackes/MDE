@@ -3593,6 +3593,17 @@ fn run_serve(
                 .lock()
                 .expect("worker_names mutex")
                 .push("mesh_firewall".into());
+
+            // VOIP-4.b (v5.0.0) — broadcast this peer's Vitelity-link RTT to
+            // voip/link-rtt/<peer> every 60s for the dialer route override.
+            sup.spawn(Spawn::new(
+                mackesd_core::workers::voip_rtt_worker::VoipRttWorker::new(),
+                RestartPolicy::Always,
+            ));
+            worker_names
+                .lock()
+                .expect("worker_names mutex")
+                .push("voip_rtt".into());
         } else {
             tracing::warn!("netassess: no XDG data dir; skipping network assessment worker");
         }

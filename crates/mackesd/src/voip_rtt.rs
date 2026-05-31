@@ -112,6 +112,15 @@ pub fn publish_link_rtt(sample: &LinkRtt) {
         .spawn();
 }
 
+/// Measure this peer's Vitelity-link RTT + publish it to
+/// `voip/link-rtt/<peer>` (a no-op without a Nebula overlay IP). The
+/// convenience glue the VOIP-4.b broadcast worker ticks every 60 s.
+pub fn sample_and_publish() {
+    if let Some(peer) = own_nebula_ip() {
+        publish_link_rtt(&sample_link_rtt(&peer));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
