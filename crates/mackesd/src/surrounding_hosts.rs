@@ -128,6 +128,10 @@ pub struct HostSignals {
     /// MAC-OUI vendor string (`Hewlett Packard`, `Ubiquiti Inc`, …).
     #[serde(default)]
     pub oui_vendor: String,
+    /// Hostname (mDNS / reverse-DNS), used for the console hostname
+    /// hint (MESH-A-4.b.2). Empty when unknown.
+    #[serde(default)]
+    pub hostname: String,
 }
 
 /// A discovered surrounding host (a LAN neighbour that is not a mesh
@@ -178,17 +182,25 @@ pub struct MdnsService {
 /// returns [`HostType::Unknown`] when nothing matches.
 #[must_use]
 pub fn classify(sig: &HostSignals) -> HostType {
-    // 1. mDNS service type — strongest signal.
+    // 1. Console hostname hint — highest confidence for the specific
+    //    `PS4-`/`Xbox-`/`Nintendo-` patterns, and it must outrank a
+    //    media service the console also advertises (a PS4 announces
+    //    `_spotify-connect._tcp`, which would otherwise read as a
+    //    smart speaker).
+    if let Some(t) = host_type_from_hostname(&sig.hostname) {
+        return t;
+    }
+    // 2. mDNS service type — strongest generic signal.
     for svc in &sig.mdns_services {
         if let Some(t) = host_type_from_mdns(svc) {
             return t;
         }
     }
-    // 2. MAC-OUI vendor.
+    // 3. MAC-OUI vendor.
     if let Some(t) = host_type_from_vendor(&sig.oui_vendor) {
         return t;
     }
-    // 3. Open ports — weakest, only the unambiguous ones.
+    // 4. Open ports — weakest, only the unambiguous ones.
     for &port in &sig.open_ports {
         if let Some(t) = host_type_from_port(port) {
             return t;
@@ -306,6 +318,24 @@ fn host_type_from_port(port: u16) -> Option<HostType> {
     }
 }
 
+/// Map a hostname to a host type for the few high-confidence patterns
+/// (MESH-A-4.b.2). Today only game consoles, whose hostnames
+/// (`PS4-…`, `Xbox-…`, `Nintendo-…`) are far more reliable than the
+/// media services they also advertise. Case-insensitive substring
+/// match; `None` for generic hostnames.
+fn host_type_from_hostname(hostname: &str) -> Option<HostType> {
+    let h = hostname.to_ascii_lowercase();
+    if h.is_empty() {
+        return None;
+    }
+    for needle in ["ps4", "ps5", "playstation", "xbox", "nintendo"] {
+        if h.contains(needle) {
+            return Some(HostType::GameConsole);
+        }
+    }
+    None
+}
+
 /// Parse `avahi-browse -aprt` output into resolved mDNS service
 /// records. Only `=` (resolved) lines carry an address; `+` (browse)
 /// lines are skipped. Fields are `;`-separated:
@@ -360,6 +390,7 @@ pub fn hosts_from_mdns(records: &[MdnsService], now_ms: i64) -> Vec<SurroundingH
         .map(|(ip, (hostname, services))| {
             let sig = HostSignals {
                 mdns_services: services.clone(),
+                hostname: hostname.clone(),
                 ..Default::default()
             };
             SurroundingHost {
@@ -391,6 +422,31 @@ pub fn collect_mdns(binary: &str) -> Vec<MdnsService> {
         return Vec::new();
     }
     parse_avahi_browse(&String::from_utf8_lossy(&out.stdout))
+}
+
+/// Parse `getent hosts <ip>` output into the resolved hostname. The
+/// line is `<address>   <canonical-name> [aliases…]`; returns the
+/// canonical name, or `None` when there is no name field.
+#[must_use]
+pub fn parse_getent_hosts(output: &str) -> Option<String> {
+    output
+        .split_whitespace()
+        .nth(1)
+        .map(str::to_string)
+        .filter(|s| !s.is_empty())
+}
+
+/// Reverse-resolve `ip` to a hostname via `getent hosts` (the system
+/// resolver — DNS PTR + `/etc/hosts` + mDNS). `None` when unresolved
+/// or `getent` is absent. HW-bench-gated shell-out; the pure half is
+/// [`parse_getent_hosts`].
+#[must_use]
+pub fn reverse_dns(ip: &str) -> Option<String> {
+    let out = Command::new("getent").args(["hosts", ip]).output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    parse_getent_hosts(&String::from_utf8_lossy(&out.stdout))
 }
 
 #[cfg(test)]
@@ -448,6 +504,7 @@ mod tests {
             mdns_services: vec!["_ipp._tcp".to_string()],
             open_ports: vec![443],
             oui_vendor: "Ubiquiti Inc".to_string(),
+            hostname: String::new(),
         };
         assert_eq!(classify(&sig), HostType::Printer);
     }
@@ -542,5 +599,52 @@ mod tests {
         assert!(printer.mac.is_empty(), "MAC fills in A-4.b.2");
         let cast = hosts.iter().find(|h| h.ip == "192.168.1.60").unwrap();
         assert_eq!(cast.host_type, HostType::TvCast);
+    }
+
+    // ── MESH-A-4.b.2: hostname hint + reverse-DNS ──
+
+    #[test]
+    fn console_hostname_hint_outranks_media_service() {
+        // A PS4 advertises _spotify-connect (→ smart-speaker by service
+        // type) but its hostname pins it to a game console.
+        let sig = HostSignals {
+            mdns_services: vec!["_spotify-connect._tcp".to_string()],
+            hostname: "PS4-64F7B2.local".to_string(),
+            ..Default::default()
+        };
+        assert_eq!(classify(&sig), HostType::GameConsole);
+    }
+
+    #[test]
+    fn host_type_from_hostname_matches_consoles_only() {
+        assert_eq!(host_type_from_hostname("PS5-1234"), Some(HostType::GameConsole));
+        assert_eq!(host_type_from_hostname("Xbox-Living-Room"), Some(HostType::GameConsole));
+        assert_eq!(host_type_from_hostname("nintendo-switch"), Some(HostType::GameConsole));
+        assert_eq!(host_type_from_hostname("fileserver.local"), None);
+        assert_eq!(host_type_from_hostname(""), None);
+    }
+
+    #[test]
+    fn empty_hostname_preserves_prior_classification() {
+        // No hostname → mDNS still wins (A-4.a behaviour unchanged).
+        let sig = HostSignals {
+            mdns_services: vec!["_ipp._tcp".to_string()],
+            ..Default::default()
+        };
+        assert_eq!(classify(&sig), HostType::Printer);
+    }
+
+    #[test]
+    fn parse_getent_hosts_extracts_canonical_name() {
+        assert_eq!(
+            parse_getent_hosts("192.168.1.50   printer.local").as_deref(),
+            Some("printer.local")
+        );
+        assert_eq!(
+            parse_getent_hosts("192.168.1.60 cast.local alias1 alias2").as_deref(),
+            Some("cast.local")
+        );
+        assert_eq!(parse_getent_hosts(""), None);
+        assert_eq!(parse_getent_hosts("192.168.1.99"), None); // no name field
     }
 }

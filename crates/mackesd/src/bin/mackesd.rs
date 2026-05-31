@@ -73,6 +73,9 @@ enum Cmd {
         /// MAC-OUI vendor string.
         #[arg(long = "vendor", value_name = "VENDOR", default_value = "")]
         vendor: String,
+        /// Hostname (feeds the console hostname hint, MESH-A-4.b.2).
+        #[arg(long = "hostname", value_name = "HOSTNAME", default_value = "")]
+        hostname: String,
     },
 
     /// MESH-A-4.b.1 (v5.0.0) — browse the LAN for mDNS services
@@ -988,24 +991,41 @@ fn main() -> anyhow::Result<()> {
                 std::process::exit(1);
             }
         },
-        Cmd::ClassifyHost { mdns, port, vendor } => {
+        Cmd::ClassifyHost { mdns, port, vendor, hostname } => {
             let sig = mackesd_core::surrounding_hosts::HostSignals {
                 mdns_services: mdns,
                 open_ports: port,
                 oui_vendor: vendor,
+                hostname,
             };
             let ty = mackesd_core::surrounding_hosts::classify(&sig);
             println!("{}", ty.wire_name());
         }
         Cmd::DiscoverMdns => {
-            use mackesd_core::surrounding_hosts::{collect_mdns, hosts_from_mdns};
+            use mackesd_core::surrounding_hosts::{
+                classify, collect_mdns, hosts_from_mdns, reverse_dns, HostSignals,
+            };
             let now_ms = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_millis() as i64)
                 .unwrap_or(0);
             let records = collect_mdns("avahi-browse");
-            for host in hosts_from_mdns(&records, now_ms) {
-                println!("{}", serde_json::to_string(&host)?);
+            let mut hosts = hosts_from_mdns(&records, now_ms);
+            for host in &mut hosts {
+                // Fill a missing hostname via reverse-DNS, then let the
+                // console hostname-hint re-refine the type.
+                if host.hostname.is_empty() {
+                    if let Some(name) = reverse_dns(&host.ip) {
+                        host.hostname = name;
+                        let sig = HostSignals {
+                            mdns_services: host.services.clone(),
+                            hostname: host.hostname.clone(),
+                            ..Default::default()
+                        };
+                        host.host_type = classify(&sig);
+                    }
+                }
+                println!("{}", serde_json::to_string(host)?);
             }
         }
         Cmd::Probe { action } => match action {
