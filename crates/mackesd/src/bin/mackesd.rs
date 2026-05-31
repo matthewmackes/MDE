@@ -3375,6 +3375,20 @@ fn run_serve(
                 .lock()
                 .expect("worker_names mutex")
                 .push("surrounding_hosts".into());
+
+            // MESH-A-5.2 (v5.0.0) — mesh-coordinated firewall DROP:
+            // reconciles firewalld source-DROP rules against the
+            // mesh-synced Blocked-host consensus every minute.
+            sup.spawn(Spawn::new(
+                mackesd_core::workers::mesh_firewall::MeshFirewallWorker::new(
+                    data_dir.join("mde").join("surrounding"),
+                ),
+                RestartPolicy::Always,
+            ));
+            worker_names
+                .lock()
+                .expect("worker_names mutex")
+                .push("mesh_firewall".into());
         } else {
             tracing::warn!("netassess: no XDG data dir; skipping network assessment worker");
         }

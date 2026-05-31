@@ -186,6 +186,9 @@ pub mod netassess;
 // non-mesh-peer neighbours (mDNS + ARP-MAC + OUI) every 10 min and
 // writes a per-peer snapshot under ~/.local/share/mde/surrounding/.
 pub mod surrounding_worker;
+// MESH-A-5.2 (v5.0.0) — mesh_firewall. Reconciles firewalld source-DROP
+// rich-rules against the mesh-synced Blocked-host consensus every minute.
+pub mod mesh_firewall;
 // VIRT-6 (v5.0.0) — compute_provision. Drains
 // `compute/create/<own-addr>`: ensures the mde-vms pool (VIRT-3),
 // allocates a per-peer /24 VM IP, requester-side nebula-cert keygen
