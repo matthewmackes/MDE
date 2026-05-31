@@ -43,6 +43,20 @@ enum Cmd {
     /// panel + the CLI consume identical data.
     Healthz,
 
+    /// MESH-A-7 (v5.0.0) — resolve the connect-action for a host:port
+    /// from the 12 well-known service mappings (R8-Q50). Prints
+    /// `<service>\t<launch argv>` (e.g. port 22 → `ssh <ip>`, port 80
+    /// → `xdg-open http://<ip>`) for the operator / host-card UI to
+    /// run. Exits 0 when the port maps to a known service, 1 otherwise.
+    Connect {
+        /// Target host IP — a mesh-peer overlay IP or a LAN neighbor.
+        #[arg(value_name = "IP")]
+        ip: String,
+        /// TCP port the service listens on.
+        #[arg(value_name = "PORT")]
+        port: u16,
+    },
+
     /// EPIC-MESH-PROBE — run the nmap probe engine (MESH-PROBE-2).
     Probe {
         #[command(subcommand)]
@@ -941,6 +955,15 @@ fn main() -> anyhow::Result<()> {
             let report = mackesd_core::health::HealthReport::empty();
             println!("{}", report.to_json_line()?);
         }
+        Cmd::Connect { ip, port } => match mackesd_core::connect_actions::connect_argv(&ip, port) {
+            Some((service, argv)) => {
+                println!("{service}\t{}", argv.join(" "));
+            }
+            None => {
+                eprintln!("error: no known connect-action for port {port}");
+                std::process::exit(1);
+            }
+        },
         Cmd::Probe { action } => match action {
             ProbeCmd::Scan { targets, deep, source, nse_dir } => {
                 use mackesd_core::probe_nmap::{scan, Profile};

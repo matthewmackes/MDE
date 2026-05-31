@@ -17,6 +17,9 @@ pub mod audit;
 // subcommand (NF-2.6). The whole module lands together per
 // §0.12; no scaffold-only commit.
 pub mod ca;
+// MESH-A-7 (v5.0.0) — well-known port → connect-action mappings,
+// consumed by the `mackesd connect` CLI + (future) host-card UI.
+pub mod connect_actions;
 // HYP-8.5 (v6.5) — operator-edited config-file modules. Currently
 // hosts the tag-manifest schema + loader (`~/.config/mde/tags/`).
 // Future v6.5 config families (Hyprland-side per-peer overrides,
