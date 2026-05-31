@@ -57,6 +57,24 @@ enum Cmd {
         port: u16,
     },
 
+    /// MESH-A-4.a (v5.0.0) — classify a surrounding host into one of
+    /// the 14 R8-Q9 types from discovery signals. Repeatable
+    /// `--mdns` / `--port` flags + an optional `--vendor`; prints the
+    /// resolved kebab-case type name. The MESH-A-4.b collectors will
+    /// gather these signals from the wire; this surfaces the
+    /// classifier for manual checks + smoke tests.
+    ClassifyHost {
+        /// mDNS service type advertised (repeatable), e.g. `_ipp._tcp`.
+        #[arg(long = "mdns", value_name = "SERVICE")]
+        mdns: Vec<String>,
+        /// Open TCP port observed (repeatable).
+        #[arg(long = "port", value_name = "PORT")]
+        port: Vec<u16>,
+        /// MAC-OUI vendor string.
+        #[arg(long = "vendor", value_name = "VENDOR", default_value = "")]
+        vendor: String,
+    },
+
     /// EPIC-MESH-PROBE — run the nmap probe engine (MESH-PROBE-2).
     Probe {
         #[command(subcommand)]
@@ -964,6 +982,15 @@ fn main() -> anyhow::Result<()> {
                 std::process::exit(1);
             }
         },
+        Cmd::ClassifyHost { mdns, port, vendor } => {
+            let sig = mackesd_core::surrounding_hosts::HostSignals {
+                mdns_services: mdns,
+                open_ports: port,
+                oui_vendor: vendor,
+            };
+            let ty = mackesd_core::surrounding_hosts::classify(&sig);
+            println!("{}", ty.wire_name());
+        }
         Cmd::Probe { action } => match action {
             ProbeCmd::Scan { targets, deep, source, nse_dir } => {
                 use mackesd_core::probe_nmap::{scan, Profile};

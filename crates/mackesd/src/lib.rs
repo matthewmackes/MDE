@@ -96,6 +96,10 @@ pub mod secrets;
 // same-day deploy/ scaffold deletion.
 pub mod settings;
 pub mod store;
+// MESH-A-4.a (v5.0.0) — surrounding-host taxonomy + classifier,
+// consumed by the `mackesd classify-host` CLI + (later) the A-4.b
+// collectors + A-4.c worker.
+pub mod surrounding_hosts;
 // v2.0.0 Phase 12.17 — STUN client for ICE candidate gathering. Gated
 // behind `async-services` because it uses tokio UDP + tokio time.
 #[cfg(feature = "async-services")]
