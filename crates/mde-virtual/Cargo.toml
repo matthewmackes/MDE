@@ -1,0 +1,43 @@
+[package]
+name        = "mde-virtual"
+description = "Mackes Desktop Environment (MDE) — Virtual. Mesh-aware KVM + Podman compute manager with Fleet + Local tabs, consuming the compute/inventory Bus topic. VIRT-13..VIRT-21; see docs/PROJECT_WORKLIST.md."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+
+[[bin]]
+name = "mde-virtual"
+path = "src/main.rs"
+
+[dependencies]
+iced       = { version = "0.14", default-features = false, features = ["wgpu", "tiny-skia", "tokio", "advanced", "wayland"] }
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+clap       = { version = "4.5", features = ["derive"] }
+dirs       = "5"
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Consumes the locked design system for every visual token —
+# palette / spacing / typography / radii. The `iced` feature gives
+# us the Rgba -> iced::Color conversion helper.
+mde-theme  = { path = "../mde-theme", features = ["iced"] }
+
+[lints.rust]
+unsafe_code     = "forbid"
+unused_must_use = "deny"
+missing_docs    = "allow"
+
+[lints.clippy]
+pedantic                = { level = "allow", priority = -1 }
+nursery                 = { level = "allow", priority = -1 }
+module_name_repetitions = "allow"
+must_use_candidate      = "allow"
+missing_errors_doc      = "allow"
+missing_panics_doc      = "allow"
+unwrap_used             = "warn"
+panic                   = "warn"
+todo                    = "warn"
