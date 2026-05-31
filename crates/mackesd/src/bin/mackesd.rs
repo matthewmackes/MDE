@@ -88,6 +88,12 @@ enum Cmd {
     /// Empty output when `avahi-browse` is absent.
     DiscoverMdns,
 
+    /// MESH-A-4.c.4 (v5.0.0) — print the mesh-wide surrounding-host
+    /// view: the union of every peer's latest snapshot, coalesced into
+    /// one card per host (MAC identity) with sighting count + roaming
+    /// IPs. One `CoalescedHost` JSON line per host.
+    SurroundingList,
+
     /// EPIC-MESH-PROBE — run the nmap probe engine (MESH-PROBE-2).
     Probe {
         #[command(subcommand)]
@@ -1046,6 +1052,15 @@ fn main() -> anyhow::Result<()> {
             refine_unknown_with_http(&mut hosts);
             for host in &hosts {
                 println!("{}", serde_json::to_string(host)?);
+            }
+        }
+        Cmd::SurroundingList => {
+            use mackesd_core::surrounding_hosts::read_all_surrounding;
+            if let Some(data_dir) = dirs::data_dir() {
+                let base = data_dir.join("mde").join("surrounding");
+                for ch in read_all_surrounding(&base) {
+                    println!("{}", serde_json::to_string(&ch)?);
+                }
             }
         }
         Cmd::Probe { action } => match action {

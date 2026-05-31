@@ -34,6 +34,7 @@
 //! valid taxonomy members reachable for manual assignment today.
 
 use std::collections::HashMap;
+use std::path::Path;
 use std::process::Command;
 
 /// One of the 14 surrounding-host types (R8-Q9). Wire form is the
@@ -689,6 +690,98 @@ pub fn refine_unknown_with_http(hosts: &mut [SurroundingHost]) {
     }
 }
 
+/// One coalesced surrounding-host card (R8-Q14) — the union of every
+/// peer's sighting of a single host identity.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CoalescedHost {
+    /// Identity key — the MAC when known (stable across IP changes /
+    /// roaming), else the IP.
+    pub key: String,
+    /// The freshest sighting's full record (max `last_seen_ms`).
+    pub host: SurroundingHost,
+    /// How many raw sightings coalesced — the multi-sighting badge.
+    pub sightings: usize,
+    /// Every distinct IP this identity was seen at, in first-seen
+    /// order — the roaming history.
+    pub ips_seen: Vec<String>,
+}
+
+/// Coalesce raw per-peer sightings (the union of all peers' snapshots)
+/// into one card per host identity (R8-Q14). Identity is the MAC when
+/// present (stable across roaming), else the IP. The freshest sighting
+/// (max `last_seen_ms`) supplies the card fields; `sightings` counts
+/// the raw records; `ips_seen` is the roaming history. Pure + sorted
+/// by key.
+#[must_use]
+pub fn coalesce_sightings(raw: Vec<SurroundingHost>) -> Vec<CoalescedHost> {
+    use std::collections::BTreeMap;
+    let mut groups: BTreeMap<String, (SurroundingHost, usize, Vec<String>)> = BTreeMap::new();
+    for host in raw {
+        let key = if host.mac.is_empty() {
+            host.ip.clone()
+        } else {
+            host.mac.clone()
+        };
+        let entry = groups
+            .entry(key)
+            .or_insert_with(|| (host.clone(), 0, Vec::new()));
+        entry.1 += 1;
+        if !entry.2.contains(&host.ip) {
+            entry.2.push(host.ip.clone());
+        }
+        if host.last_seen_ms > entry.0.last_seen_ms {
+            entry.0 = host;
+        }
+    }
+    groups
+        .into_iter()
+        .map(|(key, (host, sightings, ips_seen))| CoalescedHost {
+            key,
+            host,
+            sightings,
+            ips_seen,
+        })
+        .collect()
+}
+
+/// Read + union every peer's latest surrounding snapshot under `root`
+/// (`<root>/<peer>/<iso>-<hash>.json`, each a `Vec<SurroundingHost>`),
+/// then [`coalesce_sightings`] into one card per host (R8-Q14). Uses
+/// each peer's freshest snapshot (filenames sort chronologically by
+/// their `<iso>` prefix). Per-file fail-open: a malformed/unreadable
+/// snapshot is skipped, never aborts.
+#[must_use]
+pub fn read_all_surrounding(root: &Path) -> Vec<CoalescedHost> {
+    let mut raw: Vec<SurroundingHost> = Vec::new();
+    let Ok(peers) = std::fs::read_dir(root) else {
+        return Vec::new();
+    };
+    for peer in peers.flatten() {
+        let dir = peer.path();
+        if !dir.is_dir() {
+            continue;
+        }
+        // Freshest snapshot = lexically-max filename (the <iso> prefix
+        // sorts by time).
+        let latest = std::fs::read_dir(&dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("json"))
+            .max();
+        let Some(path) = latest else {
+            continue;
+        };
+        if let Ok(body) = std::fs::read_to_string(&path) {
+            if let Ok(hosts) = serde_json::from_str::<Vec<SurroundingHost>>(&body) {
+                raw.extend(hosts);
+            }
+        }
+    }
+    coalesce_sightings(raw)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1009,5 +1102,69 @@ mod tests {
         // Generic web servers say nothing about device type.
         assert_eq!(host_type_from_http_server("nginx/1.24"), None);
         assert_eq!(host_type_from_http_server("Apache/2.4.57"), None);
+    }
+
+    // ── MESH-A-4.c.4: coalescing + union reader ──
+
+    fn seen_host(ip: &str, mac: &str, seen: i64, ty: HostType) -> SurroundingHost {
+        SurroundingHost {
+            ip: ip.into(),
+            mac: mac.into(),
+            vendor: String::new(),
+            hostname: String::new(),
+            services: vec![],
+            host_type: ty,
+            trust: TrustState::Unknown,
+            first_seen_ms: seen,
+            last_seen_ms: seen,
+        }
+    }
+
+    #[test]
+    fn coalesce_groups_by_mac_with_roaming_and_sightings() {
+        let raw = vec![
+            seen_host("10.0.0.5", "aa:bb", 100, HostType::Unknown),
+            seen_host("10.0.0.9", "aa:bb", 300, HostType::Router), // same MAC, newer, roamed IP
+            seen_host("10.0.0.7", "", 200, HostType::Printer),     // no MAC → keyed by IP
+        ];
+        let out = coalesce_sightings(raw);
+        assert_eq!(out.len(), 2, "aa:bb coalesced + the MAC-less .7");
+        let mac_card = out.iter().find(|c| c.key == "aa:bb").unwrap();
+        assert_eq!(mac_card.sightings, 2);
+        assert_eq!(mac_card.host.last_seen_ms, 300, "freshest sighting wins");
+        assert_eq!(mac_card.host.host_type, HostType::Router);
+        assert_eq!(mac_card.ips_seen, vec!["10.0.0.5", "10.0.0.9"], "roaming history");
+        let ip_card = out.iter().find(|c| c.key == "10.0.0.7").unwrap();
+        assert_eq!(ip_card.sightings, 1);
+    }
+
+    #[test]
+    fn read_all_unions_latest_per_peer_and_coalesces() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        // peerA saw the host at .5; peerB saw the same MAC at .9.
+        std::fs::create_dir_all(root.join("peerA")).unwrap();
+        std::fs::write(
+            root.join("peerA").join("20260101T000000-a.json"),
+            serde_json::to_string(&vec![seen_host("10.0.0.5", "aa:bb", 1, HostType::Unknown)]).unwrap(),
+        )
+        .unwrap();
+        std::fs::create_dir_all(root.join("peerB")).unwrap();
+        std::fs::write(
+            root.join("peerB").join("20260101T000000-b.json"),
+            serde_json::to_string(&vec![seen_host("10.0.0.9", "aa:bb", 2, HostType::Router)]).unwrap(),
+        )
+        .unwrap();
+        let out = read_all_surrounding(root);
+        assert_eq!(out.len(), 1, "both peers' sightings coalesce to one MAC");
+        assert_eq!(out[0].sightings, 2, "seen by 2 peers");
+        assert_eq!(out[0].ips_seen.len(), 2, "roaming across .5 and .9");
+        assert_eq!(out[0].host.last_seen_ms, 2, "freshest wins");
+    }
+
+    #[test]
+    fn read_all_empty_when_root_absent() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(read_all_surrounding(&tmp.path().join("nope")).is_empty());
     }
 }

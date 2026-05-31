@@ -25,12 +25,17 @@ use crate::surrounding_hosts::{
     arp_neigh_map, classify, collect_mdns, enrich_hosts, hosts_from_mdns, load_system_oui,
     refine_unknown_with_http, reverse_dns, HostSignals, SurroundingHost,
 };
-use crate::workers::netassess::snapshot_filename;
+use crate::workers::netassess::{snapshot_filename, trim_older_than};
 
 use super::{ShutdownToken, Worker};
 
 /// Active-sweep cadence — 10 minutes (R8-Q12).
 pub const DEFAULT_TICK_INTERVAL: Duration = Duration::from_secs(600);
+
+/// Snapshot retention — 30 days in ms (R8-Q15 archive horizon). The
+/// 7-day "fade" is a Portal render concern; the worker drops snapshots
+/// older than 30 days each tick (reusing the netassess trim).
+pub const RETENTION_MS: i64 = 30 * 24 * 60 * 60 * 1_000;
 
 /// avahi-browse binary the mDNS collector shells out to.
 const AVAHI_BROWSE: &str = "avahi-browse";
@@ -107,8 +112,11 @@ impl SurroundingWorker {
     }
 
     fn tick_once(&self) {
-        let hosts = self.sweep(now_epoch_ms());
+        let now_ms = now_epoch_ms();
+        let hosts = self.sweep(now_ms);
         self.write_snapshot(&hosts);
+        // R8-Q15 — drop snapshots past the 30-day archive horizon.
+        let _ = trim_older_than(&self.host_dir(), now_ms - RETENTION_MS);
     }
 }
 
