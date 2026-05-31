@@ -21,7 +21,7 @@ use iced::{Background, Border, Color, Element, Length, Subscription, Task};
 use mde_theme::{Density, Rgba, Theme, Tokens, TypeRole};
 use serde::{Deserialize, Serialize};
 
-use crate::wizard::{WizardAction, WizardMsg, WizardState};
+use crate::wizard::{Template, WizardAction, WizardMsg, WizardState};
 
 // ── Inventory data model ────────────────────────────────────────────────
 //
@@ -798,6 +798,65 @@ fn read_create_ack(request_ulid: &str) -> Option<CreateStatus> {
     Some(status_from_ack(ack))
 }
 
+// ── Template save (VIRT-16.a) ───────────────────────────────────────────
+
+/// Parse `virsh dominfo` for `(vcpus, configured-RAM-MB)`. Pure.
+pub(crate) fn parse_dominfo_config(stdout: &str) -> (u32, u64) {
+    let mut vcpus = 0u32;
+    let mut ram_mb = 0u64;
+    for line in stdout.lines() {
+        if let Some(rest) = line.strip_prefix("CPU(s):") {
+            vcpus = rest.trim().parse().unwrap_or(0);
+        } else if let Some(rest) = line.strip_prefix("Max memory:") {
+            let kib: u64 = rest
+                .trim()
+                .split_whitespace()
+                .next()
+                .and_then(|x| x.parse().ok())
+                .unwrap_or(0);
+            ram_mb = kib / 1024;
+        }
+    }
+    (vcpus, ram_mb)
+}
+
+/// Parse `virsh domblkinfo` for the disk capacity in GB. Pure.
+pub(crate) fn parse_blkinfo_capacity_gb(stdout: &str) -> u64 {
+    for line in stdout.lines() {
+        if let Some(rest) = line.strip_prefix("Capacity:") {
+            let bytes: u64 = rest
+                .trim()
+                .split_whitespace()
+                .next()
+                .and_then(|x| x.parse().ok())
+                .unwrap_or(0);
+            return bytes / (1024 * 1024 * 1024);
+        }
+    }
+    0
+}
+
+/// Query a local VM's config via virsh: `(vcpus, ram_mb, disk_gb)`.
+fn query_vm_config(name: &str, disk_path: &str) -> (u32, u64, u64) {
+    let (vcpus, ram_mb) =
+        parse_dominfo_config(&run_cmd("virsh", &["-c", "qemu:///system", "dominfo", name]));
+    let disk_gb = parse_blkinfo_capacity_gb(&run_cmd(
+        "virsh",
+        &["-c", "qemu:///system", "domblkinfo", name, disk_path],
+    ));
+    (vcpus, ram_mb, disk_gb)
+}
+
+/// Write a template to `~/.local/share/mde/vm-templates/<ulid>.json`.
+fn save_template(t: &Template) -> Option<std::path::PathBuf> {
+    let dir = crate::wizard::templates_dir()?;
+    std::fs::create_dir_all(&dir).ok()?;
+    let path = dir.join(format!("{}.json", ulid::Ulid::new()));
+    let body = serde_json::to_string_pretty(t).ok()?;
+    std::fs::write(&path, body).ok()?;
+    Some(path)
+}
+
 // ── VM detail (VIRT-14.a) ────────────────────────────────────────────────
 
 /// A snapshot of one VM's data for the detail panel. Carries `is_local`
@@ -902,6 +961,14 @@ pub(crate) enum Message {
     CreateAckLoaded(Option<CreateStatus>),
     /// Dismiss the create-status banner.
     DismissCreate,
+    /// Open the `[Save as template…]` name prompt for the selected VM.
+    OpenSaveTemplate,
+    /// Template-name prompt input changed.
+    SaveTemplateNameInput(String),
+    /// Close the save-template prompt without saving.
+    CancelSaveTemplate,
+    /// Save the selected VM's config as a template.
+    SubmitSaveTemplate,
 }
 
 /// `mde-virtual` application state.
@@ -927,6 +994,8 @@ pub(crate) struct VirtualApp {
     wizard: Option<WizardState>,
     /// An in-flight / just-resolved VM creation, for the status banner (15.b).
     pending_create: Option<PendingCreate>,
+    /// The open `[Save as template…]` name prompt, if any (VIRT-16.a).
+    save_template_name: Option<String>,
     local_host: String,
 }
 
@@ -948,6 +1017,7 @@ impl VirtualApp {
             migrate_open: false,
             wizard: None,
             pending_create: None,
+            save_template_name: None,
             local_host: local_hostname(),
         }
     }
@@ -1008,6 +1078,7 @@ impl VirtualApp {
                 self.selected_snapshots = Vec::new();
                 self.exposed_rules = Vec::new();
                 self.migrate_open = false;
+                self.save_template_name = None;
                 let ip = detail.nebula_ip.clone();
                 let local_name = detail.is_local.then(|| detail.name.clone());
                 self.selected = Some(detail);
@@ -1026,6 +1097,7 @@ impl VirtualApp {
             Message::CloseDetail => {
                 self.selected = None;
                 self.migrate_open = false;
+                self.save_template_name = None;
                 Task::none()
             }
             Message::OpenWizard => {
@@ -1075,6 +1147,48 @@ impl VirtualApp {
             Message::DismissCreate => {
                 self.pending_create = None;
                 Task::none()
+            }
+            Message::OpenSaveTemplate => {
+                self.save_template_name = self.selected.as_ref().map(|d| d.name.clone());
+                Task::none()
+            }
+            Message::SaveTemplateNameInput(s) => {
+                if self.save_template_name.is_some() {
+                    self.save_template_name = Some(s);
+                }
+                Task::none()
+            }
+            Message::CancelSaveTemplate => {
+                self.save_template_name = None;
+                Task::none()
+            }
+            Message::SubmitSaveTemplate => {
+                let name = self
+                    .save_template_name
+                    .clone()
+                    .filter(|n| !n.trim().is_empty());
+                let (Some(name), Some(d)) = (name, self.selected.as_ref()) else {
+                    return Task::none();
+                };
+                let vm_name = d.name.clone();
+                let disk_path = d.disk_path.clone();
+                let meshfs = d.meshfs_available;
+                let tmpl_name = name.trim().to_string();
+                self.save_template_name = None;
+                Task::perform(
+                    async move {
+                        let (vcpus, ram_mb, disk_gb) = query_vm_config(&vm_name, &disk_path);
+                        let t = Template {
+                            name: tmpl_name,
+                            vcpus,
+                            ram_mb,
+                            disk_gb,
+                            share_meshfs: meshfs,
+                        };
+                        let _ = save_template(&t);
+                    },
+                    |()| Message::Refresh,
+                )
             }
             Message::Console(name) => {
                 let (prog, args) = console_command(&name);
@@ -1684,10 +1798,11 @@ impl VirtualApp {
         // Exposed ports (any VM — exposures are mesh-readable) — VIRT-14.c.
         col = col.push(self.exposed_section(d));
 
-        // Snapshots + migrate (local VMs only) — VIRT-14.b / 14.d.
+        // Snapshots + migrate + save-template (local VMs only).
         if d.is_local {
             col = col.push(self.snapshot_section(d));
             col = col.push(self.migrate_section(d));
+            col = col.push(self.save_template_section());
         }
 
         container(col)
@@ -1911,6 +2026,27 @@ impl VirtualApp {
         }
         col = col.push(self.simple_button("Cancel", Message::CloseMigrateSheet));
         col.into()
+    }
+
+    fn save_template_section(&self) -> Element<'_, Message> {
+        let space = self.tokens.space;
+        match &self.save_template_name {
+            None => self.simple_button("Save as template…", Message::OpenSaveTemplate),
+            Some(name) => column![
+                text_input("template name", name)
+                    .on_input(Message::SaveTemplateNameInput)
+                    .padding(f32::from(space.xs))
+                    .size(TypeRole::Caption.size_in(self.tokens.font_size)),
+                row![
+                    self.simple_button("Save", Message::SubmitSaveTemplate),
+                    self.simple_button("Cancel", Message::CancelSaveTemplate),
+                ]
+                .spacing(f32::from(space.sm)),
+            ]
+            .spacing(f32::from(space.xs))
+            .width(Length::Fill)
+            .into(),
+        }
     }
 
     fn simple_button(&self, label: &str, msg: Message) -> Element<'_, Message> {
@@ -2413,5 +2549,25 @@ mod tests {
             CreateStatus::Done { meshfs_skipped, .. } => assert!(meshfs_skipped),
             other => panic!("expected Done, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn parse_dominfo_config_extracts_vcpus_and_ram() {
+        let out = "Id:             3\n\
+                   Name:           web\n\
+                   CPU(s):         4\n\
+                   Max memory:     4194304 KiB\n\
+                   Used memory:    2097152 KiB\n";
+        let (vcpus, ram_mb) = parse_dominfo_config(out);
+        assert_eq!(vcpus, 4);
+        assert_eq!(ram_mb, 4096); // 4194304 KiB / 1024
+    }
+
+    #[test]
+    fn parse_blkinfo_capacity_gb_converts_bytes() {
+        let out = "Capacity:       21474836480\n\
+                   Allocation:     1234\n\
+                   Physical:       21474836480\n";
+        assert_eq!(parse_blkinfo_capacity_gb(out), 20); // 20 GiB
     }
 }

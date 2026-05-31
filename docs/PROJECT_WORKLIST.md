@@ -2220,15 +2220,14 @@ reachability (the v3.x dead-module failure mode §0.12 + DoD gate-7 exist to cat
     - [✓] step-1 "Start from a template" picker lists saved templates from `~/.local/share/mde/vm-templates/*.json`
     - [✓] selecting one pre-fills the wizard (name/vcpus/ram/disk/share_meshfs, clamped); `Template` parse + apply unit-tested
 
-- [ ] **VIRT-16: v5.0.0 — VM templates — save config + load in wizard**
+- [ ] **VIRT-16: v5.0.0 — VM templates — save config + load in wizard** *(split per §0.12 2026-05-31 into 16.a save [shipped] + 16.b delete-in-picker; the MeshFS-path store + wizard picker pre-fill [bullets 2/3] already shipped in VIRT-15.c; umbrella open until 16.b)*
   **As** an operator, **I want** to save a VM config as a template and reuse it,
   **so that** I can spin up identical VMs without re-entering the same wizard answers.
-  **Acceptance** (each bench-observable):
-    - [ ] `[Save as template…]` button in VM detail panel (Local tab only) prompts for a template name, saves `~/.local/share/mde/vm-templates/<ulid>.json` containing: name, vcpus, ram_mb, disk_gb, share_meshfs
-    - [ ] Templates stored on MeshFS path (`~/.local/share/mde/vm-templates/`) so they're available on every peer that mounts mesh-storage
-    - [ ] Wizard step 1 shows template picker listing all `.json` files from the template dir; selecting one pre-fills steps 2–3
-    - [ ] `[Delete template]` button in picker removes the file
-    - [ ] 3 unit tests: template JSON round-trip, wizard pre-fill from template, delete removes file
+  - [✓] **VIRT-16.a: `[Save as template…]` save flow** *(shipped 2026-05-31 — session=opus-48-2026-05-31-virt16a. `crates/mde-virtual/src/app.rs`: the VM detail panel (local VMs only) gains a `[Save as template…]` button → an inline name prompt (`save_template_name: Option<String>`, pre-filled with the VM name; reset on select/close) with a `text_input` + `[Save]`/`[Cancel]`. `[Save]` runs (off-thread via `Task::perform`) `query_vm_config(name, disk_path)` — `virsh -c qemu:///system dominfo` parsed by `parse_dominfo_config` (CPU(s) → vcpus, Max memory KiB → ram_mb) + `virsh domblkinfo` parsed by `parse_blkinfo_capacity_gb` (Capacity bytes → GB) — builds a `wizard::Template {name, vcpus, ram_mb, disk_gb, share_meshfs: meshfs_available}` and `save_template` writes it to `~/.local/share/mde/vm-templates/<ulid>.json` (`wizard::templates_dir` now pub). The wizard's step-1 picker (VIRT-15.c) then lists it on next open. `cargo build`+`test -p mde-virtual` green (44 tests, +2: dominfo vcpus/ram parse, domblkinfo capacity→GB). Lints clean (7). DoD gate 8: writes a JSON file to the MeshFS-synced user data dir + runs read-only `virsh dominfo`/`domblkinfo` as the user; no listener / public port / D-Bus / new surface.)*
+    - [✓] `[Save as template…]` (detail panel, local) prompts for a name + saves `{name, vcpus, ram_mb, disk_gb, share_meshfs}` to `~/.local/share/mde/vm-templates/<ulid>.json`
+    - [✓] store path on MeshFS + wizard step-1 picker pre-fill — shipped in VIRT-15.c
+    - [✓] virsh config parsers (`dominfo` vcpus/ram, `domblkinfo` capacity) + Template round-trip + pre-fill unit-tested (across 15.c + 16.a)
+  - [ ] **VIRT-16.b: `[Delete template]` in the wizard picker** — each template in the step-1 picker gets a `[Delete]` that removes its `.json` + reloads the list (needs `list_templates` to carry the file path). Acceptance: delete removes the file + the picker updates; delete-removes-file unit-tested. Cite: visual-identity.md §1; ref: Apple System Settings.
 
 - [ ] **VIRT-17: v5.0.0 — `mde-virtual` real-time CPU/RAM sparklines in VM detail panel**
   **As** an operator, **I want** live CPU% and RAM sparklines in the VM detail panel,

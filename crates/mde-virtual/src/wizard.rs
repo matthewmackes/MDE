@@ -409,7 +409,7 @@ pub struct Template {
 }
 
 /// The MeshFS-backed template store dir (`~/.local/share/mde/vm-templates`).
-fn templates_dir() -> Option<PathBuf> {
+pub fn templates_dir() -> Option<PathBuf> {
     dirs::data_dir().map(|d| d.join("mde").join("vm-templates"))
 }
 
