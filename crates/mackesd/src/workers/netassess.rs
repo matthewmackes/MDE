@@ -29,7 +29,9 @@
 //! worklist line cites "active 10 min", but a 10-minute speedtest
 //! cadence is bandwidth-abusive — the design doc §7.1 "hourly" is the
 //! sane lock and is used here. On-demand refresh (Portal-compact
-//! open) is a future Bus-topic trigger (MESH-A-1.refresh follow-on).
+//! open) is wired via the [`REFRESH_TOPIC`] Bus subscriber
+//! (MESH-A-1.refresh): a message on `action/netassess/refresh`
+//! runs an out-of-band collection between hourly ticks.
 //!
 //! Shell-outs that aren't present (no `nmcli` / `speedtest-cli` /
 //! `curl` on a headless or air-gapped peer) degrade to `None` for
@@ -46,6 +48,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use sha2::{Digest, Sha256};
 
+use mde_bus::persist::Persist;
+
 use super::{ShutdownToken, Worker};
 
 /// Active-collection cadence — hourly (design doc §7.1).
@@ -56,6 +60,16 @@ pub const RETENTION_MS: i64 = 30 * 24 * 60 * 60 * 1_000;
 
 /// Nebula overlay interface checked for tunnel health.
 pub const DEFAULT_NEBULA_INTERFACE: &str = "nebula1";
+
+/// Bus topic a UI surface (Portal-compact on open) publishes to in
+/// order to trigger an out-of-band assessment between hourly ticks
+/// (Q96 `action/<domain>/<verb>` convention).
+pub const REFRESH_TOPIC: &str = "action/netassess/refresh";
+
+/// How often the refresh subscriber polls [`REFRESH_TOPIC`]. Short
+/// enough that a Portal-compact open feels responsive; each poll only
+/// opens + drops a `Persist` and reads the rows new since the cursor.
+pub const REFRESH_POLL_INTERVAL: Duration = Duration::from_millis(500);
 
 /// One WiFi network seen in a scan.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -548,12 +562,76 @@ fn now_epoch_ms() -> i64 {
         .as_millis() as i64
 }
 
+/// Optional payload for a [`REFRESH_TOPIC`] trigger. Every field is
+/// optional — a bare (empty) body is itself a valid trigger, which is
+/// what Portal-compact publishes on open. A non-empty body that is not
+/// a JSON object is "unknown" and dropped by [`drain_refresh_triggers`].
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RefreshRequest {
+    /// Informational — who asked for the refresh (e.g.
+    /// `"portal-compact"`). Logged, never acted on.
+    #[serde(default)]
+    pub source: Option<String>,
+}
+
+/// Parse a refresh-trigger body. An empty/whitespace body is a valid
+/// bare trigger; a JSON object (optionally carrying `source`) is
+/// valid; anything else is an error the caller logs + drops.
+///
+/// # Errors
+///
+/// Returns a human-readable error when a non-empty body fails to parse
+/// as a [`RefreshRequest`] JSON object.
+pub fn parse_refresh_request(body: &str) -> Result<RefreshRequest, String> {
+    let trimmed = body.trim();
+    if trimmed.is_empty() {
+        return Ok(RefreshRequest::default());
+    }
+    serde_json::from_str(trimmed)
+        .map_err(|e| format!("malformed netassess refresh request: {e}"))
+}
+
+/// Drain new [`REFRESH_TOPIC`] triggers since `cursor`, returning the
+/// count of VALID triggers seen (malformed bodies are logged +
+/// dropped — MESH-A-1.refresh "unknown body ignored"). The cursor is
+/// advanced past every message read so the same trigger never fires a
+/// second collection. Opens + drops a `Persist` synchronously; it is
+/// `!Sync` and must never be held across an `.await` in the run loop.
+fn drain_refresh_triggers(bus_root: &Path, cursor: &mut Option<String>) -> usize {
+    let Ok(persist) = Persist::open(bus_root.to_path_buf()) else {
+        return 0;
+    };
+    let Ok(msgs) = persist.list_since(REFRESH_TOPIC, cursor.as_deref()) else {
+        return 0;
+    };
+    let mut valid = 0usize;
+    for msg in msgs {
+        *cursor = Some(msg.ulid.clone());
+        let body = msg.body.as_deref().unwrap_or("");
+        match parse_refresh_request(body) {
+            Ok(_) => valid += 1,
+            Err(e) => {
+                tracing::warn!(ulid = %msg.ulid, error = %e, "netassess: ignoring malformed refresh request");
+            }
+        }
+    }
+    valid
+}
+
+/// Resolve the Bus root (`~/.local/share/mde/bus`) for the refresh
+/// subscriber. `None` when no data dir resolves — the subscriber then
+/// stays idle and only the hourly tick runs.
+fn default_bus_root() -> Option<PathBuf> {
+    Some(dirs::data_dir()?.join("mde").join("bus"))
+}
+
 /// Worker handle.
 pub struct NetAssessWorker {
     host: String,
     base_dir: PathBuf,
     nebula_iface: String,
     tick: Duration,
+    bus_root_override: Option<PathBuf>,
 }
 
 impl NetAssessWorker {
@@ -566,6 +644,7 @@ impl NetAssessWorker {
             base_dir,
             nebula_iface: DEFAULT_NEBULA_INTERFACE.into(),
             tick: DEFAULT_TICK_INTERVAL,
+            bus_root_override: None,
         }
     }
 
@@ -573,6 +652,14 @@ impl NetAssessWorker {
     #[must_use]
     pub fn with_tick(mut self, d: Duration) -> Self {
         self.tick = d;
+        self
+    }
+
+    /// Override the Bus root the refresh subscriber polls. Used in
+    /// tests; production resolves [`default_bus_root`].
+    #[must_use]
+    pub fn with_bus_root(mut self, p: PathBuf) -> Self {
+        self.bus_root_override = Some(p);
         self
     }
 
@@ -676,10 +763,32 @@ impl Worker for NetAssessWorker {
     }
 
     async fn run(&mut self, mut shutdown: ShutdownToken) -> anyhow::Result<()> {
+        // Hourly active-collection cadence. Uses `interval` (not a
+        // fresh `sleep` each loop iteration) so the high-frequency
+        // refresh poll below can fire without ever resetting the
+        // hourly timer.
+        let mut collect_tick = tokio::time::interval(self.tick);
+        collect_tick.tick().await; // consume the immediate first tick — first collection lands after `self.tick`, matching MESH-A-1.
+
+        // On-demand refresh subscriber (MESH-A-1.refresh): a message on
+        // `action/netassess/refresh` runs an out-of-band collection
+        // between hourly ticks. Disabled when no Bus root resolves.
+        let bus_root = self.bus_root_override.clone().or_else(default_bus_root);
+        let mut refresh_cursor: Option<String> = None;
+        let mut refresh_tick = tokio::time::interval(REFRESH_POLL_INTERVAL);
+
         loop {
             tokio::select! {
-                _ = tokio::time::sleep(self.tick) => {
+                _ = collect_tick.tick() => {
                     self.tick_once();
+                }
+                _ = refresh_tick.tick(), if bus_root.is_some() => {
+                    if let Some(root) = bus_root.as_deref() {
+                        if drain_refresh_triggers(root, &mut refresh_cursor) > 0 {
+                            tracing::info!("netassess: on-demand refresh — running collection out-of-band");
+                            self.tick_once();
+                        }
+                    }
                 }
                 _ = shutdown.wait() => break,
             }
@@ -930,5 +1039,79 @@ mod tests {
         // round-trips
         let back: AssessmentSnapshot = serde_json::from_str(&s).unwrap();
         assert_eq!(back, snap);
+    }
+
+    // ── MESH-A-1.refresh: on-demand Bus trigger ──
+
+    // A valid refresh message on `action/netassess/refresh` is seen by
+    // the subscriber and fires a collection. (The live collection
+    // shell-outs are HW-bench-gated per §0.15 exactly like MESH-A-1;
+    // here we assert the trigger is detected — the run loop calls
+    // `tick_once` whenever this count is non-zero.)
+    #[test]
+    fn refresh_fires_collection() {
+        use mde_bus::hooks::config::Priority;
+        let tmp = tempfile::tempdir().unwrap();
+        let bus_root = tmp.path().to_path_buf();
+        let persist = Persist::open(bus_root.clone()).expect("persist");
+        // Portal-compact publishes a bare trigger on open …
+        persist
+            .write(REFRESH_TOPIC, Priority::Default, None, None)
+            .expect("write bare refresh");
+        // … and a source-tagged variant is equally valid.
+        persist
+            .write(
+                REFRESH_TOPIC,
+                Priority::Default,
+                None,
+                Some(r#"{"source":"portal-compact"}"#),
+            )
+            .expect("write tagged refresh");
+
+        let mut cursor: Option<String> = None;
+        let fired = drain_refresh_triggers(&bus_root, &mut cursor);
+        assert_eq!(fired, 2, "both valid refresh triggers should fire collection");
+
+        // Cursor advanced: a second drain with no new messages is a
+        // no-op — collection does NOT re-fire on the same triggers.
+        assert_eq!(drain_refresh_triggers(&bus_root, &mut cursor), 0);
+    }
+
+    // A malformed (non-empty, non-JSON-object) body is logged + dropped
+    // and does NOT fire a collection.
+    #[test]
+    fn unknown_body_ignored() {
+        use mde_bus::hooks::config::Priority;
+        let tmp = tempfile::tempdir().unwrap();
+        let bus_root = tmp.path().to_path_buf();
+        let persist = Persist::open(bus_root.clone()).expect("persist");
+        persist
+            .write(REFRESH_TOPIC, Priority::Default, None, Some("not json at all"))
+            .expect("write garbage");
+        persist
+            .write(REFRESH_TOPIC, Priority::Default, None, Some("[1,2,3]"))
+            .expect("write non-object json");
+
+        let mut cursor: Option<String> = None;
+        assert_eq!(
+            drain_refresh_triggers(&bus_root, &mut cursor),
+            0,
+            "unknown bodies must not fire collection"
+        );
+    }
+
+    #[test]
+    fn parse_refresh_request_accepts_empty_and_object() {
+        assert_eq!(parse_refresh_request("").unwrap(), RefreshRequest::default());
+        assert_eq!(parse_refresh_request("   ").unwrap(), RefreshRequest::default());
+        assert_eq!(
+            parse_refresh_request(r#"{"source":"portal-compact"}"#)
+                .unwrap()
+                .source
+                .as_deref(),
+            Some("portal-compact")
+        );
+        assert!(parse_refresh_request("garbage").is_err());
+        assert!(parse_refresh_request("[1,2]").is_err());
     }
 }
