@@ -1,9 +1,16 @@
-//! VIRT-13.a — `mde-virtual` application core.
+//! `mde-virtual` application core (VIRT-13.a + 13.b).
 //!
-//! Holds the read-only Fleet/Local viewer: the Bus-fed inventory data
-//! model, the 5 s poll, and the Iced `update` / `view` / `subscription`
-//! surface. Every visual value flows from `mde-theme` tokens — no
-//! hardcoded colors or sizes (lint-design-tokens contract).
+//! Holds the Fleet/Local viewer: the Bus-fed inventory data model, the
+//! 5 s poll, the Iced `update` / `view` / `subscription` surface, plus
+//! the Local tab's direct `virsh`/`podman` control + offline fallback.
+//! Every visual value flows from `mde-theme` tokens — no hardcoded
+//! colors or sizes (lint-design-tokens contract).
+//!
+//! Per the §13 design (M4/M5/M11): the Fleet tab is read-only for remote
+//! peers; the Local tab controls *this* peer's compute directly via
+//! `virsh -c qemu:///system <verb>` / `podman <verb>` (no Bus round-trip
+//! — local control), and falls back to a direct `virsh list` / `podman
+//! ps` read when the Bus is unavailable.
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -134,6 +141,168 @@ pub(crate) fn state_is_paused(state: &str) -> bool {
     s.contains("paused") || s.contains("suspended")
 }
 
+// ── Local control (VIRT-13.b) ───────────────────────────────────────────
+
+/// A lifecycle action a Local-tab row can request. Applied directly to
+/// this peer's compute (the Local tab is always local) via `virsh` /
+/// `podman` — no Bus round-trip.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ActionVerb {
+    Start,
+    Stop,
+    Pause,
+    Resume,
+}
+
+impl ActionVerb {
+    fn label(self) -> &'static str {
+        match self {
+            ActionVerb::Start => "Start",
+            ActionVerb::Stop => "Stop",
+            ActionVerb::Pause => "Pause",
+            ActionVerb::Resume => "Resume",
+        }
+    }
+}
+
+/// The contextual action set for a given state: stop/pause a running
+/// resource, resume a paused one, start anything else.
+pub(crate) fn actions_for_state(state: &str) -> Vec<ActionVerb> {
+    if state_is_running(state) {
+        vec![ActionVerb::Stop, ActionVerb::Pause]
+    } else if state_is_paused(state) {
+        vec![ActionVerb::Resume]
+    } else {
+        vec![ActionVerb::Start]
+    }
+}
+
+/// Resolve `(program, argv)` for a lifecycle action. VMs go through the
+/// system libvirtd (`-c qemu:///system`, where `/var/lib/mde-vms` VMs
+/// live); containers through rootless `podman`.
+pub(crate) fn command_for(kind: ResourceKind, verb: ActionVerb, name: &str) -> (&'static str, Vec<String>) {
+    match kind {
+        ResourceKind::Vm => {
+            let v = match verb {
+                ActionVerb::Start => "start",
+                ActionVerb::Stop => "shutdown",
+                ActionVerb::Pause => "suspend",
+                ActionVerb::Resume => "resume",
+            };
+            (
+                "virsh",
+                vec![
+                    "-c".to_string(),
+                    "qemu:///system".to_string(),
+                    v.to_string(),
+                    name.to_string(),
+                ],
+            )
+        }
+        ResourceKind::Container => {
+            let v = match verb {
+                ActionVerb::Start => "start",
+                ActionVerb::Stop => "stop",
+                ActionVerb::Pause => "pause",
+                ActionVerb::Resume => "unpause",
+            };
+            ("podman", vec![v.to_string(), name.to_string()])
+        }
+    }
+}
+
+/// Run a command + return its stdout (empty on missing binary / failure).
+/// Mirrors `compute_registry::run_virsh`.
+fn run_cmd(program: &str, args: &[&str]) -> String {
+    std::process::Command::new(program)
+        .args(args)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+        .unwrap_or_default()
+}
+
+/// Parse `virsh list --all` table output into `(name, state)` pairs.
+/// State is free-form and may contain a space (`shut off`). Pure.
+pub(crate) fn parse_virsh_list_state(stdout: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    for line in stdout.lines() {
+        let t = line.trim();
+        if t.is_empty() || t.starts_with("---") {
+            continue;
+        }
+        let cols: Vec<&str> = t.split_whitespace().collect();
+        if cols.first().copied() == Some("Id") {
+            continue; // header row
+        }
+        if cols.len() < 3 {
+            continue;
+        }
+        let name = cols[1].to_string();
+        let state = cols[2..].join(" ");
+        out.push((name, state));
+    }
+    out
+}
+
+/// Parse `podman ps --all --format json` into container rows (name +
+/// state only; the rich CPU/RAM stats come from the daemon when the Bus
+/// is up). Mirrors `compute_registry::parse_podman_ps_json`. Pure.
+pub(crate) fn parse_podman_ps_local(stdout: &str) -> Vec<ContainerEntry> {
+    let Ok(rows) = serde_json::from_str::<Vec<serde_json::Value>>(stdout) else {
+        return vec![];
+    };
+    rows.into_iter()
+        .filter_map(|row| {
+            let name = row
+                .get("Names")
+                .and_then(|v| v.as_array())
+                .and_then(|a| a.first())
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let state = row
+                .get("State")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if name.is_empty() {
+                return None;
+            }
+            Some(ContainerEntry {
+                name,
+                state,
+                cpu_pct: 0.0,
+                ram_mb: 0,
+            })
+        })
+        .collect()
+}
+
+/// Read this peer's compute directly off libvirt + podman — the Bus-
+/// independent fallback the Local tab uses when the mesh is unavailable
+/// (§13 M11). CPU/RAM are left at 0 (degraded offline view).
+fn read_local_direct() -> Inventory {
+    let vms = parse_virsh_list_state(&run_cmd("virsh", &["-c", "qemu:///system", "list", "--all"]))
+        .into_iter()
+        .map(|(name, state)| VmEntry {
+            name,
+            state,
+            cpu_pct: 0.0,
+            ram_mb: 0,
+            nebula_ip: String::new(),
+        })
+        .collect();
+    let containers = parse_podman_ps_local(&run_cmd("podman", &["ps", "--all", "--format", "json"]));
+    Inventory {
+        peer: String::new(),
+        hostname: local_hostname(),
+        vms,
+        containers,
+    }
+}
+
 // ── Bus read ────────────────────────────────────────────────────────────
 
 /// Resolve the Mackes Bus on-disk root (`$XDG_DATA_HOME/mde/bus`).
@@ -157,10 +326,10 @@ pub(crate) fn is_local(inv: &Inventory, local_host: &str) -> bool {
     !local_host.is_empty() && inv.hostname == local_host
 }
 
-/// One poll's result. `Unavailable` means the Bus root itself is missing
-/// or unreachable (broker not running / no home) — the Fleet tab renders
-/// the "Mesh unavailable" banner. An *empty* `Available` means the Bus is
-/// up but no peer has published compute yet.
+/// One poll's Bus result. `Unavailable` means the Bus root itself is
+/// missing or unreachable (broker not running / no home) — the Fleet tab
+/// renders the "Mesh unavailable" banner. An *empty* `Available` means
+/// the Bus is up but no peer has published compute yet.
 #[derive(Debug, Clone)]
 pub(crate) enum FleetState {
     Unavailable,
@@ -180,8 +349,28 @@ impl FleetState {
     }
 }
 
+/// The full result of one poll: the Bus fleet, plus a direct local read
+/// when (and only when) the Bus is unavailable (§13 M11 fallback).
+#[derive(Debug, Clone)]
+pub(crate) struct PollResult {
+    pub fleet: FleetState,
+    pub local_direct: Option<Inventory>,
+}
+
+/// Poll the Bus; when it's unavailable, also read the local compute
+/// directly so the Local tab keeps working offline.
+pub(crate) fn poll() -> PollResult {
+    let fleet = read_fleet();
+    let local_direct = if fleet.is_unavailable() {
+        Some(read_local_direct())
+    } else {
+        None
+    };
+    PollResult { fleet, local_direct }
+}
+
 /// Read the current fleet inventory off the Bus tree.
-pub(crate) fn read_fleet() -> FleetState {
+fn read_fleet() -> FleetState {
     let Some(root) = bus_root() else {
         return FleetState::Unavailable;
     };
@@ -268,10 +457,16 @@ pub(crate) enum Message {
     SwitchTab(Tab),
     /// Collapse/expand a peer's section (keyed by Nebula IP).
     TogglePeer(String),
-    /// 5 s timer fired — kick off a fresh Bus read.
+    /// 5 s timer fired — kick off a fresh poll.
     Refresh,
-    /// A Bus read finished.
-    FleetLoaded(FleetState),
+    /// A poll finished.
+    PollLoaded(PollResult),
+    /// A Local-tab lifecycle action on this peer's compute.
+    Action {
+        kind: ResourceKind,
+        name: String,
+        verb: ActionVerb,
+    },
 }
 
 /// `mde-virtual` application state.
@@ -279,19 +474,23 @@ pub(crate) struct VirtualApp {
     tokens: Tokens,
     tab: Tab,
     fleet: FleetState,
+    /// Direct local read, populated only while the Bus is unavailable.
+    local_direct: Option<Inventory>,
     /// Per-peer expansion state; absent = expanded (default open).
     expanded: HashMap<String, bool>,
     local_host: String,
 }
 
 impl VirtualApp {
-    /// Boot the app: resolve tokens, do the initial synchronous Bus read,
-    /// and capture this machine's hostname for the Local tab.
+    /// Boot the app: resolve tokens, do the initial synchronous poll, and
+    /// capture this machine's hostname for the Local tab.
     pub(crate) fn new() -> Self {
+        let PollResult { fleet, local_direct } = poll();
         Self {
             tokens: Tokens::resolve(Theme::Dark, Density::Comfortable),
             tab: Tab::Fleet,
-            fleet: read_fleet(),
+            fleet,
+            local_direct,
             expanded: HashMap::new(),
             local_host: local_hostname(),
         }
@@ -308,10 +507,23 @@ impl VirtualApp {
                 *e = !*e;
                 Task::none()
             }
-            Message::Refresh => Task::perform(async { read_fleet() }, Message::FleetLoaded),
-            Message::FleetLoaded(fs) => {
-                self.fleet = fs;
+            Message::Refresh => Task::perform(async { poll() }, Message::PollLoaded),
+            Message::PollLoaded(r) => {
+                self.fleet = r.fleet;
+                self.local_direct = r.local_direct;
                 Task::none()
+            }
+            Message::Action { kind, name, verb } => {
+                let (prog, args) = command_for(kind, verb, &name);
+                let prog = prog.to_string();
+                // Run the lifecycle command off-thread, then refresh so the
+                // new state shows without waiting for the 5 s tick.
+                Task::perform(
+                    async move {
+                        let _ = std::process::Command::new(prog).args(&args).output();
+                    },
+                    |()| Message::Refresh,
+                )
             }
         }
     }
@@ -369,29 +581,27 @@ impl VirtualApp {
         let space = self.tokens.space;
         let radius = f32::from(self.tokens.radii.input);
         let active = self.tab == tab;
-        button(
-            text(label.to_string()).size(TypeRole::Body.size_in(self.tokens.font_size)),
-        )
-        .on_press(Message::SwitchTab(tab))
-        .padding([space.xs, space.sm2])
-        .style(move |_t, _status| {
-            let (bg, fg, border) = if active {
-                (palette.accent, palette.background, palette.accent)
-            } else {
-                (palette.surface, palette.text, palette.border)
-            };
-            button::Style {
-                background: Some(Background::Color(rgba(bg))),
-                text_color: rgba(fg),
-                border: Border {
-                    color: rgba(border),
-                    width: 1.0,
-                    radius: radius.into(),
-                },
-                ..button::Style::default()
-            }
-        })
-        .into()
+        button(text(label.to_string()).size(TypeRole::Body.size_in(self.tokens.font_size)))
+            .on_press(Message::SwitchTab(tab))
+            .padding([space.xs, space.sm2])
+            .style(move |_t, _status| {
+                let (bg, fg, border) = if active {
+                    (palette.accent, palette.background, palette.accent)
+                } else {
+                    (palette.surface, palette.text, palette.border)
+                };
+                button::Style {
+                    background: Some(Background::Color(rgba(bg))),
+                    text_color: rgba(fg),
+                    border: Border {
+                        color: rgba(border),
+                        width: 1.0,
+                        radius: radius.into(),
+                    },
+                    ..button::Style::default()
+                }
+            })
+            .into()
     }
 
     fn fleet_view(&self) -> Element<'_, Message> {
@@ -402,33 +612,29 @@ impl VirtualApp {
         if invs.is_empty() {
             return self.empty_state("No compute discovered on the mesh.");
         }
-        self.peer_list(invs.iter())
+        self.peer_list(invs.iter(), false)
     }
 
     fn local_view(&self) -> Element<'_, Message> {
-        let local_host = &self.local_host;
-        let locals: Vec<&Inventory> = self
-            .fleet
-            .inventories()
-            .iter()
-            .filter(|i| is_local(i, local_host))
-            .collect();
-        if locals.is_empty() {
-            // The Local tab keeps rendering even when the mesh is down;
-            // the direct libvirt/podman fallback that fills it offline
-            // (and the per-row action buttons) land with VIRT-13.b.
-            return self.empty_state("No local compute discovered.");
+        // Prefer the Bus-sourced local inventory; when the mesh is down,
+        // use the direct libvirt/podman read so the tab keeps working.
+        let local_inv: Option<&Inventory> = match &self.fleet {
+            FleetState::Available(invs) => invs.iter().find(|i| is_local(i, &self.local_host)),
+            FleetState::Unavailable => self.local_direct.as_ref(),
+        };
+        match local_inv {
+            Some(inv) => self.peer_list(std::iter::once(inv), true),
+            None => self.empty_state("No local compute discovered."),
         }
-        self.peer_list(locals.into_iter())
     }
 
-    fn peer_list<'a, I>(&'a self, invs: I) -> Element<'a, Message>
+    fn peer_list<'a, I>(&'a self, invs: I, show_actions: bool) -> Element<'a, Message>
     where
         I: Iterator<Item = &'a Inventory>,
     {
         let space = self.tokens.space;
         let sections: Vec<Element<'a, Message>> =
-            invs.map(|inv| self.peer_section(inv)).collect();
+            invs.map(|inv| self.peer_section(inv, show_actions)).collect();
         scrollable(
             column(sections)
                 .spacing(f32::from(space.sm))
@@ -439,7 +645,7 @@ impl VirtualApp {
         .into()
     }
 
-    fn peer_section<'a>(&'a self, inv: &'a Inventory) -> Element<'a, Message> {
+    fn peer_section<'a>(&'a self, inv: &'a Inventory, show_actions: bool) -> Element<'a, Message> {
         let palette = self.tokens.palette;
         let space = self.tokens.space;
         let expanded = self.expanded.get(&inv.peer).copied().unwrap_or(true);
@@ -487,14 +693,14 @@ impl VirtualApp {
                 col = col.push(self.muted_line("No VMs or containers."));
             } else {
                 for r in &rows {
-                    col = col.push(self.resource_row(r));
+                    col = col.push(self.resource_row(r, show_actions));
                 }
             }
         }
         container(col).width(Length::Fill).into()
     }
 
-    fn resource_row(&self, r: &ResourceRow) -> Element<'_, Message> {
+    fn resource_row(&self, r: &ResourceRow, show_actions: bool) -> Element<'_, Message> {
         let palette = self.tokens.palette;
         let space = self.tokens.space;
         let nebula = if r.nebula_ip.is_empty() {
@@ -502,7 +708,7 @@ impl VirtualApp {
         } else {
             r.nebula_ip.clone()
         };
-        row![
+        let mut widget = row![
             text(r.name.clone())
                 .size(TypeRole::Body.size_in(self.tokens.font_size))
                 .color(rgba(palette.text))
@@ -524,8 +730,35 @@ impl VirtualApp {
         ]
         .spacing(f32::from(space.sm))
         .padding([space.xs, space.md])
-        .align_y(iced::alignment::Vertical::Center)
-        .into()
+        .align_y(iced::alignment::Vertical::Center);
+
+        if show_actions {
+            for verb in actions_for_state(&r.state) {
+                widget = widget.push(self.action_button(r.kind, &r.name, verb));
+            }
+        }
+        widget.into()
+    }
+
+    fn action_button(&self, kind: ResourceKind, name: &str, verb: ActionVerb) -> Element<'_, Message> {
+        let palette = self.tokens.palette;
+        let space = self.tokens.space;
+        let radius = f32::from(self.tokens.radii.sm);
+        let name = name.to_string();
+        button(text(verb.label()).size(TypeRole::Caption.size_in(self.tokens.font_size)))
+            .on_press(Message::Action { kind, name, verb })
+            .padding([space.xs2, space.xs])
+            .style(move |_t, _status| button::Style {
+                background: Some(Background::Color(rgba(palette.surface))),
+                text_color: rgba(palette.accent),
+                border: Border {
+                    color: rgba(palette.border),
+                    width: 1.0,
+                    radius: radius.into(),
+                },
+                ..button::Style::default()
+            })
+            .into()
     }
 
     fn type_badge(&self, kind: ResourceKind) -> Element<'_, Message> {
@@ -728,5 +961,55 @@ mod tests {
         assert!(unavail.inventories().is_empty());
         let avail = FleetState::Available(vec![]);
         assert!(!avail.is_unavailable());
+    }
+
+    #[test]
+    fn parse_virsh_list_state_parses_name_and_multiword_state() {
+        let out = parse_virsh_list_state(
+            " Id   Name      State\n\
+             --------------------------\n\
+             1     web       running\n\
+             -     db        shut off\n",
+        );
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0], ("web".to_string(), "running".to_string()));
+        assert_eq!(out[1], ("db".to_string(), "shut off".to_string()));
+    }
+
+    #[test]
+    fn parse_podman_ps_local_extracts_name_state() {
+        let json = r#"[{"Id":"abc","Names":["redis"],"State":"running"},
+                       {"Id":"def","Names":["pg"],"State":"exited"}]"#;
+        let out = parse_podman_ps_local(json);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].name, "redis");
+        assert_eq!(out[0].state, "running");
+        assert_eq!(out[1].name, "pg");
+        assert_eq!(out[1].state, "exited");
+    }
+
+    #[test]
+    fn parse_podman_ps_local_empty_on_garbage() {
+        assert!(parse_podman_ps_local("not json").is_empty());
+        assert!(parse_podman_ps_local("[]").is_empty());
+    }
+
+    #[test]
+    fn actions_for_state_is_contextual() {
+        assert_eq!(actions_for_state("running"), vec![ActionVerb::Stop, ActionVerb::Pause]);
+        assert_eq!(actions_for_state("paused"), vec![ActionVerb::Resume]);
+        assert_eq!(actions_for_state("shut off"), vec![ActionVerb::Start]);
+    }
+
+    #[test]
+    fn command_for_builds_correct_argv() {
+        let (p, a) = command_for(ResourceKind::Vm, ActionVerb::Stop, "web");
+        assert_eq!(p, "virsh");
+        assert_eq!(a, vec!["-c", "qemu:///system", "shutdown", "web"]);
+        let (p, a) = command_for(ResourceKind::Container, ActionVerb::Start, "redis");
+        assert_eq!(p, "podman");
+        assert_eq!(a, vec!["start", "redis"]);
+        let (_, a) = command_for(ResourceKind::Container, ActionVerb::Resume, "redis");
+        assert_eq!(a, vec!["unpause", "redis"]);
     }
 }
