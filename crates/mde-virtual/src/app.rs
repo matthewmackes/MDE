@@ -32,6 +32,9 @@ use serde::{Deserialize, Serialize};
 /// One VM row from a peer's published inventory.
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct VmEntry {
+    /// libvirt domain UUID (the migrate `vm_id`).
+    #[serde(default)]
+    pub id: String,
     #[serde(default)]
     pub name: String,
     #[serde(default)]
@@ -96,6 +99,8 @@ impl ResourceKind {
 /// A normalized display row unifying VMs + containers.
 #[derive(Debug, Clone)]
 pub(crate) struct ResourceRow {
+    /// libvirt UUID for VMs (empty for containers); the migrate `vm_id`.
+    pub id: String,
     pub name: String,
     pub kind: ResourceKind,
     pub state: String,
@@ -114,6 +119,7 @@ pub(crate) fn rows_for(inv: &Inventory) -> Vec<ResourceRow> {
     let mut out = Vec::with_capacity(inv.vms.len() + inv.containers.len());
     for vm in &inv.vms {
         out.push(ResourceRow {
+            id: vm.id.clone(),
             name: vm.name.clone(),
             kind: ResourceKind::Vm,
             state: vm.state.clone(),
@@ -126,6 +132,7 @@ pub(crate) fn rows_for(inv: &Inventory) -> Vec<ResourceRow> {
     }
     for c in &inv.containers {
         out.push(ResourceRow {
+            id: String::new(),
             name: c.name.clone(),
             kind: ResourceKind::Container,
             state: c.state.clone(),
@@ -380,6 +387,7 @@ fn read_local_direct() -> Inventory {
     let vms = parse_virsh_list_state(&run_cmd("virsh", &["-c", "qemu:///system", "list", "--all"]))
         .into_iter()
         .map(|(name, state)| VmEntry {
+            id: String::new(),
             name,
             state,
             cpu_pct: 0.0,
@@ -704,12 +712,39 @@ pub(crate) fn build_expose_request(form: &ExposeForm, vm_nebula_ip: &str) -> Opt
     })
 }
 
+/// Migration-request payload published to `action/compute/migrate`
+/// (serialize mirror of `compute_migrate::MigrateRequest`).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub(crate) struct MigrateRequest {
+    pub source_peer: String,
+    pub target_peer: String,
+    pub vm_id: String,
+    pub disk_path: String,
+}
+
+/// The migrate-target candidates: every fleet peer except the source,
+/// as `(nebula_ip, display_label)`. Pure.
+pub(crate) fn migrate_targets(invs: &[Inventory], source_peer: &str) -> Vec<(String, String)> {
+    invs.iter()
+        .filter(|i| !i.peer.is_empty() && i.peer != source_peer)
+        .map(|i| {
+            let label = if i.hostname.is_empty() {
+                i.peer.clone()
+            } else {
+                i.hostname.clone()
+            };
+            (i.peer.clone(), label)
+        })
+        .collect()
+}
+
 // ── VM detail (VIRT-14.a) ────────────────────────────────────────────────
 
 /// A snapshot of one VM's data for the detail panel. Carries `is_local`
 /// so the panel can enable actions only for VMs on this peer (§13 M4).
 #[derive(Debug, Clone)]
 pub(crate) struct VmDetail {
+    pub id: String,
     pub name: String,
     pub state: String,
     pub cpu_pct: f64,
@@ -725,6 +760,7 @@ pub(crate) struct VmDetail {
 impl VmDetail {
     fn from_row(r: &ResourceRow, peer: &str, is_local: bool) -> Self {
         Self {
+            id: r.id.clone(),
             name: r.name.clone(),
             state: r.state.clone(),
             cpu_pct: r.cpu_pct,
@@ -792,6 +828,12 @@ pub(crate) enum Message {
         host_port: u16,
         proto: String,
     },
+    /// Open the `[Migrate to…]` peer-picker for the selected local VM.
+    OpenMigrateSheet,
+    /// Close the migrate picker without submitting.
+    CloseMigrateSheet,
+    /// Submit a migration of the selected VM to `target_peer`.
+    MigrateTo(String),
 }
 
 /// `mde-virtual` application state.
@@ -811,6 +853,8 @@ pub(crate) struct VirtualApp {
     exposed_rules: Vec<ActiveRule>,
     /// The open `[Expose port…]` sheet form, if any (VIRT-14.c.2).
     expose_form: Option<ExposeForm>,
+    /// Whether the `[Migrate to…]` peer-picker is open (VIRT-14.d).
+    migrate_open: bool,
     local_host: String,
 }
 
@@ -829,6 +873,7 @@ impl VirtualApp {
             selected_snapshots: Vec::new(),
             exposed_rules: Vec::new(),
             expose_form: None,
+            migrate_open: false,
             local_host: local_hostname(),
         }
     }
@@ -876,6 +921,7 @@ impl VirtualApp {
             Message::SelectVm(detail) => {
                 self.selected_snapshots = Vec::new();
                 self.exposed_rules = Vec::new();
+                self.migrate_open = false;
                 let ip = detail.nebula_ip.clone();
                 let local_name = detail.is_local.then(|| detail.name.clone());
                 self.selected = Some(detail);
@@ -893,6 +939,7 @@ impl VirtualApp {
             }
             Message::CloseDetail => {
                 self.selected = None;
+                self.migrate_open = false;
                 Task::none()
             }
             Message::Console(name) => {
@@ -991,6 +1038,42 @@ impl VirtualApp {
                     },
                     |()| Message::Refresh,
                 )
+            }
+            Message::OpenMigrateSheet => {
+                self.migrate_open = true;
+                Task::none()
+            }
+            Message::CloseMigrateSheet => {
+                self.migrate_open = false;
+                Task::none()
+            }
+            Message::MigrateTo(target_peer) => {
+                self.migrate_open = false;
+                let req = self.selected.as_ref().map(|d| MigrateRequest {
+                    source_peer: d.peer.clone(),
+                    target_peer,
+                    vm_id: d.id.clone(),
+                    disk_path: d.disk_path.clone(),
+                });
+                match req {
+                    Some(req) => {
+                        let body = serde_json::to_string(&req).unwrap_or_default();
+                        Task::perform(
+                            async move {
+                                let _ = std::process::Command::new("mde-bus")
+                                    .args([
+                                        "publish",
+                                        "action/compute/migrate",
+                                        "--body-flag",
+                                        &body,
+                                    ])
+                                    .output();
+                            },
+                            |()| Message::Refresh,
+                        )
+                    }
+                    None => Task::none(),
+                }
             }
             Message::TakeSnapshot(vm) => {
                 let (prog, args) = snapshot_create_command(&vm);
@@ -1382,9 +1465,10 @@ impl VirtualApp {
         // Exposed ports (any VM — exposures are mesh-readable) — VIRT-14.c.
         col = col.push(self.exposed_section(d));
 
-        // Snapshots (local VMs only) — VIRT-14.b.
+        // Snapshots + migrate (local VMs only) — VIRT-14.b / 14.d.
         if d.is_local {
             col = col.push(self.snapshot_section(d));
+            col = col.push(self.migrate_section(d));
         }
 
         container(col)
@@ -1587,6 +1671,29 @@ impl VirtualApp {
         col.into()
     }
 
+    fn migrate_section<'a>(&'a self, d: &'a VmDetail) -> Element<'a, Message> {
+        if !self.migrate_open {
+            return self.simple_button("Migrate to…", Message::OpenMigrateSheet);
+        }
+        let palette = self.tokens.palette;
+        let space = self.tokens.space;
+        let targets = migrate_targets(self.fleet.inventories(), &d.peer);
+        let mut col = column![text("Migrate to")
+            .size(TypeRole::Subheading.size_in(self.tokens.font_size))
+            .color(rgba(palette.text))]
+        .spacing(f32::from(space.xs))
+        .width(Length::Fill);
+        if targets.is_empty() {
+            col = col.push(self.muted_line("No other peers online."));
+        } else {
+            for (peer, label) in targets {
+                col = col.push(self.simple_button(&label, Message::MigrateTo(peer)));
+            }
+        }
+        col = col.push(self.simple_button("Cancel", Message::CloseMigrateSheet));
+        col.into()
+    }
+
     fn simple_button(&self, label: &str, msg: Message) -> Element<'_, Message> {
         let palette = self.tokens.palette;
         let space = self.tokens.space;
@@ -1744,10 +1851,12 @@ mod tests {
         let rows = rows_for(&inv);
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].kind, ResourceKind::Vm);
+        assert_eq!(rows[0].id, "u1");
         assert_eq!(rows[0].nebula_ip, "10.42.0.5");
         assert_eq!(rows[0].disk_path, "/var/lib/mde-vms/web.qcow2");
         assert!(rows[0].meshfs_available);
         assert_eq!(rows[1].kind, ResourceKind::Container);
+        assert!(rows[1].id.is_empty());
         assert!(rows[1].nebula_ip.is_empty());
         assert!(rows[1].disk_path.is_empty());
         assert!(!rows[1].meshfs_available);
@@ -1895,6 +2004,7 @@ mod tests {
         let inv: Inventory = serde_json::from_str(&sample_json("10.42.0.5", "alpha")).unwrap();
         let rows = rows_for(&inv);
         let d = VmDetail::from_row(&rows[0], "10.42.0.1", true);
+        assert_eq!(d.id, "u1");
         assert_eq!(d.name, "web");
         assert_eq!(d.disk_path, "/var/lib/mde-vms/web.qcow2");
         assert_eq!(d.nebula_ip, "10.42.0.5");
@@ -2020,5 +2130,30 @@ mod tests {
         let json = serde_json::to_string(&req).unwrap();
         assert!(json.contains("\"host_port\":8080"));
         assert!(json.contains("10.42.128.5"));
+    }
+
+    #[test]
+    fn migrate_targets_excludes_source() {
+        let a: Inventory = serde_json::from_str(&sample_json("10.42.0.5", "alpha")).unwrap();
+        let b: Inventory = serde_json::from_str(&sample_json("10.42.0.6", "bravo")).unwrap();
+        let targets = migrate_targets(&[a, b], "10.42.0.5");
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].0, "10.42.0.6");
+        assert_eq!(targets[0].1, "bravo");
+    }
+
+    #[test]
+    fn migrate_request_serializes() {
+        let req = MigrateRequest {
+            source_peer: "10.42.0.5".into(),
+            target_peer: "10.42.0.6".into(),
+            vm_id: "u1".into(),
+            disk_path: "/var/lib/mde-vms/web.qcow2".into(),
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"source_peer\":\"10.42.0.5\""));
+        assert!(json.contains("\"target_peer\":\"10.42.0.6\""));
+        assert!(json.contains("\"vm_id\":\"u1\""));
+        assert!(json.contains("web.qcow2"));
     }
 }
