@@ -38,6 +38,8 @@ pub enum WizardMsg {
     NameInput(String),
     /// Pre-fill from the saved template at this index.
     ApplyTemplate(usize),
+    /// Delete the saved template at this index (removes its file).
+    DeleteTemplate(usize),
     VcpusDelta(i64),
     RamDelta(i64),
     DiskDelta(i64),
@@ -77,8 +79,8 @@ pub struct WizardState {
     share_meshfs: bool,
     /// ISOs discovered under [`ISO_DIR`] at open time.
     isos: Vec<String>,
-    /// Saved templates for the step-1 picker (VIRT-15.c).
-    templates: Vec<Template>,
+    /// Saved templates `(path, template)` for the step-1 picker (15.c/16.b).
+    templates: Vec<(PathBuf, Template)>,
 }
 
 impl WizardState {
@@ -110,7 +112,7 @@ impl WizardState {
                 WizardAction::None
             }
             WizardMsg::ApplyTemplate(i) => {
-                if let Some(t) = self.templates.get(i).cloned() {
+                if let Some(t) = self.templates.get(i).map(|(_, t)| t.clone()) {
                     self.name = t
                         .name
                         .chars()
@@ -121,6 +123,13 @@ impl WizardState {
                     self.disk_gb = t.disk_gb.clamp(10, 500);
                     self.share_meshfs = t.share_meshfs;
                 }
+                WizardAction::None
+            }
+            WizardMsg::DeleteTemplate(i) => {
+                if let Some((path, _)) = self.templates.get(i) {
+                    let _ = std::fs::remove_file(path);
+                }
+                self.templates = list_templates();
                 WizardAction::None
             }
             WizardMsg::VcpusDelta(d) => {
@@ -272,12 +281,20 @@ impl WizardState {
         }
         if !self.templates.is_empty() {
             col = col.push(label(tokens, "Start from a template"));
-            for (i, t) in self.templates.iter().enumerate() {
+            for (i, (_, t)) in self.templates.iter().enumerate() {
                 let lbl = format!(
                     "{} — {} vCPU / {} MB / {} GB",
                     t.name, t.vcpus, t.ram_mb, t.disk_gb
                 );
-                col = col.push(btn(tokens, &lbl, Some(WizardMsg::ApplyTemplate(i))));
+                col = col.push(
+                    row![
+                        btn(tokens, &lbl, Some(WizardMsg::ApplyTemplate(i))),
+                        Space::new().width(Length::Fill),
+                        btn(tokens, "Delete", Some(WizardMsg::DeleteTemplate(i))),
+                    ]
+                    .spacing(f32::from(tokens.space.sm))
+                    .align_y(iced::alignment::Vertical::Center),
+                );
             }
         }
         col.into()
@@ -413,8 +430,9 @@ pub fn templates_dir() -> Option<PathBuf> {
     dirs::data_dir().map(|d| d.join("mde").join("vm-templates"))
 }
 
-/// Load all saved templates (sorted by name; empty when the dir is absent).
-fn list_templates() -> Vec<Template> {
+/// Load all saved templates as `(path, template)` (sorted by name; empty
+/// when the dir is absent). The path lets the picker delete the file.
+fn list_templates() -> Vec<(PathBuf, Template)> {
     let Some(dir) = templates_dir() else {
         return vec![];
     };
@@ -425,13 +443,13 @@ fn list_templates() -> Vec<Template> {
             if p.extension().and_then(|x| x.to_str()) == Some("json") {
                 if let Ok(body) = std::fs::read_to_string(&p) {
                     if let Ok(t) = serde_json::from_str::<Template>(&body) {
-                        out.push(t);
+                        out.push((p, t));
                     }
                 }
             }
         }
     }
-    out.sort_by(|a, b| a.name.cmp(&b.name));
+    out.sort_by(|a, b| a.1.name.cmp(&b.1.name));
     out
 }
 
@@ -664,18 +682,42 @@ mod tests {
     #[test]
     fn apply_template_prefills_and_clamps() {
         let mut w = WizardState::new();
-        w.templates = vec![Template {
-            name: "big_box!".into(), // sanitized on apply
-            vcpus: 99,               // clamped to 16
-            ram_mb: 8192,
-            disk_gb: 5, // clamped up to 10
-            share_meshfs: false,
-        }];
+        w.templates = vec![(
+            PathBuf::from("/tmp/x.json"),
+            Template {
+                name: "big_box!".into(), // sanitized on apply
+                vcpus: 99,               // clamped to 16
+                ram_mb: 8192,
+                disk_gb: 5, // clamped up to 10
+                share_meshfs: false,
+            },
+        )];
         w.update(WizardMsg::ApplyTemplate(0));
         assert_eq!(w.name, "bigbox"); // '!' + '_' stripped
         assert_eq!(w.vcpus, 16);
         assert_eq!(w.ram_mb, 8192);
         assert_eq!(w.disk_gb, 10);
         assert!(!w.share_meshfs);
+    }
+
+    #[test]
+    fn delete_template_removes_the_file() {
+        let path =
+            std::env::temp_dir().join(format!("mde-virt-tmpl-{}.json", ulid::Ulid::new()));
+        std::fs::write(&path, "{}").unwrap();
+        assert!(path.exists());
+        let mut w = WizardState::new();
+        w.templates = vec![(
+            path.clone(),
+            Template {
+                name: "t".into(),
+                vcpus: 1,
+                ram_mb: 512,
+                disk_gb: 10,
+                share_meshfs: false,
+            },
+        )];
+        w.update(WizardMsg::DeleteTemplate(0));
+        assert!(!path.exists());
     }
 }
