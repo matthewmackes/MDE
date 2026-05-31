@@ -250,6 +250,61 @@ pub(crate) fn console_command(name: &str) -> (&'static str, Vec<String>) {
     )
 }
 
+/// Resolve `(program, argv)` for taking a snapshot of a local VM
+/// (libvirt auto-names it).
+pub(crate) fn snapshot_create_command(vm: &str) -> (&'static str, Vec<String>) {
+    (
+        "virsh",
+        vec![
+            "-c".to_string(),
+            "qemu:///system".to_string(),
+            "snapshot-create-as".to_string(),
+            vm.to_string(),
+        ],
+    )
+}
+
+/// Resolve `(program, argv)` for deleting a named snapshot from a VM.
+pub(crate) fn snapshot_delete_command(vm: &str, snap: &str) -> (&'static str, Vec<String>) {
+    (
+        "virsh",
+        vec![
+            "-c".to_string(),
+            "qemu:///system".to_string(),
+            "snapshot-delete".to_string(),
+            vm.to_string(),
+            snap.to_string(),
+        ],
+    )
+}
+
+/// Parse `virsh snapshot-list <vm> --name` output (one name per line;
+/// tolerates the full-table form by skipping the header/separator rows).
+/// Pure.
+pub(crate) fn parse_virsh_snapshot_list(stdout: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in stdout.lines() {
+        let t = line.trim();
+        if t.is_empty() || t.starts_with("---") {
+            continue;
+        }
+        let first = t.split_whitespace().next().unwrap_or("");
+        if first.is_empty() || first == "Name" {
+            continue;
+        }
+        out.push(first.to_string());
+    }
+    out
+}
+
+/// Read a VM's snapshot names directly via virsh.
+fn snapshot_list(vm: &str) -> Vec<String> {
+    parse_virsh_snapshot_list(&run_cmd(
+        "virsh",
+        &["-c", "qemu:///system", "snapshot-list", vm, "--name"],
+    ))
+}
+
 /// Run a command + return its stdout (empty on missing binary / failure).
 /// Mirrors `compute_registry::run_virsh`.
 fn run_cmd(program: &str, args: &[&str]) -> String {
@@ -532,6 +587,12 @@ pub(crate) enum Message {
     CloseDetail,
     /// Launch the graphical console for a local VM.
     Console(String),
+    /// A selected VM's snapshot list finished loading.
+    SnapshotsLoaded(Vec<String>),
+    /// Take a snapshot of the named local VM.
+    TakeSnapshot(String),
+    /// Delete a named snapshot from a local VM.
+    DeleteSnapshot { vm: String, snap: String },
 }
 
 /// `mde-virtual` application state.
@@ -545,6 +606,8 @@ pub(crate) struct VirtualApp {
     expanded: HashMap<String, bool>,
     /// The VM whose detail panel is open, if any.
     selected: Option<VmDetail>,
+    /// Snapshot names for the selected VM (VIRT-14.b); refreshed on select.
+    selected_snapshots: Vec<String>,
     local_host: String,
 }
 
@@ -560,6 +623,7 @@ impl VirtualApp {
             local_direct,
             expanded: HashMap::new(),
             selected: None,
+            selected_snapshots: Vec::new(),
             local_host: local_hostname(),
         }
     }
@@ -592,8 +656,15 @@ impl VirtualApp {
                 )
             }
             Message::SelectVm(detail) => {
+                self.selected_snapshots = Vec::new();
+                let fetch = detail.is_local.then(|| detail.name.clone());
                 self.selected = Some(detail);
-                Task::none()
+                match fetch {
+                    Some(vm) => {
+                        Task::perform(async move { snapshot_list(&vm) }, Message::SnapshotsLoaded)
+                    }
+                    None => Task::none(),
+                }
             }
             Message::CloseDetail => {
                 self.selected = None;
@@ -604,6 +675,32 @@ impl VirtualApp {
                 // Detached spawn — the console is a long-lived child window.
                 let _ = std::process::Command::new(prog).args(&args).spawn();
                 Task::none()
+            }
+            Message::SnapshotsLoaded(snaps) => {
+                self.selected_snapshots = snaps;
+                Task::none()
+            }
+            Message::TakeSnapshot(vm) => {
+                let (prog, args) = snapshot_create_command(&vm);
+                let prog = prog.to_string();
+                Task::perform(
+                    async move {
+                        let _ = std::process::Command::new(prog).args(&args).output();
+                        snapshot_list(&vm)
+                    },
+                    Message::SnapshotsLoaded,
+                )
+            }
+            Message::DeleteSnapshot { vm, snap } => {
+                let (prog, args) = snapshot_delete_command(&vm, &snap);
+                let prog = prog.to_string();
+                Task::perform(
+                    async move {
+                        let _ = std::process::Command::new(prog).args(&args).output();
+                        snapshot_list(&vm)
+                    },
+                    Message::SnapshotsLoaded,
+                )
             }
         }
     }
@@ -964,6 +1061,11 @@ impl VirtualApp {
         }
         col = col.push(console);
 
+        // Snapshots (local VMs only) — VIRT-14.b.
+        if d.is_local {
+            col = col.push(self.snapshot_section(d));
+        }
+
         container(col)
             .width(Length::FillPortion(2))
             .height(Length::Fill)
@@ -996,6 +1098,64 @@ impl VirtualApp {
         ]
         .spacing(f32::from(space.sm))
         .into()
+    }
+
+    fn snapshot_section<'a>(&'a self, d: &'a VmDetail) -> Element<'a, Message> {
+        let palette = self.tokens.palette;
+        let space = self.tokens.space;
+        let mut col = column![
+            text("Snapshots")
+                .size(TypeRole::Subheading.size_in(self.tokens.font_size))
+                .color(rgba(palette.text)),
+            self.simple_button("Take snapshot", Message::TakeSnapshot(d.name.clone())),
+        ]
+        .spacing(f32::from(space.xs))
+        .width(Length::Fill);
+        if self.selected_snapshots.is_empty() {
+            col = col.push(self.muted_line("No snapshots."));
+        } else {
+            for snap in &self.selected_snapshots {
+                col = col.push(
+                    row![
+                        text(snap.clone())
+                            .size(TypeRole::Body.size_in(self.tokens.font_size))
+                            .color(rgba(palette.text))
+                            .width(Length::FillPortion(3)),
+                        Space::new().width(Length::Fill),
+                        self.simple_button(
+                            "Delete",
+                            Message::DeleteSnapshot {
+                                vm: d.name.clone(),
+                                snap: snap.clone(),
+                            },
+                        ),
+                    ]
+                    .spacing(f32::from(space.sm))
+                    .align_y(iced::alignment::Vertical::Center),
+                );
+            }
+        }
+        col.into()
+    }
+
+    fn simple_button(&self, label: &str, msg: Message) -> Element<'_, Message> {
+        let palette = self.tokens.palette;
+        let space = self.tokens.space;
+        let radius = f32::from(self.tokens.radii.sm);
+        button(text(label.to_string()).size(TypeRole::Caption.size_in(self.tokens.font_size)))
+            .on_press(msg)
+            .padding([space.xs2, space.xs])
+            .style(move |_t, _status| button::Style {
+                background: Some(Background::Color(rgba(palette.surface))),
+                text_color: rgba(palette.accent),
+                border: Border {
+                    color: rgba(palette.border),
+                    width: 1.0,
+                    radius: radius.into(),
+                },
+                ..button::Style::default()
+            })
+            .into()
     }
 
     fn type_badge(&self, kind: ResourceKind) -> Element<'_, Message> {
@@ -1291,5 +1451,30 @@ mod tests {
         assert_eq!(d.nebula_ip, "10.42.0.5");
         assert!(d.meshfs_available);
         assert!(d.is_local);
+    }
+
+    #[test]
+    fn parse_virsh_snapshot_list_names_only() {
+        let out = parse_virsh_snapshot_list("snap-1\nsnap-2\n\n");
+        assert_eq!(out, vec!["snap-1".to_string(), "snap-2".to_string()]);
+    }
+
+    #[test]
+    fn parse_virsh_snapshot_list_tolerates_table_form() {
+        let out = parse_virsh_snapshot_list(
+            " Name      Creation Time               State\n\
+             ------------------------------------------------\n\
+             snap-1    2026-05-31 10:00:00 +0000   shutoff\n",
+        );
+        assert_eq!(out, vec!["snap-1".to_string()]);
+    }
+
+    #[test]
+    fn snapshot_commands_build_correct_argv() {
+        let (p, a) = snapshot_create_command("web");
+        assert_eq!(p, "virsh");
+        assert_eq!(a, vec!["-c", "qemu:///system", "snapshot-create-as", "web"]);
+        let (_, a) = snapshot_delete_command("web", "snap-1");
+        assert_eq!(a, vec!["-c", "qemu:///system", "snapshot-delete", "web", "snap-1"]);
     }
 }
