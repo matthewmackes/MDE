@@ -17,7 +17,7 @@ use mde_theme::motion::list::{STAGGER_CAP, STAGGER_REVEAL_MS, STAGGER_STEP_MS};
 use iced::widget::{
     button, column, container, mouse_area, row, scrollable, svg, text, text_input, Space,
 };
-use iced::{Alignment, Background, Border, Color, Element, Length, Padding, Shadow, Task, Theme};
+use iced::{Alignment, Background, Border, Color, Element, Length, Padding, Shadow, Subscription, Task, Theme};
 
 use crate::watermark::{
     current_pending_count, spawn_pkexec_dnf_upgrade, WatermarkState,
@@ -128,374 +128,380 @@ pub struct App {
     opened_at: Instant,
 }
 
-impl iced_layershell::Application for App {
-    type Executor = iced::executor::Default;
-    type Message = Message;
-    type Theme = Theme;
-    type Flags = ();
+fn namespace() -> String {
+    "mde-popover-start-menu".to_string()
+}
 
-    fn new(_flags: ()) -> (Self, Task<Message>) {
-        // v4.0.1 BUG-2 defensive perf fix: pre-sort `all` once
-        // here, in lowercase-by-name order. The previous render
-        // path called `Vec::sort_by` on every redraw — on systems
-        // with hundreds of .desktop entries (a stock Fedora
-        // workstation has ~250) the per-frame N log N cost
-        // accumulated under scroll wheel input bursts and the
-        // operator reported the popover locking. Sorting once at
-        // load + dropping the per-render `sort_by` keeps the
-        // view function O(N) (filter only).
-        let mut all = load_all_entries();
-        all.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-        tracing::info!(count = all.len(), "loaded .desktop entries");
-        let system = WatermarkState::load();
-        (
-            Self {
-                all,
-                query: String::new(),
-                system,
-                opened_at: Instant::now(),
-            },
-            text_input::focus("start-menu-search"),
-        )
-    }
-
-    fn namespace(&self) -> String {
-        "mde-popover-start-menu".to_string()
-    }
-
-    fn update(&mut self, msg: Message) -> Task<Message> {
-        match msg {
-            Message::SearchChanged(q) => {
-                self.query = q;
-                Task::none()
-            }
-            Message::Launch(exec) => {
-                launch_exec(&exec);
-                std::process::exit(0);
-            }
-            Message::Exit => {
-                std::process::exit(0);
-            }
-            Message::DnfUpgradeClicked => {
-                tracing::info!("start-menu footer click → pkexec dnf upgrade");
-                spawn_pkexec_dnf_upgrade();
-                Task::none()
-            }
-            Message::AnimTick => Task::none(),
-            _ => Task::none(),
+fn update(state: &mut App, msg: Message) -> Task<Message> {
+    match msg {
+        Message::SearchChanged(q) => {
+            state.query = q;
+            Task::none()
         }
-    }
-
-    fn view(&self) -> Element<'_, Message> {
-        // ANIM-6.a — elapsed ms since launch; drives per-row stagger.
-        // After MAX_ENTRANCE_MS all rows are at alpha 1.0 and the tick
-        // subscription has already stopped, so this read is free then.
-        let opened_ms = self.opened_at.elapsed().as_millis() as u64;
-        // row_idx is incremented for each visible app entry so long lists
-        // stagger only the first STAGGER_CAP rows (Q15 long-list policy).
-        let mut row_idx: usize = 0;
-
-        // Header — search box.
-        let search = text_input("Search apps…", &self.query)
-            .id("start-menu-search")
-            .on_input(Message::SearchChanged)
-            .padding(Padding {
-                top: 10.0,
-                right: 12.0,
-                bottom: 10.0,
-                left: 12.0,
-            })
-            .size(15)
-            .style(search_input_style);
-
-        // Filtered list. `self.all` is already sorted at load time
-        // (BUG-2 defensive perf fix), so view() is O(N) filter only.
-        let q = self.query.trim();
-        let entries: Vec<&AppEntry> = if q.is_empty() {
-            self.all
-                .iter()
-                .filter(|e| !e.hidden && !e.name.is_empty() && !e.exec.is_empty())
-                .collect()
-        } else {
-            search_apps(&self.all, q)
-                .into_iter()
-                .filter(|e| !e.exec.is_empty())
-                .collect()
-        };
-
-        let mut list = column![].spacing(2);
-        for entry in entries.iter().take(200) {
-            // ANIM-6.a — stagger: each app entry fades in after a
-            // per-row delay capped at STAGGER_CAP rows (Q15 policy).
-            let alpha = stagger_alpha(row_idx, opened_ms);
-            row_idx += 1;
-            let label = column![
-                text(entry.name.clone())
-                    .size(14)
-                    .color(Color { a: FG_TEXT.a * alpha, ..FG_TEXT }),
-                text(if entry.comment.is_empty() {
-                    String::new()
-                } else {
-                    entry.comment.clone()
-                })
-                .size(11)
-                .color(Color { a: FG_MUTED.a * alpha, ..FG_MUTED }),
-            ]
-            .spacing(2);
-            let exec = entry.exec.clone();
-            let row_btn = button(label)
-                .width(Length::Fill)
-                .padding(Padding {
-                    top: 6.0,
-                    right: 10.0,
-                    bottom: 6.0,
-                    left: 10.0,
-                })
-                .style(move |_theme: &Theme, status: button::Status| {
-                    let bg = match status {
-                        button::Status::Hovered => Some(Background::Color(Color {
-                            r: ACCENT.r,
-                            g: ACCENT.g,
-                            b: ACCENT.b,
-                            a: 0.14 * alpha,
-                        })),
-                        button::Status::Pressed => Some(Background::Color(Color {
-                            r: ACCENT.r,
-                            g: ACCENT.g,
-                            b: ACCENT.b,
-                            a: 0.22 * alpha,
-                        })),
-                        _ => None,
-                    };
-                    button::Style {
-                        background: bg,
-                        text_color: Color { a: FG_TEXT.a * alpha, ..FG_TEXT },
-                        border: Border {
-                            color: Color::TRANSPARENT,
-                            width: 0.0,
-                            radius: 4.0.into(),
-                        },
-                        shadow: Shadow::default(),
-                    }
-                })
-                .on_press(Message::Launch(exec));
-            list = list.push(row_btn);
+        Message::Launch(exec) => {
+            launch_exec(&exec);
+            std::process::exit(0);
         }
+        Message::Exit => {
+            std::process::exit(0);
+        }
+        Message::DnfUpgradeClicked => {
+            tracing::info!("start-menu footer click → pkexec dnf upgrade");
+            spawn_pkexec_dnf_upgrade();
+            Task::none()
+        }
+        Message::AnimTick => Task::none(),
+        _ => Task::none(),
+    }
+}
 
-        let scroll = scrollable(list).height(Length::Fill);
+fn view(state: &App) -> Element<'_, Message> {
+    // ANIM-6.a — elapsed ms since launch; drives per-row stagger.
+    // After MAX_ENTRANCE_MS all rows are at alpha 1.0 and the tick
+    // subscription has already stopped, so this read is free then.
+    let opened_ms = state.opened_at.elapsed().as_millis() as u64;
+    // row_idx is incremented for each visible app entry so long lists
+    // stagger only the first STAGGER_CAP rows (Q15 long-list policy).
+    let mut row_idx: usize = 0;
 
-        // v4.0.1 BUG-12 — pinned tiles row. Static (non-scrolling)
-        // shortcuts for the file manager (mde-files) and the
-        // workbench (mde-workbench), shown above the scrollable
-        // .desktop apps list. Win10 start-menu pattern: the
-        // operator's most-used surfaces are one click away without
-        // needing to type or scroll.
-        // v4.0.1 BUG-13: tiles now render the Material `folder` and
-        // `tools` glyphs above the label rather than label-only.
-        let pinned_tile = |svg_bytes: &'static [u8], label: &'static str, exec: &'static str| {
-            let glyph = svg(svg::Handle::from_memory(svg_bytes))
-                .width(Length::Fixed(28.0))
-                .height(Length::Fixed(28.0))
-                .style(|_theme: &Theme, _status: svg::Status| svg::Style {
-                    color: Some(FG_TEXT),
-                });
-            button(
-                column![
-                    glyph,
-                    text(label).size(13).color(FG_TEXT),
-                ]
-                .align_x(Alignment::Center)
-                .spacing(4),
-            )
-            .padding(Padding {
-                top: 12.0,
-                right: 12.0,
-                bottom: 12.0,
-                left: 12.0,
-            })
-            .width(Length::FillPortion(1))
-            .style(row_button_style)
-            .on_press(Message::Launch(exec.into()))
-        };
-        let pinned_row = container(
-            row![
-                pinned_tile(FILES_SVG, "Files", "mde-files"),
-                Space::with_width(Length::Fixed(8.0)),
-                pinned_tile(WORKBENCH_SVG, "Workbench", "mde-workbench"),
-            ]
-            .align_y(Alignment::Center),
-        )
-        .padding(Padding {
-            top: 4.0,
-            right: 12.0,
-            bottom: 8.0,
-            left: 12.0,
-        });
-
-        // v3.0.3 — header row with the section label on the left
-        // and a visible close button on the right so the popover
-        // can always be dismissed by mouse (Esc still works via
-        // the subscription handler below). Bug fix: previously
-        // the only close path was Esc, and with OnDemand keyboard
-        // interactivity Esc didn't always reach the surface.
-        let header = container(
-            row![
-                text("Applications").size(11).color(FG_MUTED),
-                Space::with_width(Length::Fill),
-                crate::dismiss::close_button(Message::Exit),
-            ]
-            .align_y(Alignment::Center),
-        )
-        .padding(Padding {
-            top: 8.0,
-            right: 12.0,
-            bottom: 0.0,
-            left: 12.0,
-        });
-
-        // v4.0.1 — Win10-style system-identity strip. Replaces the
-        // retired watermark popover. Left side shows the always-on
-        // "MDE X.Y.Z · Fedora N · host" line (per
-        // `WatermarkState::identity_line`); right side shows a
-        // clickable "N updates pending" chip when the cached dnf
-        // count is > 0 (chip fires `Message::DnfUpgradeClicked` →
-        // `spawn_pkexec_dnf_upgrade`, same action the old watermark
-        // had). Count is re-read from the cache on every view so an
-        // upgrade that completed during the popover lifetime
-        // reflects immediately.
-        let pending = current_pending_count();
-        let identity = text(self.system.identity_line()).size(10).color(FG_MUTED);
-        let identity_row: Element<'_, Message> = if pending == 0 {
-            row![identity, Space::with_width(Length::Fill)]
-                .align_y(Alignment::Center)
-                .into()
-        } else {
-            let chip = button(
-                text(format!("{pending} updates pending"))
-                    .size(10)
-                    .color(Color::WHITE),
-            )
-            .padding(Padding {
-                top: 3.0,
-                right: 8.0,
-                bottom: 3.0,
-                left: 8.0,
-            })
-            .style(update_chip_style)
-            .on_press(Message::DnfUpgradeClicked);
-            row![identity, Space::with_width(Length::Fill), chip]
-                .align_y(Alignment::Center)
-                .spacing(8)
-                .into()
-        };
-        let identity_strip = container(identity_row).padding(Padding {
-            top: 6.0,
-            right: 12.0,
-            bottom: 0.0,
-            left: 12.0,
-        });
-
-        let footer = container(
-            text("Esc closes · click outside the M to re-toggle").size(10).color(FG_MUTED),
-        )
-        .padding(Padding {
-            top: 4.0,
-            right: 12.0,
-            bottom: 8.0,
-            left: 12.0,
-        });
-
-        let body = column![
-            search,
-            Space::with_height(Length::Fixed(4.0)),
-            pinned_row,
-            header,
-            scroll,
-            identity_strip,
-            footer,
-        ]
+    // Header — search box.
+    let search = text_input("Search apps…", &state.query)
+        .id("start-menu-search")
+        .on_input(Message::SearchChanged)
         .padding(Padding {
             top: 10.0,
-            right: 8.0,
-            bottom: 4.0,
-            left: 8.0,
-        });
+            right: 12.0,
+            bottom: 10.0,
+            left: 12.0,
+        })
+        .size(15)
+        .style(search_input_style);
 
-        let card: iced::Element<'_, Message> = container(body)
-            .width(Length::Fixed(WIDTH as f32))
-            .height(Length::Fixed(HEIGHT as f32))
-            .style(popover_surface)
-            .into();
+    // Filtered list. `state.all` is already sorted at load time
+    // (BUG-2 defensive perf fix), so view() is O(N) filter only.
+    let q = state.query.trim();
+    let entries: Vec<&AppEntry> = if q.is_empty() {
+        state.all
+            .iter()
+            .filter(|e| !e.hidden && !e.name.is_empty() && !e.exec.is_empty())
+            .collect()
+    } else {
+        search_apps(&state.all, q)
+            .into_iter()
+            .filter(|e| !e.exec.is_empty())
+            .collect()
+    };
 
-        // v3.0.4 (2026-05-23) — backdrop surround. Card pinned
-        // bottom-left (4 px from left edge, 48 px above the
-        // panel), every other pixel = mouse_area firing Exit
-        // on click.
-        let dismiss = || {
-            mouse_area(
-                container(Space::with_width(Length::Fill))
-                    .width(Length::Fill)
-                    .height(Length::Fill),
-            )
-            .on_press(Message::Exit)
-        };
-        let bottom_strip = row![
-            container(card).padding(iced::Padding {
-                top: 0.0,
-                right: 0.0,
-                bottom: 48.0,
-                left: 4.0,
-            }),
-            dismiss(),
-        ]
-        .height(Length::Fixed((HEIGHT + 48) as f32));
-        container(column![dismiss(), bottom_strip])
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .style(|_| container::Style {
-                background: Some(iced::Background::Color(iced::Color::TRANSPARENT)),
-                border: iced::Border {
-                    color: iced::Color::TRANSPARENT,
-                    width: 0.0,
-                    radius: 0.0.into(),
-                },
-                shadow: iced::Shadow::default(),
-                text_color: None,
-            })
-            .into()
-    }
-
-    fn theme(&self) -> Theme {
-        Theme::Dark
-    }
-
-    fn subscription(&self) -> iced::Subscription<Message> {
-        let keyboard = iced::keyboard::on_key_press(|key, _| {
-            use iced::keyboard::{key::Named, Key};
-            if matches!(key, Key::Named(Named::Escape)) {
-                Some(Message::Exit)
+    let mut list = column![].spacing(2);
+    for entry in entries.iter().take(200) {
+        // ANIM-6.a — stagger: each app entry fades in after a
+        // per-row delay capped at STAGGER_CAP rows (Q15 policy).
+        let alpha = stagger_alpha(row_idx, opened_ms);
+        row_idx += 1;
+        let label = column![
+            text(entry.name.clone())
+                .size(14)
+                .color(Color { a: FG_TEXT.a * alpha, ..FG_TEXT }),
+            text(if entry.comment.is_empty() {
+                String::new()
             } else {
-                None
+                entry.comment.clone()
+            })
+            .size(11)
+            .color(Color { a: FG_MUTED.a * alpha, ..FG_MUTED }),
+        ]
+        .spacing(2);
+        let exec = entry.exec.clone();
+        let row_btn = button(label)
+            .width(Length::Fill)
+            .padding(Padding {
+                top: 6.0,
+                right: 10.0,
+                bottom: 6.0,
+                left: 10.0,
+            })
+            .style(move |_theme: &Theme, status: button::Status| {
+                let bg = match status {
+                    button::Status::Hovered => Some(Background::Color(Color {
+                        r: ACCENT.r,
+                        g: ACCENT.g,
+                        b: ACCENT.b,
+                        a: 0.14 * alpha,
+                    })),
+                    button::Status::Pressed => Some(Background::Color(Color {
+                        r: ACCENT.r,
+                        g: ACCENT.g,
+                        b: ACCENT.b,
+                        a: 0.22 * alpha,
+                    })),
+                    _ => None,
+                };
+                button::Style {
+                    background: bg,
+                    text_color: Color { a: FG_TEXT.a * alpha, ..FG_TEXT },
+                    border: Border {
+                        color: Color::TRANSPARENT,
+                        width: 0.0,
+                        radius: 4.0.into(),
+                    },
+                    shadow: Shadow::default(),
+                    snap: false,
+                }
+            })
+            .on_press(Message::Launch(exec));
+        list = list.push(row_btn);
+    }
+
+    let scroll = scrollable(list).height(Length::Fill);
+
+    // v4.0.1 BUG-12 — pinned tiles row. Static (non-scrolling)
+    // shortcuts for the file manager (mde-files) and the
+    // workbench (mde-workbench), shown above the scrollable
+    // .desktop apps list. Win10 start-menu pattern: the
+    // operator's most-used surfaces are one click away without
+    // needing to type or scroll.
+    // v4.0.1 BUG-13: tiles now render the Material `folder` and
+    // `tools` glyphs above the label rather than label-only.
+    let pinned_tile = |svg_bytes: &'static [u8], label: &'static str, exec: &'static str| {
+        let glyph = svg(svg::Handle::from_memory(svg_bytes))
+            .width(Length::Fixed(28.0))
+            .height(Length::Fixed(28.0))
+            .style(|_theme: &Theme, _status: svg::Status| svg::Style {
+                color: Some(FG_TEXT),
+            });
+        button(
+            column![
+                glyph,
+                text(label).size(13).color(FG_TEXT),
+            ]
+            .align_x(Alignment::Center)
+            .spacing(4),
+        )
+        .padding(Padding {
+            top: 12.0,
+            right: 12.0,
+            bottom: 12.0,
+            left: 12.0,
+        })
+        .width(Length::FillPortion(1))
+        .style(row_button_style)
+        .on_press(Message::Launch(exec.into()))
+    };
+    let pinned_row = container(
+        row![
+            pinned_tile(FILES_SVG, "Files", "mde-files"),
+            Space::new().width(Length::Fixed(8.0)),
+            pinned_tile(WORKBENCH_SVG, "Workbench", "mde-workbench"),
+        ]
+        .align_y(Alignment::Center),
+    )
+    .padding(Padding {
+        top: 4.0,
+        right: 12.0,
+        bottom: 8.0,
+        left: 12.0,
+    });
+
+    // v3.0.3 — header row with the section label on the left
+    // and a visible close button on the right so the popover
+    // can always be dismissed by mouse (Esc still works via
+    // the subscription handler below). Bug fix: previously
+    // the only close path was Esc, and with OnDemand keyboard
+    // interactivity Esc didn't always reach the surface.
+    let header = container(
+        row![
+            text("Applications").size(11).color(FG_MUTED),
+            Space::new().width(Length::Fill),
+            crate::dismiss::close_button(Message::Exit),
+        ]
+        .align_y(Alignment::Center),
+    )
+    .padding(Padding {
+        top: 8.0,
+        right: 12.0,
+        bottom: 0.0,
+        left: 12.0,
+    });
+
+    // v4.0.1 — Win10-style system-identity strip. Replaces the
+    // retired watermark popover. Left side shows the always-on
+    // "MDE X.Y.Z · Fedora N · host" line (per
+    // `WatermarkState::identity_line`); right side shows a
+    // clickable "N updates pending" chip when the cached dnf
+    // count is > 0 (chip fires `Message::DnfUpgradeClicked` →
+    // `spawn_pkexec_dnf_upgrade`, same action the old watermark
+    // had). Count is re-read from the cache on every view so an
+    // upgrade that completed during the popover lifetime
+    // reflects immediately.
+    let pending = current_pending_count();
+    let identity = text(state.system.identity_line()).size(10).color(FG_MUTED);
+    let identity_row: Element<'_, Message> = if pending == 0 {
+        row![identity, Space::new().width(Length::Fill)]
+            .align_y(Alignment::Center)
+            .into()
+    } else {
+        let chip = button(
+            text(format!("{pending} updates pending"))
+                .size(10)
+                .color(Color::WHITE),
+        )
+        .padding(Padding {
+            top: 3.0,
+            right: 8.0,
+            bottom: 3.0,
+            left: 8.0,
+        })
+        .style(update_chip_style)
+        .on_press(Message::DnfUpgradeClicked);
+        row![identity, Space::new().width(Length::Fill), chip]
+            .align_y(Alignment::Center)
+            .spacing(8)
+            .into()
+    };
+    let identity_strip = container(identity_row).padding(Padding {
+        top: 6.0,
+        right: 12.0,
+        bottom: 0.0,
+        left: 12.0,
+    });
+
+    let footer = container(
+        text("Esc closes · click outside the M to re-toggle").size(10).color(FG_MUTED),
+    )
+    .padding(Padding {
+        top: 4.0,
+        right: 12.0,
+        bottom: 8.0,
+        left: 12.0,
+    });
+
+    let body = column![
+        search,
+        Space::new().height(Length::Fixed(4.0)),
+        pinned_row,
+        header,
+        scroll,
+        identity_strip,
+        footer,
+    ]
+    .padding(Padding {
+        top: 10.0,
+        right: 8.0,
+        bottom: 4.0,
+        left: 8.0,
+    });
+
+    let card: iced::Element<'_, Message> = container(body)
+        .width(Length::Fixed(WIDTH as f32))
+        .height(Length::Fixed(HEIGHT as f32))
+        .style(popover_surface)
+        .into();
+
+    // v3.0.4 (2026-05-23) — backdrop surround. Card pinned
+    // bottom-left (4 px from left edge, 48 px above the
+    // panel), every other pixel = mouse_area firing Exit
+    // on click.
+    let dismiss = || {
+        mouse_area(
+            container(Space::new())
+                .width(Length::Fill)
+                .height(Length::Fill),
+        )
+        .on_press(Message::Exit)
+    };
+    let bottom_strip = row![
+        container(card).padding(iced::Padding {
+            top: 0.0,
+            right: 0.0,
+            bottom: 48.0,
+            left: 4.0,
+        }),
+        dismiss(),
+    ]
+    .height(Length::Fixed((HEIGHT + 48) as f32));
+    container(column![dismiss(), bottom_strip])
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(|_| container::Style {
+            background: Some(iced::Background::Color(iced::Color::TRANSPARENT)),
+            border: iced::Border {
+                color: iced::Color::TRANSPARENT,
+                width: 0.0,
+                radius: 0.0.into(),
+            },
+            shadow: iced::Shadow::default(),
+            text_color: None,
+            snap: false,
+        })
+        .into()
+}
+
+fn subscription(state: &App) -> Subscription<Message> {
+    use iced::event;
+    let keyboard = event::listen_with(|event, status, _window| {
+        use iced::keyboard;
+        match event {
+            iced::Event::Keyboard(keyboard::Event::KeyPressed { key, .. })
+                if status == event::Status::Ignored =>
+            {
+                use iced::keyboard::{key::Named, Key};
+                if matches!(key, Key::Named(Named::Escape)) {
+                    Some(Message::Exit)
+                } else {
+                    None
+                }
             }
-        });
-        // ANIM-6.a — drive entrance stagger frames during the first
-        // MAX_ENTRANCE_MS ms. Self-disabling: once the window closes the
-        // tick is dropped, avoiding pointless repaints at rest.
-        let opened_ms = self.opened_at.elapsed().as_millis() as u64;
-        if opened_ms <= MAX_ENTRANCE_MS {
-            iced::Subscription::batch([
-                keyboard,
-                iced::time::every(std::time::Duration::from_millis(16))
-                    .map(|_| Message::AnimTick),
-            ])
-        } else {
-            keyboard
+            _ => None,
         }
+    });
+    // ANIM-6.a — drive entrance stagger frames during the first
+    // MAX_ENTRANCE_MS ms. Self-disabling: once the window closes the
+    // tick is dropped, avoiding pointless repaints at rest.
+    let opened_ms = state.opened_at.elapsed().as_millis() as u64;
+    if opened_ms <= MAX_ENTRANCE_MS {
+        Subscription::batch([
+            keyboard,
+            iced::time::every(std::time::Duration::from_millis(16))
+                .map(|_| Message::AnimTick),
+        ])
+    } else {
+        keyboard
     }
 }
 
 pub fn run() -> iced_layershell::Result {
-    <App as iced_layershell::Application>::run(Settings {
+    iced_layershell::application(
+        || {
+            // v4.0.1 BUG-2 defensive perf fix: pre-sort `all` once
+            // here, in lowercase-by-name order. The previous render
+            // path called `Vec::sort_by` on every redraw — on systems
+            // with hundreds of .desktop entries (a stock Fedora
+            // workstation has ~250) the per-frame N log N cost
+            // accumulated under scroll wheel input bursts and the
+            // operator reported the popover locking. Sorting once at
+            // load + dropping the per-render `sort_by` keeps the
+            // view function O(N) (filter only).
+            let mut all = load_all_entries();
+            all.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+            tracing::info!(count = all.len(), "loaded .desktop entries");
+            let system = WatermarkState::load();
+            (
+                App {
+                    all,
+                    query: String::new(),
+                    system,
+                    opened_at: Instant::now(),
+                },
+                iced::widget::operation::focus("start-menu-search"),
+            )
+        },
+        namespace,
+        update,
+        view,
+    )
+    .theme(|_: &App| iced::Theme::Dark)
+    .subscription(subscription)
+    .settings(Settings {
         id: Some("mde-popover-start-menu".to_string()),
         fonts: crate::fonts::load_fallback_fonts(),
         layer_settings: LayerShellSettings {
@@ -519,6 +525,7 @@ pub fn run() -> iced_layershell::Result {
         },
         ..Default::default()
     })
+    .run()
 }
 
 /// Walk every `applications/` directory on `$XDG_DATA_DIRS` (plus
@@ -617,6 +624,7 @@ fn popover_surface(_theme: &Theme) -> container::Style {
         },
         text_color: Some(FG_TEXT),
         shadow: Shadow::default(),
+        snap: false,
     }
 }
 
@@ -645,6 +653,7 @@ fn row_button_style(_theme: &Theme, status: button::Status) -> button::Style {
             radius: 4.0.into(),
         },
         shadow: Shadow::default(),
+        snap: false,
     }
 }
 
@@ -676,6 +685,7 @@ fn update_chip_style(_theme: &Theme, status: button::Status) -> button::Style {
             radius: 4.0.into(),
         },
         shadow: Shadow::default(),
+        snap: false,
     }
 }
 

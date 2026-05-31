@@ -606,7 +606,7 @@ impl DockApp {
     ///
     /// `StartMode::AllScreens` — one strip per connected output.
     /// `default_font = FONT_INTEL_ONE_MONO` — Intel One Mono primary.
-    pub fn settings() -> Settings<()> {
+    pub fn settings() -> Settings {
         Settings {
             layer_settings: LayerShellSettings {
                 size: Some((0, DOCK_HEIGHT_PX)),
@@ -700,13 +700,8 @@ impl DockApp {
 
 // ── iced Application impl ────────────────────────────────────────────────────
 
-impl iced_layershell::Application for DockApp {
-    type Executor = iced::executor::Default;
-    type Message = Message;
-    type Theme = Theme;
-    type Flags = ();
-
-    fn new(_flags: ()) -> (Self, Task<Message>) {
+impl DockApp {
+    fn init() -> DockApp {
         let hostname = std::fs::read_to_string("/proc/sys/kernel/hostname")
             .map(|s| s.trim().to_string())
             .unwrap_or_else(|_| "localhost".to_string());
@@ -721,23 +716,20 @@ impl iced_layershell::Application for DockApp {
         // for the session so all animation sites read a single bool.
         let reduce_motion = mde_theme::Preferences::load().a11y.reduce_motion;
 
-        (
-            Self {
-                hostname,
-                active_nav,
-                badge_counts: snap.badge_counts,
-                reduce_motion,
-                ..Self::default()
-            },
-            Task::none(),
-        )
+        Self {
+            hostname,
+            active_nav,
+            badge_counts: snap.badge_counts,
+            reduce_motion,
+            ..Self::default()
+        }
     }
 
-    fn namespace(&self) -> String {
+    fn namespace_impl(&self) -> String {
         APP_ID.to_string()
     }
 
-    fn update(&mut self, message: Message) -> Task<Message> {
+    pub(crate) fn update_impl(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::NavClicked(btn) => {
                 // Portal-16: drive the Portal-full scratchpad surface.
@@ -1001,8 +993,8 @@ impl iced_layershell::Application for DockApp {
                     let offset = self.ws_marquee_offsets.entry(ws.name.clone()).or_insert(0.0);
                     *offset = (*offset + WS_MARQUEE_ADVANCE_PX) % loop_px;
                     let x = *offset;
-                    let id = scrollable::Id::new(format!("ws-marquee-{}", ws.name));
-                    tasks.push(scrollable::scroll_to(id, AbsoluteOffset { x, y: 0.0 }));
+                    let id = iced::advanced::widget::Id::from(format!("ws-marquee-{}", ws.name));
+                    tasks.push(iced::widget::operation::scroll_to(id, AbsoluteOffset { x, y: 0.0 }));
                 }
                 // Drop offsets for workspaces that no longer exist.
                 let names: Vec<String> =
@@ -1204,7 +1196,7 @@ impl iced_layershell::Application for DockApp {
         Task::none()
     }
 
-    fn subscription(&self) -> Subscription<Message> {
+    pub(crate) fn subscription_impl(&self) -> Subscription<Message> {
         Subscription::batch([
             crate::workspace::workspace_subscription(),
             crate::workspace::window_subscription(),
@@ -1227,8 +1219,8 @@ impl iced_layershell::Application for DockApp {
         ])
     }
 
-    fn view(&self) -> Element<'_, Message> {
-        let theme = self.theme();
+    pub(crate) fn view_impl(&self) -> Element<'_, Message> {
+        let theme = Theme::Dark;
         let bg = if theme == Theme::Dark { CHARCOAL } else { OFF_WHITE };
         let fg = if theme == Theme::Dark { Color::WHITE } else { Color::BLACK };
 
@@ -1259,7 +1251,7 @@ impl iced_layershell::Application for DockApp {
                     urgent_pulse_seg,
                     host_seg,
                     running_zone,
-                    iced::widget::horizontal_space(),
+                    iced::widget::Space::new().width(iced::Length::Fill),
                     status_seg,
                     clock_seg,
                     nav_row,
@@ -1283,9 +1275,30 @@ impl iced_layershell::Application for DockApp {
         .into()
     }
 
-    fn theme(&self) -> Theme {
-        Theme::Dark
-    }
+}
+
+fn namespace() -> String {
+    APP_ID.to_string()
+}
+
+fn update(state: &mut DockApp, message: Message) -> Task<Message> {
+    state.update_impl(message)
+}
+
+fn view(state: &DockApp) -> Element<'_, Message> {
+    state.view_impl()
+}
+
+fn subscription(state: &DockApp) -> Subscription<Message> {
+    state.subscription_impl()
+}
+
+pub fn run() -> iced_layershell::Result {
+    iced_layershell::application(DockApp::init, namespace, update, view)
+        .theme(|_: &DockApp| Theme::Dark)
+        .subscription(subscription)
+        .settings(DockApp::settings())
+        .run()
 }
 
 // ── widget helpers ────────────────────────────────────────────────────────────
@@ -1332,9 +1345,9 @@ fn restore_snapshot() -> Option<ShellSnapshot> {
 
 /// 5-second snapshot subscription (Portal-29).
 fn snapshot_subscription() -> Subscription<Message> {
-    Subscription::run_with_id(
+    Subscription::run_with(
         "mde-portal-snapshot",
-        async_stream::stream! {
+        |_| async_stream::stream! {
             loop {
                 tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                 yield Message::SnapshotTick;
@@ -1349,9 +1362,9 @@ fn snapshot_subscription() -> Subscription<Message> {
 /// Reads are synchronous sysfs calls (< 1 ms) so blocking inside the async
 /// stream is acceptable.
 fn status_subscription() -> Subscription<Message> {
-    Subscription::run_with_id(
+    Subscription::run_with(
         "mde-portal-status",
-        async_stream::stream! {
+        |_| async_stream::stream! {
             yield Message::StatusUpdate(crate::status::read_status());
             loop {
                 tokio::time::sleep(std::time::Duration::from_secs(30)).await;
@@ -1363,9 +1376,9 @@ fn status_subscription() -> Subscription<Message> {
 
 /// 20ms marquee tick subscription (Portal-5.b, 50px/sec).
 fn marquee_subscription() -> Subscription<Message> {
-    Subscription::run_with_id(
+    Subscription::run_with(
         "mde-portal-marquee",
-        async_stream::stream! {
+        |_| async_stream::stream! {
             loop {
                 tokio::time::sleep(std::time::Duration::from_millis(20)).await;
                 yield Message::MarqueeTick;
@@ -1380,9 +1393,9 @@ fn marquee_subscription() -> Subscription<Message> {
 /// it exists solely to invalidate the view so the renderer
 /// recomputes `typewriter_visible_text` against the new `now`.
 fn typewriter_tick_subscription() -> Subscription<Message> {
-    Subscription::run_with_id(
+    Subscription::run_with(
         "mde-portal-typewriter-tick",
-        async_stream::stream! {
+        |_| async_stream::stream! {
             loop {
                 tokio::time::sleep(std::time::Duration::from_millis(
                     crate::typewriter::TICK_INTERVAL_MS,
@@ -1396,9 +1409,9 @@ fn typewriter_tick_subscription() -> Subscription<Message> {
 
 /// 1-second clock tick subscription (Portal-11).
 fn clock_subscription() -> Subscription<Message> {
-    Subscription::run_with_id(
+    Subscription::run_with(
         "mde-portal-clock",
-        async_stream::stream! {
+        |_| async_stream::stream! {
             loop {
                 tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                 yield Message::ClockTick;
@@ -1513,7 +1526,7 @@ fn build_breath_line_baseline<'a>(app: &DockApp) -> Element<'a, Message> {
         b: blend(base_rgb.2, sweep_rgb.2),
         a: 1.0,
     };
-    container(iced::widget::Space::new(Length::Fill, 2.0))
+    container(iced::widget::Space::new().width(Length::Fill).height(2.0))
         .style(move |_theme: &Theme| iced::widget::container::Style {
             background: Some(iced::Background::Color(mixed)),
             ..Default::default()
@@ -1588,7 +1601,7 @@ fn tag_color_for_mode(mode_name: &str) -> Option<iced::Color> {
 
 fn build_mode_segment<'a>(app: &DockApp) -> Element<'a, Message> {
     let Some(mode_name) = app.current_sway_mode.as_deref() else {
-        return iced::widget::Space::new(0.0, Length::Fill).into();
+        return iced::widget::Space::new().width(0.0).height(Length::Fill).into();
     };
     let display: String = if mode_name.chars().count() > 24 {
         let prefix: String = mode_name.chars().take(23).collect();
@@ -1718,7 +1731,7 @@ fn build_urgent_pulse_segments<'a>(app: &DockApp) -> Element<'a, Message> {
         .filter(|p| is_pulse_alive(p, now))
         .collect();
     if alive.is_empty() {
-        return iced::widget::Space::new(0.0, Length::Fill).into();
+        return iced::widget::Space::new().width(0.0).height(Length::Fill).into();
     }
     // Tier-red identical to the mini-tree pulse cell-bg from
     // Portal-57.b so the visual ties together — same urgency
@@ -1853,7 +1866,7 @@ fn spawn_urgent_theater(segment: &BusAnnounceSegment) {
 /// high message is in flight.
 fn build_bus_high_segments<'a>(app: &DockApp) -> Element<'a, Message> {
     if app.bus_high_cards.is_empty() {
-        return iced::widget::Space::new(0.0, Length::Fill).into();
+        return iced::widget::Space::new().width(0.0).height(Length::Fill).into();
     }
     let mut pills: Vec<Element<'a, Message>> = Vec::new();
     for card in &app.bus_high_cards {
@@ -1893,7 +1906,7 @@ fn build_bus_announce_segments<'a>(app: &DockApp) -> Element<'a, Message> {
         .filter(|s| is_bus_segment_alive(s, now))
         .collect();
     if alive.is_empty() {
-        return iced::widget::Space::new(0.0, Length::Fill).into();
+        return iced::widget::Space::new().width(0.0).height(Length::Fill).into();
     }
     let mut pills: Vec<Element<'a, Message>> = Vec::new();
     for segment in alive {
@@ -1982,10 +1995,10 @@ pub fn format_bus_segment_label(segment: &BusAnnounceSegment) -> String {
 fn build_layout_prompt_segment<'a>(app: &DockApp) -> Element<'a, Message> {
     let now = chrono::Local::now();
     let Some(state) = app.layout_prompt.as_ref() else {
-        return iced::widget::Space::new(0.0, Length::Fill).into();
+        return iced::widget::Space::new().width(0.0).height(Length::Fill).into();
     };
     if !layout_prompt_visible(state, now) {
-        return iced::widget::Space::new(0.0, Length::Fill).into();
+        return iced::widget::Space::new().width(0.0).height(Length::Fill).into();
     }
     // Background uses the platform-default Material-blue / indigo for
     // v1.0. The tag's `group_color` is preserved in state for a
@@ -2028,9 +2041,9 @@ fn build_layout_prompt_segment<'a>(app: &DockApp) -> Element<'a, Message> {
     container(
         iced::widget::row![
             text(prompt_label).size(11.0).color(fg),
-            iced::widget::horizontal_space().width(Length::Fixed(8.0)),
+            iced::widget::Space::new().width(iced::Length::Fill).width(Length::Fixed(8.0)),
             yes_btn,
-            iced::widget::horizontal_space().width(Length::Fixed(4.0)),
+            iced::widget::Space::new().width(iced::Length::Fill).width(Length::Fixed(4.0)),
             no_btn,
         ]
         .align_y(iced::Alignment::Center),
@@ -2069,10 +2082,10 @@ fn build_prev_workspace_segment<'a>(app: &DockApp, fg: Color) -> Element<'a, Mes
         now,
         app.visited_workspaces_lru.len(),
     ) {
-        return iced::widget::Space::new(0.0, Length::Fill).into();
+        return iced::widget::Space::new().width(0.0).height(Length::Fill).into();
     }
     let Some((prev_num, prev_name)) = app.visited_workspaces_lru.first().cloned() else {
-        return iced::widget::Space::new(0.0, Length::Fill).into();
+        return iced::widget::Space::new().width(0.0).height(Length::Fill).into();
     };
     // Fallback color until Portal-56 ships per-tag tinting. Material
     // blue is the platform default workspace focus color, same as
@@ -2247,7 +2260,7 @@ fn build_workspace_segment<'a>(app: &DockApp, fg: Color) -> Element<'a, Message>
         let cell: Element<'a, Message> = if is_overflow {
             // Portal-5.b marquee: duplicate name with gap for seamless loop.
             let marquee_text = format!("{}{WS_MARQUEE_GAP}{}", ws.name, ws.name);
-            let scroll_id = scrollable::Id::new(format!("ws-marquee-{}", ws.name));
+            let scroll_id = iced::advanced::widget::Id::from(format!("ws-marquee-{}", ws.name));
 
             // Zero-height scrollbar — no visible UI chrome, just the clipping.
             let marquee = iced::widget::scrollable(
@@ -2758,7 +2771,7 @@ fn mark_pill_color(mark: &str) -> Option<Color> {
 /// at Dock-scale without competing with the label or WM micro-button
 /// cluster.
 fn mark_pill_element<'a>(color: Color, size_px: f32) -> Element<'a, Message> {
-    container(iced::widget::Space::new(0.0, 0.0))
+    container(iced::widget::Space::new().width(0.0).height(0.0))
         .style(move |_theme: &Theme| iced::widget::container::Style {
             background: Some(iced::Background::Color(color)),
             border: iced::Border {
@@ -2994,7 +3007,7 @@ fn build_running_zone<'a>(app: &DockApp, fg: Color) -> Element<'a, Message> {
             .padding(Padding::from([0, 3]))
             .into()
         } else {
-            iced::widget::Space::new(0.0, Length::Fill).into()
+            iced::widget::Space::new().width(0.0).height(Length::Fill).into()
         };
 
         // Outer container: applies the bg (indigo when focused, transparent when not).
@@ -3021,7 +3034,7 @@ fn build_running_zone<'a>(app: &DockApp, fg: Color) -> Element<'a, Message> {
     }
 
     if cells.is_empty() {
-        return iced::widget::Space::new(0.0, Length::Fill).into();
+        return iced::widget::Space::new().width(0.0).height(Length::Fill).into();
     }
 
     row(cells)
@@ -3274,7 +3287,7 @@ fn build_wallpaper_strip(app: &DockApp) -> Element<'_, Message> {
     };
 
     mouse_area(
-        container(iced::widget::Space::new(Length::Fill, Length::Fill))
+        container(iced::widget::Space::new().width(Length::Fill).height(Length::Fill))
             .width(4.0)
             .height(Length::Fill)
             .style(move |_: &Theme| iced::widget::container::Style {
@@ -3359,18 +3372,18 @@ mod tests {
         let mut app = DockApp::default();
         assert_eq!(app.active_nav, None);
 
-        let _ = iced_layershell::Application::update(&mut app, Message::NavClicked(NavButton::Apps));
+        let _ = update(&mut app, Message::NavClicked(NavButton::Apps));
         assert_eq!(app.active_nav, Some(NavButton::Apps));
 
-        let _ = iced_layershell::Application::update(&mut app, Message::NavClicked(NavButton::Apps));
+        let _ = update(&mut app, Message::NavClicked(NavButton::Apps));
         assert_eq!(app.active_nav, None, "second click on same button deactivates");
     }
 
     #[test]
     fn nav_clicked_switches_active() {
         let mut app = DockApp::default();
-        let _ = iced_layershell::Application::update(&mut app, Message::NavClicked(NavButton::Files));
-        let _ = iced_layershell::Application::update(&mut app, Message::NavClicked(NavButton::Network));
+        let _ = update(&mut app, Message::NavClicked(NavButton::Files));
+        let _ = update(&mut app, Message::NavClicked(NavButton::Network));
         assert_eq!(app.active_nav, Some(NavButton::Network));
     }
 
@@ -3441,7 +3454,7 @@ mod tests {
     fn workspace_list_updates_state() {
         let mut app = DockApp::default();
         assert!(app.workspaces.is_empty());
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::WorkspaceList(vec![make_ws(1, "1", true, true, "eDP-1")]),
         );
@@ -3452,14 +3465,14 @@ mod tests {
     #[test]
     fn workspace_list_replaces_previous() {
         let mut app = DockApp::default();
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::WorkspaceList(vec![
                 make_ws(1, "1", true, true, "eDP-1"),
                 make_ws(2, "2", false, false, "eDP-1"),
             ]),
         );
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::WorkspaceList(vec![make_ws(3, "3", true, true, "HDMI-A-1")]),
         );
@@ -3469,7 +3482,7 @@ mod tests {
     #[test]
     fn noop_message_is_handled_silently() {
         let mut app = DockApp::default();
-        let task = iced_layershell::Application::update(&mut app, Message::Noop);
+        let task = update(&mut app, Message::Noop);
         // Task::none() — no side-effects; state unchanged.
         drop(task);
         assert!(app.workspaces.is_empty());
@@ -3504,7 +3517,7 @@ mod tests {
     #[test]
     fn hostname_segment_uses_focused_workspace_output() {
         let mut app = DockApp { hostname: "devbox".to_string(), ..DockApp::default() };
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::WorkspaceList(vec![
                 WorkspaceInfo {
@@ -3559,7 +3572,7 @@ mod tests {
         app.active_nav = Some(NavButton::Files);
         // SnapshotTick triggers persist_snapshot (writes to disk if possible).
         // State itself should be unchanged.
-        let _task = iced_layershell::Application::update(&mut app, Message::SnapshotTick);
+        let _task = update(&mut app, Message::SnapshotTick);
         assert_eq!(app.active_nav, Some(NavButton::Files), "SnapshotTick should not change active_nav");
     }
 
@@ -3589,7 +3602,7 @@ mod tests {
         app.clock_now = chrono::Local::now() - chrono::Duration::seconds(60);
         let old_time = app.clock_now;
 
-        let _ = iced_layershell::Application::update(&mut app, Message::ClockTick);
+        let _ = update(&mut app, Message::ClockTick);
         // After ClockTick, clock_now should be more recent than old_time.
         assert!(app.clock_now > old_time, "ClockTick should update clock_now");
     }
@@ -3617,7 +3630,7 @@ mod tests {
         let mut app = DockApp::default();
         // ClockClicked spawns mde-popover clock; state itself is unchanged.
         let _task =
-            iced_layershell::Application::update(&mut app, Message::ClockClicked);
+            update(&mut app, Message::ClockClicked);
         assert_eq!(app.active_nav, None);
     }
 
@@ -3626,7 +3639,7 @@ mod tests {
         let mut app = DockApp::default();
         // StatusZoneClicked spawns mde-popover status; state itself unchanged.
         let _task =
-            iced_layershell::Application::update(&mut app, Message::StatusZoneClicked);
+            update(&mut app, Message::StatusZoneClicked);
         assert_eq!(app.active_nav, None);
     }
 
@@ -3635,7 +3648,7 @@ mod tests {
         let mut app = DockApp::default();
         // HostnameClicked spawns mde-popover hostname-info; state itself unchanged.
         let _task =
-            iced_layershell::Application::update(&mut app, Message::HostnameClicked);
+            update(&mut app, Message::HostnameClicked);
         assert!(app.workspaces.is_empty());
         assert_eq!(app.active_nav, None);
     }
@@ -3644,7 +3657,7 @@ mod tests {
     fn new_workspace_task_fires_without_panic() {
         let mut app = DockApp::default();
         // Set up two taken workspaces so new_workspace picks 3.
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::WorkspaceList(vec![
                 make_ws(1, "1", false, false, "eDP-1"),
@@ -3653,7 +3666,7 @@ mod tests {
         );
         // Should produce a Task::perform without panicking (sway not running,
         // so the async op will fail silently at runtime).
-        let _task = iced_layershell::Application::update(&mut app, Message::NewWorkspace);
+        let _task = update(&mut app, Message::NewWorkspace);
     }
 
     // ── Portal-8.a running-zone tests ────────────────────────────────────────
@@ -3682,7 +3695,7 @@ mod tests {
             make_window(1, "foot", 1, true),
             make_window(2, "firefox", 1, false),
         ];
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::WindowList(windows),
         );
@@ -3693,11 +3706,11 @@ mod tests {
     #[test]
     fn window_list_replaces_previous() {
         let mut app = DockApp::default();
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::WindowList(vec![make_window(1, "foot", 1, true)]),
         );
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::WindowList(vec![
                 make_window(2, "firefox", 1, false),
@@ -3712,7 +3725,7 @@ mod tests {
     fn focus_window_by_id_task_fires_without_panic() {
         let mut app = DockApp::default();
         // sway not running in test; the async op fails silently at runtime.
-        let _task = iced_layershell::Application::update(
+        let _task = update(
             &mut app,
             Message::FocusWindowById(99),
         );
@@ -3738,7 +3751,7 @@ mod tests {
             mesh_up: false,
             brightness_pct: Some(60),
         };
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::StatusUpdate(info),
         );
@@ -3753,13 +3766,13 @@ mod tests {
     fn lock_clicked_returns_task_without_panic() {
         let mut app = DockApp::default();
         // loginctl may not be available in test env; spawn failure is silent.
-        let _task = iced_layershell::Application::update(&mut app, Message::LockClicked);
+        let _task = update(&mut app, Message::LockClicked);
     }
 
     #[test]
     fn power_clicked_returns_task_without_panic() {
         let mut app = DockApp::default();
-        let _task = iced_layershell::Application::update(&mut app, Message::PowerClicked);
+        let _task = update(&mut app, Message::PowerClicked);
     }
 
     // ── ANIM-1.c status icon animation tests ─────────────────────────────────
@@ -3803,7 +3816,7 @@ mod tests {
             battery_charging: false,
             brightness_pct: None,
         };
-        let _ = iced_layershell::Application::update(&mut app, Message::StatusUpdate(info));
+        let _ = update(&mut app, Message::StatusUpdate(info));
         assert!(!app.status_net_prev, "prev_up was false before flip");
         assert!(app.status_net_morph_at.is_some(), "morph timestamp stamped");
         assert!(app.status_info.network_up, "new state stored");
@@ -3819,7 +3832,7 @@ mod tests {
             mesh_up: false,
             brightness_pct: None,
         };
-        let _ = iced_layershell::Application::update(&mut app, Message::StatusUpdate(info));
+        let _ = update(&mut app, Message::StatusUpdate(info));
         assert!(app.status_appear_stamps.contains_key("battery"));
         assert!(!app.status_fade_out.contains_key("battery"));
     }
@@ -3835,7 +3848,7 @@ mod tests {
             mesh_up: false,
             brightness_pct: None,
         };
-        let _ = iced_layershell::Application::update(&mut app, Message::StatusUpdate(with_bat));
+        let _ = update(&mut app, Message::StatusUpdate(with_bat));
         // Now take it away
         let no_bat = StatusInfo {
             battery_pct: None,
@@ -3844,7 +3857,7 @@ mod tests {
             mesh_up: false,
             brightness_pct: None,
         };
-        let _ = iced_layershell::Application::update(&mut app, Message::StatusUpdate(no_bat));
+        let _ = update(&mut app, Message::StatusUpdate(no_bat));
         assert!(!app.status_appear_stamps.contains_key("battery"));
         let fo = app.status_fade_out.get("battery").expect("fade-out stamped");
         assert_eq!(fo.1, 50, "last-known pct preserved");
@@ -3862,7 +3875,7 @@ mod tests {
     #[test]
     fn show_desktop_hidden_activates_strip_when_windows_moved() {
         let mut app = DockApp::default();
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::ShowDesktopHidden(vec![101, 202]),
         );
@@ -3873,7 +3886,7 @@ mod tests {
     #[test]
     fn show_desktop_hidden_with_empty_ids_leaves_strip_inactive() {
         let mut app = DockApp::default();
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::ShowDesktopHidden(vec![]),
         );
@@ -3887,7 +3900,7 @@ mod tests {
         app.wallpaper_strip_on = true;
         app.desktop_window_ids = vec![55, 66];
 
-        let _task = iced_layershell::Application::update(
+        let _task = update(
             &mut app,
             Message::ShowDesktopToggle,
         );
@@ -3900,7 +3913,7 @@ mod tests {
     fn show_desktop_toggle_when_inactive_fires_hide_task() {
         let mut app = DockApp::default();
         // Should not panic even without a running sway session.
-        let _task = iced_layershell::Application::update(
+        let _task = update(
             &mut app,
             Message::ShowDesktopToggle,
         );
@@ -3920,11 +3933,11 @@ mod tests {
     fn marquee_tick_noop_when_no_overflow_workspaces() {
         let mut app = DockApp::default();
         // Only short-name workspaces — no overflow.
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::WorkspaceList(vec![make_ws(1, "1", true, true, "eDP-1")]),
         );
-        let _task = iced_layershell::Application::update(&mut app, Message::MarqueeTick);
+        let _task = update(&mut app, Message::MarqueeTick);
         // No offsets should be created for short names.
         assert!(app.ws_marquee_offsets.is_empty());
     }
@@ -3933,12 +3946,12 @@ mod tests {
     fn marquee_tick_creates_and_advances_offset_for_overflow_workspace() {
         let mut app = DockApp::default();
         let long_name = "my-very-long-project"; // > 8 chars → overflow
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::WorkspaceList(vec![make_ws(1, long_name, true, true, "eDP-1")]),
         );
         // First tick: offset initialised at 0, then advanced by ADVANCE_PX.
-        let _task = iced_layershell::Application::update(&mut app, Message::MarqueeTick);
+        let _task = update(&mut app, Message::MarqueeTick);
         let offset = app.ws_marquee_offsets.get(long_name).copied().unwrap_or(-1.0);
         assert!(
             (offset - WS_MARQUEE_ADVANCE_PX).abs() < f32::EPSILON,
@@ -3950,7 +3963,7 @@ mod tests {
     fn marquee_offset_wraps_at_loop_width() {
         let mut app = DockApp::default();
         let name = "long-workspace"; // 14 chars → loop_width = (14 + 3) * 7.2 = 122.4 px
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::WorkspaceList(vec![make_ws(2, name, true, true, "eDP-1")]),
         );
@@ -3958,7 +3971,7 @@ mod tests {
         let loop_px = (name.chars().count() + gap_len) as f32 * WS_MARQUEE_PX_PER_CHAR;
         // Seed offset just below the loop boundary.
         app.ws_marquee_offsets.insert(name.to_string(), loop_px - 0.5);
-        let _task = iced_layershell::Application::update(&mut app, Message::MarqueeTick);
+        let _task = update(&mut app, Message::MarqueeTick);
         let offset = app.ws_marquee_offsets.get(name).copied().unwrap_or(-1.0);
         assert!(
             offset < loop_px,
@@ -3973,11 +3986,11 @@ mod tests {
         // Seed an offset for a workspace that is now gone.
         app.ws_marquee_offsets.insert(name.to_string(), 10.0);
         // Workspace list no longer contains that name.
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::WorkspaceList(vec![make_ws(1, "1", true, true, "eDP-1")]),
         );
-        let _task = iced_layershell::Application::update(&mut app, Message::MarqueeTick);
+        let _task = update(&mut app, Message::MarqueeTick);
         assert!(
             !app.ws_marquee_offsets.contains_key(name),
             "stale offset should be cleaned up after workspace removed"
@@ -3995,7 +4008,7 @@ mod tests {
     #[test]
     fn hover_running_group_sets_key() {
         let mut app = DockApp::default();
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::HoverRunningGroup("foot".to_string()),
         );
@@ -4006,18 +4019,18 @@ mod tests {
     fn unhover_running_group_clears_key() {
         let mut app = DockApp::default();
         app.hovered_running_group = Some("foot".to_string());
-        let _ = iced_layershell::Application::update(&mut app, Message::UnhoverRunningGroup);
+        let _ = update(&mut app, Message::UnhoverRunningGroup);
         assert!(app.hovered_running_group.is_none());
     }
 
     #[test]
     fn hover_then_hover_different_group_switches_key() {
         let mut app = DockApp::default();
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::HoverRunningGroup("foot".to_string()),
         );
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::HoverRunningGroup("firefox".to_string()),
         );
@@ -4027,26 +4040,26 @@ mod tests {
     #[test]
     fn wm_close_fires_task_without_panic() {
         let mut app = DockApp::default();
-        let _task = iced_layershell::Application::update(&mut app, Message::WmClose(42));
+        let _task = update(&mut app, Message::WmClose(42));
     }
 
     #[test]
     fn wm_float_fires_task_without_panic() {
         let mut app = DockApp::default();
-        let _task = iced_layershell::Application::update(&mut app, Message::WmFloat(42));
+        let _task = update(&mut app, Message::WmFloat(42));
     }
 
     #[test]
     fn wm_full_fires_task_without_panic() {
         let mut app = DockApp::default();
-        let _task = iced_layershell::Application::update(&mut app, Message::WmFull(42));
+        let _task = update(&mut app, Message::WmFull(42));
     }
 
     #[test]
     fn wm_minimize_fires_task_without_panic() {
         let mut app = DockApp::default();
         let _task =
-            iced_layershell::Application::update(&mut app, Message::WmMinimize(42));
+            update(&mut app, Message::WmMinimize(42));
     }
 
     // ── Portal-59 (R12-Q24) scratchpad-retirement filter tests ──────────────
@@ -4122,13 +4135,13 @@ mod tests {
     fn workspace_focus_change_pushes_old_onto_lru() {
         let mut app = DockApp::default();
         // Seed: ws1 focused, named "1: firefox".
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::WorkspaceList(vec![make_ws(1, "1: firefox", true, true, "eDP-1")]),
         );
         assert!(app.visited_workspaces_lru.is_empty(), "no LRU push on initial focus");
         // Focus changes to ws2.
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::WorkspaceList(vec![
                 make_ws(1, "1: firefox", false, false, "eDP-1"),
@@ -4193,7 +4206,7 @@ mod tests {
         // Default app has no LRU entry → marquee inactive → navigation path.
         let mut app = DockApp::default();
         let _task =
-            iced_layershell::Application::update(&mut app, Message::PrevWorkspaceClicked(1));
+            update(&mut app, Message::PrevWorkspaceClicked(1));
     }
 
     // ── Portal-14.c.interactions: marquee pause-on-hover + click-jump ──────
@@ -4203,11 +4216,11 @@ mod tests {
     fn marquee_hover_entered_sets_timestamp() {
         let mut app = DockApp::default();
         assert!(app.prev_ws_marquee_hover_entered_at.is_none());
-        let _ = iced_layershell::Application::update(&mut app, Message::PrevWorkspaceMarqueeEntered);
+        let _ = update(&mut app, Message::PrevWorkspaceMarqueeEntered);
         assert!(app.prev_ws_marquee_hover_entered_at.is_some());
         let first_ts = app.prev_ws_marquee_hover_entered_at;
         // Second enter while already hovering is idempotent (original ts kept).
-        let _ = iced_layershell::Application::update(&mut app, Message::PrevWorkspaceMarqueeEntered);
+        let _ = update(&mut app, Message::PrevWorkspaceMarqueeEntered);
         assert_eq!(app.prev_ws_marquee_hover_entered_at, first_ts);
     }
 
@@ -4219,7 +4232,7 @@ mod tests {
         // Simulate entering hover 200 ms in the past.
         let past = chrono::Local::now() - chrono::Duration::milliseconds(200);
         app.prev_ws_marquee_hover_entered_at = Some(past);
-        let _ = iced_layershell::Application::update(&mut app, Message::PrevWorkspaceMarqueeExited);
+        let _ = update(&mut app, Message::PrevWorkspaceMarqueeExited);
         assert!(app.prev_ws_marquee_hover_entered_at.is_none());
         // Debt must be ≥ 200 ms (it will be slightly more due to test latency).
         assert!(app.prev_ws_marquee_pause_debt_ms >= 200, "debt={}", app.prev_ws_marquee_pause_debt_ms);
@@ -4235,7 +4248,7 @@ mod tests {
         let ws_old: Vec<WorkspaceInfo> = vec![WorkspaceInfo { num: 1, name: "1".into(), focused: true, visible: true, output: "DP-1".into(), urgent: false }];
         let ws_new: Vec<WorkspaceInfo> = vec![WorkspaceInfo { num: 2, name: "2".into(), focused: true, visible: true, output: "DP-1".into(), urgent: false }];
         app.workspaces = ws_old;
-        let _ = iced_layershell::Application::update(&mut app, Message::WorkspaceList(ws_new));
+        let _ = update(&mut app, Message::WorkspaceList(ws_new));
         assert_eq!(app.prev_ws_marquee_pause_debt_ms, 0, "debt should reset on workspace change");
         assert!(app.prev_ws_marquee_hover_entered_at.is_none(), "hover should reset on workspace change");
     }
@@ -4250,7 +4263,7 @@ mod tests {
         app.last_workspace_change = Some(chrono::Local::now());
         // Click: expects navigation (Task != Task::none) — we can only check
         // the pause debt stays at 0 (no jump-to-end path taken).
-        let _task = iced_layershell::Application::update(&mut app, Message::PrevWorkspaceClicked(1));
+        let _task = update(&mut app, Message::PrevWorkspaceClicked(1));
         // pause debt untouched: jump_to_end was not called.
         assert_eq!(app.prev_ws_marquee_pause_debt_ms, 0);
     }
@@ -4263,13 +4276,13 @@ mod tests {
     fn mode_default_clears_segment_state() {
         let mut app = DockApp::default();
         // Simulate sway emitting a non-default mode first.
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::ModeChanged(crate::workspace::mode_change_to_message("resize")),
         );
         assert_eq!(app.current_sway_mode.as_deref(), Some("resize"));
         // Default mode → segment clears.
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::ModeChanged(crate::workspace::mode_change_to_message("default")),
         );
@@ -4282,13 +4295,13 @@ mod tests {
     #[test]
     fn mode_entered_stores_name() {
         let mut app = DockApp::default();
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::ModeChanged(crate::workspace::mode_change_to_message("resize")),
         );
         assert_eq!(app.current_sway_mode.as_deref(), Some("resize"));
         // Switching to a different mode replaces the name in place.
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::ModeChanged(crate::workspace::mode_change_to_message("Dev")),
         );
@@ -4381,7 +4394,7 @@ mod tests {
     fn dismiss_message_clears_banner() {
         let mut app = DockApp::default();
         app.layout_prompt = Some(make_layout_prompt_state(1, "tabbed"));
-        let _ = iced_layershell::Application::update(&mut app, Message::DismissLayoutPrompt);
+        let _ = update(&mut app, Message::DismissLayoutPrompt);
         assert!(app.layout_prompt.is_none());
     }
 
@@ -4392,7 +4405,7 @@ mod tests {
     fn make_default_clears_banner() {
         let mut app = DockApp::default();
         app.layout_prompt = Some(make_layout_prompt_state(1, "tabbed"));
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::MakeTagDefaultLayout {
                 tag_name: "Dev".to_string(),
@@ -4578,7 +4591,7 @@ mod tests {
         app.wallpaper_strip_on = true;
         app.desktop_window_ids = vec![101, 202];
         let before = chrono::Local::now();
-        let _ = iced_layershell::Application::update(&mut app, Message::ShowDesktopToggle);
+        let _ = update(&mut app, Message::ShowDesktopToggle);
         // After the toggle the summon map should have both con_ids.
         assert!(app.scratchpad_summon_seen.contains_key(&101));
         assert!(app.scratchpad_summon_seen.contains_key(&202));
@@ -4731,7 +4744,7 @@ mod tests {
     fn bus_announce_message_appends_to_state() {
         let mut app = DockApp::default();
         let seg = make_bus_segment("default", Some("alert"), Some("disk full"));
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::BusAnnounceSegment(seg),
         );
@@ -4745,7 +4758,7 @@ mod tests {
         let mut app = DockApp::default();
         for i in 0..12 {
             let title = format!("msg-{i}");
-            let _ = iced_layershell::Application::update(
+            let _ = update(
                 &mut app,
                 Message::BusAnnounceSegment(make_bus_segment(
                     "default",
@@ -4882,7 +4895,7 @@ mod tests {
     fn clipboard_segment_appends_to_state() {
         let mut app = DockApp::default();
         let seg = make_clipboard_segment(None, Some("hello"));
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::BusAnnounceSegment(seg),
         );
@@ -5000,7 +5013,7 @@ mod tests {
     fn urgent_pulse_message_appends_to_state() {
         let mut app = DockApp::default();
         let pulse_a = make_urgent_pulse(42, "foot");
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::UrgentPulse(pulse_a.clone()),
         );
@@ -5008,7 +5021,7 @@ mod tests {
         assert_eq!(app.recent_pulses[0].con_id, 42);
         // Second pulse appends.
         let pulse_b = make_urgent_pulse(99, "firefox");
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::UrgentPulse(pulse_b),
         );
@@ -5020,7 +5033,7 @@ mod tests {
     fn urgent_pulse_buffer_caps_at_32() {
         let mut app = DockApp::default();
         for i in 0..40 {
-            let _ = iced_layershell::Application::update(
+            let _ = update(
                 &mut app,
                 Message::UrgentPulse(make_urgent_pulse(i, "foot")),
             );
@@ -5089,7 +5102,7 @@ mod tests {
     fn decline_message_clears_banner() {
         let mut app = DockApp::default();
         app.layout_prompt = Some(make_layout_prompt_state(1, "tabbed"));
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::DeclineTagDefaultLayout {
                 workspace_num: 1,
@@ -5105,7 +5118,7 @@ mod tests {
     fn binding_executed_non_layout_command_is_no_op() {
         let mut app = DockApp::default();
         assert!(app.layout_prompt.is_none());
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::BindingExecuted("focus left".to_string()),
         );
@@ -5183,13 +5196,13 @@ mod tests {
     fn parked_workspace_excluded_from_lru() {
         let mut app = DockApp::default();
         // Seed: ws1 focused.
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::WorkspaceList(vec![make_ws(1, "1", true, true, "eDP-1")]),
         );
         // Park transition: ws1 unfocused, ws 99 focused (the wm_minimize
         // helper switches there for a single tick before back_and_forth).
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::WorkspaceList(vec![
                 make_ws(1, "1", false, false, "eDP-1"),
@@ -5208,14 +5221,14 @@ mod tests {
     fn wm_layout_cycle_fires_task_without_panic() {
         let mut app = DockApp::default();
         let _task =
-            iced_layershell::Application::update(&mut app, Message::WmLayoutCycle(42));
+            update(&mut app, Message::WmLayoutCycle(42));
     }
 
     #[test]
     fn wm_messages_do_not_alter_hover_state() {
         let mut app = DockApp::default();
         app.hovered_running_group = Some("foot".to_string());
-        let _ = iced_layershell::Application::update(&mut app, Message::WmClose(1));
+        let _ = update(&mut app, Message::WmClose(1));
         assert_eq!(
             app.hovered_running_group.as_deref(),
             Some("foot"),
@@ -5232,7 +5245,7 @@ mod tests {
     fn mode_entered_stamps_spawned_at() {
         let mut app = DockApp::default();
         assert!(app.mode_spawned_at.is_none());
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::ModeChanged(crate::workspace::mode_change_to_message("Dev")),
         );
@@ -5244,12 +5257,12 @@ mod tests {
     #[test]
     fn mode_default_clears_spawned_at() {
         let mut app = DockApp::default();
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::ModeChanged(crate::workspace::mode_change_to_message("Dev")),
         );
         assert!(app.mode_spawned_at.is_some());
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::ModeChanged(crate::workspace::mode_change_to_message("default")),
         );
@@ -5262,18 +5275,18 @@ mod tests {
     #[test]
     fn mode_re_enter_restamps_spawned_at() {
         let mut app = DockApp::default();
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::ModeChanged(crate::workspace::mode_change_to_message("Dev")),
         );
         let first = app.mode_spawned_at;
         std::thread::sleep(std::time::Duration::from_millis(5));
         // Clear + re-enter.
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::ModeChanged(crate::workspace::mode_change_to_message("default")),
         );
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::ModeChanged(crate::workspace::mode_change_to_message("Dev")),
         );
@@ -5317,7 +5330,7 @@ mod tests {
         let mut app = DockApp::default();
         // Simulate a prior tag-mode entry that cached a color.
         app.current_mode_tag_color = Some(iced::Color { r: 0.2, g: 0.8, b: 0.3, a: 1.0 });
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::ModeChanged(None),
         );
@@ -5332,7 +5345,7 @@ mod tests {
     #[test]
     fn mode_with_no_matching_tag_leaves_color_none() {
         let mut app = DockApp::default();
-        let _ = iced_layershell::Application::update(
+        let _ = update(
             &mut app,
             Message::ModeChanged(Some("resize".to_string())),
         );

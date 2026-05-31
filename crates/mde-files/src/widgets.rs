@@ -17,8 +17,8 @@ use crate::theme as t;
 
 /// A coloured square dot — used for status indicators (`.peer-status` in CSS).
 pub fn status_dot(color: Color, size: f32) -> Element<'static, Message> {
-    container(Space::new(Length::Fixed(size), Length::Fixed(size)))
-        .style(move |_theme: &Theme| container::Style {
+    container(Space::new().width(Length::Fixed(size)).height(Length::Fixed(size)))
+        .style(move |_theme: &Theme| container::Style { snap: false,
             background: Some(Background::Color(color)),
             border: Border {
                 color: Color::TRANSPARENT,
@@ -41,8 +41,8 @@ pub fn icon(svg_bytes: &'static [u8], size: f32, color: Color) -> Element<'stati
 
 /// 1-px horizontal divider line (`var(--divider)`).
 pub fn hdivider() -> Element<'static, Message> {
-    container(Space::new(Length::Fill, Length::Fixed(1.0)))
-        .style(|_| container::Style {
+    container(Space::new().width(Length::Fill).height(Length::Fixed(1.0)))
+        .style(|_| container::Style { snap: false,
             background: Some(Background::Color(t::DIVIDER)),
             ..container::Style::default()
         })
@@ -51,7 +51,7 @@ pub fn hdivider() -> Element<'static, Message> {
 
 /// Standard background container that paints `bg` and draws a 1-px border in `border`.
 pub fn surface<'a, M: 'a>(bg: Color, border: Color) -> impl Fn(&Theme) -> container::Style {
-    move |_| container::Style {
+    move |_| container::Style { snap: false,
         background: Some(Background::Color(bg)),
         border: Border {
             color: border,
@@ -69,10 +69,10 @@ pub fn section_h(label: &str, right: Option<&str>) -> Element<'static, Message> 
         .align_y(iced::alignment::Vertical::Center);
 
     if let Some(rt) = right {
-        r = r.push(Space::with_width(Length::Fill));
+        r = r.push(Space::new().width(Length::Fill));
         r = r.push(text(rt.to_string()).size(10).color(t::FG_FAINT));
     } else {
-        r = r.push(Space::with_width(Length::Fill));
+        r = r.push(Space::new().width(Length::Fill));
     }
 
     container(r)
@@ -97,7 +97,7 @@ pub fn mesh_pill(peer_host: &str) -> Element<'static, Message> {
         .spacing(4),
     )
     .padding(Padding::from([1.0, 6.0]))
-    .style(|_| container::Style {
+    .style(|_| container::Style { snap: false,
         background: Some(Background::Color(t::MESH_PILL_BG)),
         border: Border {
             color: t::MESH_PILL_BORDER,
@@ -113,7 +113,7 @@ pub fn mesh_pill(peer_host: &str) -> Element<'static, Message> {
 pub fn local_pill() -> Element<'static, Message> {
     container(text("local").size(10).color(t::FG_FAINT))
         .padding(Padding::from([1.0, 6.0]))
-        .style(|_| container::Style {
+        .style(|_| container::Style { snap: false,
             background: Some(Background::Color(t::LOCAL_PILL_BG)),
             border: Border {
                 color: t::LOCAL_PILL_BORDER,
@@ -134,7 +134,7 @@ pub fn breadcrumb_tag(text_label: &str, is_mesh: bool) -> Element<'static, Messa
     };
     container(text(text_label.to_string()).size(10).color(fg))
         .padding(Padding::from([1.0, 6.0]))
-        .style(move |_| container::Style {
+        .style(move |_| container::Style { snap: false,
             background: Some(Background::Color(bg)),
             border: Border {
                 color: bd,
@@ -187,7 +187,7 @@ pub fn banner(
     let layout = row![
         container(icon(icon_svg, 22.0, t::ACCENT_HI))
             .padding(Padding::new(9.0))
-            .style(|_| container::Style {
+            .style(|_| container::Style { snap: false,
                 background: Some(Background::Color(t::MESH_PILL_BG)),
                 border: Border {
                     color: t::MESH_PILL_BORDER,
@@ -209,7 +209,7 @@ pub fn banner(
 
     container(layout)
         .padding(Padding::from([14.0, 18.0]))
-        .style(|_| container::Style {
+        .style(|_| container::Style { snap: false,
             background: Some(Background::Color(t::PF_BG_200)),
             border: Border {
                 color: t::BANNER_BORDER,
@@ -242,7 +242,7 @@ pub fn peer_card(peer: Peer) -> Element<'static, Message> {
     let head = row![
         container(icon(kind_icon, 20.0, avatar_color))
             .padding(Padding::new(8.0))
-            .style(|_| container::Style {
+            .style(|_| container::Style { snap: false,
                 background: Some(Background::Color(Color {
                     a: 0.04,
                     ..Color::WHITE
@@ -290,7 +290,7 @@ pub fn peer_card(peer: Peer) -> Element<'static, Message> {
 
     let meta_row = row![
         text(peer.addr.to_string()).size(10).color(t::FG_FAINT),
-        Space::with_width(Length::Fill),
+        Space::new().width(Length::Fill),
         match peer.latency {
             Some(ms) => {
                 let c = match latency_bucket(ms) {
@@ -312,7 +312,7 @@ pub fn peer_card(peer: Peer) -> Element<'static, Message> {
     let actions = row![
         button(text("Browse →").size(11).color(t::ACCENT_HI))
             .padding(Padding::from([4.0, 8.0]))
-            .style(|_, _| button::Style {
+            .style(|_, _| button::Style { snap: false,
                 background: Some(Background::Color(t::MESH_PILL_BG)),
                 text_color: t::ACCENT_HI,
                 border: Border {
@@ -335,7 +335,7 @@ pub fn peer_card(peer: Peer) -> Element<'static, Message> {
     .spacing(4);
 
     let stripe =
-        container(Space::new(Length::Fill, Length::Fixed(2.0))).style(move |_| container::Style {
+        container(Space::new().width(Length::Fill).height(Length::Fixed(2.0))).style(move |_| container::Style { snap: false,
             background: Some(Background::Color(stripe_color)),
             ..container::Style::default()
         });
@@ -373,7 +373,7 @@ pub fn peer_card(peer: Peer) -> Element<'static, Message> {
     };
 
     container(body)
-        .style(move |_| container::Style {
+        .style(move |_| container::Style { snap: false,
             background: Some(Background::Color(card_bg)),
             border: Border {
                 color: t::DIVIDER,
@@ -388,7 +388,7 @@ pub fn peer_card(peer: Peer) -> Element<'static, Message> {
 
 /// Ghost-button style (transparent fill, picks up text colour from caller).
 pub fn ghost_button_style() -> button::Style {
-    button::Style {
+    button::Style { snap: false,
         background: Some(Background::Color(Color::TRANSPARENT)),
         text_color: t::FG_DIM,
         border: Border {
@@ -491,7 +491,7 @@ pub fn file_row(
                     button::Status::Hovered => t::PRIMARY_AMBER_BG_HOVER,
                     _ => t::PRIMARY_AMBER_BG,
                 };
-                button::Style {
+                button::Style { snap: false,
                     background: Some(Background::Color(bg)),
                     text_color: t::ACCENT_HI,
                     border: Border {
@@ -537,7 +537,7 @@ pub fn file_row(
 /// File-list head row (caps, dim).
 pub fn file_row_head(src_label: &str) -> Element<'static, Message> {
     let layout = row![
-        Space::with_width(Length::Fixed(22.0)),
+        Space::new().width(Length::Fixed(22.0)),
         container(text("Name".to_string()).size(10).color(t::FG_FAINT)).width(Length::Fill),
         container(text(src_label.to_string()).size(10).color(t::FG_FAINT)).width(Length::Shrink),
         container(text("Size".to_string()).size(10).color(t::FG_FAINT))
@@ -551,7 +551,7 @@ pub fn file_row_head(src_label: &str) -> Element<'static, Message> {
 
     container(layout)
         .padding(Padding::from([6.0, 8.0]))
-        .style(|_| container::Style {
+        .style(|_| container::Style { snap: false,
             background: Some(Background::Color(Color {
                 a: 0.02,
                 ..Color::WHITE
@@ -631,15 +631,15 @@ pub fn list_row(
     let row_el: Element<'static, Message> = container(inner)
         .padding(Padding::from([0.0, 8.0]))
         .height(Length::Fixed(28.0))
-        .style(move |_| container::Style {
+        .style(move |_| container::Style { snap: false,
             background: Some(Background::Color(bg)),
             ..container::Style::default()
         })
         .into();
 
     let divider_el: Element<'static, Message> =
-        container(Space::new(Length::Fill, Length::Fixed(1.0)))
-            .style(|_| container::Style {
+        container(Space::new().width(Length::Fill).height(Length::Fixed(1.0)))
+            .style(|_| container::Style { snap: false,
                 background: Some(Background::Color(t::LIST_ROW_DIVIDER)),
                 ..container::Style::default()
             })
@@ -668,7 +668,7 @@ pub fn list_row(
                     button::Status::Hovered => t::PRIMARY_AMBER_BG_HOVER,
                     _ => t::PRIMARY_AMBER_BG,
                 };
-                button::Style {
+                button::Style { snap: false,
                     background: Some(Background::Color(bg_chip)),
                     text_color: t::ACCENT_HI,
                     border: Border {
@@ -732,7 +732,7 @@ pub fn tx_row(tx: Transfer) -> Element<'static, Message> {
     let layout = row![
         container(text(dir_label.to_string()).size(10).color(dir_fg))
             .padding(Padding::from([1.0, 6.0]))
-            .style(move |_| container::Style {
+            .style(move |_| container::Style { snap: false,
                 background: Some(Background::Color(dir_bg)),
                 border: Border {
                     color: dir_bd,
@@ -822,7 +822,7 @@ pub fn side_row(
             // leave room for the 2-px active border
             left: t::SIDE_ROW_PAD_X - 2.0,
         })
-        .style(move |_| container::Style {
+        .style(move |_| container::Style { snap: false,
             background: Some(Background::Color(bg)),
             border: Border {
                 color: border_color,
@@ -834,7 +834,7 @@ pub fn side_row(
 
     button(inner)
         .padding(0)
-        .style(|_, _| button::Style {
+        .style(|_, _| button::Style { snap: false,
             background: Some(Background::Color(Color::TRANSPARENT)),
             text_color: t::FG_DIM,
             border: Border {
@@ -862,7 +862,7 @@ pub fn side_section_header(
     container(
         row![
             text(label.to_uppercase()).size(10).color(fg),
-            Space::with_width(Length::Fill),
+            Space::new().width(Length::Fill),
             text(meta.to_string()).size(10).color(t::FG_FAINT),
         ]
         .align_y(iced::alignment::Vertical::Center),
@@ -887,14 +887,14 @@ pub fn disclosure_row(open: bool, msg: Message) -> Element<'static, Message> {
         row![
             icon(chevron, 14.0, t::FG_FAINT),
             text("Browse filesystem…").size(12).color(t::FG_DIM),
-            Space::with_width(Length::Fill),
+            Space::new().width(Length::Fill),
             text("/").size(10).color(t::FG_FAINT),
         ]
         .spacing(8)
         .align_y(iced::alignment::Vertical::Center),
     )
     .padding(Padding::from([8.0, 12.0]))
-    .style(move |_| container::Style {
+    .style(move |_| container::Style { snap: false,
         background: Some(Background::Color(if open {
             Color {
                 a: 0.04,

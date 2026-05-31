@@ -3,19 +3,28 @@
 //!
 //! CB-1.13 contract: every invocation either becomes the primary
 //! workbench process or hands its `--focus <slug>` argument off
-//! to the already-running primary via the
-//! `dev.mackes.MDE.Shell.Workbench.Focus` method.
+//! to the already-running primary.
+//!
+//! DBUS-3 (Q96/EPIC-RETIRE-DBUS): the single-instance NAME
+//! (`dev.mackes.MDE.Workbench`) is still owned on D-Bus — name
+//! ownership is inherently a D-Bus/socket primitive (finding #3
+//! documented exception). The `focus` hand-off itself migrated to
+//! the Bus action topic `action/shell/workbench-focus` with the
+//! 40 ms interactive poll (finding #1).
 
 use std::process::ExitCode;
+use std::time::Duration;
 
 use clap::Parser;
+use mde_bus::hooks::config::Priority;
+use mde_bus::rpc::{request_with_interval, INTERACTIVE_POLL_INTERVAL};
 use mde_workbench::{
-    decide_primary_status, App, PendingFocus, PrimaryStatus, WorkbenchService, BUS_NAME,
-    INTERFACE_NAME, OBJECT_PATH,
+    decide_primary_status, serve_focus_bus, App, PendingFocus, PrimaryStatus, ACTION_TOPIC,
+    BUS_NAME,
 };
 use tracing::{debug, error, info};
 use zbus::fdo::{DBusProxy, RequestNameFlags};
-use zbus::{names::WellKnownName, proxy, Connection};
+use zbus::{names::WellKnownName, Connection};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -27,18 +36,6 @@ struct Cli {
     /// (e.g. `--focus network.mesh_ssh`).
     #[arg(long)]
     focus: Option<String>,
-}
-
-/// Client-side proxy generated from [`INTERFACE_NAME`] —
-/// `mde-workbench --focus <slug>` calls this on an
-/// already-running primary.
-#[proxy(
-    interface = "dev.mackes.MDE.Shell.Workbench",
-    default_service = "dev.mackes.MDE.Workbench",
-    default_path = "/dev/mackes/MDE/Workbench"
-)]
-trait Workbench {
-    fn focus(&self, slug: &str) -> zbus::Result<()>;
 }
 
 fn main() -> ExitCode {
@@ -71,7 +68,7 @@ fn main() -> ExitCode {
                 drop(conn);
                 return hand_off_to_running(&runtime, &cli.focus);
             }
-            register_workbench_service(&runtime, conn)
+            start_primary_focus_responder(conn)
         }
         Err(e) => {
             // Couldn't reach the session bus at all — fall back
@@ -111,9 +108,9 @@ fn main() -> ExitCode {
 
 /// Connect to the session bus and try to acquire [`BUS_NAME`]
 /// with `DoNotQueue`, returning the resulting status + the live
-/// connection (the connection stays alive in either branch —
-/// the hand-off path uses it for the [`WorkbenchProxy::focus`]
-/// call, the primary path keeps it for serving Focus requests).
+/// connection. The connection is the single-instance primitive —
+/// the primary path keeps it alive to retain name ownership; the
+/// sibling path drops it and hands off the focus slug over the Bus.
 async fn acquire_primary() -> zbus::Result<(PrimaryStatus, Connection)> {
     let conn = Connection::session().await?;
     let dbus = DBusProxy::new(&conn).await?;
@@ -126,46 +123,68 @@ async fn acquire_primary() -> zbus::Result<(PrimaryStatus, Connection)> {
     Ok((status, conn))
 }
 
-/// Sibling-process branch — call Focus on the running primary
-/// and exit. Returns `ExitCode::SUCCESS` when the hand-off
-/// succeeded, `2` when the bus call itself failed.
+/// Sibling-process branch — publish the `--focus <slug>` request on
+/// the Bus action topic the running primary serves, then exit.
+/// Uses the 40 ms interactive poll so the round-trip is imperceptible
+/// (finding #1). Returns `ExitCode::SUCCESS` when the primary
+/// acknowledged, `2` when the Bus call itself failed.
 fn hand_off_to_running(runtime: &tokio::runtime::Runtime, focus: &Option<String>) -> ExitCode {
     let slug = focus.clone().unwrap_or_default();
-    info!(%slug, "primary workbench already running — handing off Focus");
-    let result = runtime.block_on(async {
-        let conn = Connection::session().await?;
-        let proxy = WorkbenchProxy::new(&conn).await?;
-        proxy.focus(&slug).await
-    });
-    match result {
-        Ok(()) => ExitCode::SUCCESS,
+    info!(%slug, "primary workbench already running — handing off focus over the Bus");
+    let Some(bus_root) = mde_bus::default_data_dir() else {
+        error!("no Bus data dir; cannot hand off focus");
+        return ExitCode::from(2);
+    };
+    let persist = match mde_bus::persist::Persist::open(bus_root) {
+        Ok(p) => p,
         Err(e) => {
-            error!("hand-off Focus call failed: {e}");
+            error!("opening Bus store for focus hand-off: {e}");
+            return ExitCode::from(2);
+        }
+    };
+    let result = runtime.block_on(request_with_interval(
+        &persist,
+        ACTION_TOPIC,
+        Priority::Default,
+        None,
+        Some(slug.as_str()),
+        Duration::from_secs(2),
+        INTERACTIVE_POLL_INTERVAL,
+    ));
+    match result {
+        Ok(_reply) => ExitCode::SUCCESS,
+        Err(e) => {
+            error!("focus hand-off over the Bus failed: {e}");
             ExitCode::from(2)
         }
     }
 }
 
-/// Primary-process branch — register the
-/// [`INTERFACE_NAME`] interface on the live connection at
-/// [`OBJECT_PATH`] so the [`PendingFocus`] slot fills whenever
-/// a sibling invocation calls Focus.
-fn register_workbench_service(
-    runtime: &tokio::runtime::Runtime,
-    conn: Connection,
-) -> Result<(), ()> {
-    runtime.block_on(async {
-        conn.object_server()
-            .at(OBJECT_PATH, WorkbenchService)
-            .await
-            .map_err(|e| {
-                error!("failed to register {INTERFACE_NAME} at {OBJECT_PATH}: {e}");
-            })?;
-        info!(%OBJECT_PATH, %INTERFACE_NAME, "primary workbench D-Bus surface registered");
-        // Leak the connection — its background tokio tasks must
-        // outlive this function. The runtime itself is leaked
-        // by the caller via Box::leak.
-        Box::leak(Box::new(conn));
-        Ok(())
-    })
+/// Primary-process branch — keep the D-Bus connection alive (so we
+/// retain ownership of [`BUS_NAME`], the single-instance primitive)
+/// and spawn the Bus focus responder so the [`PendingFocus`] slot
+/// fills whenever a sibling invocation publishes to
+/// `action/shell/workbench-focus`. The responder runs on its own
+/// thread because `Persist` (rusqlite) isn't `Send`.
+fn start_primary_focus_responder(conn: Connection) -> Result<(), ()> {
+    // No object is served on the connection anymore — only the name
+    // matters. Leak it so its background tokio tasks (which keep the
+    // name owned) outlive this function.
+    Box::leak(Box::new(conn));
+    std::thread::Builder::new()
+        .name("workbench-focus-bus".into())
+        .spawn(|| {
+            let Some(bus_root) = mde_bus::default_data_dir() else {
+                error!("workbench focus responder: no Bus data dir; --focus hand-off unavailable");
+                return;
+            };
+            match mde_bus::persist::Persist::open(bus_root) {
+                Ok(persist) => serve_focus_bus(&persist, || false),
+                Err(e) => error!("workbench focus responder: opening Bus store: {e}"),
+            }
+        })
+        .map(|_| {
+            info!("primary workbench focus responder started on the Bus");
+        })
+        .map_err(|e| error!("spawning workbench focus responder thread: {e}"))
 }

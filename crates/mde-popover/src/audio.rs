@@ -66,157 +66,162 @@ pub struct App {
     state: AudioState,
 }
 
-impl iced_layershell::Application for App {
-    type Executor = iced::executor::Default;
-    type Message = Message;
-    type Theme = Theme;
-    type Flags = ();
+fn namespace() -> String {
+    "mde-popover-audio".to_string()
+}
 
-    fn new(_flags: ()) -> (Self, Task<Message>) {
-        let state = read_state();
-        tracing::info!(volume = state.volume_pct, muted = state.muted, "audio popover open");
-        (Self { state }, Task::none())
-    }
-
-    fn namespace(&self) -> String {
-        "mde-popover-audio".to_string()
-    }
-
-    fn update(&mut self, msg: Message) -> Task<Message> {
-        match msg {
-            Message::VolumeChanged(vol) => {
-                self.state.volume_pct = vol;
-                pactl_set_volume(vol);
-                Task::none()
-            }
-            Message::ToggleMute => {
-                pactl_toggle_mute();
-                // Re-read state so the icon updates immediately.
-                self.state = read_state();
-                Task::none()
-            }
-            Message::Exit => {
-                std::process::exit(0);
-            }
-            _ => Task::none(),
+fn update(state: &mut App, msg: Message) -> Task<Message> {
+    match msg {
+        Message::VolumeChanged(vol) => {
+            state.state.volume_pct = vol;
+            pactl_set_volume(vol);
+            Task::none()
         }
-    }
-
-    fn view(&self) -> Element<'_, Message> {
-        let mute_glyph = if self.state.muted { "×" } else { "♫" };
-        let mute_color = if self.state.muted { FG_MUTED } else { ACCENT };
-        let mute_btn = button(
-            text(mute_glyph.to_string())
-                .size(20)
-                .color(mute_color),
-        )
-        .padding(Padding {
-            top: 6.0,
-            right: 14.0,
-            bottom: 6.0,
-            left: 14.0,
-        })
-        .style(mute_button_style)
-        .on_press(Message::ToggleMute);
-
-        let pct_label = text(format!("{:>3}%", self.state.volume_pct))
-            .size(14)
-            .color(FG_TEXT);
-
-        let header = row![
-            mute_btn,
-            Space::with_width(Length::Fixed(12.0)),
-            text("Output").size(13).color(FG_TEXT),
-            Space::with_width(Length::Fill),
-            pct_label,
-            Space::with_width(Length::Fixed(8.0)),
-            // v3.0.3 — always-visible close button (Esc still works
-            // via subscription below).
-            crate::dismiss::close_button(Message::Exit),
-        ]
-        .align_y(iced::Alignment::Center);
-
-        let vol_slider = slider(0u32..=100u32, self.state.volume_pct, Message::VolumeChanged)
-            .step(1u32)
-            .style(volume_slider_style);
-
-        let footer = text("Esc closes · ♫ toggles mute · drag to set")
-            .size(10)
-            .color(FG_MUTED);
-
-        let body = column![
-            header,
-            Space::with_height(Length::Fixed(14.0)),
-            vol_slider,
-            Space::with_height(Length::Fixed(12.0)),
-            footer,
-        ]
-        .padding(Padding {
-            top: 16.0,
-            right: 18.0,
-            bottom: 12.0,
-            left: 18.0,
-        });
-
-        let card: Element<'_, Message> = container(body)
-            .width(Length::Fixed(WIDTH as f32))
-            .height(Length::Fixed(HEIGHT as f32))
-            .style(popover_surface)
-            .into();
-
-        // v3.0.4 (2026-05-23) — backdrop. Card pinned bottom-right.
-        let dismiss = || {
-            mouse_area(
-                container(Space::with_width(Length::Fill))
-                    .width(Length::Fill)
-                    .height(Length::Fill),
-            )
-            .on_press(Message::Exit)
-        };
-        let bottom_strip = row![
-            dismiss(),
-            container(card).padding(iced::Padding {
-                top: 0.0,
-                right: 4.0,
-                bottom: 48.0,
-                left: 0.0,
-            }),
-        ]
-        .height(Length::Fixed((HEIGHT + 48) as f32));
-        container(column![dismiss(), bottom_strip])
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .style(|_| container::Style {
-                background: Some(iced::Background::Color(iced::Color::TRANSPARENT)),
-                border: iced::Border {
-                    color: iced::Color::TRANSPARENT,
-                    width: 0.0,
-                    radius: 0.0.into(),
-                },
-                shadow: iced::Shadow::default(),
-                text_color: None,
-            })
-            .into()
-    }
-
-    fn theme(&self) -> Theme {
-        Theme::Dark
-    }
-
-    fn subscription(&self) -> iced::Subscription<Message> {
-        iced::keyboard::on_key_press(|key, _| {
-            use iced::keyboard::{key::Named, Key};
-            if matches!(key, Key::Named(Named::Escape)) {
-                Some(Message::Exit)
-            } else {
-                None
-            }
-        })
+        Message::ToggleMute => {
+            pactl_toggle_mute();
+            // Re-read state so the icon updates immediately.
+            state.state = read_state();
+            Task::none()
+        }
+        Message::Exit => {
+            std::process::exit(0);
+        }
+        _ => Task::none(),
     }
 }
 
+fn view(state: &App) -> Element<'_, Message> {
+    let mute_glyph = if state.state.muted { "×" } else { "♫" };
+    let mute_color = if state.state.muted { FG_MUTED } else { ACCENT };
+    let mute_btn = button(
+        text(mute_glyph.to_string())
+            .size(20)
+            .color(mute_color),
+    )
+    .padding(Padding {
+        top: 6.0,
+        right: 14.0,
+        bottom: 6.0,
+        left: 14.0,
+    })
+    .style(mute_button_style)
+    .on_press(Message::ToggleMute);
+
+    let pct_label = text(format!("{:>3}%", state.state.volume_pct))
+        .size(14)
+        .color(FG_TEXT);
+
+    let header = row![
+        mute_btn,
+        Space::new().width(Length::Fixed(12.0)),
+        text("Output").size(13).color(FG_TEXT),
+        Space::new().width(Length::Fill),
+        pct_label,
+        Space::new().width(Length::Fixed(8.0)),
+        // v3.0.3 — always-visible close button (Esc still works
+        // via subscription below).
+        crate::dismiss::close_button(Message::Exit),
+    ]
+    .align_y(iced::Alignment::Center);
+
+    let vol_slider = slider(0u32..=100u32, state.state.volume_pct, Message::VolumeChanged)
+        .step(1u32)
+        .style(volume_slider_style);
+
+    let footer = text("Esc closes · ♫ toggles mute · drag to set")
+        .size(10)
+        .color(FG_MUTED);
+
+    let body = column![
+        header,
+        Space::new().height(Length::Fixed(14.0)),
+        vol_slider,
+        Space::new().height(Length::Fixed(12.0)),
+        footer,
+    ]
+    .padding(Padding {
+        top: 16.0,
+        right: 18.0,
+        bottom: 12.0,
+        left: 18.0,
+    });
+
+    let card: Element<'_, Message> = container(body)
+        .width(Length::Fixed(WIDTH as f32))
+        .height(Length::Fixed(HEIGHT as f32))
+        .style(popover_surface)
+        .into();
+
+    // v3.0.4 (2026-05-23) — backdrop. Card pinned bottom-right.
+    let dismiss = || {
+        mouse_area(
+            container(Space::new().width(Length::Fill))
+                .width(Length::Fill)
+                .height(Length::Fill),
+        )
+        .on_press(Message::Exit)
+    };
+    let bottom_strip = row![
+        dismiss(),
+        container(card).padding(iced::Padding {
+            top: 0.0,
+            right: 4.0,
+            bottom: 48.0,
+            left: 0.0,
+        }),
+    ]
+    .height(Length::Fixed((HEIGHT + 48) as f32));
+    container(column![dismiss(), bottom_strip])
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(|_| container::Style {
+            background: Some(iced::Background::Color(iced::Color::TRANSPARENT)),
+            border: iced::Border {
+                color: iced::Color::TRANSPARENT,
+                width: 0.0,
+                radius: 0.0.into(),
+            },
+            shadow: iced::Shadow::default(),
+            text_color: None,
+            snap: false,
+        })
+        .into()
+}
+
+fn subscription(_state: &App) -> iced::Subscription<Message> {
+    use iced::event;
+    event::listen_with(|event, status, _window| {
+        use iced::keyboard;
+        match event {
+            iced::Event::Keyboard(keyboard::Event::KeyPressed { key, .. })
+                if status == event::Status::Ignored =>
+            {
+                use iced::keyboard::{key::Named, Key};
+                if matches!(key, Key::Named(Named::Escape)) {
+                    Some(Message::Exit)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    })
+}
+
 pub fn run() -> iced_layershell::Result {
-    <App as iced_layershell::Application>::run(Settings {
+    iced_layershell::application(
+        || {
+            let state = read_state();
+            tracing::info!(volume = state.volume_pct, muted = state.muted, "audio popover open");
+            App { state }
+        },
+        namespace,
+        update,
+        view,
+    )
+    .theme(|_: &App| iced::Theme::Dark)
+    .subscription(subscription)
+    .settings(Settings {
         id: Some("mde-popover-audio".to_string()),
         fonts: crate::fonts::load_fallback_fonts(),
         layer_settings: LayerShellSettings {
@@ -231,6 +236,7 @@ pub fn run() -> iced_layershell::Result {
         },
         ..Default::default()
     })
+    .run()
 }
 
 /// Snapshot the default-sink state via `pactl`. Returns
@@ -289,6 +295,7 @@ fn popover_surface(_theme: &Theme) -> container::Style {
         },
         text_color: Some(FG_TEXT),
         shadow: Shadow::default(),
+        snap: false,
     }
 }
 
@@ -317,6 +324,7 @@ fn mute_button_style(_theme: &Theme, status: button::Status) -> button::Style {
             radius: 6.0.into(),
         },
         shadow: Shadow::default(),
+        snap: false,
     }
 }
 

@@ -169,7 +169,7 @@ impl MeshPendingPanel {
                     },
                     _ => accent,
                 };
-                iced::widget::button::Style {
+                iced::widget::button::Style { snap: false,
                     background: Some(Background::Color(bg)),
                     text_color: Color::WHITE,
                     border: Border {
@@ -185,7 +185,7 @@ impl MeshPendingPanel {
 
         let header = row![
             column![title, subtitle].spacing(2),
-            Space::with_width(Length::Fill),
+            Space::new().width(Length::Fill),
             refresh_btn,
         ]
         .align_y(iced::alignment::Vertical::Center);
@@ -201,7 +201,7 @@ impl MeshPendingPanel {
         container(
             column![
                 header,
-                Space::with_height(Length::Fixed(20.0)),
+                Space::new().height(Length::Fixed(20.0)),
                 scrollable(peers_col).height(Length::Fill),
             ]
             .spacing(2),
@@ -258,7 +258,7 @@ fn peer_row<'a>(p: &'a PendingPeer, palette: Palette) -> Element<'a, crate::Mess
     let body = row![
         icon_widget,
         column![hostname_text, id_text, distro_text].spacing(2),
-        Space::with_width(Length::Fill),
+        Space::new().width(Length::Fill),
         accept_btn,
         reject_btn,
     ]
@@ -270,7 +270,7 @@ fn peer_row<'a>(p: &'a PendingPeer, palette: Palette) -> Element<'a, crate::Mess
     container(body)
         .padding(Padding::from([12u16, 16u16]))
         .width(Length::Fill)
-        .style(move |_| container::Style {
+        .style(move |_| container::Style { snap: false,
             background: Some(Background::Color(bg)),
             border: Border {
                 color: border,
@@ -303,7 +303,7 @@ fn empty_state_card<'a>(palette: Palette) -> Element<'a, crate::Message> {
     container(
         column![
             icon_widget,
-            Space::with_height(Length::Fixed(8.0)),
+            Space::new().height(Length::Fixed(8.0)),
             text("No pending pair requests")
                 .size(14)
                 .color(palette.text.into_iced_color()),
@@ -359,7 +359,7 @@ fn action_btn<'a>(
             };
             (bg, Color::WHITE)
         };
-        iced::widget::button::Style {
+        iced::widget::button::Style { snap: false,
             background: Some(Background::Color(bg)),
             text_color: fg,
             border: Border {

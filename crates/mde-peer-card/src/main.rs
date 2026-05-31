@@ -158,7 +158,7 @@ impl PeerCard {
             )
         });
         let sections_col = column(section_views.collect::<Vec<_>>())
-            .spacing(space.xs2)
+            .spacing(space.xs2 as f32)
             .width(Length::Fill);
 
         // Combine. Hero is fixed; sections scroll.
@@ -171,12 +171,12 @@ impl PeerCard {
         container(inner)
             .width(Length::Fill)
             .height(Length::Fill)
-            .style(move |_theme| container::Style {
+            .style(move |_theme| container::Style { snap: false,
                 background: Some(Background::Color(rgba_to_color(palette.surface))),
                 border: iced::Border {
                     color: rgba_to_color(palette.border),
                     width: 1.0,
-                    radius: self.tokens.radii.modal.into(),
+                    radius: (self.tokens.radii.modal as f32).into(),
                 },
                 ..container::Style::default()
             })
@@ -224,7 +224,8 @@ fn main() -> iced::Result {
 
     let _slide = SLIDE_DURATION_MS; // Documented chrome lock; the slide animation lands with iced_layershell 0.18 (E.2 / UX-PRE).
 
-    iced::application("MDE Peer Connection Card", PeerCard::update, PeerCard::view)
+    iced::application(PeerCard::default, PeerCard::update, PeerCard::view)
+        .title("MDE Peer Connection Card")
         .subscription(PeerCard::subscription)
         .theme(PeerCard::theme)
         .window_size(Size::new(f32::from(DRAWER_WIDTH_PX), 840.0))

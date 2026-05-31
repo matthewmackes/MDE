@@ -11,7 +11,7 @@
 //! gesture once Portal-34 ships; for now, plain sway keybind.
 
 use iced::widget::{button, column, container, row, text, Space};
-use iced::{Alignment, Background, Border, Color, Element, Length, Padding, Shadow, Task, Theme};
+use iced::{Alignment, Background, Border, Color, Element, Length, Padding, Shadow, Subscription, Task, Theme};
 use iced::widget::container::Style as ContainerStyle;
 use iced_layershell::reexport::{Anchor, KeyboardInteractivity, Layer};
 use iced_layershell::settings::{LayerShellSettings, Settings};
@@ -206,115 +206,107 @@ pub struct App {
     workspaces: Vec<WorkspaceCard>,
 }
 
-impl iced_layershell::Application for App {
-    type Executor = iced::executor::Default;
-    type Message = Message;
-    type Theme = Theme;
-    type Flags = ();
+fn namespace() -> String {
+    "mde-popover-overview".to_string()
+}
 
-    fn new(_flags: ()) -> (Self, Task<Message>) {
-        let workspaces = load_workspace_cards();
-        tracing::info!(count = workspaces.len(), "overview popover loaded");
-        (Self { workspaces }, Task::none())
+fn update(_state: &mut App, msg: Message) -> Task<Message> {
+    match msg {
+        Message::SwitchTo(num) => {
+            swaymsg_switch(num);
+            std::process::exit(0);
+        }
+        Message::Exit => std::process::exit(0),
+        _ => Task::none(),
+    }
+}
+
+fn view(state: &App) -> Element<'_, Message> {
+    if state.workspaces.is_empty() {
+        return container(text("No workspaces").size(16).color(FG_DIM))
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .style(|_: &Theme| ContainerStyle {
+                background: Some(Background::Color(SURFACE_BG)),
+                ..Default::default()
+            })
+            .into();
     }
 
-    fn namespace(&self) -> String {
-        "mde-popover-overview".to_string()
-    }
+    let cols = (state.workspaces.len().min(MAX_COLS)).max(1);
+    let mut grid = column![].spacing(16);
+    let mut row_buf: Vec<Element<'_, Message>> = Vec::new();
 
-    fn update(&mut self, msg: Message) -> Task<Message> {
-        match msg {
-            Message::SwitchTo(num) => {
-                swaymsg_switch(num);
-                std::process::exit(0);
-            }
-            Message::Exit => std::process::exit(0),
-            _ => Task::none(),
-        }
-    }
-
-    fn view(&self) -> Element<'_, Message> {
-        if self.workspaces.is_empty() {
-            return container(text("No workspaces").size(16).color(FG_DIM))
-                .center_x(Length::Fill)
-                .center_y(Length::Fill)
-                .style(|_: &Theme| ContainerStyle {
-                    background: Some(Background::Color(SURFACE_BG)),
-                    ..Default::default()
-                })
-                .into();
-        }
-
-        let cols = (self.workspaces.len().min(MAX_COLS)).max(1);
-        let mut grid = column![].spacing(16);
-        let mut row_buf: Vec<Element<'_, Message>> = Vec::new();
-
-        for (i, ws) in self.workspaces.iter().enumerate() {
-            row_buf.push(workspace_card_view(ws));
-            if (i + 1) % cols == 0 {
-                let mut r = row![].spacing(16).align_y(Alignment::Start);
-                for el in row_buf.drain(..) {
-                    r = r.push(el);
-                }
-                grid = grid.push(r);
-            }
-        }
-        if !row_buf.is_empty() {
+    for (i, ws) in state.workspaces.iter().enumerate() {
+        row_buf.push(workspace_card_view(ws));
+        if (i + 1) % cols == 0 {
             let mut r = row![].spacing(16).align_y(Alignment::Start);
             for el in row_buf.drain(..) {
                 r = r.push(el);
             }
             grid = grid.push(r);
         }
+    }
+    if !row_buf.is_empty() {
+        let mut r = row![].spacing(16).align_y(Alignment::Start);
+        for el in row_buf.drain(..) {
+            r = r.push(el);
+        }
+        grid = grid.push(r);
+    }
 
-        let footer = text("Esc closes · click a card to switch workspace")
-            .size(11)
-            .color(FG_LABEL);
+    let footer = text("Esc closes · click a card to switch workspace")
+        .size(11)
+        .color(FG_LABEL);
 
-        let body = column![
-            Space::with_height(Length::Fixed(48.0)),
-            container(
-                text("Workspaces").size(14).color(FG_DIM),
-            )
+    let body = column![
+        Space::new().height(Length::Fixed(48.0)),
+        container(
+            text("Workspaces").size(14).color(FG_DIM),
+        )
+        .center_x(Length::Fill),
+        Space::new().height(Length::Fixed(20.0)),
+        container(grid)
             .center_x(Length::Fill),
-            Space::with_height(Length::Fixed(20.0)),
-            container(grid)
-                .center_x(Length::Fill),
-            Space::with_height(Length::Fixed(24.0)),
-            container(footer).center_x(Length::Fill),
-            Space::with_height(Length::Fixed(48.0)),
-        ]
-        .padding(Padding {
-            top: 0.0,
-            right: 40.0,
-            bottom: 0.0,
-            left: 40.0,
-        });
+        Space::new().height(Length::Fixed(24.0)),
+        container(footer).center_x(Length::Fill),
+        Space::new().height(Length::Fixed(48.0)),
+    ]
+    .padding(Padding {
+        top: 0.0,
+        right: 40.0,
+        bottom: 0.0,
+        left: 40.0,
+    });
 
-        container(body)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .style(|_: &Theme| ContainerStyle {
-                background: Some(Background::Color(SURFACE_BG)),
-                ..Default::default()
-            })
-            .into()
-    }
-
-    fn theme(&self) -> Theme {
-        Theme::Dark
-    }
-
-    fn subscription(&self) -> iced::Subscription<Message> {
-        iced::keyboard::on_key_press(|key, _| {
-            use iced::keyboard::{key::Named, Key};
-            if matches!(key, Key::Named(Named::Escape)) {
-                Some(Message::Exit)
-            } else {
-                None
-            }
+    container(body)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(|_: &Theme| ContainerStyle {
+            background: Some(Background::Color(SURFACE_BG)),
+            ..Default::default()
         })
-    }
+        .into()
+}
+
+fn subscription(_state: &App) -> Subscription<Message> {
+    use iced::event;
+    event::listen_with(|event, status, _window| {
+        use iced::keyboard;
+        match event {
+            iced::Event::Keyboard(keyboard::Event::KeyPressed { key, .. })
+                if status == event::Status::Ignored =>
+            {
+                use iced::keyboard::{key::Named, Key};
+                if matches!(key, Key::Named(Named::Escape)) {
+                    Some(Message::Exit)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    })
 }
 
 /// Build a single workspace card element.
@@ -376,6 +368,7 @@ fn workspace_card_view(ws: &WorkspaceCard) -> Element<'_, Message> {
                 },
                 text_color: FG,
                 shadow: Shadow::default(),
+                snap: false,
             }
         })
         .into()
@@ -394,7 +387,19 @@ pub fn shorten_app_id(app_id: &str) -> String {
 }
 
 pub fn run() -> iced_layershell::Result {
-    <App as iced_layershell::Application>::run(Settings {
+    iced_layershell::application(
+        || {
+            let workspaces = load_workspace_cards();
+            tracing::info!(count = workspaces.len(), "overview popover loaded");
+            App { workspaces }
+        },
+        namespace,
+        update,
+        view,
+    )
+    .theme(|_: &App| iced::Theme::Dark)
+    .subscription(subscription)
+    .settings(Settings {
         id: Some("mde-popover-overview".to_string()),
         fonts: crate::fonts::load_fallback_fonts(),
         layer_settings: LayerShellSettings {
@@ -408,6 +413,7 @@ pub fn run() -> iced_layershell::Result {
         },
         ..Default::default()
     })
+    .run()
 }
 
 #[cfg(test)]

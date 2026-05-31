@@ -34,7 +34,7 @@
 use std::process::Command;
 
 use iced::widget::{button, column, container, mouse_area, row, text, Space};
-use iced::{Background, Border, Color, Element, Length, Shadow, Task, Theme};
+use iced::{Background, Border, Color, Element, Length, Shadow, Subscription, Task, Theme};
 use iced_layershell::reexport::{Anchor, KeyboardInteractivity, Layer};
 use iced_layershell::settings::{LayerShellSettings, Settings};
 use iced_layershell::to_layer_message;
@@ -135,157 +135,163 @@ pub enum Message {
 #[derive(Debug, Default)]
 pub struct App;
 
-impl iced_layershell::Application for App {
-    type Executor = iced::executor::Default;
-    type Message = Message;
-    type Theme = Theme;
-    type Flags = ();
+fn namespace() -> String {
+    "mde-popover-snap-assist".to_string()
+}
 
-    fn new(_flags: ()) -> (Self, Task<Message>) {
-        tracing::info!("snap-assist overlay open");
-        (Self, Task::none())
-    }
-
-    fn namespace(&self) -> String {
-        "mde-popover-snap-assist".to_string()
-    }
-
-    fn update(&mut self, msg: Message) -> Task<Message> {
-        match msg {
-            Message::Commit(zone) => {
-                run_snap(zone);
-                std::process::exit(0);
-            }
-            Message::Cancel => std::process::exit(0),
-            _ => Task::none(),
+fn update(_state: &mut App, msg: Message) -> Task<Message> {
+    match msg {
+        Message::Commit(zone) => {
+            run_snap(zone);
+            std::process::exit(0);
         }
-    }
-
-    fn view(&self) -> Element<'_, Message> {
-        let header = text("Snap Assist")
-            .size(14)
-            .color(FG_TEXT);
-        let subhead = text("Click a zone to snap the focused window · Esc cancels")
-            .size(11)
-            .color(FG_MUTED);
-
-        let halves_row = row![
-            zone_button(SnapZone::LeftHalf),
-            Space::with_width(Length::Fixed(8.0)),
-            zone_button(SnapZone::RightHalf),
-            Space::with_width(Length::Fixed(8.0)),
-            zone_button(SnapZone::TopHalf),
-            Space::with_width(Length::Fixed(8.0)),
-            zone_button(SnapZone::BottomHalf),
-        ]
-        .align_y(iced::Alignment::Center);
-
-        let quad_row = row![
-            zone_button(SnapZone::QuadrantTopLeft),
-            Space::with_width(Length::Fixed(8.0)),
-            zone_button(SnapZone::QuadrantTopRight),
-            Space::with_width(Length::Fixed(8.0)),
-            zone_button(SnapZone::QuadrantBottomLeft),
-            Space::with_width(Length::Fixed(8.0)),
-            zone_button(SnapZone::QuadrantBottomRight),
-        ]
-        .align_y(iced::Alignment::Center);
-
-        let card = container(
-            column![
-                header,
-                Space::with_height(Length::Fixed(4.0)),
-                subhead,
-                Space::with_height(Length::Fixed(14.0)),
-                text("Halves").size(11).color(FG_MUTED),
-                Space::with_height(Length::Fixed(6.0)),
-                halves_row,
-                Space::with_height(Length::Fixed(12.0)),
-                text("Quadrants").size(11).color(FG_MUTED),
-                Space::with_height(Length::Fixed(6.0)),
-                quad_row,
-            ]
-            .padding(iced::Padding {
-                top: 18.0,
-                right: 20.0,
-                bottom: 18.0,
-                left: 20.0,
-            }),
-        )
-        .width(Length::Shrink)
-        .style(|_| container::Style {
-            background: Some(Background::Color(Color {
-                r: 0.055,
-                g: 0.055,
-                b: 0.063,
-                a: 0.97,
-            })),
-            border: Border {
-                color: Color {
-                    r: 0.957,
-                    g: 0.957,
-                    b: 0.957,
-                    a: 0.12,
-                },
-                width: 1.0,
-                radius: 10.0.into(),
-            },
-            text_color: Some(FG_TEXT),
-            shadow: Shadow::default(),
-        });
-
-        // Backdrop dismiss — fullscreen click-outside cancels.
-        let dismiss = || {
-            mouse_area(
-                container(Space::with_width(Length::Fill))
-                    .width(Length::Fill)
-                    .height(Length::Fill),
-            )
-            .on_press(Message::Cancel)
-        };
-        container(column![
-            dismiss(),
-            row![dismiss(), container(card).padding(20), dismiss()],
-            dismiss(),
-        ])
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .style(|_| container::Style {
-            background: Some(Background::Color(Color {
-                r: 0.0,
-                g: 0.0,
-                b: 0.0,
-                a: 0.30,
-            })),
-            border: Border {
-                color: Color::TRANSPARENT,
-                width: 0.0,
-                radius: 0.0.into(),
-            },
-            shadow: Shadow::default(),
-            text_color: None,
-        })
-        .into()
-    }
-
-    fn theme(&self) -> Theme {
-        Theme::Dark
-    }
-
-    fn subscription(&self) -> iced::Subscription<Message> {
-        iced::keyboard::on_key_press(|key, _| {
-            use iced::keyboard::{key::Named, Key};
-            if matches!(key, Key::Named(Named::Escape)) {
-                Some(Message::Cancel)
-            } else {
-                None
-            }
-        })
+        Message::Cancel => std::process::exit(0),
+        _ => Task::none(),
     }
 }
 
+fn view(_state: &App) -> Element<'_, Message> {
+    let header = text("Snap Assist")
+        .size(14)
+        .color(FG_TEXT);
+    let subhead = text("Click a zone to snap the focused window · Esc cancels")
+        .size(11)
+        .color(FG_MUTED);
+
+    let halves_row = row![
+        zone_button(SnapZone::LeftHalf),
+        Space::new().width(Length::Fixed(8.0)),
+        zone_button(SnapZone::RightHalf),
+        Space::new().width(Length::Fixed(8.0)),
+        zone_button(SnapZone::TopHalf),
+        Space::new().width(Length::Fixed(8.0)),
+        zone_button(SnapZone::BottomHalf),
+    ]
+    .align_y(iced::Alignment::Center);
+
+    let quad_row = row![
+        zone_button(SnapZone::QuadrantTopLeft),
+        Space::new().width(Length::Fixed(8.0)),
+        zone_button(SnapZone::QuadrantTopRight),
+        Space::new().width(Length::Fixed(8.0)),
+        zone_button(SnapZone::QuadrantBottomLeft),
+        Space::new().width(Length::Fixed(8.0)),
+        zone_button(SnapZone::QuadrantBottomRight),
+    ]
+    .align_y(iced::Alignment::Center);
+
+    let card = container(
+        column![
+            header,
+            Space::new().height(Length::Fixed(4.0)),
+            subhead,
+            Space::new().height(Length::Fixed(14.0)),
+            text("Halves").size(11).color(FG_MUTED),
+            Space::new().height(Length::Fixed(6.0)),
+            halves_row,
+            Space::new().height(Length::Fixed(12.0)),
+            text("Quadrants").size(11).color(FG_MUTED),
+            Space::new().height(Length::Fixed(6.0)),
+            quad_row,
+        ]
+        .padding(iced::Padding {
+            top: 18.0,
+            right: 20.0,
+            bottom: 18.0,
+            left: 20.0,
+        }),
+    )
+    .width(Length::Shrink)
+    .style(|_| container::Style {
+        background: Some(Background::Color(Color {
+            r: 0.055,
+            g: 0.055,
+            b: 0.063,
+            a: 0.97,
+        })),
+        border: Border {
+            color: Color {
+                r: 0.957,
+                g: 0.957,
+                b: 0.957,
+                a: 0.12,
+            },
+            width: 1.0,
+            radius: 10.0.into(),
+        },
+        text_color: Some(FG_TEXT),
+        shadow: Shadow::default(),
+        snap: false,
+    });
+
+    // Backdrop dismiss — fullscreen click-outside cancels.
+    let dismiss = || {
+        mouse_area(
+            container(Space::new())
+                .width(Length::Fill)
+                .height(Length::Fill),
+        )
+        .on_press(Message::Cancel)
+    };
+    container(column![
+        dismiss(),
+        row![dismiss(), container(card).padding(20), dismiss()],
+        dismiss(),
+    ])
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .style(|_| container::Style {
+        background: Some(Background::Color(Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 0.30,
+        })),
+        border: Border {
+            color: Color::TRANSPARENT,
+            width: 0.0,
+            radius: 0.0.into(),
+        },
+        shadow: Shadow::default(),
+        text_color: None,
+        snap: false,
+    })
+    .into()
+}
+
+fn subscription(_state: &App) -> Subscription<Message> {
+    use iced::event;
+    event::listen_with(|event, status, _window| {
+        use iced::keyboard;
+        match event {
+            iced::Event::Keyboard(keyboard::Event::KeyPressed { key, .. })
+                if status == event::Status::Ignored =>
+            {
+                use iced::keyboard::{key::Named, Key};
+                if matches!(key, Key::Named(Named::Escape)) {
+                    Some(Message::Cancel)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    })
+}
+
 pub fn run() -> iced_layershell::Result {
-    <App as iced_layershell::Application>::run(Settings {
+    iced_layershell::application(
+        || {
+            tracing::info!("snap-assist overlay open");
+            App
+        },
+        namespace,
+        update,
+        view,
+    )
+    .theme(|_: &App| iced::Theme::Dark)
+    .subscription(subscription)
+    .settings(Settings {
         id: Some("mde-popover-snap-assist".to_string()),
         fonts: crate::fonts::load_fallback_fonts(),
         layer_settings: LayerShellSettings {
@@ -299,6 +305,7 @@ pub fn run() -> iced_layershell::Result {
         },
         ..Default::default()
     })
+    .run()
 }
 
 fn zone_button(zone: SnapZone) -> Element<'static, Message> {
@@ -331,6 +338,7 @@ fn zone_button(zone: SnapZone) -> Element<'static, Message> {
                     radius: 6.0.into(),
                 },
                 shadow: Shadow::default(),
+                snap: false,
             }
         })
         .into()

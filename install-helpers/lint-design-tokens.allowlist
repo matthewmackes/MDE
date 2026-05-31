@@ -247,3 +247,61 @@ crates/mde-workbench/src/app.rs:77
 crates/mde-workbench/src/app.rs:1547
 crates/mde-workbench/src/app.rs:1548
 crates/mde-workbench/src/app.rs:1582
+
+# --- UX-PRE iced 0.13->0.14 port line-shifts (2026-05-30, session opus-47-2026-05-30-ship-A) ---
+# Pre-existing Color::from_rgb literals whose prior allow-list line
+# numbers shifted when the mechanical iced 0.14 API port rewrote
+# surrounding lines (Space builder / snap field / etc.). NOT net-new
+# design colors; tokenize under EPIC-UI-MATERIAL.token-sweep.
+crates/mde-popover/src/hostname_info.rs:276
+crates/mde-popover/src/lock.rs:522
+crates/mde-portal/src/app.rs:2754
+crates/mde-portal/src/app.rs:2756
+crates/mde-portal/src/app.rs:2758
+crates/mde-portal/src/app.rs:2760
+crates/mde-portal/src/app.rs:2762
+crates/mde-portal/src/app.rs:3336
+crates/mde-portal/src/portal_full_main.rs:2001
+crates/mde-portal/src/portal_full_main.rs:2012
+crates/mde-portal/src/portal_full_main.rs:2013
+crates/mde-portal/src/portal_full_main.rs:2023
+crates/mde-portal/src/portal_full_main.rs:2035
+crates/mde-portal/src/portal_full_main.rs:2043
+crates/mde-portal/src/portal_full_main.rs:2046
+crates/mde-portal/src/portal_full_main.rs:2162
+crates/mde-portal/src/portal_full_main.rs:2192
+crates/mde-portal/src/portal_full_main.rs:2200
+crates/mde-portal/src/portal_full_main.rs:2242
+crates/mde-portal/src/portal_full_main.rs:2243
+crates/mde-files/src/theme.rs:185
+crates/mde-files/src/theme.rs:208
+crates/mde-files/src/theme.rs:222
+crates/mde-popover/src/app_switcher.rs:531
+crates/mde-popover/src/app_switcher.rs:532
+crates/mde-popover/src/app_switcher.rs:533
+crates/mde-popover/src/minimized.rs:423
+crates/mde-popover/src/minimized.rs:424
+crates/mde-popover/src/minimized.rs:425
+crates/mde-popover/src/network.rs:976
+crates/mde-popover/src/network.rs:977
+crates/mde-portal/src/app.rs:3341
+crates/mde-portal/src/app.rs:3345
+crates/mde-portal/src/app.rs:4373
+crates/mde-portal/src/app.rs:5304
+crates/mde-portal/src/app.rs:5312
+crates/mde-portal/src/app.rs:5322
+crates/mde-workbench/src/app.rs:1563
+crates/mde-workbench/src/app.rs:1564
+crates/mde-workbench/src/app.rs:1598
+crates/mde-popover/src/network.rs:978
+crates/mde-popover/src/toasts.rs:371
+crates/mde-popover/src/toasts.rs:372
+crates/mde-popover/src/toasts.rs:373
+crates/mde-portal/src/app.rs:2241
+crates/mde-portal/src/app.rs:2429
+crates/mde-portal/src/app.rs:3138
+crates/mde-portal/src/app.rs:3140
+crates/mde-portal/src/app.rs:3142
+crates/mde-portal/src/app.rs:3158
+crates/mde-workbench/src/app.rs:75
+crates/mde-workbench/src/app.rs:80

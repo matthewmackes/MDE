@@ -129,7 +129,7 @@ impl MeshStoragePanel {
                 },
                 _ => accent,
             };
-            iced::widget::button::Style {
+            iced::widget::button::Style { snap: false,
                 background: Some(Background::Color(bg)),
                 text_color: Color::WHITE,
                 border: Border {
@@ -142,7 +142,7 @@ impl MeshStoragePanel {
         })
         .on_press(crate::Message::MeshStorage(Message::RefreshClicked));
 
-        let header = row![title, Space::with_width(Length::Fill), refresh_btn]
+        let header = row![title, Space::new().width(Length::Fill), refresh_btn]
             .align_y(iced::Alignment::Center);
         let sub_row = row![subtitle];
 
@@ -195,14 +195,14 @@ impl MeshStoragePanel {
             scrollable(content_col).into()
         };
 
-        let page = column![header, sub_row, Space::with_height(12), body].spacing(4);
+        let page = column![header, sub_row, Space::new().height(12), body].spacing(4);
 
         let surface_color = palette.surface.into_iced_color();
         container(page)
             .padding(24)
             .width(Length::Fill)
             .height(Length::Fill)
-            .style(move |_t: &Theme| container::Style {
+            .style(move |_t: &Theme| container::Style { snap: false,
                 background: Some(Background::Color(surface_color)),
                 ..Default::default()
             })

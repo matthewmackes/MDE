@@ -41,20 +41,20 @@ impl HubPanel {
         let r1 = row![
             tile("Snapshots", "Capture / restore the live config",
                  Icon::Snapshot, "snapshots", palette),
-            Space::with_width(Length::Fixed(12.0)),
+            Space::new().width(Length::Fixed(12.0)),
             tile("Debloat", "Remove apps you don't use",
                  Icon::Delete, "debloat", palette),
-            Space::with_width(Length::Fixed(12.0)),
+            Space::new().width(Length::Fixed(12.0)),
             tile("Health Check", "Probe daemons and services",
                  Icon::StatusOk, "health_check", palette),
         ];
         let r2 = row![
             tile("Repair", "Reset broken settings",
                  Icon::Repair, "repair", palette),
-            Space::with_width(Length::Fixed(12.0)),
+            Space::new().width(Length::Fixed(12.0)),
             tile("Drift", "Find config divergence",
                  Icon::History, "drift", palette),
-            Space::with_width(Length::Fixed(12.0)),
+            Space::new().width(Length::Fixed(12.0)),
             tile("Logs", "Recent daemon + worker output",
                  Icon::Logs, "logs", palette),
         ];
@@ -62,11 +62,11 @@ impl HubPanel {
         container(
             column![
                 title,
-                Space::with_height(Length::Fixed(6.0)),
+                Space::new().height(Length::Fixed(6.0)),
                 body,
-                Space::with_height(Length::Fixed(24.0)),
+                Space::new().height(Length::Fixed(24.0)),
                 r1,
-                Space::with_height(Length::Fixed(12.0)),
+                Space::new().height(Length::Fixed(12.0)),
                 r2,
             ]
             .spacing(0),
@@ -107,9 +107,9 @@ fn tile<'a>(
         .color(palette.text_muted.into_iced_color());
     let inner = column![
         icon_widget,
-        Space::with_height(Length::Fixed(8.0)),
+        Space::new().height(Length::Fixed(8.0)),
         name_text,
-        Space::with_height(Length::Fixed(2.0)),
+        Space::new().height(Length::Fixed(2.0)),
         desc_text,
     ]
     .spacing(0);
@@ -126,7 +126,7 @@ fn tile<'a>(
                 b: bg.b * 1.08,
                 a: bg.a,
             };
-            iced::widget::button::Style {
+            iced::widget::button::Style { snap: false,
                 background: Some(Background::Color(match status {
                     iced::widget::button::Status::Hovered => hover_bg,
                     _ => bg,

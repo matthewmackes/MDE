@@ -190,7 +190,7 @@ impl NotificationsPanel {
             });
 
         column![
-            checkbox("Do Not Disturb", self.dnd)
+            checkbox(self.dnd).label("Do Not Disturb")
                 .on_toggle(|v| { crate::Message::Notifications(Message::DndChanged(v)) }),
             row![text("Placement").width(Length::Fixed(160.0)), location_pick,].spacing(12),
             row![

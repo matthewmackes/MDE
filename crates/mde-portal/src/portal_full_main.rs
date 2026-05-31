@@ -1260,7 +1260,7 @@ fn build_hub_layer(state: &PortalFull) -> Element<'_, Message> {
 /// the stack is empty.
 fn build_hub_cascade_columns(state: &PortalFull) -> Element<'_, Message> {
     if state.hub_cascade_stack.is_empty() {
-        return iced::widget::Space::new(0.0, 0.0).into();
+        return iced::widget::Space::new().width(0.0).height(0.0).into();
     }
     use iced::widget::row;
     let mut columns: Vec<Element<'_, Message>> = Vec::new();
@@ -1319,7 +1319,7 @@ fn build_hub_cascade_columns(state: &PortalFull) -> Element<'_, Message> {
 /// reflow on first keystroke.
 fn build_hub_typeahead_indicator(state: &PortalFull) -> Element<'_, Message> {
     if state.hub_typeahead_buffer.is_empty() {
-        return iced::widget::Space::new(0.0, 0.0).into();
+        return iced::widget::Space::new().width(0.0).height(0.0).into();
     }
     let buffer = state.hub_typeahead_buffer.clone();
     let label = match state.hub_typeahead_match.as_deref() {
@@ -1345,7 +1345,7 @@ fn build_hub_typeahead_indicator(state: &PortalFull) -> Element<'_, Message> {
 /// chip per selected tag + a "✕" clear button.
 fn build_hub_multi_select_indicator(state: &PortalFull) -> Element<'_, Message> {
     if state.hub_multi_select.is_empty() {
-        return iced::widget::Space::new(0.0, 0.0).into();
+        return iced::widget::Space::new().width(0.0).height(0.0).into();
     }
     use iced::widget::{button, row};
     let mut chips: Vec<Element<'_, Message>> = Vec::new();
@@ -1461,7 +1461,7 @@ pub const EDIT_TAG_LAYOUT_OPTIONS: &[&str] = &[
 fn build_edit_tag_modal(state: &PortalFull) -> Element<'_, Message> {
     use iced::widget::{button, row, text_input};
     let Some(form) = state.editing_tag.as_ref() else {
-        return iced::widget::Space::new(0.0, 0.0).into();
+        return iced::widget::Space::new().width(0.0).height(0.0).into();
     };
     let name_field = text_input("Tag name (e.g. Dev)", &form.name)
         .on_input(Message::EditTagNameChanged)
@@ -1557,7 +1557,7 @@ fn build_edit_tag_modal(state: &PortalFull) -> Element<'_, Message> {
 fn build_edit_window_rule_modal(state: &PortalFull) -> Element<'_, Message> {
     use iced::widget::{button, row, text_input};
     let Some(form) = state.editing_window_rule.as_ref() else {
-        return iced::widget::Space::new(0.0, 0.0).into();
+        return iced::widget::Space::new().width(0.0).height(0.0).into();
     };
     let app_id_field = text_input("App ID (e.g. firefox)", &form.match_app_id)
         .on_input(Message::EditWindowRuleAppIdChanged)
@@ -1714,7 +1714,7 @@ pub const HUB_MENU_ACTIONS: &[&str] = &[
 /// view layout stays unchanged in the common case.
 fn build_hub_menu_overlay<'a>(state: &PortalFull) -> Element<'a, Message> {
     let Some(target) = state.hub_right_click_target.clone() else {
-        return iced::widget::Space::new(0.0, 0.0).into();
+        return iced::widget::Space::new().width(0.0).height(0.0).into();
     };
     let mut items: Vec<Element<'a, Message>> = Vec::with_capacity(HUB_MENU_ACTIONS.len() + 1);
     items.push(text(format!("Tag: {target}")).size(12.0).color(FG_DIM).into());
@@ -1828,11 +1828,17 @@ fn subscription(_state: &PortalFull) -> Subscription<Message> {
         // input. The fn-pointer signature precludes closure
         // capture; routing decisions live entirely inside the
         // update handlers.
-        iced::keyboard::on_key_press(|key, modifiers| {
-            use iced::keyboard::{key::Named, Key};
-            // Ignore keystrokes with Ctrl / Alt / Super held —
-            // those belong to other layers (sway bindings, mode
-            // switches, etc.).
+        // iced 0.14 removed `keyboard::on_key_press`; listen on the
+        // raw event stream + match KeyPressed instead. The fn-pointer
+        // signature precludes closure capture; routing decisions live
+        // entirely inside the update handlers.
+        iced::event::listen_with(|event, _status, _window| {
+            use iced::keyboard::{key::Named, Event as KeyEvent, Key};
+            let iced::Event::Keyboard(KeyEvent::KeyPressed { key, modifiers, .. }) = event else {
+                return None;
+            };
+            // Ignore keystrokes with Ctrl / Alt / Super held — those
+            // belong to other layers (sway bindings, mode switches).
             if modifiers.control() || modifiers.alt() || modifiers.logo() {
                 return None;
             }
@@ -1852,7 +1858,7 @@ fn subscription(_state: &PortalFull) -> Subscription<Message> {
 }
 
 fn dbus_subscription() -> Subscription<Message> {
-    Subscription::run_with_id("mde-portal-full-dbus", stream! {
+    Subscription::run_with("mde-portal-full-dbus", |_| stream! {
         // The sender is set in main() before iced starts, but subscription
         // streams are spawned by iced's runtime potentially very quickly.
         // Poll briefly until the OnceLock is populated.
@@ -1874,6 +1880,14 @@ fn dbus_subscription() -> Subscription<Message> {
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
+
+/// Constant dark theme. A named fn (not an inline closure) so it
+/// satisfies the `for<'a> Fn(&'a State)` HRTB iced 0.14's `.theme()`
+/// requires — an inline `|_| Theme::Dark` infers a single concrete
+/// lifetime and fails to compile.
+fn portal_full_theme(_state: &PortalFull) -> Theme {
+    Theme::Dark
+}
 
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
@@ -1904,9 +1918,12 @@ fn main() -> anyhow::Result<()> {
     // - `decorations: false` removes the window border (sway draws none for scratchpad).
     // - `resizable: false` prevents manual resize; sway rules handle sizing.
     // - `application_id` must match sway's `for_window` rule.
-    iced::application("M · Portal", update, view)
+    // iced 0.14: application(boot, update, view) — boot returns the
+    // initial State; the title moved to .title().
+    iced::application(PortalFull::default, update, view)
+        .title("M · Portal")
         .subscription(subscription)
-        .theme(|_| Theme::Dark)
+        .theme(portal_full_theme)
         .window(iced::window::Settings {
             size: iced::Size::new(1280.0, 720.0),
             platform_specific: iced::window::settings::PlatformSpecific {

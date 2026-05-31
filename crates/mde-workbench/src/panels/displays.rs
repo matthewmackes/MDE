@@ -243,7 +243,7 @@ impl DisplaysPanel {
                 text(format!("{:.2}×", self.scale)).size(13),
             ]
             .spacing(12),
-            checkbox("Night light", self.night_light)
+            checkbox(self.night_light).label("Night light")
                 .on_toggle(|v| { crate::Message::Displays(Message::NightLightChanged(v)) }),
             row![
                 text("Color temperature (K)").width(Length::Fixed(180.0)),

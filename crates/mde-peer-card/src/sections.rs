@@ -92,7 +92,7 @@ pub fn view<'a, Msg: 'a + Clone>(
         text(section.label())
             .size(TypeRole::Subheading.size_in(tokens.font_size))
             .color(rgba_to_color(palette.text)),
-        Space::with_width(Length::Fill),
+        Space::new().width(Length::Fill),
         text(chevron)
             .size(TypeRole::Body.size_in(tokens.font_size))
             .color(rgba_to_color(palette.text_muted)),
@@ -103,14 +103,14 @@ pub fn view<'a, Msg: 'a + Clone>(
     let body: Element<'a, Msg> = if state.expanded {
         section_body(section, probe, tokens)
     } else {
-        Space::with_height(0).into()
+        Space::new().height(0).into()
     };
 
     let _ = on_toggle; // Wired to the header press in the binary.
 
     container(column![header, body].width(Length::Fill))
         .width(Length::Fill)
-        .style(move |_theme| container::Style {
+        .style(move |_theme| container::Style { snap: false,
             background: None,
             border: Border {
                 color: rgba_to_color(palette.border),
@@ -196,7 +196,7 @@ fn section_body<'a, Msg: 'a + Clone>(
         ],
     };
 
-    container(column(rows).spacing(space.sm).width(Length::Fill))
+    container(column(rows).spacing(space.sm as f32).width(Length::Fill))
         .padding(Padding {
             top: f32::from(space.sm),
             right: f32::from(space.lg2),
@@ -225,7 +225,7 @@ fn kv_row<'a, Msg: 'a + Clone>(
             .color(rgba_to_color(palette.text))
             .width(Length::FillPortion(3)),
     ]
-    .spacing(tokens.space.sm)
+    .spacing(tokens.space.sm as f32)
     .into()
 }
 

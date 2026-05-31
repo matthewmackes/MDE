@@ -29,7 +29,7 @@
 use std::process::{Command, Stdio};
 
 use iced::widget::{button, column, container, mouse_area, row, text, Space};
-use iced::{Background, Border, Color, Element, Length, Padding, Shadow, Task, Theme};
+use iced::{Background, Border, Color, Element, Length, Padding, Shadow, Subscription, Task, Theme};
 use iced_layershell::reexport::{Anchor, KeyboardInteractivity, Layer};
 use iced_layershell::settings::{LayerShellSettings, Settings};
 use iced_layershell::to_layer_message;
@@ -92,188 +92,190 @@ pub struct App {
     last_status: Option<String>,
 }
 
-impl iced_layershell::Application for App {
-    type Executor = iced::executor::Default;
-    type Message = Message;
-    type Theme = Theme;
-    type Flags = ();
+fn namespace() -> String {
+    "mde-popover-window-actions".to_string()
+}
 
-    fn new(_flags: ()) -> (Self, Task<Message>) {
-        let con_id = std::env::var("MDE_WINDOW_CON_ID").unwrap_or_default();
-        let app_id = std::env::var("MDE_WINDOW_APP_ID").unwrap_or_default();
-        let pinned = is_pinned(&app_id);
-        tracing::info!(
-            con_id = %con_id,
-            app_id = %app_id,
-            pinned,
-            "window-actions popover open",
-        );
-        (
-            Self {
+fn update(state: &mut App, msg: Message) -> Task<Message> {
+    match msg {
+        Message::MoveToWorkspace(n) => {
+            run_move_to_workspace(&state.con_id, n);
+            std::process::exit(0);
+        }
+        Message::CloseWindow => {
+            run_close_window(&state.con_id);
+            std::process::exit(0);
+        }
+        Message::TogglePin => {
+            let toggled = toggle_pin(&state.app_id);
+            state.pinned = toggled;
+            state.last_status = Some(if toggled {
+                "Pinned".to_string()
+            } else {
+                "Unpinned".to_string()
+            });
+            Task::none()
+        }
+        Message::OpenIconMapper => {
+            spawn_icon_mapper(&state.app_id);
+            std::process::exit(0);
+        }
+        Message::Exit => std::process::exit(0),
+        _ => Task::none(),
+    }
+}
+
+fn view(state: &App) -> Element<'_, Message> {
+    let header_label = if state.app_id.is_empty() {
+        "Window".to_string()
+    } else {
+        state.app_id.clone()
+    };
+    let header = row![
+        text(header_label).size(13).color(FG_TEXT),
+        Space::new().width(Length::Fill),
+        crate::dismiss::close_button(Message::Exit),
+    ]
+    .align_y(iced::Alignment::Center);
+
+    let mut body = column![
+        header,
+        Space::new().height(Length::Fixed(10.0)),
+        text("Move to workspace").size(10).color(FG_MUTED),
+        Space::new().height(Length::Fixed(4.0)),
+    ]
+    .spacing(0)
+    .padding(Padding {
+        top: 14.0,
+        right: 14.0,
+        bottom: 12.0,
+        left: 14.0,
+    });
+
+    let mut ws_row = row![].spacing(6).align_y(iced::Alignment::Center);
+    for n in 1u32..=4 {
+        ws_row = ws_row.push(workspace_button(n));
+    }
+    body = body.push(ws_row);
+    body = body.push(Space::new().height(Length::Fixed(12.0)));
+    body = body.push(
+        menu_button("Close window", URGENT, Message::CloseWindow),
+    );
+    body = body.push(Space::new().height(Length::Fixed(6.0)));
+    let pin_label = if state.pinned {
+        "Unpin from dock"
+    } else {
+        "Pin to dock"
+    };
+    body = body.push(menu_button(pin_label, ACCENT, Message::TogglePin));
+    body = body.push(Space::new().height(Length::Fixed(6.0)));
+    body = body.push(menu_button(
+        "Customize icon…",
+        ACCENT,
+        Message::OpenIconMapper,
+    ));
+    if let Some(status) = &state.last_status {
+        body = body.push(Space::new().height(Length::Fixed(6.0)));
+        body = body.push(text(status.clone()).size(10).color(FG_MUTED));
+    }
+    body = body.push(Space::new().height(Length::Fill));
+    body = body.push(
+        text("Esc closes · click outside dismisses")
+            .size(9)
+            .color(FG_MUTED),
+    );
+
+    let card: Element<'_, Message> = container(body)
+        .width(Length::Fixed(WIDTH as f32))
+        .height(Length::Fixed(HEIGHT as f32))
+        .style(popover_surface)
+        .into();
+
+    // v3.0.4 backdrop. Pinned bottom-left so the popover
+    // floats above the dock with a small left gutter (the
+    // dock entries that trigger this popover sit on the
+    // left edge of the screen first).
+    let dismiss = || {
+        mouse_area(
+            container(Space::new())
+                .width(Length::Fill)
+                .height(Length::Fill),
+        )
+        .on_press(Message::Exit)
+    };
+    let bottom_strip = row![
+        container(card).padding(Padding {
+            top: 0.0,
+            right: 0.0,
+            bottom: 48.0,
+            left: 4.0,
+        }),
+        dismiss(),
+    ]
+    .height(Length::Fixed((HEIGHT + 48) as f32));
+    container(column![dismiss(), bottom_strip])
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(|_| container::Style {
+            background: Some(iced::Background::Color(iced::Color::TRANSPARENT)),
+            border: iced::Border {
+                color: iced::Color::TRANSPARENT,
+                width: 0.0,
+                radius: 0.0.into(),
+            },
+            shadow: iced::Shadow::default(),
+            text_color: None,
+            snap: false,
+        })
+        .into()
+}
+
+fn subscription(_state: &App) -> Subscription<Message> {
+    use iced::event;
+    event::listen_with(|event, status, _window| {
+        use iced::keyboard;
+        match event {
+            iced::Event::Keyboard(keyboard::Event::KeyPressed { key, .. })
+                if status == event::Status::Ignored =>
+            {
+                use iced::keyboard::{key::Named, Key};
+                if matches!(key, Key::Named(Named::Escape)) {
+                    Some(Message::Exit)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    })
+}
+
+pub fn run() -> iced_layershell::Result {
+    iced_layershell::application(
+        || {
+            let con_id = std::env::var("MDE_WINDOW_CON_ID").unwrap_or_default();
+            let app_id = std::env::var("MDE_WINDOW_APP_ID").unwrap_or_default();
+            let pinned = is_pinned(&app_id);
+            tracing::info!(
+                con_id = %con_id,
+                app_id = %app_id,
+                pinned,
+                "window-actions popover open",
+            );
+            App {
                 con_id,
                 app_id,
                 pinned,
                 last_status: None,
-            },
-            Task::none(),
-        )
-    }
-
-    fn namespace(&self) -> String {
-        "mde-popover-window-actions".to_string()
-    }
-
-    fn update(&mut self, msg: Message) -> Task<Message> {
-        match msg {
-            Message::MoveToWorkspace(n) => {
-                run_move_to_workspace(&self.con_id, n);
-                std::process::exit(0);
             }
-            Message::CloseWindow => {
-                run_close_window(&self.con_id);
-                std::process::exit(0);
-            }
-            Message::TogglePin => {
-                let toggled = toggle_pin(&self.app_id);
-                self.pinned = toggled;
-                self.last_status = Some(if toggled {
-                    "Pinned".to_string()
-                } else {
-                    "Unpinned".to_string()
-                });
-                Task::none()
-            }
-            Message::OpenIconMapper => {
-                spawn_icon_mapper(&self.app_id);
-                std::process::exit(0);
-            }
-            Message::Exit => std::process::exit(0),
-            _ => Task::none(),
-        }
-    }
-
-    fn view(&self) -> Element<'_, Message> {
-        let header_label = if self.app_id.is_empty() {
-            "Window".to_string()
-        } else {
-            self.app_id.clone()
-        };
-        let header = row![
-            text(header_label).size(13).color(FG_TEXT),
-            Space::with_width(Length::Fill),
-            crate::dismiss::close_button(Message::Exit),
-        ]
-        .align_y(iced::Alignment::Center);
-
-        let mut body = column![
-            header,
-            Space::with_height(Length::Fixed(10.0)),
-            text("Move to workspace").size(10).color(FG_MUTED),
-            Space::with_height(Length::Fixed(4.0)),
-        ]
-        .spacing(0)
-        .padding(Padding {
-            top: 14.0,
-            right: 14.0,
-            bottom: 12.0,
-            left: 14.0,
-        });
-
-        let mut ws_row = row![].spacing(6).align_y(iced::Alignment::Center);
-        for n in 1u32..=4 {
-            ws_row = ws_row.push(workspace_button(n));
-        }
-        body = body.push(ws_row);
-        body = body.push(Space::with_height(Length::Fixed(12.0)));
-        body = body.push(
-            menu_button("Close window", URGENT, Message::CloseWindow),
-        );
-        body = body.push(Space::with_height(Length::Fixed(6.0)));
-        let pin_label = if self.pinned {
-            "Unpin from dock"
-        } else {
-            "Pin to dock"
-        };
-        body = body.push(menu_button(pin_label, ACCENT, Message::TogglePin));
-        body = body.push(Space::with_height(Length::Fixed(6.0)));
-        body = body.push(menu_button(
-            "Customize icon…",
-            ACCENT,
-            Message::OpenIconMapper,
-        ));
-        if let Some(status) = &self.last_status {
-            body = body.push(Space::with_height(Length::Fixed(6.0)));
-            body = body.push(text(status.clone()).size(10).color(FG_MUTED));
-        }
-        body = body.push(Space::with_height(Length::Fill));
-        body = body.push(
-            text("Esc closes · click outside dismisses")
-                .size(9)
-                .color(FG_MUTED),
-        );
-
-        let card: Element<'_, Message> = container(body)
-            .width(Length::Fixed(WIDTH as f32))
-            .height(Length::Fixed(HEIGHT as f32))
-            .style(popover_surface)
-            .into();
-
-        // v3.0.4 backdrop. Pinned bottom-left so the popover
-        // floats above the dock with a small left gutter (the
-        // dock entries that trigger this popover sit on the
-        // left edge of the screen first).
-        let dismiss = || {
-            mouse_area(
-                container(Space::with_width(Length::Fill))
-                    .width(Length::Fill)
-                    .height(Length::Fill),
-            )
-            .on_press(Message::Exit)
-        };
-        let bottom_strip = row![
-            container(card).padding(Padding {
-                top: 0.0,
-                right: 0.0,
-                bottom: 48.0,
-                left: 4.0,
-            }),
-            dismiss(),
-        ]
-        .height(Length::Fixed((HEIGHT + 48) as f32));
-        container(column![dismiss(), bottom_strip])
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .style(|_| container::Style {
-                background: Some(iced::Background::Color(iced::Color::TRANSPARENT)),
-                border: iced::Border {
-                    color: iced::Color::TRANSPARENT,
-                    width: 0.0,
-                    radius: 0.0.into(),
-                },
-                shadow: iced::Shadow::default(),
-                text_color: None,
-            })
-            .into()
-    }
-
-    fn theme(&self) -> Theme {
-        Theme::Dark
-    }
-
-    fn subscription(&self) -> iced::Subscription<Message> {
-        iced::keyboard::on_key_press(|key, _| {
-            use iced::keyboard::{key::Named, Key};
-            if matches!(key, Key::Named(Named::Escape)) {
-                Some(Message::Exit)
-            } else {
-                None
-            }
-        })
-    }
-}
-
-pub fn run() -> iced_layershell::Result {
-    <App as iced_layershell::Application>::run(Settings {
+        },
+        namespace,
+        update,
+        view,
+    )
+    .theme(|_: &App| Theme::Dark)
+    .subscription(subscription)
+    .settings(Settings {
         id: Some("mde-popover-window-actions".to_string()),
         fonts: crate::fonts::load_fallback_fonts(),
         layer_settings: LayerShellSettings {
@@ -287,6 +289,7 @@ pub fn run() -> iced_layershell::Result {
         },
         ..Default::default()
     })
+    .run()
 }
 
 fn workspace_button(n: u32) -> Element<'static, Message> {
@@ -361,6 +364,7 @@ fn tinted_button_style(status: button::Status, tint: Color) -> button::Style {
             radius: 6.0.into(),
         },
         shadow: Shadow::default(),
+        snap: false,
     }
 }
 
@@ -379,6 +383,7 @@ fn popover_surface(_t: &Theme) -> container::Style {
         },
         text_color: Some(FG_TEXT),
         shadow: Shadow::default(),
+        snap: false,
     }
 }
 

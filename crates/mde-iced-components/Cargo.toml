@@ -15,7 +15,7 @@ path = "src/lib.rs"
 [dependencies]
 # Match the workbench's iced feature set so call sites here +
 # call sites there get the same widget surface area.
-iced       = { version = "0.13", default-features = false, features = ["wgpu", "tiny-skia", "svg", "tokio", "advanced", "canvas"] }
+iced       = { version = "0.14", default-features = false, features = ["wgpu", "tiny-skia", "svg", "tokio", "advanced", "canvas", "wayland"] }
 mde-theme  = { path = "../mde-theme", features = ["iced"] }
 
 [lints]

@@ -145,7 +145,7 @@ use std::sync::{Arc, Mutex};
 
 use iced::widget::{column, container, text};
 use iced::{
-    Background, Border, Color, Element, Length, Padding, Shadow, Task, Theme,
+    Background, Border, Color, Element, Length, Padding, Shadow, Subscription, Task, Theme,
 };
 use iced_layershell::reexport::{Anchor, KeyboardInteractivity, Layer};
 use iced_layershell::settings::{LayerShellSettings, Settings};
@@ -285,120 +285,99 @@ pub struct App {
     last_offset: Arc<Mutex<u64>>,
 }
 
-impl iced_layershell::Application for App {
-    type Executor = iced::executor::Default;
-    type Message = Message;
-    type Theme = Theme;
-    type Flags = ();
+fn namespace() -> String {
+    "mde-popover-toasts".to_string()
+}
 
-    fn new(_flags: ()) -> (Self, Task<Message>) {
-        let app = Self {
-            stack: Arc::new(Mutex::new(ToastStack::new())),
-            last_offset: Arc::new(Mutex::new(0)),
-        };
-        // Seed: skip any pre-existing entries (we only show toasts
-        // that fire after the surface started). Set offset to the
-        // current file size.
-        if let Ok(meta) = std::fs::metadata(toast_queue_path()) {
-            if let Ok(mut o) = app.last_offset.lock() {
-                *o = meta.len();
+fn update(state: &mut App, msg: Message) -> Task<Message> {
+    match msg {
+        Message::Tick => {
+            state.poll_queue();
+            if let Ok(mut s) = state.stack.lock() {
+                s.retain_unexpired(std::time::Instant::now());
             }
         }
-        (app, Task::none())
+        _ => {}
     }
+    Task::none()
+}
 
-    fn namespace(&self) -> String {
-        "mde-popover-toasts".into()
-    }
-
-    fn update(&mut self, msg: Message) -> Task<Message> {
-        match msg {
-            Message::Tick => {
-                self.poll_queue();
-                if let Ok(mut s) = self.stack.lock() {
-                    s.retain_unexpired(std::time::Instant::now());
-                }
-            }
-            _ => {}
-        }
-        Task::none()
-    }
-
-    fn view(&self) -> Element<'_, Message> {
-        let snapshot: Vec<Toast> = match self.stack.lock() {
-            Ok(g) => g.iter().cloned().collect(),
-            Err(_) => Vec::new(),
-        };
-        if snapshot.is_empty() {
-            // v4.0.1 BUG-17 fix (2026-05-23) — return a Length::Fill
-            // container with a TRANSPARENT background so the
-            // layer-shell surface stays the locked 360×200 (no
-            // wlr-layer-shell stretch-to-screen fallback) but its
-            // pixels show the wallpaper through, matching Win11's
-            // toast surface "zero compositor real-estate when
-            // idle" idiom. The previous 1×1 widget left the
-            // outer surface rendering iced's default theme dark
-            // fill = a permanent grey rectangle above the panel.
-            return container(text(""))
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .style(|_| container::Style {
-                    background: Some(Background::Color(Color::TRANSPARENT)),
-                    border: Border {
-                        color: Color::TRANSPARENT,
-                        width: 0.0,
-                        radius: 0.0.into(),
-                    },
-                    shadow: Shadow::default(),
-                    text_color: None,
-                })
-                .into();
-        }
-        let mut col = column![].spacing(8);
-        // Iterate oldest-to-newest; render newest at the top.
-        for toast in snapshot.iter().rev() {
-            col = col.push(toast_pill(toast));
-        }
-        container(col)
-            .padding(Padding {
-                top: 0.0,
-                right: 0.0,
-                bottom: 8.0,
-                left: 0.0,
-            })
-            .into()
-    }
-
-    fn theme(&self) -> Theme {
-        // v4.0.1 BUG-17 (2026-05-23) — return a custom theme
-        // whose Palette background is fully transparent. Iced's
-        // built-in `Theme::Dark` paints its surface dark-slate
-        // even when every inner widget is transparent, which
-        // left a permanent grey 360×200 rectangle floating above
-        // the panel when the toast stack was empty. wlr-layer-
-        // shell respects alpha so the operator sees the
-        // wallpaper through the surface in that idle state.
-        Theme::custom(
-            "mde-popover-toasts".into(),
-            iced::theme::Palette {
-                background: Color::TRANSPARENT,
-                text: FG_TEXT,
-                primary: Color {
-                    r: 0.36,
-                    g: 0.42,
-                    b: 0.96,
-                    a: 1.0,
+fn view(state: &App) -> Element<'_, Message> {
+    let snapshot: Vec<Toast> = match state.stack.lock() {
+        Ok(g) => g.iter().cloned().collect(),
+        Err(_) => Vec::new(),
+    };
+    if snapshot.is_empty() {
+        // v4.0.1 BUG-17 fix (2026-05-23) — return a Length::Fill
+        // container with a TRANSPARENT background so the
+        // layer-shell surface stays the locked 360×200 (no
+        // wlr-layer-shell stretch-to-screen fallback) but its
+        // pixels show the wallpaper through, matching Win11's
+        // toast surface "zero compositor real-estate when
+        // idle" idiom. The previous 1×1 widget left the
+        // outer surface rendering iced's default theme dark
+        // fill = a permanent grey rectangle above the panel.
+        return container(text(""))
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(|_| container::Style {
+                background: Some(Background::Color(Color::TRANSPARENT)),
+                border: Border {
+                    color: Color::TRANSPARENT,
+                    width: 0.0,
+                    radius: 0.0.into(),
                 },
-                success: Color::from_rgb(0.20, 0.80, 0.40),
-                danger: Color::from_rgb(0.92, 0.32, 0.30),
-            },
-        )
+                shadow: Shadow::default(),
+                text_color: None,
+                snap: false,
+            })
+            .into();
     }
+    let mut col = column![].spacing(8);
+    // Iterate oldest-to-newest; render newest at the top.
+    for toast in snapshot.iter().rev() {
+        col = col.push(toast_pill(toast));
+    }
+    container(col)
+        .padding(Padding {
+            top: 0.0,
+            right: 0.0,
+            bottom: 8.0,
+            left: 0.0,
+        })
+        .into()
+}
 
-    fn subscription(&self) -> iced::Subscription<Message> {
-        iced::time::every(std::time::Duration::from_millis(POLL_INTERVAL_MS))
-            .map(|_| Message::Tick)
-    }
+fn app_theme(_state: &App) -> Theme {
+    // v4.0.1 BUG-17 (2026-05-23) — return a custom theme
+    // whose Palette background is fully transparent. Iced's
+    // built-in `Theme::Dark` paints its surface dark-slate
+    // even when every inner widget is transparent, which
+    // left a permanent grey 360×200 rectangle floating above
+    // the panel when the toast stack was empty. wlr-layer-
+    // shell respects alpha so the operator sees the
+    // wallpaper through the surface in that idle state.
+    Theme::custom(
+        "mde-popover-toasts",
+        iced::theme::Palette {
+            background: Color::TRANSPARENT,
+            text: FG_TEXT,
+            primary: Color {
+                r: 0.36,
+                g: 0.42,
+                b: 0.96,
+                a: 1.0,
+            },
+            warning: Color::from_rgb(0.96, 0.65, 0.14),
+            success: Color::from_rgb(0.20, 0.80, 0.40),
+            danger: Color::from_rgb(0.92, 0.32, 0.30),
+        },
+    )
+}
+
+fn subscription(_state: &App) -> Subscription<Message> {
+    iced::time::every(std::time::Duration::from_millis(POLL_INTERVAL_MS))
+        .map(|_| Message::Tick)
 }
 
 impl App {
@@ -454,8 +433,30 @@ impl App {
 }
 
 pub fn run() -> iced_layershell::Result {
-    <App as iced_layershell::Application>::run(Settings {
-        id: Some("mde-popover-toasts".into()),
+    iced_layershell::application(
+        || {
+            let app = App {
+                stack: Arc::new(Mutex::new(ToastStack::new())),
+                last_offset: Arc::new(Mutex::new(0)),
+            };
+            // Seed: skip any pre-existing entries (we only show toasts
+            // that fire after the surface started). Set offset to the
+            // current file size.
+            if let Ok(meta) = std::fs::metadata(toast_queue_path()) {
+                if let Ok(mut o) = app.last_offset.lock() {
+                    *o = meta.len();
+                }
+            }
+            app
+        },
+        namespace,
+        update,
+        view,
+    )
+    .theme(app_theme)
+    .subscription(subscription)
+    .settings(Settings {
+        id: Some("mde-popover-toasts".to_string()),
         fonts: crate::fonts::load_fallback_fonts(),
         layer_settings: LayerShellSettings {
             // Top layer so toasts sit above the panel + over any
@@ -480,6 +481,7 @@ pub fn run() -> iced_layershell::Result {
         },
         ..Default::default()
     })
+    .run()
 }
 
 fn toast_pill(toast: &Toast) -> Element<'static, Message> {
@@ -501,6 +503,7 @@ fn toast_pill(toast: &Toast) -> Element<'static, Message> {
             },
             text_color: Some(FG_TEXT),
             shadow: Shadow::default(),
+            snap: false,
         })
         .into()
 }
@@ -597,8 +600,11 @@ mod tests {
         // fix returns a custom theme whose background alpha is
         // 0 so the surface stays the locked 360×200 but its
         // pixels show the compositor's wallpaper through.
-        let (app, _) = <App as iced_layershell::Application>::new(());
-        let theme = iced_layershell::Application::theme(&app);
+        let app = App {
+            stack: Arc::new(Mutex::new(ToastStack::new())),
+            last_offset: Arc::new(Mutex::new(0)),
+        };
+        let theme = app_theme(&app);
         let palette = theme.palette();
         assert!(
             (palette.background.a).abs() < f32::EPSILON,
@@ -615,7 +621,10 @@ mod tests {
         // Fill/Fill transparent container instead of the prior
         // 1×1 dummy. Smoke test that the render path doesn't
         // panic + returns something an Iced runtime can paint.
-        let (app, _) = <App as iced_layershell::Application>::new(());
-        let _ = iced_layershell::Application::view(&app);
+        let app = App {
+            stack: Arc::new(Mutex::new(ToastStack::new())),
+            last_offset: Arc::new(Mutex::new(0)),
+        };
+        let _ = view(&app);
     }
 }

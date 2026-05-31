@@ -10,7 +10,7 @@
 use std::path::PathBuf;
 
 use iced::widget::{column, container, mouse_area, row, scrollable, text, Space};
-use iced::{Alignment, Background, Border, Color, Element, Length, Padding, Task, Theme};
+use iced::{Alignment, Background, Border, Color, Element, Length, Padding, Subscription, Task, Theme};
 use iced::widget::container::Style as ContainerStyle;
 use iced_layershell::reexport::{Anchor, KeyboardInteractivity, Layer};
 use iced_layershell::settings::{LayerShellSettings, Settings};
@@ -113,140 +113,145 @@ pub struct App {
     bindings: Vec<Binding>,
 }
 
-impl iced_layershell::Application for App {
-    type Executor = iced::executor::Default;
-    type Message = Message;
-    type Theme = Theme;
-    type Flags = ();
+fn namespace() -> String {
+    "mde-popover-which-key".to_string()
+}
 
-    fn new(_flags: ()) -> (Self, Task<Message>) {
-        let mode_name = std::env::var("MDE_SWAY_MODE").unwrap_or_default();
-        let bindings = if mode_name.is_empty() {
-            Vec::new()
-        } else {
-            parse_mode_bindings(&mode_name)
-        };
-        (Self { mode_name, bindings }, Task::none())
-    }
-
-    fn namespace(&self) -> String {
-        "mde-popover-which-key".to_string()
-    }
-
-    fn update(&mut self, msg: Message) -> Task<Message> {
-        match msg {
-            Message::Exit => std::process::exit(0),
-            _ => Task::none(),
-        }
-    }
-
-    fn view(&self) -> Element<'_, Message> {
-        let heading = if self.mode_name.is_empty() {
-            "Mode bindings".to_string()
-        } else {
-            format!("MODE: {}", self.mode_name.to_ascii_uppercase())
-        };
-
-        let header = container(
-            text(heading).size(12).color(ACCENT),
-        )
-        .padding(Padding { top: 0.0, right: 0.0, bottom: 6.0, left: 0.0 });
-
-        let body: Element<'_, Message> = if self.bindings.is_empty() {
-            text("No bindings found for this mode.")
-                .size(12)
-                .color(FG_DIM)
-                .into()
-        } else {
-            let mut rows = column![].spacing(4);
-            for binding in self.bindings.iter().take(MAX_ROWS) {
-                let key_cell = container(
-                    text(binding.key.clone()).size(12).color(FG),
-                )
-                .width(Length::Fixed(150.0));
-
-                let sep = container(text("→").size(12).color(FG_LABEL))
-                    .width(Length::Fixed(20.0));
-
-                let action_cell = container(
-                    text(binding.action.clone()).size(12).color(FG_DIM),
-                )
-                .width(Length::Fill);
-
-                rows = rows.push(
-                    row![key_cell, sep, action_cell].align_y(Alignment::Center),
-                );
-            }
-            if self.bindings.len() > MAX_ROWS {
-                let extra = self.bindings.len() - MAX_ROWS;
-                rows = rows.push(
-                    text(format!("… {extra} more"))
-                        .size(11)
-                        .color(FG_DIM),
-                );
-            }
-            scrollable(rows).height(Length::Shrink).into()
-        };
-
-        let dismiss_hint = container(
-            text("Esc or click outside to close").size(10).color(FG_LABEL),
-        )
-        .padding(Padding { top: 8.0, right: 0.0, bottom: 0.0, left: 0.0 });
-
-        let card = container(
-            column![header, body, dismiss_hint].padding(Padding::from([14, 16])),
-        )
-        .width(Length::Fixed(CARD_WIDTH))
-        .style(|_: &Theme| ContainerStyle {
-            background: Some(Background::Color(CHARCOAL)),
-            border: Border {
-                color: Color { r: 1.0, g: 1.0, b: 1.0, a: 0.10 },
-                width: 1.0,
-                radius: 8.0.into(),
-            },
-            text_color: Some(FG),
-            shadow: iced::Shadow::default(),
-        });
-
-        let centered = column![
-            Space::with_height(Length::Fill),
-            container(card)
-                .width(Length::Fill)
-                .align_x(Alignment::Center),
-            Space::with_height(Length::Fill),
-        ];
-
-        mouse_area(
-            container(centered)
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .style(|_: &Theme| ContainerStyle {
-                    background: Some(Background::Color(BACKDROP)),
-                    ..Default::default()
-                }),
-        )
-        .on_press(Message::Exit)
-        .into()
-    }
-
-    fn theme(&self) -> Theme {
-        Theme::Dark
-    }
-
-    fn subscription(&self) -> iced::Subscription<Message> {
-        iced::keyboard::on_key_press(|key, _| {
-            use iced::keyboard::{key::Named, Key};
-            if matches!(key, Key::Named(Named::Escape)) {
-                Some(Message::Exit)
-            } else {
-                None
-            }
-        })
+fn update(_state: &mut App, msg: Message) -> Task<Message> {
+    match msg {
+        Message::Exit => std::process::exit(0),
+        _ => Task::none(),
     }
 }
 
+fn view(state: &App) -> Element<'_, Message> {
+    let heading = if state.mode_name.is_empty() {
+        "Mode bindings".to_string()
+    } else {
+        format!("MODE: {}", state.mode_name.to_ascii_uppercase())
+    };
+
+    let header = container(
+        text(heading).size(12).color(ACCENT),
+    )
+    .padding(Padding { top: 0.0, right: 0.0, bottom: 6.0, left: 0.0 });
+
+    let body: Element<'_, Message> = if state.bindings.is_empty() {
+        text("No bindings found for this mode.")
+            .size(12)
+            .color(FG_DIM)
+            .into()
+    } else {
+        let mut rows = column![].spacing(4);
+        for binding in state.bindings.iter().take(MAX_ROWS) {
+            let key_cell = container(
+                text(binding.key.clone()).size(12).color(FG),
+            )
+            .width(Length::Fixed(150.0));
+
+            let sep = container(text("→").size(12).color(FG_LABEL))
+                .width(Length::Fixed(20.0));
+
+            let action_cell = container(
+                text(binding.action.clone()).size(12).color(FG_DIM),
+            )
+            .width(Length::Fill);
+
+            rows = rows.push(
+                row![key_cell, sep, action_cell].align_y(Alignment::Center),
+            );
+        }
+        if state.bindings.len() > MAX_ROWS {
+            let extra = state.bindings.len() - MAX_ROWS;
+            rows = rows.push(
+                text(format!("… {extra} more"))
+                    .size(11)
+                    .color(FG_DIM),
+            );
+        }
+        scrollable(rows).height(Length::Shrink).into()
+    };
+
+    let dismiss_hint = container(
+        text("Esc or click outside to close").size(10).color(FG_LABEL),
+    )
+    .padding(Padding { top: 8.0, right: 0.0, bottom: 0.0, left: 0.0 });
+
+    let card = container(
+        column![header, body, dismiss_hint].padding(Padding::from([14, 16])),
+    )
+    .width(Length::Fixed(CARD_WIDTH))
+    .style(|_: &Theme| ContainerStyle {
+        background: Some(Background::Color(CHARCOAL)),
+        border: Border {
+            color: Color { r: 1.0, g: 1.0, b: 1.0, a: 0.10 },
+            width: 1.0,
+            radius: 8.0.into(),
+        },
+        text_color: Some(FG),
+        shadow: iced::Shadow::default(),
+        snap: false,
+    });
+
+    let centered = column![
+        Space::new().height(Length::Fill),
+        container(card)
+            .width(Length::Fill)
+            .align_x(Alignment::Center),
+        Space::new().height(Length::Fill),
+    ];
+
+    mouse_area(
+        container(centered)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(|_: &Theme| ContainerStyle {
+                background: Some(Background::Color(BACKDROP)),
+                ..Default::default()
+            }),
+    )
+    .on_press(Message::Exit)
+    .into()
+}
+
+fn subscription(_state: &App) -> Subscription<Message> {
+    use iced::event;
+    event::listen_with(|event, status, _window| {
+        use iced::keyboard;
+        match event {
+            iced::Event::Keyboard(keyboard::Event::KeyPressed { key, .. })
+                if status == event::Status::Ignored =>
+            {
+                use iced::keyboard::{key::Named, Key};
+                if matches!(key, Key::Named(Named::Escape)) {
+                    Some(Message::Exit)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    })
+}
+
 pub fn run() -> iced_layershell::Result {
-    <App as iced_layershell::Application>::run(Settings {
+    iced_layershell::application(
+        || {
+            let mode_name = std::env::var("MDE_SWAY_MODE").unwrap_or_default();
+            let bindings = if mode_name.is_empty() {
+                Vec::new()
+            } else {
+                parse_mode_bindings(&mode_name)
+            };
+            App { mode_name, bindings }
+        },
+        namespace,
+        update,
+        view,
+    )
+    .theme(|_: &App| iced::Theme::Dark)
+    .subscription(subscription)
+    .settings(Settings {
         id: Some("mde-popover-which-key".to_string()),
         fonts: crate::fonts::load_fallback_fonts(),
         layer_settings: LayerShellSettings {
@@ -260,6 +265,7 @@ pub fn run() -> iced_layershell::Result {
         },
         ..Default::default()
     })
+    .run()
 }
 
 #[cfg(test)]

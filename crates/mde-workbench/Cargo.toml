@@ -22,7 +22,7 @@ path = "src/main.rs"
 # set so the workspace dep tree stays one resolution).
 # v4.0.1 BUG-13.c: `svg` so panel_chrome + header can render Material
 # Symbols glyphs via iced::widget::svg when Icon::svg_bytes() is Some.
-iced       = { version = "0.13", default-features = false, features = ["wgpu", "tiny-skia", "svg", "tokio", "advanced", "canvas"] }
+iced       = { version = "0.14", default-features = false, features = ["wgpu", "tiny-skia", "svg", "tokio", "advanced", "canvas", "wayland"] }
 # CB-1.13 will land the dev.mackes.MDE.Shell.Workbench.Focus
 # interface; CB-1.1's single-instance handshake already needs the
 # dep so the bus-name constants + RequestNameReply mapping live
@@ -76,6 +76,12 @@ mde-iced-components = { path = "../mde-iced-components" }
 # music daemon's creds + cache + airsonic-client modules so the panel
 # and `mde-musicd` agree byte-for-byte on storage paths + auth.
 mde-musicd = { path = "../mde-musicd" }
+# DBUS-3 (2026-05-30) — the workbench `focus(slug)` hand-off migrates
+# from the `dev.mackes.MDE.Shell.Workbench` D-Bus method to Bus
+# `action/shell/workbench-focus` (Q96/EPIC-RETIRE-DBUS). The D-Bus
+# NAME is still owned for single-instance detection (finding #3
+# documented exception); only the method moves to the Bus.
+mde-bus = { path = "../mde-bus" }
 
 [features]
 # `wayland` (default): Iced renders via Wayland/wgpu.

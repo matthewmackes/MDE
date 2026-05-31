@@ -39,7 +39,7 @@ fn titlebar_inner(online: usize, total: usize) -> Element<'static, Message> {
 
     let title = row![
         text("Artifact Manager").size(12).color(t::FG),
-        Space::with_width(Length::Fixed(6.0)),
+        Space::new().width(Length::Fixed(6.0)),
         text(mesh_text).size(11).color(t::FG_FAINT),
     ]
     .align_y(iced::alignment::Vertical::Center);
@@ -76,7 +76,7 @@ fn titlebar_inner(online: usize, total: usize) -> Element<'static, Message> {
                 button::Status::Hovered => t::FG,
                 _ => t::FG_DIM,
             };
-            button::Style {
+            button::Style { snap: false,
                 background: Some(Background::Color(bg)),
                 text_color: fg,
                 border: Border {
@@ -110,7 +110,7 @@ fn titlebar_inner(online: usize, total: usize) -> Element<'static, Message> {
     container(row![app_icon, title_cell, controls].align_y(iced::alignment::Vertical::Center))
         .width(Length::Fill)
         .height(Length::Fixed(t::TITLEBAR_H))
-        .style(|_| container::Style {
+        .style(|_| container::Style { snap: false,
             background: Some(Background::Color(t::WINDOW_TITLEBAR)),
             border: Border {
                 color: t::DIVIDER,
@@ -148,14 +148,14 @@ pub fn sidebar<'a>(
         row![
             top_btn(icons::PANEL_RIGHT, Message::Noop),
             top_btn(icons::ARROW_LEFT, Message::SelectView(View::MeshOverview)),
-            Space::with_width(Length::Fill),
+            Space::new().width(Length::Fill),
             top_btn(icons::REFRESH, Message::Refresh),
         ]
         .spacing(4)
         .align_y(iced::alignment::Vertical::Center),
     )
     .padding(Padding::new(6.0))
-    .style(|_| container::Style {
+    .style(|_| container::Style { snap: false,
         background: Some(Background::Color(t::WINDOW_SIDE)),
         border: Border {
             color: t::DIVIDER,
@@ -252,7 +252,7 @@ pub fn sidebar<'a>(
         ));
     }
 
-    mesh_col = mesh_col.push(Space::with_height(Length::Fixed(4.0)));
+    mesh_col = mesh_col.push(Space::new().height(Length::Fixed(4.0)));
     mesh_col = mesh_col.push(side_row(
         icons::INBOX,
         "Inbox",
@@ -315,7 +315,7 @@ pub fn sidebar<'a>(
             bottom: 4.0,
             left: 0.0,
         })
-        .style(|_| container::Style {
+        .style(|_| container::Style { snap: false,
             background: Some(Background::Color(Color {
                 a: 0.18,
                 ..Color::BLACK
@@ -339,7 +339,7 @@ pub fn sidebar<'a>(
     let foot = container(
         row![
             text(foot_text).size(11).color(t::FG_FAINT),
-            Space::with_width(Length::Fill),
+            Space::new().width(Length::Fill),
             button(
                 row![
                     icon(icons::PLUS, 12.0, t::ACCENT_HI),
@@ -348,7 +348,7 @@ pub fn sidebar<'a>(
                 .spacing(6),
             )
             .padding(Padding::from([4.0, 8.0]))
-            .style(|_, _| button::Style {
+            .style(|_, _| button::Style { snap: false,
                 background: Some(Background::Color(Color {
                     a: 0.10,
                     ..t::ACCENT
@@ -369,7 +369,7 @@ pub fn sidebar<'a>(
         .align_y(iced::alignment::Vertical::Center),
     )
     .padding(Padding::from([10.0, 14.0]))
-    .style(|_| container::Style {
+    .style(|_| container::Style { snap: false,
         background: Some(Background::Color(t::WINDOW_SIDE)),
         border: Border {
             color: t::DIVIDER,
@@ -386,7 +386,7 @@ pub fn sidebar<'a>(
     container(col)
         .width(Length::Fixed(t::SIDEBAR_W))
         .height(Length::Fill)
-        .style(|_| container::Style {
+        .style(|_| container::Style { snap: false,
             background: Some(Background::Color(t::WINDOW_SIDE)),
             border: Border {
                 color: t::DIVIDER,
@@ -446,7 +446,7 @@ pub fn toolbar<'a>(
     )
     .padding(Padding::from([4.0, 8.0]))
     .width(Length::Fixed(220.0))
-    .style(|_| container::Style {
+    .style(|_| container::Style { snap: false,
         background: Some(Background::Color(Color {
             a: 0.05,
             ..Color::WHITE
@@ -489,7 +489,7 @@ pub fn toolbar<'a>(
         ]
         .spacing(0),
     )
-    .style(|_| container::Style {
+    .style(|_| container::Style { snap: false,
         background: Some(Background::Color(Color::TRANSPARENT)),
         border: Border {
             color: t::DIVIDER,
@@ -504,7 +504,7 @@ pub fn toolbar<'a>(
     container(
         row![
             crumb_row,
-            Space::with_width(Length::Fill),
+            Space::new().width(Length::Fill),
             search_widget,
             view_toggle,
             primary,
@@ -514,7 +514,7 @@ pub fn toolbar<'a>(
     )
     .padding(Padding::from([8.0, 16.0]))
     .width(Length::Fill)
-    .style(|_| container::Style {
+    .style(|_| container::Style { snap: false,
         background: Some(Background::Color(t::PF_BG_200)),
         border: Border {
             color: t::DIVIDER,
@@ -548,7 +548,7 @@ fn view_toggle_btn(
             .align_y(iced::alignment::Vertical::Center),
     )
     .padding(0)
-    .style(move |_, _| button::Style {
+    .style(move |_, _| button::Style { snap: false,
         background: Some(Background::Color(bg)),
         text_color: fg,
         border: Border {
@@ -595,7 +595,7 @@ fn primary_action(view: &View) -> Element<'static, Message> {
         .on_press(Message::PrimaryAction);
 
     if ghost {
-        btn.style(|_, _| button::Style {
+        btn.style(|_, _| button::Style { snap: false,
             background: Some(Background::Color(Color::TRANSPARENT)),
             text_color: t::BUTTON_ACCENT,
             border: Border {
@@ -613,7 +613,7 @@ fn primary_action(view: &View) -> Element<'static, Message> {
             } else {
                 t::BUTTON_ACCENT
             };
-            button::Style {
+            button::Style { snap: false,
                 background: Some(Background::Color(bg)),
                 text_color: Color::WHITE,
                 border: Border {
@@ -670,7 +670,7 @@ pub fn mesh_overview<'a>(snap: &'a BackendSnapshot) -> Element<'a, Message> {
 
     column![
         banner_widget,
-        Space::with_height(Length::Fixed(22.0)),
+        Space::new().height(Length::Fixed(22.0)),
         section_h(
             &format!("Peers · {total}"),
             Some("tailnet · sorted by latency")
@@ -766,7 +766,7 @@ pub fn peer_folder<'a>(
     let _ = self_node;
     column![
         banner_widget,
-        Space::with_height(Length::Fixed(22.0)),
+        Space::new().height(Length::Fixed(22.0)),
         section_h("Shared with this node", Some(&count_label)),
         list,
     ]
@@ -805,7 +805,7 @@ pub fn inbox<'a>(snap: &'a BackendSnapshot, selection: &'a Selection) -> Element
         list = list.push(file_row(f.clone(), true, sel, foc));
     }
 
-    column![banner_widget, Space::with_height(Length::Fixed(22.0)), list,]
+    column![banner_widget, Space::new().height(Length::Fixed(22.0)), list,]
         .spacing(0)
         .into()
 }
@@ -835,7 +835,7 @@ pub fn downloads<'a>(snap: &'a BackendSnapshot, selection: &'a Selection) -> Ele
         list = list.push(file_row(f.clone(), true, sel, foc));
     }
 
-    column![banner_widget, Space::with_height(Length::Fixed(22.0)), list,]
+    column![banner_widget, Space::new().height(Length::Fixed(22.0)), list,]
         .spacing(0)
         .into()
 }
@@ -853,7 +853,7 @@ pub fn local_veil<'a>(snap: &'a BackendSnapshot, selection: &'a Selection) -> El
                 .color(t::FG_FAINT)
         )
         .padding(Padding::from([1.0, 6.0]))
-        .style(|_| container::Style {
+        .style(|_| container::Style { snap: false,
             background: Some(Background::Color(Color {
                 a: 0.04,
                 ..Color::WHITE
@@ -897,7 +897,7 @@ pub fn local_veil<'a>(snap: &'a BackendSnapshot, selection: &'a Selection) -> El
         .spacing(14),
     )
     .padding(Padding::from([20.0, 22.0]))
-    .style(|_| container::Style {
+    .style(|_| container::Style { snap: false,
         background: Some(Background::Color(t::PF_BG_200)),
         border: Border {
             color: t::DIVIDER,
@@ -916,7 +916,7 @@ pub fn local_veil<'a>(snap: &'a BackendSnapshot, selection: &'a Selection) -> El
 
     column![
         veil,
-        Space::with_height(Length::Fixed(20.0)),
+        Space::new().height(Length::Fixed(20.0)),
         section_h("Recent locally-modified", Some("~/ · last 24 h")),
         recent,
     ]
@@ -959,7 +959,7 @@ pub fn mesh_home<'a>(snap: &'a BackendSnapshot) -> Element<'a, Message> {
 
     column![
         banner_widget,
-        Space::with_height(Length::Fixed(22.0)),
+        Space::new().height(Length::Fixed(22.0)),
         section_h(
             "Shared directories",
             Some("auto-synced across every peer in the mesh")
@@ -1041,7 +1041,7 @@ pub fn mesh_home_child<'a>(
 
     column![
         banner_widget,
-        Space::with_height(Length::Fixed(22.0)),
+        Space::new().height(Length::Fixed(22.0)),
         list.spacing(0),
     ]
     .spacing(0)
@@ -1056,9 +1056,9 @@ fn parent_link_row() -> Element<'static, Message> {
         container(
             row![
                 icon(icons::ARROW_LEFT, 14.0, t::FG_DIM),
-                Space::with_width(Length::Fixed(8.0)),
+                Space::new().width(Length::Fixed(8.0)),
                 text("..").size(12).color(t::FG_DIM),
-                Space::with_width(Length::Fill),
+                Space::new().width(Length::Fill),
                 text("parent folder").size(10).color(t::FG_FAINT),
             ]
             .align_y(iced::alignment::Vertical::Center),
@@ -1132,13 +1132,13 @@ fn mesh_home_card(
         column![
             row![
                 icon(icons::svg_for_pin(pin_icon), 20.0, t::ACCENT),
-                Space::with_width(Length::Fill),
+                Space::new().width(Length::Fill),
                 text("shared")
                     .size(9)
                     .color(t::ACCENT),
             ]
             .align_y(iced::alignment::Vertical::Center),
-            Space::with_height(Length::Fixed(12.0)),
+            Space::new().height(Length::Fixed(12.0)),
             text(label).size(14).color(t::FG),
             text(format!("~/{label}"))
                 .size(10)
@@ -1149,7 +1149,7 @@ fn mesh_home_card(
     .padding(Padding::from([14.0, 16.0]))
     .width(Length::Fixed(180.0))
     .height(Length::Fixed(110.0))
-    .style(|_| container::Style {
+    .style(|_| container::Style { snap: false,
         background: Some(Background::Color(Color {
             a: 0.04,
             ..Color::WHITE
@@ -1170,7 +1170,7 @@ fn mesh_home_card(
         .on_press(Message::SelectView(crate::model::View::MeshHomeChild(
             slug.into(),
         )))
-        .style(|_, _| button::Style {
+        .style(|_, _| button::Style { snap: false,
             background: Some(Background::Color(Color::TRANSPARENT)),
             text_color: t::FG,
             border: Border {
@@ -1196,11 +1196,11 @@ pub fn resolve_conflict_dialog<'a>(
     let orig = original.to_owned();
     let sib = sibling.to_owned();
 
-    let dismiss_backdrop = button(Space::new(Length::Fill, Length::Fill))
+    let dismiss_backdrop = button(Space::new().width(Length::Fill).height(Length::Fill))
         .padding(0)
         .width(Length::Fill)
         .height(Length::Fill)
-        .style(|_, _| button::Style {
+        .style(|_, _| button::Style { snap: false,
             background: Some(Background::Color(Color {
                 r: 0.0,
                 g: 0.0,
@@ -1220,9 +1220,9 @@ pub fn resolve_conflict_dialog<'a>(
     let dialog_card = container(
         column![
             text("Merge conflict").size(14).color(t::FG),
-            Space::with_height(Length::Fixed(4.0)),
+            Space::new().height(Length::Fixed(4.0)),
             text(format!("File: {original}")).size(12).color(t::FG_DIM),
-            Space::with_height(Length::Fixed(16.0)),
+            Space::new().height(Length::Fixed(16.0)),
             button(
                 column![
                     text("Keep original").size(12).color(t::FG),
@@ -1239,7 +1239,7 @@ pub fn resolve_conflict_dialog<'a>(
                     button::Status::Hovered => t::PRIMARY_AMBER_BG_HOVER,
                     _ => t::PRIMARY_AMBER_BG,
                 };
-                button::Style {
+                button::Style { snap: false,
                     background: Some(Background::Color(bg)),
                     text_color: t::FG,
                     border: Border {
@@ -1251,7 +1251,7 @@ pub fn resolve_conflict_dialog<'a>(
                 }
             })
             .on_press(Message::ArchiveConflictFile(sib)),
-            Space::with_height(Length::Fixed(8.0)),
+            Space::new().height(Length::Fixed(8.0)),
             button(
                 column![
                     text("Keep conflict copy").size(12).color(t::FG),
@@ -1274,7 +1274,7 @@ pub fn resolve_conflict_dialog<'a>(
                         ..Color::WHITE
                     },
                 };
-                button::Style {
+                button::Style { snap: false,
                     background: Some(Background::Color(bg)),
                     text_color: t::FG,
                     border: Border {
@@ -1286,10 +1286,10 @@ pub fn resolve_conflict_dialog<'a>(
                 }
             })
             .on_press(Message::ArchiveConflictFile(orig)),
-            Space::with_height(Length::Fixed(12.0)),
+            Space::new().height(Length::Fixed(12.0)),
             button(text("Dismiss").size(11).color(t::FG_FAINT))
                 .padding(Padding::from([4.0, 10.0]))
-                .style(|_, _| button::Style {
+                .style(|_, _| button::Style { snap: false,
                     background: Some(Background::Color(Color::TRANSPARENT)),
                     text_color: t::FG_FAINT,
                     border: Border {
@@ -1305,7 +1305,7 @@ pub fn resolve_conflict_dialog<'a>(
     )
     .width(Length::Fixed(420.0))
     .padding(Padding::from([24.0, 28.0]))
-    .style(|_| container::Style {
+    .style(|_| container::Style { snap: false,
         background: Some(Background::Color(t::PF_BG_200)),
         border: Border {
             color: t::PRIMARY_AMBER_BORDER,
@@ -1335,7 +1335,7 @@ fn local_pin_tile(pin: LocalPin) -> Element<'static, Message> {
         row![
             icon(icons::svg_for_pin(pin.icon), 16.0, t::FG_DIM),
             text(pin.name.to_string()).size(12).color(t::FG_DIM),
-            Space::with_width(Length::Fill),
+            Space::new().width(Length::Fill),
             text(pin.path.to_string()).size(10).color(t::FG_FAINT),
         ]
         .spacing(10)
@@ -1343,7 +1343,7 @@ fn local_pin_tile(pin: LocalPin) -> Element<'static, Message> {
     )
     .padding(Padding::from([8.0, 10.0]))
     .width(Length::Fixed(180.0))
-    .style(|_| container::Style {
+    .style(|_| container::Style { snap: false,
         background: Some(Background::Color(Color {
             a: 0.02,
             ..Color::WHITE
@@ -1373,7 +1373,7 @@ pub fn mesh_undelete<'a>(
 ) -> Element<'a, Message> {
     let header = row![
         text("Recycle Bin").size(13).color(t::FG),
-        Space::with_width(Length::Fill),
+        Space::new().width(Length::Fill),
         text(if busy { "Loading…" } else { "" })
             .size(11)
             .color(t::FG_FAINT),
@@ -1403,7 +1403,7 @@ pub fn mesh_undelete<'a>(
         scrollable(column(rows).spacing(2)).into()
     };
 
-    column![header, Space::with_height(12), body]
+    column![header, Space::new().height(12), body]
         .spacing(4)
         .into()
 }
@@ -1423,7 +1423,7 @@ fn trash_row(item: &TrashItem) -> Element<'_, Message> {
                     ..Color::WHITE
                 },
             };
-            iced::widget::button::Style {
+            iced::widget::button::Style { snap: false,
                 background: Some(Background::Color(bg)),
                 text_color: t::FG,
                 border: Border {

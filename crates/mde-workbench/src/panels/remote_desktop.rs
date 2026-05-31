@@ -210,7 +210,7 @@ impl RemoteDesktopPanel {
         .style({
             let bg = palette.raised.into_iced_color();
             let border = palette.border.into_iced_color();
-            move |_| container::Style {
+            move |_| container::Style { snap: false,
                 background: Some(Background::Color(bg)),
                 border: Border {
                     color: border,
@@ -235,7 +235,7 @@ impl RemoteDesktopPanel {
                         },
                         _ => accent,
                     };
-                    iced::widget::button::Style {
+                    iced::widget::button::Style { snap: false,
                         background: Some(Background::Color(bg)),
                         text_color: Color::WHITE,
                         border: Border {
@@ -253,7 +253,7 @@ impl RemoteDesktopPanel {
             text(format!("Known hosts ({})", self.hosts.len()))
                 .size(13)
                 .color(palette.text.into_iced_color()),
-            Space::with_width(Length::Fill),
+            Space::new().width(Length::Fill),
             reload_btn,
         ]
         .align_y(iced::alignment::Vertical::Center);
@@ -277,11 +277,11 @@ impl RemoteDesktopPanel {
             column![
                 row![
                     column![title, subtitle].spacing(2),
-                    Space::with_width(Length::Fill),
+                    Space::new().width(Length::Fill),
                 ],
-                Space::with_height(Length::Fixed(20.0)),
+                Space::new().height(Length::Fixed(20.0)),
                 manual_block,
-                Space::with_height(Length::Fixed(16.0)),
+                Space::new().height(Length::Fixed(16.0)),
                 known_header,
                 scrollable(hosts_col).height(Length::Fill),
             ]
@@ -333,7 +333,7 @@ fn host_row<'a>(h: &'a KnownHost, palette: Palette) -> Element<'a, crate::Messag
     let body = row![
         icon_widget,
         column![ip_text, mac_text].spacing(2),
-        Space::with_width(Length::Fill),
+        Space::new().width(Length::Fill),
         rdp_btn,
         vnc_btn,
     ]
@@ -345,7 +345,7 @@ fn host_row<'a>(h: &'a KnownHost, palette: Palette) -> Element<'a, crate::Messag
     container(body)
         .padding(Padding::from([10u16, 14u16]))
         .width(Length::Fill)
-        .style(move |_| container::Style {
+        .style(move |_| container::Style { snap: false,
             background: Some(Background::Color(bg)),
             border: Border {
                 color: border,
@@ -391,7 +391,7 @@ fn connect_btn<'a>(
                 };
                 (bg, Color::WHITE)
             };
-            iced::widget::button::Style {
+            iced::widget::button::Style { snap: false,
                 background: Some(Background::Color(bg)),
                 text_color: fg,
                 border: Border {

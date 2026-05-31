@@ -59,7 +59,6 @@ crates/mackesd/src/ipc/healthz
 crates/mackesd/src/ipc/fleet
 crates/mackesd/src/ipc/settings
 crates/mackesd/src/ipc/files
-crates/mde-workbench/src/dbus.rs
 crates/mde-portal/src/portal_full_main.rs
 crates/mde-portal/src/dbus.rs
 '

@@ -25,7 +25,7 @@
 use std::process::Command;
 
 use iced::widget::{button, column, container, mouse_area, row, scrollable, text, Space};
-use iced::{Background, Border, Color, Element, Length, Padding, Shadow, Task, Theme};
+use iced::{Background, Border, Color, Element, Length, Padding, Shadow, Subscription, Task, Theme};
 use iced_layershell::reexport::{Anchor, KeyboardInteractivity, Layer};
 use iced_layershell::settings::{LayerShellSettings, Settings};
 use iced_layershell::to_layer_message;
@@ -97,172 +97,174 @@ pub struct App {
     last_error: Option<String>,
 }
 
-impl iced_layershell::Application for App {
-    type Executor = iced::executor::Default;
-    type Message = Message;
-    type Theme = Theme;
-    type Flags = ();
+fn namespace() -> String {
+    "mde-popover-icon-mapper".to_string()
+}
 
-    fn new(_flags: ()) -> (Self, Task<Message>) {
-        let app_id = std::env::var("MDE_ICON_MAPPER_APP_ID").unwrap_or_default();
-        let current = resolve_current(&app_id);
-        tracing::info!(app_id = %app_id, current = %current, "icon-mapper popover open");
-        (
-            Self {
-                app_id,
-                current,
-                last_error: None,
-            },
-            Task::none(),
-        )
-    }
-
-    fn namespace(&self) -> String {
-        "mde-popover-icon-mapper".to_string()
-    }
-
-    fn update(&mut self, msg: Message) -> Task<Message> {
-        match msg {
-            Message::PickGlyph(glyph) => {
-                if self.app_id.is_empty() {
-                    self.last_error = Some("no app_id supplied".to_string());
-                    return Task::none();
-                }
-                match write_override_for(&self.app_id, &glyph) {
-                    Ok(()) => std::process::exit(0),
-                    Err(e) => {
-                        self.last_error = Some(e);
-                        Task::none()
-                    }
+fn update(state: &mut App, msg: Message) -> Task<Message> {
+    match msg {
+        Message::PickGlyph(glyph) => {
+            if state.app_id.is_empty() {
+                state.last_error = Some("no app_id supplied".to_string());
+                return Task::none();
+            }
+            match write_override_for(&state.app_id, &glyph) {
+                Ok(()) => std::process::exit(0),
+                Err(e) => {
+                    state.last_error = Some(e);
+                    Task::none()
                 }
             }
-            Message::Exit => std::process::exit(0),
-            _ => Task::none(),
         }
-    }
-
-    fn view(&self) -> Element<'_, Message> {
-        let header_label = if self.app_id.is_empty() {
-            "Customize Icon".to_string()
-        } else {
-            format!("Customize {} icon", self.app_id)
-        };
-        let header = row![
-            text(header_label).size(13).color(FG_TEXT),
-            Space::with_width(Length::Fill),
-            crate::dismiss::close_button(Message::Exit),
-        ]
-        .align_y(iced::Alignment::Center);
-
-        let current_line = text(format!("Currently: {}", self.current))
-            .size(10)
-            .color(FG_MUTED);
-
-        let mut grid = column![].spacing(6);
-        let mut current_row = row![].spacing(6).align_y(iced::Alignment::Center);
-        let mut col_count = 0usize;
-        for glyph in CANDIDATE_GLYPHS {
-            let is_current = *glyph == self.current;
-            current_row = current_row.push(glyph_button(glyph, is_current));
-            col_count += 1;
-            if col_count == 3 {
-                grid = grid.push(current_row);
-                current_row = row![].spacing(6).align_y(iced::Alignment::Center);
-                col_count = 0;
-            }
-        }
-        if col_count > 0 {
-            grid = grid.push(current_row);
-        }
-
-        let mut body_col = column![
-            header,
-            Space::with_height(Length::Fixed(4.0)),
-            current_line,
-            Space::with_height(Length::Fixed(12.0)),
-            scrollable(grid).height(Length::Fill),
-        ];
-        if let Some(err) = &self.last_error {
-            body_col = body_col.push(Space::with_height(Length::Fixed(6.0)));
-            body_col = body_col.push(text(err.clone()).size(10).color(Color {
-                r: 0.95,
-                g: 0.40,
-                b: 0.40,
-                a: 1.0,
-            }));
-        }
-        body_col = body_col.push(Space::with_height(Length::Fixed(6.0)));
-        body_col = body_col.push(
-            text("Esc closes · click outside dismisses")
-                .size(9)
-                .color(FG_MUTED),
-        );
-
-        let card: Element<'_, Message> = container(
-            body_col.padding(Padding {
-                top: 14.0,
-                right: 14.0,
-                bottom: 10.0,
-                left: 14.0,
-            }),
-        )
-        .width(Length::Fixed(WIDTH as f32))
-        .height(Length::Fixed(HEIGHT as f32))
-        .style(popover_surface)
-        .into();
-
-        let dismiss = || {
-            mouse_area(
-                container(Space::with_width(Length::Fill))
-                    .width(Length::Fill)
-                    .height(Length::Fill),
-            )
-            .on_press(Message::Exit)
-        };
-        let bottom_strip = row![
-            container(card).padding(Padding {
-                top: 0.0,
-                right: 0.0,
-                bottom: 48.0,
-                left: 4.0,
-            }),
-            dismiss(),
-        ]
-        .height(Length::Fixed((HEIGHT + 48) as f32));
-        container(column![dismiss(), bottom_strip])
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .style(|_| container::Style {
-                background: Some(Background::Color(Color::TRANSPARENT)),
-                border: Border {
-                    color: Color::TRANSPARENT,
-                    width: 0.0,
-                    radius: 0.0.into(),
-                },
-                shadow: Shadow::default(),
-                text_color: None,
-            })
-            .into()
-    }
-
-    fn theme(&self) -> Theme {
-        Theme::Dark
-    }
-
-    fn subscription(&self) -> iced::Subscription<Message> {
-        iced::keyboard::on_key_press(|key, _| {
-            use iced::keyboard::{key::Named, Key};
-            if matches!(key, Key::Named(Named::Escape)) {
-                Some(Message::Exit)
-            } else {
-                None
-            }
-        })
+        Message::Exit => std::process::exit(0),
+        _ => Task::none(),
     }
 }
 
+fn view(state: &App) -> Element<'_, Message> {
+    let header_label = if state.app_id.is_empty() {
+        "Customize Icon".to_string()
+    } else {
+        format!("Customize {} icon", state.app_id)
+    };
+    let header = row![
+        text(header_label).size(13).color(FG_TEXT),
+        Space::new().width(Length::Fill),
+        crate::dismiss::close_button(Message::Exit),
+    ]
+    .align_y(iced::Alignment::Center);
+
+    let current_line = text(format!("Currently: {}", state.current))
+        .size(10)
+        .color(FG_MUTED);
+
+    let mut grid = column![].spacing(6);
+    let mut current_row = row![].spacing(6).align_y(iced::Alignment::Center);
+    let mut col_count = 0usize;
+    for glyph in CANDIDATE_GLYPHS {
+        let is_current = *glyph == state.current;
+        current_row = current_row.push(glyph_button(glyph, is_current));
+        col_count += 1;
+        if col_count == 3 {
+            grid = grid.push(current_row);
+            current_row = row![].spacing(6).align_y(iced::Alignment::Center);
+            col_count = 0;
+        }
+    }
+    if col_count > 0 {
+        grid = grid.push(current_row);
+    }
+
+    let mut body_col = column![
+        header,
+        Space::new().height(Length::Fixed(4.0)),
+        current_line,
+        Space::new().height(Length::Fixed(12.0)),
+        scrollable(grid).height(Length::Fill),
+    ];
+    if let Some(err) = &state.last_error {
+        body_col = body_col.push(Space::new().height(Length::Fixed(6.0)));
+        body_col = body_col.push(text(err.clone()).size(10).color(Color {
+            r: 0.95,
+            g: 0.40,
+            b: 0.40,
+            a: 1.0,
+        }));
+    }
+    body_col = body_col.push(Space::new().height(Length::Fixed(6.0)));
+    body_col = body_col.push(
+        text("Esc closes · click outside dismisses")
+            .size(9)
+            .color(FG_MUTED),
+    );
+
+    let card: Element<'_, Message> = container(
+        body_col.padding(Padding {
+            top: 14.0,
+            right: 14.0,
+            bottom: 10.0,
+            left: 14.0,
+        }),
+    )
+    .width(Length::Fixed(WIDTH as f32))
+    .height(Length::Fixed(HEIGHT as f32))
+    .style(popover_surface)
+    .into();
+
+    let dismiss = || {
+        mouse_area(
+            container(Space::new())
+                .width(Length::Fill)
+                .height(Length::Fill),
+        )
+        .on_press(Message::Exit)
+    };
+    let bottom_strip = row![
+        container(card).padding(Padding {
+            top: 0.0,
+            right: 0.0,
+            bottom: 48.0,
+            left: 4.0,
+        }),
+        dismiss(),
+    ]
+    .height(Length::Fixed((HEIGHT + 48) as f32));
+    container(column![dismiss(), bottom_strip])
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(|_| container::Style {
+            background: Some(Background::Color(Color::TRANSPARENT)),
+            border: Border {
+                color: Color::TRANSPARENT,
+                width: 0.0,
+                radius: 0.0.into(),
+            },
+            shadow: Shadow::default(),
+            text_color: None,
+            snap: false,
+        })
+        .into()
+}
+
+fn subscription(_state: &App) -> Subscription<Message> {
+    use iced::event;
+    event::listen_with(|event, status, _window| {
+        use iced::keyboard;
+        match event {
+            iced::Event::Keyboard(keyboard::Event::KeyPressed { key, .. })
+                if status == event::Status::Ignored =>
+            {
+                use iced::keyboard::{key::Named, Key};
+                if matches!(key, Key::Named(Named::Escape)) {
+                    Some(Message::Exit)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    })
+}
+
 pub fn run() -> iced_layershell::Result {
-    <App as iced_layershell::Application>::run(Settings {
+    iced_layershell::application(
+        || {
+            let app_id = std::env::var("MDE_ICON_MAPPER_APP_ID").unwrap_or_default();
+            let current = resolve_current(&app_id);
+            tracing::info!(app_id = %app_id, current = %current, "icon-mapper popover open");
+            App {
+                app_id,
+                current,
+                last_error: None,
+            }
+        },
+        namespace,
+        update,
+        view,
+    )
+    .theme(|_: &App| Theme::Dark)
+    .subscription(subscription)
+    .settings(Settings {
         id: Some("mde-popover-icon-mapper".to_string()),
         fonts: crate::fonts::load_fallback_fonts(),
         layer_settings: LayerShellSettings {
@@ -276,6 +278,7 @@ pub fn run() -> iced_layershell::Result {
         },
         ..Default::default()
     })
+    .run()
 }
 
 fn glyph_button(glyph: &str, current: bool) -> Element<'static, Message> {
@@ -316,6 +319,7 @@ fn glyph_button(glyph: &str, current: bool) -> Element<'static, Message> {
                     radius: 5.0.into(),
                 },
                 shadow: Shadow::default(),
+                snap: false,
             }
         })
         .into()
@@ -336,6 +340,7 @@ fn popover_surface(_t: &Theme) -> container::Style {
         },
         text_color: Some(FG_TEXT),
         shadow: Shadow::default(),
+        snap: false,
     }
 }
 

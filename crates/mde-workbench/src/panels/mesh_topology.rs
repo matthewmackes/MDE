@@ -198,7 +198,7 @@ impl MeshTopologyPanel {
                     },
                     _ => accent,
                 };
-                iced::widget::button::Style {
+                iced::widget::button::Style { snap: false,
                     background: Some(Background::Color(bg)),
                     text_color: Color::WHITE,
                     border: Border {
@@ -223,11 +223,11 @@ impl MeshTopologyPanel {
 
         let header = row![
             column![title, subtitle].spacing(2),
-            Space::with_width(Length::Fill),
+            Space::new().width(Length::Fill),
             table_btn,
-            Space::with_width(Length::Fixed(4.0)),
+            Space::new().width(Length::Fixed(4.0)),
             graph_btn,
-            Space::with_width(Length::Fixed(8.0)),
+            Space::new().width(Length::Fixed(8.0)),
             refresh_btn,
         ]
         .align_y(iced::alignment::Vertical::Center);
@@ -239,7 +239,7 @@ impl MeshTopologyPanel {
                 // visual lock. The canvas-graph customization
                 // (peer nodes drawn as cards inside the graph)
                 // is tracked as CR-6.b.
-                let mut rows_col = column![].spacing(CARD_GRID_GAP as u16);
+                let mut rows_col = column![].spacing(CARD_GRID_GAP as f32);
                 for p in &self.peers {
                     rows_col = rows_col.push(peer_object_card(p, palette));
                 }
@@ -274,9 +274,9 @@ impl MeshTopologyPanel {
         let base = container(
             column![
                 header,
-                Space::with_height(Length::Fixed(16.0)),
+                Space::new().height(Length::Fixed(16.0)),
                 body_element,
-                Space::with_height(Length::Fixed(8.0)),
+                Space::new().height(Length::Fixed(8.0)),
                 footer,
             ]
             .spacing(2),
@@ -324,7 +324,7 @@ fn layout_toggle_btn<'a>(
                 _ => Color::TRANSPARENT,
             }
         };
-        iced::widget::button::Style {
+        iced::widget::button::Style { snap: false,
             background: Some(Background::Color(bg)),
             text_color: if selected { Color::WHITE } else { text_main },
             border: Border {
@@ -452,8 +452,8 @@ impl<Message> canvas::Program<Message> for GraphProgram {
             color: Color::WHITE,
             size: 12.0.into(),
             font: iced::Font::DEFAULT,
-            horizontal_alignment: iced::alignment::Horizontal::Center,
-            vertical_alignment: iced::alignment::Vertical::Center,
+            align_x: iced::alignment::Horizontal::Center.into(),
+            align_y: iced::alignment::Vertical::Center,
             ..Text::default()
         };
         frame.fill_text(center_label);
@@ -503,8 +503,8 @@ impl<Message> canvas::Program<Message> for GraphProgram {
                 color: text_color,
                 size: 12.0.into(),
                 font: iced::Font::DEFAULT,
-                horizontal_alignment: iced::alignment::Horizontal::Center,
-                vertical_alignment: iced::alignment::Vertical::Center,
+                align_x: iced::alignment::Horizontal::Center.into(),
+                align_y: iced::alignment::Vertical::Center,
                 ..Text::default()
             };
             frame.fill_text(name_label);
@@ -516,8 +516,8 @@ impl<Message> canvas::Program<Message> for GraphProgram {
                 color: muted,
                 size: 10.0.into(),
                 font: iced::Font::DEFAULT,
-                horizontal_alignment: iced::alignment::Horizontal::Center,
-                vertical_alignment: iced::alignment::Vertical::Center,
+                align_x: iced::alignment::Horizontal::Center.into(),
+                align_y: iced::alignment::Vertical::Center,
                 ..Text::default()
             };
             frame.fill_text(status_label);
@@ -546,7 +546,7 @@ fn peer_object_card<'a>(p: &'a PeerRow, palette: Palette) -> Element<'a, crate::
         )))
         .padding(Padding::from(0u16))
         .style(|_t: &Theme, _s: iced::widget::button::Status| {
-            iced::widget::button::Style {
+            iced::widget::button::Style { snap: false,
                 background: None,
                 text_color: Color::TRANSPARENT,
                 border: Border {
@@ -575,7 +575,7 @@ fn peer_modal_overlay<'a>(p: &'a PeerRow, palette: Palette) -> Element<'a, crate
                 }
                 _ => None,
             };
-            iced::widget::button::Style {
+            iced::widget::button::Style { snap: false,
                 background: bg,
                 text_color: Color::TRANSPARENT,
                 border: Border {
@@ -593,22 +593,22 @@ fn peer_modal_overlay<'a>(p: &'a PeerRow, palette: Palette) -> Element<'a, crate
                 text(p.name.clone())
                     .size(16)
                     .color(palette.text.into_iced_color()),
-                Space::with_width(Length::Fill),
+                Space::new().width(Length::Fill),
                 close_btn,
             ]
             .align_y(iced::alignment::Vertical::Center),
-            Space::with_height(Length::Fixed(16.0)),
+            Space::new().height(Length::Fixed(16.0)),
             peer_detail_row("Address", &p.addr, palette),
-            Space::with_height(Length::Fixed(8.0)),
+            Space::new().height(Length::Fixed(8.0)),
             peer_detail_row("Kind", &p.kind, palette),
-            Space::with_height(Length::Fixed(8.0)),
+            Space::new().height(Length::Fixed(8.0)),
             peer_detail_row("Status", p.status.label(), palette),
         ]
         .spacing(0),
     )
     .padding(Padding::from([24u16, 28u16]))
     .width(Length::Fixed(320.0))
-    .style(move |_t: &Theme| container::Style {
+    .style(move |_t: &Theme| container::Style { snap: false,
         background: Some(Background::Color(palette.surface.into_iced_color())),
         border: Border {
             color: palette.border.into_iced_color(),
@@ -625,7 +625,7 @@ fn peer_modal_overlay<'a>(p: &'a PeerRow, palette: Palette) -> Element<'a, crate
     )
     .width(Length::Fill)
     .height(Length::Fill)
-    .style(|_t: &Theme| container::Style {
+    .style(|_t: &Theme| container::Style { snap: false,
         background: Some(Background::Color(Color::from_rgba(
             0.0, 0.0, 0.0, 0.45,
         ))),
@@ -686,7 +686,7 @@ fn empty_state_card<'a>(palette: Palette, error: Option<&'a str>) -> Element<'a,
     container(
         column![
             icon_widget,
-            Space::with_height(Length::Fixed(8.0)),
+            Space::new().height(Length::Fixed(8.0)),
             text(heading)
                 .size(14)
                 .color(palette.text.into_iced_color()),

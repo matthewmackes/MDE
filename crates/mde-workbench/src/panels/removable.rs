@@ -147,11 +147,11 @@ impl RemovablePanel {
         );
 
         column![
-            checkbox("Auto-mount on insert", self.on_insert)
+            checkbox(self.on_insert).label("Auto-mount on insert")
                 .on_toggle(|v| { crate::Message::Removable(Message::OnInsertChanged(v)) }),
-            checkbox("Open file manager on mount", self.open_on_mount)
+            checkbox(self.open_on_mount).label("Open file manager on mount")
                 .on_toggle(|v| crate::Message::Removable(Message::OpenOnMountChanged(v)),),
-            checkbox("Honour autorun on inserted media", self.autorun)
+            checkbox(self.autorun).label("Honour autorun on inserted media")
                 .on_toggle(|v| { crate::Message::Removable(Message::AutorunChanged(v)) }),
             row![apply_btn, text(&self.status).size(13)].spacing(12),
         ]

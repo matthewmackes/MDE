@@ -19,7 +19,7 @@
 use std::process::Command;
 
 use iced::widget::{button, column, container, mouse_area, row, scrollable, text, Space};
-use iced::{Alignment, Background, Border, Color, Element, Length, Padding, Shadow, Task, Theme};
+use iced::{Alignment, Background, Border, Color, Element, Length, Padding, Shadow, Subscription, Task, Theme};
 use iced_layershell::reexport::{Anchor, KeyboardInteractivity, Layer};
 use iced_layershell::settings::{LayerShellSettings, Settings};
 use iced_layershell::to_layer_message;
@@ -192,189 +192,182 @@ pub struct App {
     sudo_cached: bool,
 }
 
-impl iced_layershell::Application for App {
-    type Executor = iced::executor::Default;
-    type Message = Message;
-    type Theme = Theme;
-    type Flags = ();
+fn namespace() -> String {
+    "mde-popover-admin-menu".into()
+}
 
-    fn new(_flags: ()) -> (Self, Task<Message>) {
-        (
-            Self {
-                sudo_cached: sudo_cached(),
-            },
-            Task::none(),
-        )
-    }
-
-    fn namespace(&self) -> String {
-        "mde-popover-admin-menu".into()
-    }
-
-    fn update(&mut self, msg: Message) -> Task<Message> {
-        match msg {
-            Message::Run(cmd_id) => {
-                // Find the action by its cmd string (the static
-                // identifier we passed into the button).
-                let action = SECTIONS
-                    .iter()
-                    .flat_map(|(_, acts)| acts.iter())
-                    .find(|a| a.cmd == cmd_id);
-                if let Some(a) = action {
-                    let _ = spawn_action(a);
-                }
-                // Dismiss after firing — single-shot menu.
-                std::process::exit(0);
+fn update(_state: &mut App, msg: Message) -> Task<Message> {
+    match msg {
+        Message::Run(cmd_id) => {
+            let action = SECTIONS
+                .iter()
+                .flat_map(|(_, acts)| acts.iter())
+                .find(|a| a.cmd == cmd_id);
+            if let Some(a) = action {
+                let _ = spawn_action(a);
             }
-            Message::Exit => std::process::exit(0),
-            _ => Task::none(),
+            std::process::exit(0);
         }
-    }
-
-    fn view(&self) -> Element<'_, Message> {
-        let mut body = column![].spacing(2);
-
-        let header_row = row![
-            text("Admin").size(13).color(FG_TEXT),
-            Space::with_width(Length::Fixed(8.0)),
-            text(format!(
-                "{} actions · {}",
-                action_count(),
-                if self.sudo_cached {
-                    "polkit ready"
-                } else {
-                    "polkit will prompt"
-                }
-            ))
-            .size(10)
-            .color(FG_MUTED),
-            Space::with_width(Length::Fill),
-            crate::dismiss::close_button(Message::Exit),
-        ]
-        .align_y(Alignment::Center);
-
-        body = body.push(container(header_row).padding(Padding {
-            top: 8.0,
-            right: 12.0,
-            bottom: 4.0,
-            left: 12.0,
-        }));
-
-        for (section_name, actions) in SECTIONS {
-            body = body.push(container(text(*section_name).size(11).color(FG_MUTED)).padding(
-                Padding {
-                    top: 8.0,
-                    right: 12.0,
-                    bottom: 0.0,
-                    left: 12.0,
-                },
-            ));
-            for action in *actions {
-                let label_text = text(action.label).size(13).color(FG_TEXT);
-                let needs_sudo_chip = if action.needs_sudo {
-                    text("polkit").size(10).color(ACCENT)
-                } else {
-                    text("user").size(10).color(FG_MUTED)
-                };
-                let row_btn = button(
-                    row![
-                        label_text,
-                        Space::with_width(Length::Fill),
-                        needs_sudo_chip,
-                    ]
-                    .align_y(Alignment::Center),
-                )
-                .width(Length::Fill)
-                .padding(Padding {
-                    top: 6.0,
-                    right: 12.0,
-                    bottom: 6.0,
-                    left: 12.0,
-                })
-                .style(row_button_style)
-                .on_press(Message::Run(action.cmd));
-                body = body.push(row_btn);
-            }
-        }
-
-        let footer = container(text("Esc closes · click × to dismiss").size(10).color(FG_MUTED))
-            .padding(Padding {
-                top: 6.0,
-                right: 12.0,
-                bottom: 8.0,
-                left: 12.0,
-            });
-        body = body.push(footer);
-
-        let scroll = scrollable(body).height(Length::Fill);
-
-        let card: Element<'_, Message> = container(scroll)
-            .width(Length::Fixed(WIDTH as f32))
-            .height(Length::Fixed(HEIGHT as f32))
-            .style(surface_style)
-            .into();
-
-        // v3.0.4 — backdrop dismiss; bottom-left card.
-        let dismiss = || {
-            mouse_area(
-                container(Space::with_width(Length::Fill))
-                    .width(Length::Fill)
-                    .height(Length::Fill),
-            )
-            .on_press(Message::Exit)
-        };
-        let bottom_strip = row![
-            container(card).padding(iced::Padding {
-                top: 0.0,
-                right: 0.0,
-                bottom: 48.0,
-                left: 4.0,
-            }),
-            dismiss(),
-        ]
-        .height(Length::Fixed((HEIGHT + 48) as f32));
-        container(column![dismiss(), bottom_strip])
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .style(|_| container::Style {
-                background: Some(iced::Background::Color(iced::Color::TRANSPARENT)),
-                border: iced::Border {
-                    color: iced::Color::TRANSPARENT,
-                    width: 0.0,
-                    radius: 0.0.into(),
-                },
-                shadow: iced::Shadow::default(),
-                text_color: None,
-            })
-            .into()
-    }
-
-    fn theme(&self) -> Theme {
-        Theme::Dark
-    }
-
-    fn subscription(&self) -> iced::Subscription<Message> {
-        iced::keyboard::on_key_press(|key, _| {
-            use iced::keyboard::{key::Named, Key};
-            if matches!(key, Key::Named(Named::Escape)) {
-                Some(Message::Exit)
-            } else {
-                None
-            }
-        })
+        Message::Exit => std::process::exit(0),
+        _ => Task::none(),
     }
 }
 
+fn view(state: &App) -> Element<'_, Message> {
+    let mut body = column![].spacing(2);
+
+    let header_row = row![
+        text("Admin").size(13).color(FG_TEXT),
+        Space::new().width(Length::Fixed(8.0)),
+        text(format!(
+            "{} actions · {}",
+            action_count(),
+            if state.sudo_cached {
+                "polkit ready"
+            } else {
+                "polkit will prompt"
+            }
+        ))
+        .size(10)
+        .color(FG_MUTED),
+        Space::new().width(Length::Fill),
+        crate::dismiss::close_button(Message::Exit),
+    ]
+    .align_y(Alignment::Center);
+
+    body = body.push(container(header_row).padding(Padding {
+        top: 8.0,
+        right: 12.0,
+        bottom: 4.0,
+        left: 12.0,
+    }));
+
+    for (section_name, actions) in SECTIONS {
+        body = body.push(container(text(*section_name).size(11).color(FG_MUTED)).padding(
+            Padding {
+                top: 8.0,
+                right: 12.0,
+                bottom: 0.0,
+                left: 12.0,
+            },
+        ));
+        for action in *actions {
+            let label_text = text(action.label).size(13).color(FG_TEXT);
+            let needs_sudo_chip = if action.needs_sudo {
+                text("polkit").size(10).color(ACCENT)
+            } else {
+                text("user").size(10).color(FG_MUTED)
+            };
+            let row_btn = button(
+                row![
+                    label_text,
+                    Space::new().width(Length::Fill),
+                    needs_sudo_chip,
+                ]
+                .align_y(Alignment::Center),
+            )
+            .width(Length::Fill)
+            .padding(Padding {
+                top: 6.0,
+                right: 12.0,
+                bottom: 6.0,
+                left: 12.0,
+            })
+            .style(row_button_style)
+            .on_press(Message::Run(action.cmd));
+            body = body.push(row_btn);
+        }
+    }
+
+    let footer = container(text("Esc closes · click × to dismiss").size(10).color(FG_MUTED))
+        .padding(Padding {
+            top: 6.0,
+            right: 12.0,
+            bottom: 8.0,
+            left: 12.0,
+        });
+    body = body.push(footer);
+
+    let scroll = scrollable(body).height(Length::Fill);
+
+    let card: Element<'_, Message> = container(scroll)
+        .width(Length::Fixed(WIDTH as f32))
+        .height(Length::Fixed(HEIGHT as f32))
+        .style(surface_style)
+        .into();
+
+    // v3.0.4 — backdrop dismiss; bottom-left card.
+    let dismiss = || {
+        mouse_area(
+            container(Space::new().width(Length::Fill))
+                .width(Length::Fill)
+                .height(Length::Fill),
+        )
+        .on_press(Message::Exit)
+    };
+    let bottom_strip = row![
+        container(card).padding(iced::Padding {
+            top: 0.0,
+            right: 0.0,
+            bottom: 48.0,
+            left: 4.0,
+        }),
+        dismiss(),
+    ]
+    .height(Length::Fixed((HEIGHT + 48) as f32));
+    container(column![dismiss(), bottom_strip])
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(|_| container::Style {
+            background: Some(iced::Background::Color(iced::Color::TRANSPARENT)),
+            border: iced::Border {
+                color: iced::Color::TRANSPARENT,
+                width: 0.0,
+                radius: 0.0.into(),
+            },
+            shadow: iced::Shadow::default(),
+            text_color: None,
+            snap: false,
+        })
+        .into()
+}
+
+fn subscription(_state: &App) -> Subscription<Message> {
+    use iced::event;
+    event::listen_with(|event, status, _window| {
+        use iced::keyboard;
+        match event {
+            iced::Event::Keyboard(keyboard::Event::KeyPressed { key, .. })
+                if status == event::Status::Ignored =>
+            {
+                use iced::keyboard::{key::Named, Key};
+                if matches!(key, Key::Named(Named::Escape)) {
+                    Some(Message::Exit)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    })
+}
+
 pub fn run() -> iced_layershell::Result {
-    <App as iced_layershell::Application>::run(Settings {
+    iced_layershell::application(
+        || App { sudo_cached: sudo_cached() },
+        namespace,
+        update,
+        view,
+    )
+    .theme(|_: &App| iced::Theme::Dark)
+    .subscription(subscription)
+    .settings(Settings {
         id: Some("mde-popover-admin-menu".into()),
         fonts: crate::fonts::load_fallback_fonts(),
         layer_settings: LayerShellSettings {
             // v3.0.4 — fullscreen for backdrop dismiss.
             size: None,
             exclusive_zone: -1,
-            // Bottom-left: hugs the same corner as the Start menu
-            // since that's the button that opens it.
             anchor: Anchor::Top | Anchor::Bottom | Anchor::Left | Anchor::Right,
             margin: (0, 0, 0, 0),
             layer: Layer::Overlay,
@@ -383,6 +376,7 @@ pub fn run() -> iced_layershell::Result {
         },
         ..Default::default()
     })
+    .run()
 }
 
 fn surface_style(_theme: &Theme) -> container::Style {
@@ -400,6 +394,7 @@ fn surface_style(_theme: &Theme) -> container::Style {
         },
         text_color: Some(FG_TEXT),
         shadow: Shadow::default(),
+        snap: false,
     }
 }
 
@@ -428,6 +423,7 @@ fn row_button_style(_theme: &Theme, status: button::Status) -> button::Style {
             radius: 4.0.into(),
         },
         shadow: Shadow::default(),
+        snap: false,
     }
 }
 

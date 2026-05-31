@@ -7,7 +7,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use iced::widget::{column, container, mouse_area, row, text, Space};
-use iced::{Background, Border, Color, Element, Length, Padding, Shadow, Task, Theme};
+use iced::{Background, Border, Color, Element, Length, Padding, Shadow, Subscription, Task, Theme};
 use iced_layershell::reexport::{Anchor, KeyboardInteractivity, Layer};
 use iced_layershell::settings::{LayerShellSettings, Settings};
 use iced_layershell::to_layer_message;
@@ -54,231 +54,196 @@ pub struct App {
     hms: (u32, u32),
 }
 
-impl iced_layershell::Application for App {
-    type Executor = iced::executor::Default;
-    type Message = Message;
-    type Theme = Theme;
-    type Flags = ();
+fn namespace() -> String {
+    "mde-popover-clock".to_string()
+}
 
-    fn new(_flags: ()) -> (Self, Task<Message>) {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_or(0, |d| d.as_secs() as i64);
-        let today = days_to_ymd(now / 86_400);
-        let secs_in_day = (now % 86_400) as u32;
-        let hms = (secs_in_day / 3600, (secs_in_day % 3600) / 60);
-        let month_name = MONTH_NAMES[(today.1 - 1) as usize].to_string();
-        let weekday_today = weekday_of(today.0, today.1, today.2);
-        let month_grid = build_month_grid(today.0, today.1);
-        tracing::info!(date = ?today, "clock popover open");
-        // v3.0.3 — kick off the weather poll thread so the cache
-        // file freshens in the background. The popover view loads
-        // the latest cached snapshot on each render; the first
-        // popover open after a fresh login may show the
-        // "(never updated)" stub until the first fetch lands
-        // (~1-3s for curl + wttr.in).
-        crate::weather::spawn_poll_thread();
-        (
-            Self {
-                today,
-                month_grid,
-                month_name,
-                weekday_today,
-                hms,
-            },
-            Task::none(),
-        )
-    }
-
-    fn namespace(&self) -> String {
-        "mde-popover-clock".to_string()
-    }
-
-    fn update(&mut self, msg: Message) -> Task<Message> {
-        match msg {
-            Message::Exit => std::process::exit(0),
-            _ => Task::none(),
-        }
-    }
-
-    fn view(&self) -> Element<'_, Message> {
-        let (y, _, d) = self.today;
-        let hour = self.hms.0;
-        let minute = self.hms.1;
-        let weekday_name = WEEKDAY_NAMES[self.weekday_today as usize];
-
-        // v3.0.3 — top-right close button on its own row so it
-        // doesn't crowd the big-time display. Esc still works via
-        // subscription below.
-        let close_row = row![
-            Space::with_width(Length::Fill),
-            crate::dismiss::close_button(Message::Exit),
-        ]
-        .align_y(iced::Alignment::Center);
-
-        let big_time = text(format!("{hour:02}:{minute:02}"))
-            .size(40)
-            .color(FG_TEXT);
-        let date_line = text(format!("{weekday_name}, {} {d}, {y}", self.month_name))
-            .size(13)
-            .color(FG_MUTED);
-
-        // Weekday headers — Sun..Sat
-        let mut header_row = row![]
-            .spacing(4)
-            .align_y(iced::Alignment::Center);
-        for wd in WEEKDAY_INITIALS {
-            header_row = header_row.push(
-                container(text(*wd).size(10).color(FG_MUTED))
-                    .width(Length::Fixed(32.0))
-                    .center_x(Length::Fixed(32.0)),
-            );
-        }
-
-        // Grid rows
-        let mut grid = column![header_row].spacing(2);
-        for row_cells in &self.month_grid {
-            let mut grid_row = row![].spacing(4);
-            for cell in row_cells {
-                let cell_widget: Element<'_, Message> = match cell {
-                    Some(day) => {
-                        let is_today = *day == self.today.2;
-                        let day_text = text(day.to_string()).size(12).color(if is_today {
-                            FG_TEXT
-                        } else {
-                            FG_MUTED
-                        });
-                        container(day_text)
-                            .width(Length::Fixed(32.0))
-                            .height(Length::Fixed(28.0))
-                            .center_x(Length::Fixed(32.0))
-                            .center_y(Length::Fixed(28.0))
-                            .style(if is_today {
-                                today_cell_style
-                            } else {
-                                empty_cell_style
-                            })
-                            .into()
-                    }
-                    None => container(text(" "))
-                        .width(Length::Fixed(32.0))
-                        .height(Length::Fixed(28.0))
-                        .into(),
-                };
-                grid_row = grid_row.push(cell_widget);
-            }
-            grid = grid.push(grid_row);
-        }
-
-        // v3.0.3 — weather column below the calendar. Reads the
-        // latest cached snapshot on each render; the background
-        // poll thread (kicked off in `new()`) freshens the cache
-        // every 30 min. Shows nothing when there's no cached
-        // value yet (first session before the first fetch lands).
-        let weather_snapshot = crate::weather::load_cached(&crate::weather::default_cache_path());
-        let weather_col: Element<'_, Message> = if weather_snapshot.location.is_empty() {
-            text("Weather loading…").size(11).color(FG_MUTED).into()
-        } else {
-            let lines = weather_snapshot.render_lines();
-            let mut col = column![].spacing(2);
-            for (i, line) in lines.iter().enumerate() {
-                let color = if i == 0 { FG_TEXT } else { FG_MUTED };
-                let size: u16 = if i == 0 { 13 } else { 11 };
-                col = col.push(text(line.clone()).size(size).color(color));
-            }
-            col = col.push(Space::with_height(Length::Fixed(4.0)));
-            col = col.push(
-                text(crate::weather::WeatherSnapshot::attribution())
-                    .size(9)
-                    .color(FG_MUTED),
-            );
-            col.into()
-        };
-
-        let body = column![
-            close_row,
-            big_time,
-            Space::with_height(Length::Fixed(2.0)),
-            date_line,
-            Space::with_height(Length::Fixed(14.0)),
-            grid,
-            Space::with_height(Length::Fixed(12.0)),
-            text("Weather")
-                .size(11)
-                .color(FG_MUTED),
-            Space::with_height(Length::Fixed(4.0)),
-            weather_col,
-            Space::with_height(Length::Fill),
-            text("Esc closes · click × to dismiss")
-                .size(10)
-                .color(FG_MUTED),
-        ]
-        .padding(Padding {
-            top: 16.0,
-            right: 18.0,
-            bottom: 10.0,
-            left: 18.0,
-        });
-
-        let card: Element<'_, Message> = container(body)
-            .width(Length::Fixed(WIDTH as f32))
-            .height(Length::Fixed(HEIGHT as f32))
-            .style(popover_surface)
-            .into();
-
-        // v3.0.4 — backdrop dismiss; bottom-right card.
-        let dismiss = || {
-            mouse_area(
-                container(Space::with_width(Length::Fill))
-                    .width(Length::Fill)
-                    .height(Length::Fill),
-            )
-            .on_press(Message::Exit)
-        };
-        let bottom_strip = row![
-            dismiss(),
-            container(card).padding(iced::Padding {
-                top: 0.0,
-                right: 4.0,
-                bottom: 48.0,
-                left: 0.0,
-            }),
-        ]
-        .height(Length::Fixed((HEIGHT + 48) as f32));
-        container(column![dismiss(), bottom_strip])
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .style(|_| container::Style {
-                background: Some(iced::Background::Color(iced::Color::TRANSPARENT)),
-                border: iced::Border {
-                    color: iced::Color::TRANSPARENT,
-                    width: 0.0,
-                    radius: 0.0.into(),
-                },
-                shadow: iced::Shadow::default(),
-                text_color: None,
-            })
-            .into()
-    }
-
-    fn theme(&self) -> Theme {
-        Theme::Dark
-    }
-
-    fn subscription(&self) -> iced::Subscription<Message> {
-        iced::keyboard::on_key_press(|key, _| {
-            use iced::keyboard::{key::Named, Key};
-            if matches!(key, Key::Named(Named::Escape)) {
-                Some(Message::Exit)
-            } else {
-                None
-            }
-        })
+fn update(_state: &mut App, msg: Message) -> Task<Message> {
+    match msg {
+        Message::Exit => std::process::exit(0),
+        _ => Task::none(),
     }
 }
 
+fn view(state: &App) -> Element<'_, Message> {
+    let (y, _, d) = state.today;
+    let hour = state.hms.0;
+    let minute = state.hms.1;
+    let weekday_name = WEEKDAY_NAMES[state.weekday_today as usize];
+
+    let close_row = row![
+        Space::new().width(Length::Fill),
+        crate::dismiss::close_button(Message::Exit),
+    ]
+    .align_y(iced::Alignment::Center);
+
+    let big_time = text(format!("{hour:02}:{minute:02}"))
+        .size(40)
+        .color(FG_TEXT);
+    let date_line = text(format!("{weekday_name}, {} {d}, {y}", state.month_name))
+        .size(13)
+        .color(FG_MUTED);
+
+    let mut header_row = row![].spacing(4).align_y(iced::Alignment::Center);
+    for wd in WEEKDAY_INITIALS {
+        header_row = header_row.push(
+            container(text(*wd).size(10).color(FG_MUTED))
+                .width(Length::Fixed(32.0))
+                .center_x(Length::Fixed(32.0)),
+        );
+    }
+
+    let mut grid = column![header_row].spacing(2);
+    for row_cells in &state.month_grid {
+        let mut grid_row = row![].spacing(4);
+        for cell in row_cells {
+            let cell_widget: Element<'_, Message> = match cell {
+                Some(day) => {
+                    let is_today = *day == state.today.2;
+                    let day_text = text(day.to_string()).size(12).color(if is_today {
+                        FG_TEXT
+                    } else {
+                        FG_MUTED
+                    });
+                    container(day_text)
+                        .width(Length::Fixed(32.0))
+                        .height(Length::Fixed(28.0))
+                        .center_x(Length::Fixed(32.0))
+                        .center_y(Length::Fixed(28.0))
+                        .style(if is_today { today_cell_style } else { empty_cell_style })
+                        .into()
+                }
+                None => container(text(" "))
+                    .width(Length::Fixed(32.0))
+                    .height(Length::Fixed(28.0))
+                    .into(),
+            };
+            grid_row = grid_row.push(cell_widget);
+        }
+        grid = grid.push(grid_row);
+    }
+
+    let weather_snapshot = crate::weather::load_cached(&crate::weather::default_cache_path());
+    let weather_col: Element<'_, Message> = if weather_snapshot.location.is_empty() {
+        text("Weather loading…").size(11).color(FG_MUTED).into()
+    } else {
+        let lines = weather_snapshot.render_lines();
+        let mut col = column![].spacing(2);
+        for (i, line) in lines.iter().enumerate() {
+            let color = if i == 0 { FG_TEXT } else { FG_MUTED };
+            let size: u16 = if i == 0 { 13 } else { 11 };
+            col = col.push(text(line.clone()).size(size as f32).color(color));
+        }
+        col = col.push(Space::new().height(Length::Fixed(4.0)));
+        col = col.push(
+            text(crate::weather::WeatherSnapshot::attribution())
+                .size(9)
+                .color(FG_MUTED),
+        );
+        col.into()
+    };
+
+    let body = column![
+        close_row,
+        big_time,
+        Space::new().height(Length::Fixed(2.0)),
+        date_line,
+        Space::new().height(Length::Fixed(14.0)),
+        grid,
+        Space::new().height(Length::Fixed(12.0)),
+        text("Weather").size(11).color(FG_MUTED),
+        Space::new().height(Length::Fixed(4.0)),
+        weather_col,
+        Space::new().height(Length::Fill),
+        text("Esc closes · click × to dismiss").size(10).color(FG_MUTED),
+    ]
+    .padding(Padding { top: 16.0, right: 18.0, bottom: 10.0, left: 18.0 });
+
+    let card: Element<'_, Message> = container(body)
+        .width(Length::Fixed(WIDTH as f32))
+        .height(Length::Fixed(HEIGHT as f32))
+        .style(popover_surface)
+        .into();
+
+    // v3.0.4 — backdrop dismiss; bottom-right card.
+    let dismiss = || {
+        mouse_area(
+            container(Space::new().width(Length::Fill))
+                .width(Length::Fill)
+                .height(Length::Fill),
+        )
+        .on_press(Message::Exit)
+    };
+    let bottom_strip = row![
+        dismiss(),
+        container(card).padding(iced::Padding {
+            top: 0.0,
+            right: 4.0,
+            bottom: 48.0,
+            left: 0.0,
+        }),
+    ]
+    .height(Length::Fixed((HEIGHT + 48) as f32));
+    container(column![dismiss(), bottom_strip])
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(|_| container::Style {
+            background: Some(iced::Background::Color(iced::Color::TRANSPARENT)),
+            border: iced::Border {
+                color: iced::Color::TRANSPARENT,
+                width: 0.0,
+                radius: 0.0.into(),
+            },
+            shadow: iced::Shadow::default(),
+            text_color: None,
+            snap: false,
+        })
+        .into()
+}
+
+fn subscription(_state: &App) -> Subscription<Message> {
+    use iced::event;
+    event::listen_with(|event, status, _window| {
+        use iced::keyboard;
+        match event {
+            iced::Event::Keyboard(keyboard::Event::KeyPressed { key, .. })
+                if status == event::Status::Ignored =>
+            {
+                use iced::keyboard::{key::Named, Key};
+                if matches!(key, Key::Named(Named::Escape)) {
+                    Some(Message::Exit)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    })
+}
+
 pub fn run() -> iced_layershell::Result {
-    <App as iced_layershell::Application>::run(Settings {
+    iced_layershell::application(
+        || {
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs() as i64);
+            let today = days_to_ymd(now / 86_400);
+            let secs_in_day = (now % 86_400) as u32;
+            let hms = (secs_in_day / 3600, (secs_in_day % 3600) / 60);
+            let month_name = MONTH_NAMES[(today.1 - 1) as usize].to_string();
+            let weekday_today = weekday_of(today.0, today.1, today.2);
+            let month_grid = build_month_grid(today.0, today.1);
+            tracing::info!(date = ?today, "clock popover open");
+            crate::weather::spawn_poll_thread();
+            App { today, month_grid, month_name, weekday_today, hms }
+        },
+        namespace,
+        update,
+        view,
+    )
+    .theme(|_: &App| iced::Theme::Dark)
+    .subscription(subscription)
+    .settings(Settings {
         id: Some("mde-popover-clock".to_string()),
         fonts: crate::fonts::load_fallback_fonts(),
         layer_settings: LayerShellSettings {
@@ -293,6 +258,7 @@ pub fn run() -> iced_layershell::Result {
         },
         ..Default::default()
     })
+    .run()
 }
 
 const MONTH_NAMES: &[&str] = &[
@@ -394,6 +360,7 @@ fn popover_surface(_theme: &Theme) -> container::Style {
         },
         text_color: Some(FG_TEXT),
         shadow: Shadow::default(),
+        snap: false,
     }
 }
 
@@ -412,6 +379,7 @@ fn today_cell_style(_theme: &Theme) -> container::Style {
         },
         text_color: Some(FG_TEXT),
         shadow: Shadow::default(),
+        snap: false,
     }
 }
 

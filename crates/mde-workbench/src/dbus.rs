@@ -1,65 +1,69 @@
-//! `dev.mackes.MDE.Shell.Workbench` D-Bus surface — single-
-//! instance contract + deep-link router.
+//! Workbench `focus(slug)` control surface — single-instance
+//! deep-link router (DBUS-3 — migrated to Bus).
 //!
-//! CB-1.13 lock: "`dev.mackes.MDE.Shell.Workbench` interface
-//! (new) ships `Focus(slug: str)` so `mde --focus <slug>` opens
-//! the running workbench at the named panel, or launches one if
-//! none. Replaces the 1.x WM_CLASS-based single-instance hack."
+//! CB-1.13 lock: "`mde --focus <slug>` opens the running workbench
+//! at the named panel, or launches one if none. Replaces the 1.x
+//! WM_CLASS-based single-instance hack."
 //!
-//! The bus name [`crate::single_instance::BUS_NAME`]
-//! (`dev.mackes.MDE.Workbench`) is acquired by the primary
-//! workbench process with `DoNotQueue` so a sibling launch sees
-//! `Exists` immediately and hands off via [`WorkbenchProxy`].
+//! Per the Q96 Bus-canonical lock (EPIC-RETIRE-DBUS), the `focus`
+//! verb is served on the Bus at [`ACTION_TOPIC`]
+//! (`action/shell/workbench-focus`) instead of the retired
+//! `dev.mackes.MDE.Shell.Workbench.Focus` D-Bus method. Because
+//! `focus` is interactive (a human clicks a taskbar entry and waits
+//! for the window to raise), the responder + caller use the 40 ms
+//! [`mde_bus::rpc::INTERACTIVE_POLL_INTERVAL`] (finding #1).
+//!
+//! The single-instance NAME [`crate::single_instance::BUS_NAME`]
+//! (`dev.mackes.MDE.Workbench`) is still owned on D-Bus — name
+//! ownership is inherently a D-Bus/socket primitive, the documented
+//! exception per EPIC-RETIRE-DBUS finding #3. Only the method moved.
 
 use std::sync::{Mutex, OnceLock};
 
-use zbus::interface;
+use mde_bus::hooks::config::Priority;
+use mde_bus::persist::Persist;
+use mde_bus::rpc::{reply_topic, INTERACTIVE_POLL_INTERVAL};
 
-/// Interface name CB-1.13 ships — sits under the `Shell.*`
-/// namespace because Focus is workbench-side state mutation
-/// driven by the shell IPC family (mirrors how `Shell.Settings`
-/// sits under the same parent).
-pub const INTERFACE_NAME: &str = "dev.mackes.MDE.Shell.Workbench";
+/// Bus action topic the `focus(slug)` hand-off publishes to. The
+/// slug travels in the message body (empty body = "raise only").
+pub const ACTION_TOPIC: &str = "action/shell/workbench-focus";
 
-/// Method name on [`INTERFACE_NAME`]. Lifted to a constant so
-/// the client helper + the interface attribute agree without
-/// duplicating literals across files.
-pub const METHOD_FOCUS: &str = "Focus";
+/// Normalise a focus-request body into the slug to submit. Trims
+/// surrounding whitespace; a missing or whitespace-only body means
+/// "raise the window, no view change" (the 1.x taskbar contract) →
+/// empty string. Pure + testable.
+#[must_use]
+pub fn slug_from_body(body: Option<&str>) -> String {
+    body.map(str::trim).unwrap_or("").to_string()
+}
 
-/// Server-side handler for [`INTERFACE_NAME`].
-///
-/// Holds no state directly — Focus requests push a slug into the
-/// process-wide [`PendingFocus`] slot which the Iced subscription
-/// drains on its tick. The split keeps the handler tokio-only
-/// (no Iced types) so the interface attribute compiles standalone
-/// for unit tests.
-#[derive(Debug, Default, Clone)]
-pub struct WorkbenchService;
-
-#[interface(name = "dev.mackes.MDE.Shell.Workbench")]
-impl WorkbenchService {
-    /// Open the running workbench window at the named panel.
-    /// Accepts the same `<group>.<panel>` slug grammar as
-    /// [`crate::model::view_from_focus_slug`]. Unknown slugs
-    /// short-circuit to the Dashboard landing (matches the
-    /// 1.x `mackes --focus` fallback behaviour).
-    async fn focus(&self, slug: &str) -> zbus::fdo::Result<()> {
-        // Empty string means "just raise the window, no view
-        // change" — same contract the 1.x panel honoured for
-        // taskbar click-throughs.
-        let trimmed = slug.trim();
-        if trimmed.is_empty() {
-            PendingFocus::submit(String::new());
-        } else {
-            PendingFocus::submit(trimmed.to_string());
-        }
-        Ok(())
+/// Run the focus Bus responder on the current thread, building a
+/// local current-thread tokio runtime (none needed for the effect —
+/// [`PendingFocus::submit`] is sync — but the structure mirrors the
+/// other Bus responders and leaves room for async effects). Loops
+/// until `should_stop()` returns true. `Persist` (rusqlite) isn't
+/// `Send`, so this runs off the Iced/tokio main executor on its own
+/// thread (see `mde-workbench` main).
+pub fn serve_bus<F: Fn() -> bool>(persist: &Persist, should_stop: F) {
+    let mut cursor: Option<String> = None;
+    while !should_stop() {
+        poll_once(persist, &mut cursor);
+        std::thread::sleep(INTERACTIVE_POLL_INTERVAL);
     }
+}
 
-    /// Crate version for sanity-check probes
-    /// (`busctl --user call … Version`).
-    async fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
+/// One poll sweep across [`ACTION_TOPIC`] (split out so a test can
+/// drive it without the sleep loop). Each new request submits its
+/// slug into [`PendingFocus`] and acknowledges on `reply/<ulid>`.
+pub fn poll_once(persist: &Persist, cursor: &mut Option<String>) {
+    let msgs = match persist.list_since(ACTION_TOPIC, cursor.as_deref()) {
+        Ok(m) => m,
+        Err(_) => return,
+    };
+    for msg in msgs {
+        *cursor = Some(msg.ulid.clone());
+        PendingFocus::submit(slug_from_body(msg.body.as_deref()));
+        let _ = persist.write(&reply_topic(&msg.ulid), Priority::Default, None, Some("ok"));
     }
 }
 
@@ -139,14 +143,17 @@ mod tests {
     }
 
     #[test]
-    fn interface_name_is_under_shell_namespace() {
-        assert_eq!(INTERFACE_NAME, "dev.mackes.MDE.Shell.Workbench");
-        assert!(INTERFACE_NAME.starts_with("dev.mackes.MDE.Shell."));
+    fn action_topic_is_under_shell_namespace() {
+        assert_eq!(ACTION_TOPIC, "action/shell/workbench-focus");
+        assert!(ACTION_TOPIC.starts_with("action/shell/"));
     }
 
     #[test]
-    fn focus_method_constant_matches_zbus_attribute_pascal_case() {
-        assert_eq!(METHOD_FOCUS, "Focus");
+    fn slug_from_body_trims_and_normalises_empty() {
+        assert_eq!(slug_from_body(Some("network.mesh_ssh")), "network.mesh_ssh");
+        assert_eq!(slug_from_body(Some("  network.mesh_ssh  ")), "network.mesh_ssh");
+        assert_eq!(slug_from_body(Some("   ")), "");
+        assert_eq!(slug_from_body(None), "");
     }
 
     #[test]
@@ -177,38 +184,56 @@ mod tests {
         assert_eq!(PendingFocus::drain(), Some("help".into()));
     }
 
-    #[tokio::test]
-    async fn focus_handler_writes_into_pending_slot() {
-        let _guard = lock_focus();
-        reset_pending();
-        let svc = WorkbenchService;
-        svc.focus("look_and_feel").await.expect("focus ok");
-        assert_eq!(PendingFocus::drain(), Some("look_and_feel".to_string()));
+    fn persist() -> (tempfile::TempDir, Persist) {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = Persist::open(tmp.path().to_path_buf()).unwrap();
+        (tmp, p)
     }
 
-    #[tokio::test]
-    async fn focus_handler_normalises_whitespace_only_slug_to_empty() {
+    #[test]
+    fn poll_once_submits_slug_and_replies_ok() {
         let _guard = lock_focus();
         reset_pending();
-        let svc = WorkbenchService;
-        svc.focus("   ").await.expect("focus ok");
-        // Whitespace-only is interpreted as "no view change,
-        // just raise" — matches the 1.x taskbar contract.
+        let (_tmp, p) = persist();
+        let msg = p
+            .write(ACTION_TOPIC, Priority::Default, None, Some("look_and_feel"))
+            .unwrap();
+        let mut cursor = None;
+        poll_once(&p, &mut cursor);
+        // Slug landed in the pending slot.
+        assert_eq!(PendingFocus::drain(), Some("look_and_feel".to_string()));
+        // Cursor advanced + an `ok` reply landed on reply/<ulid>.
+        assert_eq!(cursor.as_deref(), Some(msg.ulid.as_str()));
+        let replies = p.list_since(&reply_topic(&msg.ulid), None).unwrap();
+        assert_eq!(replies.len(), 1);
+        assert_eq!(replies[0].body.as_deref(), Some("ok"));
+    }
+
+    #[test]
+    fn poll_once_normalises_whitespace_only_body_to_empty() {
+        let _guard = lock_focus();
+        reset_pending();
+        let (_tmp, p) = persist();
+        p.write(ACTION_TOPIC, Priority::Default, None, Some("   "))
+            .unwrap();
+        let mut cursor = None;
+        poll_once(&p, &mut cursor);
+        // Whitespace-only is "raise only" — empty slug.
         assert_eq!(PendingFocus::drain(), Some(String::new()));
     }
 
-    #[tokio::test]
-    async fn focus_handler_trims_surrounding_whitespace() {
+    #[test]
+    fn poll_once_is_idempotent_via_cursor() {
         let _guard = lock_focus();
         reset_pending();
-        let svc = WorkbenchService;
-        svc.focus("  network.mesh_ssh  ").await.expect("focus ok");
-        assert_eq!(PendingFocus::drain(), Some("network.mesh_ssh".to_string()));
-    }
-
-    #[tokio::test]
-    async fn version_method_returns_crate_version() {
-        let svc = WorkbenchService;
-        assert_eq!(svc.version().await, env!("CARGO_PKG_VERSION"));
+        let (_tmp, p) = persist();
+        p.write(ACTION_TOPIC, Priority::Default, None, Some("apps"))
+            .unwrap();
+        let mut cursor = None;
+        poll_once(&p, &mut cursor);
+        assert_eq!(PendingFocus::drain(), Some("apps".to_string()));
+        // A second sweep with no new requests submits nothing.
+        poll_once(&p, &mut cursor);
+        assert_eq!(PendingFocus::drain(), None);
     }
 }

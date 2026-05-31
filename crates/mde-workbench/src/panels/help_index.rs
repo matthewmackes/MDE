@@ -55,9 +55,9 @@ impl HelpIndexPanel {
         };
         let mut col = column![
             title,
-            Space::with_height(Length::Fixed(6.0)),
+            Space::new().height(Length::Fixed(6.0)),
             body,
-            Space::with_height(Length::Fixed(20.0)),
+            Space::new().height(Length::Fixed(20.0)),
         ];
         for topic in &self.topics {
             col = col.push(topic_row(topic, palette));
@@ -93,7 +93,7 @@ fn topic_row<'a>(topic: &'a HelpTopic, palette: Palette) -> Element<'a, crate::M
         .color(palette.text_muted.into_iced_color());
     let inner = row![
         icon_widget,
-        Space::with_width(Length::Fixed(12.0)),
+        Space::new().width(Length::Fixed(12.0)),
         column![title_text, path_text].spacing(2),
     ]
     .align_y(iced::Alignment::Center);
@@ -111,7 +111,7 @@ fn topic_row<'a>(topic: &'a HelpTopic, palette: Palette) -> Element<'a, crate::M
                 b: bg.b * 1.08,
                 a: bg.a,
             };
-            iced::widget::button::Style {
+            iced::widget::button::Style { snap: false,
                 background: Some(Background::Color(match status {
                     iced::widget::button::Status::Hovered => hover_bg,
                     _ => bg,

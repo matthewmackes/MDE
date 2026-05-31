@@ -187,7 +187,7 @@ impl MeshControlPanel {
                     },
                     _ => accent,
                 };
-                iced::widget::button::Style {
+                iced::widget::button::Style { snap: false,
                     background: Some(Background::Color(bg)),
                     text_color: Color::WHITE,
                     border: Border {
@@ -203,7 +203,7 @@ impl MeshControlPanel {
 
         let header = row![
             column![title, subtitle].spacing(2),
-            Space::with_width(Length::Fill),
+            Space::new().width(Length::Fill),
             refresh_btn,
         ]
         .align_y(iced::alignment::Vertical::Center);
@@ -224,7 +224,7 @@ impl MeshControlPanel {
                     },
                     _ => Color::TRANSPARENT,
                 };
-                iced::widget::button::Style {
+                iced::widget::button::Style { snap: false,
                     background: Some(Background::Color(bg)),
                     text_color: text_main,
                     border: Border {
@@ -271,13 +271,13 @@ impl MeshControlPanel {
         container(
             column![
                 header,
-                Space::with_height(Length::Fixed(20.0)),
+                Space::new().height(Length::Fixed(20.0)),
                 scrollable(
-                    column![leader_card, Space::with_height(Length::Fixed(12.0)), healthz_card]
+                    column![leader_card, Space::new().height(Length::Fixed(12.0)), healthz_card]
                         .spacing(2),
                 )
                 .height(Length::FillPortion(1)),
-                Space::with_height(Length::Fixed(12.0)),
+                Space::new().height(Length::Fixed(12.0)),
                 action_row,
             ]
             .spacing(2),
@@ -388,7 +388,7 @@ fn leader_card_view<'a>(snap: &'a MeshControlSnapshot, palette: Palette) -> Elem
     container(details_col)
         .padding(Padding::from([14u16, 18u16]))
         .width(Length::Fill)
-        .style(move |_| container::Style {
+        .style(move |_| container::Style { snap: false,
             background: Some(Background::Color(bg)),
             border: Border {
                 color: border,
@@ -403,7 +403,7 @@ fn leader_card_view<'a>(snap: &'a MeshControlSnapshot, palette: Palette) -> Elem
 fn healthz_card_view<'a>(snap: &'a MeshControlSnapshot, palette: Palette) -> Element<'a, crate::Message> {
     let header = row![
         text("mackesd healthz").size(13).color(palette.text.into_iced_color()),
-        Space::with_width(Length::Fill),
+        Space::new().width(Length::Fill),
         text(snap.healthz_summary.clone())
             .size(11)
             .color(palette.text_muted.into_iced_color()),
@@ -434,7 +434,7 @@ fn healthz_card_view<'a>(snap: &'a MeshControlSnapshot, palette: Palette) -> Ele
             )
             .padding(Padding::from([10u16, 14u16]))
             .width(Length::Fill)
-            .style(move |_| container::Style {
+            .style(move |_| container::Style { snap: false,
                 background: Some(Background::Color(raw_box_bg)),
                 border: Border {
                     color: border,
@@ -448,7 +448,7 @@ fn healthz_card_view<'a>(snap: &'a MeshControlSnapshot, palette: Palette) -> Ele
     )
     .padding(Padding::from([14u16, 18u16]))
     .width(Length::Fill)
-    .style(move |_| container::Style {
+    .style(move |_| container::Style { snap: false,
         background: Some(Background::Color(bg)),
         border: Border {
             color: border,
@@ -475,7 +475,7 @@ fn kv_pill<'a>(key: &'a str, value: String, palette: Palette) -> Element<'a, cra
         .spacing(6),
     )
     .padding(Padding::from([3u16, 8u16]))
-    .style(move |_| container::Style {
+    .style(move |_| container::Style { snap: false,
         background: Some(Background::Color(bg)),
         border: Border {
             color: palette.border.into_iced_color(),

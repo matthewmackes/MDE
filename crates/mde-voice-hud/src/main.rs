@@ -30,7 +30,6 @@ use iced::{Color, Element, Length, Padding, Task, Theme};
 use iced_layershell::reexport::{Anchor, KeyboardInteractivity, Layer};
 use iced_layershell::settings::{LayerShellSettings, Settings};
 use iced_layershell::to_layer_message;
-use iced_layershell::Application as _;
 
 mod recents;
 mod resolve;
@@ -64,11 +63,11 @@ const ACCOUNT_INITIALS: &str = "BT";
 const PEER_NAME_PLACEHOLDER: &str = "Operator";
 
 /// Iced application messages. `#[to_layer_message]` derives the
-/// `TryInto<LayershellCustomActions>` bound that `iced_layershell::
-/// Application::run` requires; the attribute also adds variants
-/// for layer-shell actions (size, anchor, margin changes etc.)
-/// which we don't use directly here but the runtime expects to
-/// exist.
+/// `TryInto<LayershellCustomActions>` bound that the
+/// iced_layershell 0.18 builder requires; the attribute also
+/// adds variants for layer-shell actions (size, anchor, margin
+/// changes etc.) which we don't use directly here but the
+/// runtime expects to exist.
 // The `to_layer_message` proc-macro injects layer-shell-specific
 // variants (size / anchor / margin / etc.) onto the enum but
 // doesn't propagate the hand-written doc comments. Allow-list
@@ -97,92 +96,81 @@ pub enum Message {
     Escape,
     /// Sentinel that the runtime uses to flag exit. Currently
     /// triggers `std::process::exit(0)` since iced_layershell
-    /// 0.13 doesn't expose a clean shutdown API.
+    /// 0.18 doesn't expose a clean shutdown API.
     Exit,
 }
 
 /// Top-level HUD state.
 pub struct VoiceHud {
     /// Current contents of the dialer display field.
-    dialer_input: String,
+    pub dialer_input: String,
     /// Loaded mesh roster — drives the `Resolved::Mesh` lookup
     /// in the resolved-chip rendering.
-    roster: Vec<Peer>,
+    pub roster: Vec<Peer>,
 }
 
-impl iced_layershell::Application for VoiceHud {
-    type Executor = iced::executor::Default;
-    type Message = Message;
-    type Theme = Theme;
-    type Flags = ();
+// ── iced_layershell 0.18 builder-pattern functions ──────────────────────────
 
-    fn new(_flags: ()) -> (Self, Task<Message>) {
-        let RosterLoad { peers, source } = roster::load();
-        tracing::info!(roster_count = peers.len(), ?source, "voice-hud: roster loaded");
-        (
-            Self {
-                dialer_input: String::new(),
-                roster: peers,
-            },
-            Task::none(),
-        )
-    }
+fn namespace() -> String {
+    "mde-voice-hud".to_string()
+}
 
-    fn namespace(&self) -> String {
-        "mde-voice-hud".to_string()
-    }
-
-    fn update(&mut self, message: Message) -> Task<Message> {
-        match message {
-            Message::DialerInputChanged(value) => {
-                self.dialer_input = filter_dialer_chars(&value);
-            }
-            Message::KeypadPressed(c) => {
-                if is_dialer_char(c) {
-                    self.dialer_input.push(c);
-                }
-            }
-            Message::Backspace => {
-                self.dialer_input.pop();
-            }
-            Message::Escape => {
-                return Task::done(Message::Exit);
-            }
-            Message::Exit => {
-                std::process::exit(0);
-            }
-            // `#[to_layer_message]` injects extra variants for
-            // layer-shell control actions (anchor / margin / etc.
-            // changes). VOIP-27 ships idle-state only — no
-            // runtime relayout, so these are unreachable. The
-            // wildcard arm keeps the match exhaustive without
-            // pulling in the LayershellCustomActions imports.
-            _ => {}
+pub fn update(state: &mut VoiceHud, message: Message) -> Task<Message> {
+    match message {
+        Message::DialerInputChanged(value) => {
+            state.dialer_input = filter_dialer_chars(&value);
         }
-        Task::none()
+        Message::KeypadPressed(c) => {
+            if is_dialer_char(c) {
+                state.dialer_input.push(c);
+            }
+        }
+        Message::Backspace => {
+            state.dialer_input.pop();
+        }
+        Message::Escape => {
+            return Task::done(Message::Exit);
+        }
+        Message::Exit => {
+            std::process::exit(0);
+        }
+        // `#[to_layer_message]` injects extra variants for
+        // layer-shell control actions (anchor / margin / etc.
+        // changes). VOIP-27 ships idle-state only — no
+        // runtime relayout, so these are unreachable. The
+        // wildcard arm keeps the match exhaustive without
+        // pulling in the LayershellCustomActions imports.
+        _ => {}
     }
+    Task::none()
+}
 
-    fn view(&self) -> Element<'_, Message> {
-        container(
-            column![
-                build_topbar(),
-                build_display(self),
-                build_keypad(),
-            ]
-            .spacing(12),
-        )
-        .padding(Padding::from([16, 16]))
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .style(|_: &Theme| iced::widget::container::Style {
-            background: Some(iced::Background::Color(theme::SURF)),
-            ..Default::default()
-        })
-        .into()
-    }
+pub fn view(state: &VoiceHud) -> Element<'_, Message> {
+    container(
+        column![
+            build_topbar(),
+            build_display(state),
+            build_keypad(),
+        ]
+        .spacing(12),
+    )
+    .padding(Padding::from([16, 16]))
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .style(|_: &Theme| iced::widget::container::Style {
+        background: Some(iced::Background::Color(theme::SURF)),
+        ..Default::default()
+    })
+    .into()
+}
 
-    fn subscription(&self) -> iced::Subscription<Message> {
-        iced::keyboard::on_key_press(|key, _modifiers| {
+fn subscription(_state: &VoiceHud) -> iced::Subscription<Message> {
+    use iced::event;
+    use iced::keyboard;
+    event::listen_with(|event, status, _window| match event {
+        iced::Event::Keyboard(keyboard::Event::KeyPressed { key, .. })
+            if status == event::Status::Ignored =>
+        {
             use iced::keyboard::{key::Named, Key};
             match key {
                 Key::Named(Named::Escape) => Some(Message::Escape),
@@ -197,8 +185,9 @@ impl iced_layershell::Application for VoiceHud {
                 }
                 _ => None,
             }
-        })
-    }
+        }
+        _ => None,
+    })
 }
 
 /// Build the topbar — account dot + peer name + presence pip +
@@ -220,7 +209,7 @@ fn build_topbar<'a>() -> Element<'a, Message> {
         .align_x(iced::alignment::Horizontal::Center)
         .align_y(iced::alignment::Vertical::Center);
 
-    let presence_pip = container(iced::widget::Space::new(0.0, 0.0))
+    let presence_pip = container(iced::widget::Space::new())
         .style(|_: &Theme| iced::widget::container::Style {
             background: Some(iced::Background::Color(theme::PRESENCE_AVAILABLE)),
             border: iced::Border {
@@ -236,7 +225,7 @@ fn build_topbar<'a>() -> Element<'a, Message> {
         text(PEER_NAME_PLACEHOLDER).size(14.0).color(theme::ON_SURF),
         row![
             presence_pip,
-            iced::widget::horizontal_space().width(Length::Fixed(6.0)),
+            iced::widget::space().width(Length::Fixed(6.0)),
             text(REGISTRATION_PLACEHOLDER).size(11.0).color(theme::ON_SURF_VAR),
         ]
         .align_y(iced::Alignment::Center),
@@ -245,7 +234,7 @@ fn build_topbar<'a>() -> Element<'a, Message> {
 
     row![
         account_dot,
-        iced::widget::horizontal_space().width(Length::Fixed(12.0)),
+        iced::widget::space().width(Length::Fixed(12.0)),
         name_col,
     ]
     .align_y(iced::Alignment::Center)
@@ -414,7 +403,21 @@ fn main() -> iced_layershell::Result {
         .json()
         .init();
 
-    VoiceHud::run(Settings {
+    iced_layershell::application(
+        || {
+            let RosterLoad { peers, source } = roster::load();
+            tracing::info!(roster_count = peers.len(), ?source, "voice-hud: roster loaded");
+            VoiceHud {
+                dialer_input: String::new(),
+                roster: peers,
+            }
+        },
+        namespace,
+        update,
+        view,
+    )
+    .subscription(subscription)
+    .settings(Settings {
         id: Some("mde-voice-hud".to_string()),
         layer_settings: LayerShellSettings {
             size: Some((WIDTH, HEIGHT)),
@@ -430,6 +433,7 @@ fn main() -> iced_layershell::Result {
         },
         ..Default::default()
     })
+    .run()
 }
 
 #[cfg(test)]
@@ -446,6 +450,10 @@ mod tests {
             lan: true,
             hint: "Alice's ThinkPad".to_string(),
         }]
+    }
+
+    fn make_hud() -> VoiceHud {
+        VoiceHud { dialer_input: String::new(), roster: vec![] }
     }
 
     #[test]
@@ -538,55 +546,41 @@ mod tests {
 
     #[test]
     fn voice_hud_keypad_pressed_appends_to_input() {
-        let (mut hud, _task) = <VoiceHud as iced_layershell::Application>::new(());
+        let mut hud = make_hud();
         assert_eq!(hud.dialer_input, "");
-        // Simulate the update handler directly — Iced's runtime
-        // routes Message → update().
         for c in "1003".chars() {
-            let _ = <VoiceHud as iced_layershell::Application>::update(
-                &mut hud,
-                Message::KeypadPressed(c),
-            );
+            let _ = update(&mut hud, Message::KeypadPressed(c));
         }
         assert_eq!(hud.dialer_input, "1003");
     }
 
     #[test]
     fn voice_hud_keypad_rejects_non_dialer_char() {
-        let (mut hud, _task) = <VoiceHud as iced_layershell::Application>::new(());
-        let _ = <VoiceHud as iced_layershell::Application>::update(
-            &mut hud,
-            Message::KeypadPressed('a'),
-        );
+        let mut hud = make_hud();
+        let _ = update(&mut hud, Message::KeypadPressed('a'));
         assert_eq!(hud.dialer_input, "");
     }
 
     #[test]
     fn voice_hud_backspace_removes_last_char() {
-        let (mut hud, _task) = <VoiceHud as iced_layershell::Application>::new(());
+        let mut hud = make_hud();
         for c in "1003".chars() {
-            let _ = <VoiceHud as iced_layershell::Application>::update(
-                &mut hud,
-                Message::KeypadPressed(c),
-            );
+            let _ = update(&mut hud, Message::KeypadPressed(c));
         }
-        let _ = <VoiceHud as iced_layershell::Application>::update(&mut hud, Message::Backspace);
+        let _ = update(&mut hud, Message::Backspace);
         assert_eq!(hud.dialer_input, "100");
         // Backspace on empty input is a no-op.
         for _ in 0..10 {
-            let _ = <VoiceHud as iced_layershell::Application>::update(&mut hud, Message::Backspace);
+            let _ = update(&mut hud, Message::Backspace);
         }
         assert_eq!(hud.dialer_input, "");
     }
 
     #[test]
     fn voice_hud_dialer_input_changed_filters_input() {
-        let (mut hud, _task) = <VoiceHud as iced_layershell::Application>::new(());
+        let mut hud = make_hud();
         // Paste a formatted number — non-dialer chars drop.
-        let _ = <VoiceHud as iced_layershell::Application>::update(
-            &mut hud,
-            Message::DialerInputChanged("(415) 555-1234".to_string()),
-        );
+        let _ = update(&mut hud, Message::DialerInputChanged("(415) 555-1234".to_string()));
         assert_eq!(hud.dialer_input, "4155551234");
     }
 

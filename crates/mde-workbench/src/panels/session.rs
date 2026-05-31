@@ -147,11 +147,11 @@ impl SessionPanel {
         );
 
         column![
-            checkbox("Save session on exit", self.save_on_exit)
+            checkbox(self.save_on_exit).label("Save session on exit")
                 .on_toggle(|v| { crate::Message::Session(Message::SaveOnExitChanged(v)) }),
-            checkbox("Lock screen on suspend", self.lock_on_suspend)
+            checkbox(self.lock_on_suspend).label("Lock screen on suspend")
                 .on_toggle(|v| crate::Message::Session(Message::LockOnSuspendChanged(v)),),
-            checkbox("Auto-save layout periodically", self.auto_save)
+            checkbox(self.auto_save).label("Auto-save layout periodically")
                 .on_toggle(|v| crate::Message::Session(Message::AutoSaveChanged(v)),),
             row![apply_btn, text(&self.status).size(13)].spacing(12),
         ]

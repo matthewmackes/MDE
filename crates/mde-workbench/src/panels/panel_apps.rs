@@ -128,9 +128,9 @@ impl PanelAppsPanel {
         container(
             column![
                 header,
-                Space::with_height(Length::Fixed(18.0)),
+                Space::new().height(Length::Fixed(18.0)),
                 col,
-                Space::with_height(Length::Fixed(16.0)),
+                Space::new().height(Length::Fixed(16.0)),
                 footer,
             ]
             .spacing(2),
@@ -209,7 +209,7 @@ fn applet_row<'a>(
                 _ => Color::TRANSPARENT,
             }
         };
-        iced::widget::button::Style {
+        iced::widget::button::Style { snap: false,
             background: Some(Background::Color(bg)),
             text_color: if on {
                 Color::WHITE
@@ -236,7 +236,7 @@ fn applet_row<'a>(
         row![
             icon_widget,
             column![label_text, id_text].spacing(2),
-            Space::with_width(Length::Fill),
+            Space::new().width(Length::Fill),
             toggle_btn,
         ]
         .spacing(12)
@@ -244,7 +244,7 @@ fn applet_row<'a>(
     )
     .padding(Padding::from([10u16, 16u16]))
     .width(Length::Fill)
-    .style(move |_| container::Style {
+    .style(move |_| container::Style { snap: false,
         background: Some(Background::Color(bg)),
         border: Border {
             color: border,

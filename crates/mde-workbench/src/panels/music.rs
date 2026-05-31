@@ -228,7 +228,7 @@ impl MusicPanel {
             column![
                 text("Music").size(20),
                 server,
-                Space::with_height(Length::Fixed(8.0)),
+                Space::new().height(Length::Fixed(8.0)),
                 cache_section,
                 text(&self.status).size(13),
             ]

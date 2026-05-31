@@ -16,7 +16,7 @@
 use iced::widget::{column, container, row, slider, text, Space};
 use iced::widget::mouse_area;
 use iced::widget::container::Style as ContainerStyle;
-use iced::{Background, Border, Color, Element, Length, Padding, Task, Theme};
+use iced::{Background, Border, Color, Element, Length, Padding, Subscription, Task, Theme};
 use iced_layershell::reexport::{Anchor, KeyboardInteractivity, Layer};
 use iced_layershell::settings::{LayerShellSettings, Settings};
 use iced_layershell::to_layer_message;
@@ -118,228 +118,219 @@ pub struct App {
     brightness: f32,   // 0..=100
 }
 
-impl iced_layershell::Application for App {
-    type Executor = iced::executor::Default;
-    type Message = Message;
-    type Theme = Theme;
-    type Flags = ();
+fn namespace() -> String {
+    "mde-popover-status".to_string()
+}
 
-    fn new(_flags: ()) -> (Self, Task<Message>) {
-        let volume = read_volume_pct() as f32;
-        let brightness = read_brightness_pct() as f32;
-        tracing::info!(volume, brightness, "status popover open");
-        (Self { active_tab: Tab::Volume, volume, brightness }, Task::none())
-    }
-
-    fn namespace(&self) -> String {
-        "mde-popover-status".to_string()
-    }
-
-    fn update(&mut self, msg: Message) -> Task<Message> {
-        match msg {
-            Message::SwitchTab(tab) => {
-                self.active_tab = tab;
-            }
-            Message::VolumeSlider(v) => {
-                self.volume = v;
-            }
-            Message::VolumeCommit => {
-                let pct = self.volume.round() as u8;
-                tracing::info!(pct, "status: set volume");
-                let _ = std::process::Command::new("pactl")
-                    .args(["set-sink-volume", "@DEFAULT_SINK@", &format!("{pct}%")])
-                    .spawn();
-            }
-            Message::BrightnessSlider(v) => {
-                self.brightness = v;
-            }
-            Message::BrightnessCommit => {
-                let pct = self.brightness.round() as u8;
-                tracing::info!(pct, "status: set brightness");
-                let _ = std::process::Command::new("brightnessctl")
-                    .args(["set", &format!("{pct}%")])
-                    .spawn();
-            }
-            Message::Lock => {
-                let _ = std::process::Command::new("loginctl")
-                    .arg("lock-session")
-                    .spawn();
-                std::process::exit(0);
-            }
-            Message::Suspend => {
-                let _ = std::process::Command::new("systemctl")
-                    .arg("suspend")
-                    .spawn();
-                std::process::exit(0);
-            }
-            Message::Reboot => {
-                let _ = std::process::Command::new("systemctl")
-                    .arg("reboot")
-                    .spawn();
-                std::process::exit(0);
-            }
-            Message::Shutdown => {
-                let _ = std::process::Command::new("systemctl")
-                    .arg("poweroff")
-                    .spawn();
-                std::process::exit(0);
-            }
-            Message::Exit => std::process::exit(0),
-            _ => {}
+fn update(state: &mut App, msg: Message) -> Task<Message> {
+    match msg {
+        Message::SwitchTab(tab) => {
+            state.active_tab = tab;
         }
-        Task::none()
+        Message::VolumeSlider(v) => {
+            state.volume = v;
+        }
+        Message::VolumeCommit => {
+            let pct = state.volume.round() as u8;
+            tracing::info!(pct, "status: set volume");
+            let _ = std::process::Command::new("pactl")
+                .args(["set-sink-volume", "@DEFAULT_SINK@", &format!("{pct}%")])
+                .spawn();
+        }
+        Message::BrightnessSlider(v) => {
+            state.brightness = v;
+        }
+        Message::BrightnessCommit => {
+            let pct = state.brightness.round() as u8;
+            tracing::info!(pct, "status: set brightness");
+            let _ = std::process::Command::new("brightnessctl")
+                .args(["set", &format!("{pct}%")])
+                .spawn();
+        }
+        Message::Lock => {
+            let _ = std::process::Command::new("loginctl")
+                .arg("lock-session")
+                .spawn();
+            std::process::exit(0);
+        }
+        Message::Suspend => {
+            let _ = std::process::Command::new("systemctl")
+                .arg("suspend")
+                .spawn();
+            std::process::exit(0);
+        }
+        Message::Reboot => {
+            let _ = std::process::Command::new("systemctl")
+                .arg("reboot")
+                .spawn();
+            std::process::exit(0);
+        }
+        Message::Shutdown => {
+            let _ = std::process::Command::new("systemctl")
+                .arg("poweroff")
+                .spawn();
+            std::process::exit(0);
+        }
+        Message::Exit => std::process::exit(0),
+        _ => {}
     }
+    Task::none()
+}
 
-    fn view(&self) -> Element<'_, Message> {
-        // ── Tab bar ───────────────────────────────────────────────────────────
-        let tab_bar = row![
-            tab_btn(Tab::Volume, self.active_tab),
-            tab_btn(Tab::Brightness, self.active_tab),
-            tab_btn(Tab::Power, self.active_tab),
-        ]
-        .spacing(2)
-        .padding(Padding { top: 6.0, right: 12.0, bottom: 4.0, left: 12.0 });
+fn view(state: &App) -> Element<'_, Message> {
+    // ── Tab bar ───────────────────────────────────────────────────────────
+    let tab_bar = row![
+        tab_btn(Tab::Volume, state.active_tab),
+        tab_btn(Tab::Brightness, state.active_tab),
+        tab_btn(Tab::Power, state.active_tab),
+    ]
+    .spacing(2)
+    .padding(Padding { top: 6.0, right: 12.0, bottom: 4.0, left: 12.0 });
 
-        // ── Card content ──────────────────────────────────────────────────────
-        let content: Element<'_, Message> = match self.active_tab {
-            Tab::Volume => {
-                let pct = self.volume.round() as u8;
-                column![
-                    row![
-                        text("Volume").size(12).color(FG_DIM),
-                        Space::with_width(Length::Fill),
-                        text(format!("{pct}%")).size(12).color(FG),
-                    ]
-                    .align_y(iced::Alignment::Center),
-                    slider(0.0..=100.0, self.volume, Message::VolumeSlider)
-                        .on_release(Message::VolumeCommit)
-                        .step(1.0),
-                    Space::with_height(Length::Fixed(8.0)),
-                    row![
-                        vol_quick_btn("🔇 Mute", 0.0),
-                        Space::with_width(Length::Fill),
-                        vol_quick_btn("25%", 25.0),
-                        Space::with_width(Length::Fixed(4.0)),
-                        vol_quick_btn("50%", 50.0),
-                        Space::with_width(Length::Fixed(4.0)),
-                        vol_quick_btn("75%", 75.0),
-                        Space::with_width(Length::Fixed(4.0)),
-                        vol_quick_btn("100%", 100.0),
-                    ]
-                    .align_y(iced::Alignment::Center),
-                ]
-                .spacing(8)
-                .padding(Padding { top: 4.0, right: 16.0, bottom: 8.0, left: 16.0 })
-                .into()
-            }
-            Tab::Brightness => {
-                let pct = self.brightness.round() as u8;
-                column![
-                    row![
-                        text("Brightness").size(12).color(FG_DIM),
-                        Space::with_width(Length::Fill),
-                        text(format!("{pct}%")).size(12).color(FG),
-                    ]
-                    .align_y(iced::Alignment::Center),
-                    slider(0.0..=100.0, self.brightness, Message::BrightnessSlider)
-                        .on_release(Message::BrightnessCommit)
-                        .step(1.0),
-                    Space::with_height(Length::Fixed(8.0)),
-                    row![
-                        bri_quick_btn("10%", 10.0),
-                        Space::with_width(Length::Fixed(4.0)),
-                        bri_quick_btn("30%", 30.0),
-                        Space::with_width(Length::Fixed(4.0)),
-                        bri_quick_btn("60%", 60.0),
-                        Space::with_width(Length::Fixed(4.0)),
-                        bri_quick_btn("80%", 80.0),
-                        Space::with_width(Length::Fill),
-                        bri_quick_btn("100%", 100.0),
-                    ]
-                    .align_y(iced::Alignment::Center),
-                ]
-                .spacing(8)
-                .padding(Padding { top: 4.0, right: 16.0, bottom: 8.0, left: 16.0 })
-                .into()
-            }
-            Tab::Power => {
-                row![
-                    power_btn("Lock", Message::Lock, COLOR_SAGE),
-                    Space::with_width(Length::Fill),
-                    power_btn("Suspend", Message::Suspend, FG_DIM),
-                    Space::with_width(Length::Fixed(8.0)),
-                    power_btn("Reboot", Message::Reboot, COLOR_AMBER),
-                    Space::with_width(Length::Fixed(8.0)),
-                    power_btn("Shutdown", Message::Shutdown, COLOR_RED),
-                ]
-                .align_y(iced::Alignment::Center)
-                .padding(Padding::from([12, 16]))
-                .into()
-            }
-        };
-
-        let strip_card = column![tab_bar, content]
-            .width(Length::Fill)
-            .height(Length::Fixed(STRIP_HEIGHT));
-
-        let strip: Element<'_, Message> = container(strip_card)
-            .width(Length::Fill)
-            .height(Length::Fixed(STRIP_HEIGHT))
-            .style(|_: &Theme| ContainerStyle {
-                background: Some(Background::Color(SURFACE)),
-                border: Border {
-                    color: Color { r: 1.0, g: 1.0, b: 1.0, a: 0.06 },
-                    width: 1.0,
-                    radius: 4.0.into(),
-                },
-                ..Default::default()
-            })
-            .into();
-
-        // ── Backdrop dismiss ──────────────────────────────────────────────────
-        let backdrop = mouse_area(
-            container(Space::with_width(Length::Fill))
-                .width(Length::Fill)
-                .height(Length::Fill),
-        )
-        .on_press(Message::Exit);
-
-        // Stack: [backdrop fills top] [strip anchored at bottom above Dock]
-        container(
+    // ── Card content ──────────────────────────────────────────────────────
+    let content: Element<'_, Message> = match state.active_tab {
+        Tab::Volume => {
+            let pct = state.volume.round() as u8;
             column![
-                backdrop,
-                container(strip).padding(Padding {
-                    top: 0.0,
-                    right: 0.0,
-                    bottom: DOCK_HEIGHT,
-                    left: 0.0,
-                }),
+                row![
+                    text("Volume").size(12).color(FG_DIM),
+                    Space::new().width(Length::Fill),
+                    text(format!("{pct}%")).size(12).color(FG),
+                ]
+                .align_y(iced::Alignment::Center),
+                slider(0.0..=100.0, state.volume, Message::VolumeSlider)
+                    .on_release(Message::VolumeCommit)
+                    .step(1.0),
+                Space::new().height(Length::Fixed(8.0)),
+                row![
+                    vol_quick_btn("🔇 Mute", 0.0),
+                    Space::new().width(Length::Fill),
+                    vol_quick_btn("25%", 25.0),
+                    Space::new().width(Length::Fixed(4.0)),
+                    vol_quick_btn("50%", 50.0),
+                    Space::new().width(Length::Fixed(4.0)),
+                    vol_quick_btn("75%", 75.0),
+                    Space::new().width(Length::Fixed(4.0)),
+                    vol_quick_btn("100%", 100.0),
+                ]
+                .align_y(iced::Alignment::Center),
             ]
-            .width(Length::Fill),
-        )
+            .spacing(8)
+            .padding(Padding { top: 4.0, right: 16.0, bottom: 8.0, left: 16.0 })
+            .into()
+        }
+        Tab::Brightness => {
+            let pct = state.brightness.round() as u8;
+            column![
+                row![
+                    text("Brightness").size(12).color(FG_DIM),
+                    Space::new().width(Length::Fill),
+                    text(format!("{pct}%")).size(12).color(FG),
+                ]
+                .align_y(iced::Alignment::Center),
+                slider(0.0..=100.0, state.brightness, Message::BrightnessSlider)
+                    .on_release(Message::BrightnessCommit)
+                    .step(1.0),
+                Space::new().height(Length::Fixed(8.0)),
+                row![
+                    bri_quick_btn("10%", 10.0),
+                    Space::new().width(Length::Fixed(4.0)),
+                    bri_quick_btn("30%", 30.0),
+                    Space::new().width(Length::Fixed(4.0)),
+                    bri_quick_btn("60%", 60.0),
+                    Space::new().width(Length::Fixed(4.0)),
+                    bri_quick_btn("80%", 80.0),
+                    Space::new().width(Length::Fill),
+                    bri_quick_btn("100%", 100.0),
+                ]
+                .align_y(iced::Alignment::Center),
+            ]
+            .spacing(8)
+            .padding(Padding { top: 4.0, right: 16.0, bottom: 8.0, left: 16.0 })
+            .into()
+        }
+        Tab::Power => {
+            row![
+                power_btn("Lock", Message::Lock, COLOR_SAGE),
+                Space::new().width(Length::Fill),
+                power_btn("Suspend", Message::Suspend, FG_DIM),
+                Space::new().width(Length::Fixed(8.0)),
+                power_btn("Reboot", Message::Reboot, COLOR_AMBER),
+                Space::new().width(Length::Fixed(8.0)),
+                power_btn("Shutdown", Message::Shutdown, COLOR_RED),
+            ]
+            .align_y(iced::Alignment::Center)
+            .padding(Padding::from([12, 16]))
+            .into()
+        }
+    };
+
+    let strip_card = column![tab_bar, content]
         .width(Length::Fill)
-        .height(Length::Fill)
+        .height(Length::Fixed(STRIP_HEIGHT));
+
+    let strip: Element<'_, Message> = container(strip_card)
+        .width(Length::Fill)
+        .height(Length::Fixed(STRIP_HEIGHT))
         .style(|_: &Theme| ContainerStyle {
-            background: Some(Background::Color(Color::TRANSPARENT)),
+            background: Some(Background::Color(SURFACE)),
+            border: Border {
+                color: Color { r: 1.0, g: 1.0, b: 1.0, a: 0.06 },
+                width: 1.0,
+                radius: 4.0.into(),
+            },
             ..Default::default()
         })
-        .into()
-    }
+        .into();
 
-    fn theme(&self) -> Theme {
-        Theme::Dark
-    }
+    // ── Backdrop dismiss ──────────────────────────────────────────────────
+    let backdrop = mouse_area(
+        container(Space::new())
+            .width(Length::Fill)
+            .height(Length::Fill),
+    )
+    .on_press(Message::Exit);
 
-    fn subscription(&self) -> iced::Subscription<Message> {
-        iced::keyboard::on_key_press(|key, _| {
-            use iced::keyboard::{key::Named, Key};
-            if matches!(key, Key::Named(Named::Escape)) {
-                Some(Message::Exit)
-            } else {
-                None
+    // Stack: [backdrop fills top] [strip anchored at bottom above Dock]
+    container(
+        column![
+            backdrop,
+            container(strip).padding(Padding {
+                top: 0.0,
+                right: 0.0,
+                bottom: DOCK_HEIGHT,
+                left: 0.0,
+            }),
+        ]
+        .width(Length::Fill),
+    )
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .style(|_: &Theme| ContainerStyle {
+        background: Some(Background::Color(Color::TRANSPARENT)),
+        ..Default::default()
+    })
+    .into()
+}
+
+fn subscription(_state: &App) -> Subscription<Message> {
+    use iced::event;
+    event::listen_with(|event, status, _window| {
+        use iced::keyboard;
+        match event {
+            iced::Event::Keyboard(keyboard::Event::KeyPressed { key, .. })
+                if status == event::Status::Ignored =>
+            {
+                use iced::keyboard::{key::Named, Key};
+                if matches!(key, Key::Named(Named::Escape)) {
+                    Some(Message::Exit)
+                } else {
+                    None
+                }
             }
-        })
-    }
+            _ => None,
+        }
+    })
 }
 
 // ── Widget helpers ────────────────────────────────────────────────────────────
@@ -426,7 +417,20 @@ fn power_btn(label: &'static str, msg: Message, color: Color) -> Element<'static
 }
 
 pub fn run() -> iced_layershell::Result {
-    <App as iced_layershell::Application>::run(Settings {
+    iced_layershell::application(
+        || {
+            let volume = read_volume_pct() as f32;
+            let brightness = read_brightness_pct() as f32;
+            tracing::info!(volume, brightness, "status popover open");
+            App { active_tab: Tab::Volume, volume, brightness }
+        },
+        namespace,
+        update,
+        view,
+    )
+    .theme(|_: &App| iced::Theme::Dark)
+    .subscription(subscription)
+    .settings(Settings {
         id: Some("mde-popover-status".to_string()),
         fonts: crate::fonts::load_fallback_fonts(),
         layer_settings: LayerShellSettings {
@@ -440,6 +444,7 @@ pub fn run() -> iced_layershell::Result {
         },
         ..Default::default()
     })
+    .run()
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

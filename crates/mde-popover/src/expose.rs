@@ -61,7 +61,7 @@ pub struct ExposeCard {
 // ──────────────────────────────────────────────────────────────
 
 use iced::widget::{button, column, container, row, text, Space};
-use iced::{Background, Border, Color, Element, Length, Padding, Shadow, Task, Theme};
+use iced::{Background, Border, Color, Element, Length, Padding, Shadow, Subscription, Task, Theme};
 use iced_layershell::reexport::{Anchor, KeyboardInteractivity, Layer};
 use iced_layershell::settings::{LayerShellSettings, Settings};
 use iced_layershell::to_layer_message;
@@ -103,105 +103,109 @@ pub struct App {
     cards: Vec<ExposeCard>,
 }
 
-impl iced_layershell::Application for App {
-    type Executor = iced::executor::Default;
-    type Message = Message;
-    type Theme = Theme;
-    type Flags = ();
+fn namespace() -> String {
+    "mde-popover-expose".into()
+}
 
-    fn new(_flags: ()) -> (Self, Task<Message>) {
-        let cards = load_cards_via_swaymsg();
-        tracing::info!(count = cards.len(), "expose popover loaded");
-        (Self { cards }, Task::none())
-    }
-
-    fn namespace(&self) -> String {
-        "mde-popover-expose".into()
-    }
-
-    fn update(&mut self, msg: Message) -> Task<Message> {
-        match msg {
-            Message::FocusWindow(con_id) => {
-                swaymsg_focus(con_id);
-                std::process::exit(0);
-            }
-            Message::Exit => std::process::exit(0),
-            _ => Task::none(),
+fn update(_state: &mut App, msg: Message) -> Task<Message> {
+    match msg {
+        Message::FocusWindow(con_id) => {
+            swaymsg_focus(con_id);
+            std::process::exit(0);
         }
+        Message::Exit => std::process::exit(0),
+        _ => Task::none(),
     }
+}
 
-    fn view(&self) -> Element<'_, Message> {
-        if self.cards.is_empty() {
-            return container(text("No windows").size(16).color(FG_MUTED))
-                .center_x(Length::Fill)
-                .center_y(Length::Fill)
-                .style(surface_style)
-                .into();
-        }
-        let cols = grid_columns(self.cards.len());
-        let mut grid = column![].spacing(12);
-        let mut row_buf: Vec<Element<'_, Message>> = Vec::new();
-        for (i, card) in self.cards.iter().enumerate() {
-            row_buf.push(card_view(card));
-            if (i + 1) % cols == 0 {
-                let mut r = row![].spacing(12);
-                for el in row_buf.drain(..) {
-                    r = r.push(el);
-                }
-                grid = grid.push(r);
-            }
-        }
-        if !row_buf.is_empty() {
+fn view(state: &App) -> Element<'_, Message> {
+    if state.cards.is_empty() {
+        return container(text("No windows").size(16).color(FG_MUTED))
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .style(surface_style)
+            .into();
+    }
+    let cols = grid_columns(state.cards.len());
+    let mut grid = column![].spacing(12);
+    let mut row_buf: Vec<Element<'_, Message>> = Vec::new();
+    for (i, card) in state.cards.iter().enumerate() {
+        row_buf.push(card_view(card));
+        if (i + 1) % cols == 0 {
             let mut r = row![].spacing(12);
             for el in row_buf.drain(..) {
                 r = r.push(el);
             }
             grid = grid.push(r);
         }
-
-        let footer = text("F3 / Esc closes · click a card to focus")
-            .size(11)
-            .color(FG_MUTED);
-
-        let body = column![
-            Space::with_height(Length::Fixed(40.0)),
-            grid,
-            Space::with_height(Length::Fixed(20.0)),
-            container(footer).center_x(Length::Fill),
-            Space::with_height(Length::Fixed(40.0)),
-        ]
-        .padding(Padding {
-            top: 0.0,
-            right: 40.0,
-            bottom: 0.0,
-            left: 40.0,
-        });
-
-        container(body)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .style(surface_style)
-            .into()
+    }
+    if !row_buf.is_empty() {
+        let mut r = row![].spacing(12);
+        for el in row_buf.drain(..) {
+            r = r.push(el);
+        }
+        grid = grid.push(r);
     }
 
-    fn theme(&self) -> Theme {
-        Theme::Dark
-    }
+    let footer = text("F3 / Esc closes · click a card to focus")
+        .size(11)
+        .color(FG_MUTED);
 
-    fn subscription(&self) -> iced::Subscription<Message> {
-        iced::keyboard::on_key_press(|key, _| {
-            use iced::keyboard::{key::Named, Key};
-            if matches!(key, Key::Named(Named::Escape) | Key::Named(Named::F3)) {
-                Some(Message::Exit)
-            } else {
-                None
+    let body = column![
+        Space::new().height(Length::Fixed(40.0)),
+        grid,
+        Space::new().height(Length::Fixed(20.0)),
+        container(footer).center_x(Length::Fill),
+        Space::new().height(Length::Fixed(40.0)),
+    ]
+    .padding(Padding {
+        top: 0.0,
+        right: 40.0,
+        bottom: 0.0,
+        left: 40.0,
+    });
+
+    container(body)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(surface_style)
+        .into()
+}
+
+fn subscription(_state: &App) -> Subscription<Message> {
+    use iced::event;
+    event::listen_with(|event, status, _window| {
+        use iced::keyboard;
+        match event {
+            iced::Event::Keyboard(keyboard::Event::KeyPressed { key, .. })
+                if status == event::Status::Ignored =>
+            {
+                use iced::keyboard::{key::Named, Key};
+                if matches!(key, Key::Named(Named::Escape) | Key::Named(Named::F3)) {
+                    Some(Message::Exit)
+                } else {
+                    None
+                }
             }
-        })
-    }
+            _ => None,
+        }
+    })
 }
 
 pub fn run() -> iced_layershell::Result {
-    <App as iced_layershell::Application>::run(Settings {
+    iced_layershell::application(
+        || {
+            let cards = load_cards_via_swaymsg();
+            tracing::info!(count = cards.len(), "expose popover loaded");
+            App { cards }
+        },
+        namespace,
+        update,
+        view,
+    )
+    .theme(|_: &App| iced::Theme::Dark)
+    .subscription(subscription)
+    .settings(Settings {
         id: Some("mde-popover-expose".into()),
         fonts: crate::fonts::load_fallback_fonts(),
         layer_settings: LayerShellSettings {
@@ -221,6 +225,7 @@ pub fn run() -> iced_layershell::Result {
         },
         ..Default::default()
     })
+    .run()
 }
 
 /// Subprocess wrapper: `swaymsg -t get_tree`, walk the JSON, build
@@ -308,7 +313,7 @@ fn card_view(card: &ExposeCard) -> Element<'_, Message> {
     button(
         column![
             text(title).size(13).color(FG_TEXT),
-            Space::with_height(Length::Fixed(4.0)),
+            Space::new().height(Length::Fixed(4.0)),
             text(app_id).size(11).color(FG_MUTED),
         ]
         .padding(Padding {
@@ -335,6 +340,7 @@ fn surface_style(_theme: &Theme) -> container::Style {
         },
         text_color: Some(FG_TEXT),
         shadow: Shadow::default(),
+        snap: false,
     }
 }
 
@@ -373,6 +379,7 @@ fn card_button_style(_theme: &Theme, status: button::Status) -> button::Style {
             radius: 8.0.into(),
         },
         shadow: Shadow::default(),
+        snap: false,
     }
 }
 

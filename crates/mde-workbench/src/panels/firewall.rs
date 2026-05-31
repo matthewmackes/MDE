@@ -250,7 +250,7 @@ impl FirewallPanel {
             let svc = (*service).to_string();
             let is_on = self.enabled_services.iter().any(|s| s == service);
             let busy = self.busy;
-            let cb = checkbox(*service, is_on).on_toggle(move |enable| {
+            let cb = checkbox(is_on).label(*service).on_toggle(move |enable| {
                 let _ = busy;
                 crate::Message::Firewall(Message::ServiceToggled {
                     service: svc.clone(),

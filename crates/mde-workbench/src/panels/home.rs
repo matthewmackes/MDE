@@ -374,7 +374,7 @@ impl HomePanel {
                 "inventory",
                 palette,
             ),
-            Space::with_width(Length::Fixed(12.0)),
+            Space::new().width(Length::Fixed(12.0)),
             stat_card(
                 "Updates pending",
                 self.snapshot.pending_updates,
@@ -383,7 +383,7 @@ impl HomePanel {
                 "snapshots",
                 palette,
             ),
-            Space::with_width(Length::Fixed(12.0)),
+            Space::new().width(Length::Fixed(12.0)),
             stat_card(
                 "Snapshots",
                 self.snapshot.snapshot_count,
@@ -392,7 +392,7 @@ impl HomePanel {
                 "snapshots",
                 palette,
             ),
-            Space::with_width(Length::Fixed(12.0)),
+            Space::new().width(Length::Fixed(12.0)),
             stat_card(
                 "Drift events",
                 self.snapshot.drift_count,
@@ -406,7 +406,7 @@ impl HomePanel {
         // Optional mackesd-down banner — only renders when the
         // last probe could not reach the control plane.
         let banner: Element<'_, crate::Message> = if self.snapshot.mackesd_reachable {
-            Space::with_height(Length::Fixed(0.0)).into()
+            Space::new().height(Length::Fixed(0.0)).into()
         } else {
             mackesd_banner(palette)
         };
@@ -438,17 +438,17 @@ impl HomePanel {
 
         let body = column![
             title,
-            Space::with_height(Length::Fixed(4.0)),
+            Space::new().height(Length::Fixed(4.0)),
             identity,
-            Space::with_height(Length::Fixed(24.0)),
+            Space::new().height(Length::Fixed(24.0)),
             cards,
-            Space::with_height(Length::Fixed(24.0)),
+            Space::new().height(Length::Fixed(24.0)),
             banner,
-            row![section_title, Space::with_width(Length::Fill), refresh_btn]
+            row![section_title, Space::new().width(Length::Fill), refresh_btn]
                 .align_y(iced::alignment::Vertical::Center),
-            Space::with_height(Length::Fixed(2.0)),
+            Space::new().height(Length::Fixed(2.0)),
             section_subtitle,
-            Space::with_height(Length::Fixed(12.0)),
+            Space::new().height(Length::Fixed(12.0)),
             capability_list,
         ]
         .spacing(2);
@@ -1028,7 +1028,7 @@ fn capability_card<'a>(row_data: &'a CapabilityRow, palette: Palette) -> Element
             .size(12)
             .color(palette.text_muted.into_iced_color())
             .into(),
-        None => Space::with_height(Length::Fixed(0.0)).into(),
+        None => Space::new().height(Length::Fixed(0.0)).into(),
     };
 
     let pill = status_pill(&row_data.status, palette);
@@ -1036,22 +1036,22 @@ fn capability_card<'a>(row_data: &'a CapabilityRow, palette: Palette) -> Element
 
     let top_row = row![
         icon,
-        Space::with_width(Length::Fixed(12.0)),
+        Space::new().width(Length::Fixed(12.0)),
         column![name, description].spacing(2),
-        Space::with_width(Length::Fill),
+        Space::new().width(Length::Fill),
         pill,
     ]
     .align_y(iced::alignment::Vertical::Center);
 
-    let bottom_row = row![sub_status, Space::with_width(Length::Fill), jump]
+    let bottom_row = row![sub_status, Space::new().width(Length::Fill), jump]
         .align_y(iced::alignment::Vertical::Center);
 
     let bg = palette.raised.into_iced_color();
     let border = palette.border.into_iced_color();
-    container(column![top_row, Space::with_height(Length::Fixed(8.0)), bottom_row].spacing(0))
+    container(column![top_row, Space::new().height(Length::Fixed(8.0)), bottom_row].spacing(0))
         .padding(Padding::from([16u16, 16u16]))
         .width(Length::Fill)
-        .style(move |_t: &Theme| iced::widget::container::Style {
+        .style(move |_t: &Theme| iced::widget::container::Style { snap: false,
             background: Some(Background::Color(bg)),
             border: Border {
                 color: border,
@@ -1068,7 +1068,7 @@ fn status_pill(status: &CapabilityStatus, _palette: Palette) -> Element<'_, crat
     let label = status.label();
     row![
         icon_widget(status.icon(), IconSize::Inline, color),
-        Space::with_width(Length::Fixed(4.0)),
+        Space::new().width(Length::Fixed(4.0)),
         text(label).size(12).color(color),
     ]
     .align_y(iced::alignment::Vertical::Center)
@@ -1087,7 +1087,7 @@ fn jump_button<'a>(row_data: &'a CapabilityRow, palette: Palette) -> Element<'a,
             b: bg.b * 1.12,
             a: bg.a,
         };
-        iced::widget::button::Style {
+        iced::widget::button::Style { snap: false,
             background: Some(Background::Color(match status {
                 iced::widget::button::Status::Hovered => hover_bg,
                 _ => bg,
@@ -1102,7 +1102,7 @@ fn jump_button<'a>(row_data: &'a CapabilityRow, palette: Palette) -> Element<'a,
         }
     };
     let disabled_style = move |_t: &Theme, _status: iced::widget::button::Status| {
-        iced::widget::button::Style {
+        iced::widget::button::Style { snap: false,
             background: Some(Background::Color(bg)),
             text_color: muted,
             border: Border {
@@ -1138,7 +1138,7 @@ fn refresh_button<'a>(palette: Palette) -> Element<'a, crate::Message> {
                 b: bg.b * 1.12,
                 a: bg.a,
             };
-            iced::widget::button::Style {
+            iced::widget::button::Style { snap: false,
                 background: Some(Background::Color(match status {
                     iced::widget::button::Status::Hovered => hover_bg,
                     _ => bg,
@@ -1162,7 +1162,7 @@ fn mackesd_banner<'a>(palette: Palette) -> Element<'a, crate::Message> {
     container(
         row![
             icon_widget(Icon::StatusWarning, IconSize::PanelHeader, yellow),
-            Space::with_width(Length::Fixed(8.0)),
+            Space::new().width(Length::Fixed(8.0)),
             text("mackesd is not responding — capability statuses may be stale.")
                 .size(13)
                 .color(palette.text.into_iced_color()),
@@ -1171,7 +1171,7 @@ fn mackesd_banner<'a>(palette: Palette) -> Element<'a, crate::Message> {
     )
     .padding(Padding::from([10u16, 14u16]))
     .width(Length::Fill)
-    .style(move |_t: &Theme| iced::widget::container::Style {
+    .style(move |_t: &Theme| iced::widget::container::Style { snap: false,
         background: Some(Background::Color(bg)),
         border: Border {
             color: yellow,
@@ -1214,9 +1214,9 @@ fn stat_card<'a>(
     };
     let card = column![
         icon,
-        Space::with_height(Length::Fixed(4.0)),
+        Space::new().height(Length::Fixed(4.0)),
         value_text,
-        Space::with_height(Length::Fixed(2.0)),
+        Space::new().height(Length::Fixed(2.0)),
         label_text,
     ]
     .spacing(0)
@@ -1235,7 +1235,7 @@ fn stat_card<'a>(
                 b: bg.b * 1.08,
                 a: bg.a,
             };
-            iced::widget::button::Style {
+            iced::widget::button::Style { snap: false,
                 background: Some(Background::Color(match status {
                     iced::widget::button::Status::Hovered => hover_bg,
                     _ => bg,

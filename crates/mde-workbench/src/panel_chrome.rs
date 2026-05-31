@@ -93,7 +93,7 @@ pub fn section_block<'a, Message: 'a>(
 ) -> Element<'a, Message> {
     let space = MdeSpace::for_density(density);
     column![section_header(title, palette), body]
-        .spacing(space.md2)
+        .spacing(f32::from(space.md2))
         .into()
 }
 
@@ -184,7 +184,7 @@ pub fn status_badge<'a, Message: 'a>(
         bottom: 4.0,
         left: 10.0,
     })
-    .style(move |_theme| container::Style {
+    .style(move |_theme| container::Style { snap: false,
         background: Some(Background::Color(bg)),
         border: Border {
             color: Color::TRANSPARENT,
@@ -217,7 +217,7 @@ pub fn card<'a, Message: 'a>(
             bottom: f32::from(space.lg),
             left: f32::from(space.lg),
         })
-        .style(move |_theme| container::Style {
+        .style(move |_theme| container::Style { snap: false,
             background: Some(Background::Color(palette.surface.into_iced_color())),
             border: Border {
                 color: palette.border.into_iced_color(),
@@ -274,7 +274,7 @@ pub fn empty_state<'a, Message: Clone + 'a>(
                 .into()
         }
     } else {
-        Space::with_height(Length::Fixed(EMPTY_ICON_SIZE)).into()
+        Space::new().height(Length::Fixed(EMPTY_ICON_SIZE)).into()
     };
     let heading = text(state.heading)
         .size(TypeRole::Heading.size_in(sizes))
@@ -286,7 +286,7 @@ pub fn empty_state<'a, Message: Clone + 'a>(
         .align_x(alignment::Horizontal::Center);
 
     let mut col: Column<'a, Message> = column![icon_slot, heading, body]
-        .spacing(HEADING_BODY_GAP as u16)
+        .spacing(HEADING_BODY_GAP as f32)
         .align_x(alignment::Horizontal::Center);
 
     if let Some(label) = state.cta_label {
@@ -310,7 +310,7 @@ pub fn empty_state<'a, Message: Clone + 'a>(
                 ButtonStatus::Pressed => brighten(accent_color, 0.90),
                 _ => accent_color,
             };
-            button::Style {
+            button::Style { snap: false,
                 background: Some(Background::Color(bg)),
                 text_color: Color::WHITE,
                 border: Border {
@@ -323,7 +323,7 @@ pub fn empty_state<'a, Message: Clone + 'a>(
         })
         .into();
 
-        col = col.push(Space::with_height(Length::Fixed(BODY_CTA_GAP)));
+        col = col.push(Space::new().height(Length::Fixed(BODY_CTA_GAP)));
         col = col.push(cta_button);
     }
 
@@ -381,7 +381,7 @@ pub fn dialog<'a, Message: 'a>(
             bottom: dialog_tokens::H_PAD,
             left: dialog_tokens::H_PAD,
         })
-        .style(move |_theme| container::Style {
+        .style(move |_theme| container::Style { snap: false,
             background: Some(Background::Color(palette.raised.into_iced_color())),
             border: Border {
                 color: palette.border.into_iced_color(),
@@ -429,7 +429,7 @@ pub fn dialog_title_row<'a, Message: 'a>(
 pub fn dialog_button_row<'a, Message: 'a>(
     actions: Vec<Element<'a, Message>>,
 ) -> Element<'a, Message> {
-    let spacer: Element<'a, Message> = Space::new(Length::Fill, Length::Shrink).into();
+    let spacer: Element<'a, Message> = Space::new().width(Length::Fill).height(Length::Shrink).into();
     let mut items = vec![spacer];
     items.extend(actions);
     container(
@@ -455,10 +455,10 @@ pub fn dialog_button_row<'a, Message: 'a>(
 /// caller wants click-to-dismiss.
 #[must_use]
 pub fn dialog_backdrop<'a, Message: 'a>() -> Element<'a, Message> {
-    container(Space::new(Length::Fill, Length::Fill))
+    container(Space::new().width(Length::Fill).height(Length::Fill))
         .width(Length::Fill)
         .height(Length::Fill)
-        .style(|_theme| container::Style {
+        .style(|_theme| container::Style { snap: false,
             background: Some(Background::Color(Color {
                 r: 0.0,
                 g: 0.0,
@@ -488,7 +488,7 @@ pub fn tooltip<'a, Message: 'a>(body: impl Into<String>, palette: Palette) -> El
         bottom: 6.0,
         left: 8.0,
     })
-    .style(move |_theme| container::Style {
+    .style(move |_theme| container::Style { snap: false,
         background: Some(Background::Color(palette.overlay.into_iced_color())),
         border: Border {
             color: palette.border.into_iced_color(),

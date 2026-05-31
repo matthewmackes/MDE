@@ -419,9 +419,9 @@ impl ConnectPanel {
         container(
             column![
                 icon_slot,
-                Space::with_height(Length::Fixed(8.0)),
+                Space::new().height(Length::Fixed(8.0)),
                 heading,
-                Space::with_height(Length::Fixed(4.0)),
+                Space::new().height(Length::Fixed(4.0)),
                 body,
             ]
             .align_x(iced::alignment::Horizontal::Center)
@@ -471,9 +471,9 @@ fn peer_card_view<'a>(
         .color(palette.text.into_iced_color());
     let identity = row![
         kind_icon,
-        Space::with_width(Length::Fixed(8.0)),
+        Space::new().width(Length::Fixed(8.0)),
         name,
-        Space::with_width(Length::Fill),
+        Space::new().width(Length::Fill),
         text(short_fingerprint(&peer.fingerprint))
             .size(11)
             .color(palette.text_muted.into_iced_color()),
@@ -489,7 +489,7 @@ fn peer_card_view<'a>(
     }
     container(card.padding(Padding::from([12u16, 16u16])))
         .width(Length::Fill)
-        .style(move |_t: &iced::Theme| iced::widget::container::Style {
+        .style(move |_t: &iced::Theme| iced::widget::container::Style { snap: false,
             background: Some(iced::Background::Color(
                 palette.raised.into_iced_color(),
             )),

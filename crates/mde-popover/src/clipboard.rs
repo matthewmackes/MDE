@@ -273,7 +273,8 @@ pub fn split_by_pin<'a>(
 use iced::widget::{button, column, container, mouse_area, row, scrollable, text, text_input,
     Space};
 use iced::{
-    Alignment, Background, Border, Color, Element, Length, Padding, Shadow, Task, Theme,
+    Alignment, Background, Border, Color, Element, Length, Padding, Shadow, Subscription, Task,
+    Theme,
 };
 use iced_layershell::reexport::{Anchor, KeyboardInteractivity, Layer};
 use iced_layershell::settings::{LayerShellSettings, Settings};
@@ -354,271 +355,265 @@ impl App {
     }
 }
 
-impl iced_layershell::Application for App {
-    type Executor = iced::executor::Default;
-    type Message = Message;
-    type Theme = Theme;
-    type Flags = ();
+fn namespace() -> String {
+    "mde-popover-clipboard".into()
+}
 
-    fn new(_flags: ()) -> (Self, Task<Message>) {
-        let all_entries = load_history();
-        let pin_path = clipboard_pin_path();
-        let pin_store = pin::PinStore::load_from(&pin_path);
-        tracing::info!(count = all_entries.len(), "clipboard popover loaded");
-        (
-            Self {
+fn update(state: &mut App, msg: Message) -> Task<Message> {
+    match msg {
+        Message::FilterChanged(s) => {
+            state.filter = s;
+            state.cursor = 0;
+            state.context_entry = None;
+            Task::none()
+        }
+        Message::CursorUp => {
+            if state.cursor > 0 {
+                state.cursor -= 1;
+            }
+            Task::none()
+        }
+        Message::CursorDown => {
+            let max = state.filtered_indices().len().saturating_sub(1);
+            if state.cursor < max {
+                state.cursor += 1;
+            }
+            Task::none()
+        }
+        Message::PasteSelected => {
+            let indices = state.filtered_indices();
+            if let Some(&real_idx) = indices.get(state.cursor) {
+                state.paste_entry(real_idx);
+            }
+            std::process::exit(0);
+        }
+        Message::Select(real_idx) => {
+            state.paste_entry(real_idx);
+            std::process::exit(0);
+        }
+        Message::ShowContext(real_idx) => {
+            state.context_entry = Some(real_idx);
+            Task::none()
+        }
+        Message::HideContext => {
+            state.context_entry = None;
+            Task::none()
+        }
+        Message::TogglePin(ulid) => {
+            if state.pin_store.is_pinned(&ulid) {
+                state.pin_store.unpin(&ulid);
+            } else {
+                state.pin_store.pin(&ulid);
+            }
+            if let Err(e) = state.pin_store.save_to(&state.pin_path) {
+                tracing::warn!(error = %e, "clipboard: failed to save pin store");
+            }
+            state.context_entry = None;
+            Task::none()
+        }
+        Message::Exit => std::process::exit(0),
+        _ => Task::none(),
+    }
+}
+
+fn view(state: &App) -> Element<'_, Message> {
+    let indices = state.filtered_indices();
+    let count = state.all_entries.len();
+    let pinned_count = state
+        .all_entries
+        .iter()
+        .filter(|e| state.pin_store.is_pinned(&e.ulid))
+        .count();
+
+    let header_label = if pinned_count > 0 {
+        format!("{count} entries · {pinned_count} pinned")
+    } else {
+        format!("{count} entries · bus-synced")
+    };
+    let header = container(
+        row![
+            text("Clipboard").size(13).color(FG_TEXT),
+            Space::new().width(Length::Fixed(8.0)),
+            text(header_label).size(10).color(FG_MUTED),
+            Space::new().width(Length::Fill),
+            crate::dismiss::close_button(Message::Exit),
+        ]
+        .align_y(Alignment::Center),
+    )
+    .padding(Padding { top: 8.0, right: 12.0, bottom: 4.0, left: 12.0 });
+
+    let filter_row = container(
+        text_input("Filter…", &state.filter)
+            .on_input(Message::FilterChanged)
+            .size(13)
+            .padding(Padding { top: 4.0, right: 8.0, bottom: 4.0, left: 8.0 })
+            .style(|_theme, _status| text_input::Style {
+                background: Background::Color(Color {
+                    r: ACCENT.r,
+                    g: ACCENT.g,
+                    b: ACCENT.b,
+                    a: 0.08,
+                }),
+                border: Border {
+                    color: Color { r: ACCENT.r, g: ACCENT.g, b: ACCENT.b, a: 0.35 },
+                    width: 1.0,
+                    radius: 4.0.into(),
+                },
+                icon: FG_MUTED,
+                placeholder: FG_MUTED,
+                value: FG_TEXT,
+                selection: Color { r: ACCENT.r, g: ACCENT.g, b: ACCENT.b, a: 0.30 },
+            }),
+    )
+    .padding(Padding { top: 0.0, right: 12.0, bottom: 6.0, left: 12.0 });
+
+    let (pinned_real, history_real) = split_by_pin(&state.all_entries, &indices, &state.pin_store);
+    let cursor = state.cursor;
+    let mut list = column![].spacing(2);
+
+    if indices.is_empty() {
+        list = list.push(
+            container(
+                text(if state.filter.is_empty() {
+                    "No clipboard history yet"
+                } else {
+                    "No matches"
+                })
+                .size(13)
+                .color(FG_MUTED),
+            )
+            .padding(Padding { top: 28.0, right: 0.0, bottom: 0.0, left: 12.0 }),
+        );
+    }
+
+    let mut list_pos: usize = 0;
+
+    if !pinned_real.is_empty() {
+        list = list.push(section_label("Pinned"));
+        for &real_idx in &pinned_real {
+            let entry = &state.all_entries[real_idx];
+            let is_cursor = list_pos == cursor;
+            list = list.push(entry_row(entry, real_idx, is_cursor, true));
+            if state.context_entry == Some(real_idx) {
+                list = list.push(context_menu_row(entry.ulid.clone(), true));
+            }
+            list_pos += 1;
+        }
+        if !history_real.is_empty() {
+            list = list.push(section_label("History"));
+        }
+    }
+
+    for &real_idx in &history_real {
+        let entry = &state.all_entries[real_idx];
+        let is_cursor = list_pos == cursor;
+        list = list.push(entry_row(entry, real_idx, is_cursor, false));
+        if state.context_entry == Some(real_idx) {
+            list = list.push(context_menu_row(entry.ulid.clone(), false));
+        }
+        list_pos += 1;
+    }
+
+    let scroll = scrollable(list).height(Length::Fill);
+
+    let footer = container(
+        text("↑↓/jk navigate · Enter paste · right-click pin · Esc close")
+            .size(10)
+            .color(FG_MUTED),
+    )
+    .padding(Padding { top: 4.0, right: 12.0, bottom: 8.0, left: 12.0 });
+
+    let body = column![header, filter_row, scroll, footer]
+        .padding(Padding { top: 4.0, right: 4.0, bottom: 4.0, left: 4.0 });
+
+    let card: Element<'_, Message> = container(body)
+        .width(Length::Fixed(WIDTH as f32))
+        .height(Length::Fixed(CARD_HEIGHT as f32))
+        .style(popover_surface)
+        .into();
+
+    let dismiss = || {
+        mouse_area(
+            container(Space::new().width(Length::Fill))
+                .width(Length::Fill)
+                .height(Length::Fill),
+        )
+        .on_press(Message::Exit)
+    };
+    let bottom_strip = row![
+        container(card).padding(iced::Padding {
+            top: 0.0,
+            right: 0.0,
+            bottom: 48.0,
+            left: 4.0,
+        }),
+        dismiss(),
+    ]
+    .height(Length::Fixed((CARD_HEIGHT + 48) as f32));
+    container(column![dismiss(), bottom_strip])
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(|_| container::Style {
+            background: Some(iced::Background::Color(iced::Color::TRANSPARENT)),
+            border: iced::Border {
+                color: iced::Color::TRANSPARENT,
+                width: 0.0,
+                radius: 0.0.into(),
+            },
+            shadow: iced::Shadow::default(),
+            text_color: None,
+            snap: false,
+        })
+        .into()
+}
+
+fn subscription(_state: &App) -> Subscription<Message> {
+    use iced::event;
+    event::listen_with(|event, status, _window| {
+        use iced::keyboard;
+        match event {
+            iced::Event::Keyboard(keyboard::Event::KeyPressed { key, .. })
+                if status == event::Status::Ignored =>
+            {
+                use iced::keyboard::{key::Named, Key};
+                match key {
+                    Key::Named(Named::Escape) => Some(Message::Exit),
+                    Key::Named(Named::Enter) => Some(Message::PasteSelected),
+                    Key::Named(Named::ArrowUp) => Some(Message::CursorUp),
+                    Key::Named(Named::ArrowDown) => Some(Message::CursorDown),
+                    Key::Character(ref c) if c.as_str() == "j" => Some(Message::CursorDown),
+                    Key::Character(ref c) if c.as_str() == "k" => Some(Message::CursorUp),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    })
+}
+
+pub fn run() -> iced_layershell::Result {
+    iced_layershell::application(
+        || {
+            let all_entries = load_history();
+            let pin_path = clipboard_pin_path();
+            let pin_store = pin::PinStore::load_from(&pin_path);
+            tracing::info!(count = all_entries.len(), "clipboard popover loaded");
+            App {
                 all_entries,
                 filter: String::new(),
                 cursor: 0,
                 pin_store,
                 pin_path,
                 context_entry: None,
-            },
-            Task::none(),
-        )
-    }
-
-    fn namespace(&self) -> String {
-        "mde-popover-clipboard".into()
-    }
-
-    fn update(&mut self, msg: Message) -> Task<Message> {
-        match msg {
-            Message::FilterChanged(s) => {
-                self.filter = s;
-                self.cursor = 0;
-                self.context_entry = None;
-                Task::none()
             }
-            Message::CursorUp => {
-                if self.cursor > 0 {
-                    self.cursor -= 1;
-                }
-                Task::none()
-            }
-            Message::CursorDown => {
-                let max = self.filtered_indices().len().saturating_sub(1);
-                if self.cursor < max {
-                    self.cursor += 1;
-                }
-                Task::none()
-            }
-            Message::PasteSelected => {
-                let indices = self.filtered_indices();
-                if let Some(&real_idx) = indices.get(self.cursor) {
-                    self.paste_entry(real_idx);
-                }
-                std::process::exit(0);
-            }
-            Message::Select(real_idx) => {
-                self.paste_entry(real_idx);
-                std::process::exit(0);
-            }
-            // BUS-5.7 pin messages.
-            Message::ShowContext(real_idx) => {
-                self.context_entry = Some(real_idx);
-                Task::none()
-            }
-            Message::HideContext => {
-                self.context_entry = None;
-                Task::none()
-            }
-            Message::TogglePin(ulid) => {
-                if self.pin_store.is_pinned(&ulid) {
-                    self.pin_store.unpin(&ulid);
-                } else {
-                    self.pin_store.pin(&ulid);
-                }
-                if let Err(e) = self.pin_store.save_to(&self.pin_path) {
-                    tracing::warn!(error = %e, "clipboard: failed to save pin store");
-                }
-                self.context_entry = None;
-                Task::none()
-            }
-            Message::Exit => std::process::exit(0),
-            _ => Task::none(),
-        }
-    }
-
-    fn view(&self) -> Element<'_, Message> {
-        let indices = self.filtered_indices();
-        let count = self.all_entries.len();
-        let pinned_count = self
-            .all_entries
-            .iter()
-            .filter(|e| self.pin_store.is_pinned(&e.ulid))
-            .count();
-
-        // Header
-        let header_label = if pinned_count > 0 {
-            format!("{count} entries · {pinned_count} pinned")
-        } else {
-            format!("{count} entries · bus-synced")
-        };
-        let header = container(
-            row![
-                text("Clipboard").size(13).color(FG_TEXT),
-                Space::with_width(Length::Fixed(8.0)),
-                text(header_label).size(10).color(FG_MUTED),
-                Space::with_width(Length::Fill),
-                crate::dismiss::close_button(Message::Exit),
-            ]
-            .align_y(Alignment::Center),
-        )
-        .padding(Padding { top: 8.0, right: 12.0, bottom: 4.0, left: 12.0 });
-
-        // Filter input
-        let filter_row = container(
-            text_input("Filter…", &self.filter)
-                .on_input(Message::FilterChanged)
-                .size(13)
-                .padding(Padding { top: 4.0, right: 8.0, bottom: 4.0, left: 8.0 })
-                .style(|_theme, _status| text_input::Style {
-                    background: Background::Color(Color {
-                        r: ACCENT.r,
-                        g: ACCENT.g,
-                        b: ACCENT.b,
-                        a: 0.08,
-                    }),
-                    border: Border {
-                        color: Color { r: ACCENT.r, g: ACCENT.g, b: ACCENT.b, a: 0.35 },
-                        width: 1.0,
-                        radius: 4.0.into(),
-                    },
-                    icon: FG_MUTED,
-                    placeholder: FG_MUTED,
-                    value: FG_TEXT,
-                    selection: Color { r: ACCENT.r, g: ACCENT.g, b: ACCENT.b, a: 0.30 },
-                }),
-        )
-        .padding(Padding { top: 0.0, right: 12.0, bottom: 6.0, left: 12.0 });
-
-        // Entry list — pinned section first, then history.
-        let (pinned_real, history_real) = split_by_pin(&self.all_entries, &indices, &self.pin_store);
-        let cursor = self.cursor;
-        let mut list = column![].spacing(2);
-
-        if indices.is_empty() {
-            list = list.push(
-                container(
-                    text(if self.filter.is_empty() {
-                        "No clipboard history yet"
-                    } else {
-                        "No matches"
-                    })
-                    .size(13)
-                    .color(FG_MUTED),
-                )
-                .padding(Padding { top: 28.0, right: 0.0, bottom: 0.0, left: 12.0 }),
-            );
-        }
-
-        let mut list_pos: usize = 0;
-
-        // Pinned section.
-        if !pinned_real.is_empty() {
-            list = list.push(section_label("Pinned"));
-            for &real_idx in &pinned_real {
-                let entry = &self.all_entries[real_idx];
-                let is_cursor = list_pos == cursor;
-                list = list.push(entry_row(entry, real_idx, is_cursor, true));
-                if self.context_entry == Some(real_idx) {
-                    list = list.push(context_menu_row(entry.ulid.clone(), true));
-                }
-                list_pos += 1;
-            }
-            if !history_real.is_empty() {
-                list = list.push(section_label("History"));
-            }
-        }
-
-        // History section.
-        for &real_idx in &history_real {
-            let entry = &self.all_entries[real_idx];
-            let is_cursor = list_pos == cursor;
-            list = list.push(entry_row(entry, real_idx, is_cursor, false));
-            if self.context_entry == Some(real_idx) {
-                list = list.push(context_menu_row(entry.ulid.clone(), false));
-            }
-            list_pos += 1;
-        }
-
-        let scroll = scrollable(list).height(Length::Fill);
-
-        // Footer hint
-        let footer = container(
-            text("↑↓/jk navigate · Enter paste · right-click pin · Esc close")
-                .size(10)
-                .color(FG_MUTED),
-        )
-        .padding(Padding { top: 4.0, right: 12.0, bottom: 8.0, left: 12.0 });
-
-        let body = column![header, filter_row, scroll, footer]
-            .padding(Padding { top: 4.0, right: 4.0, bottom: 4.0, left: 4.0 });
-
-        let card: Element<'_, Message> = container(body)
-            .width(Length::Fixed(WIDTH as f32))
-            .height(Length::Fixed(CARD_HEIGHT as f32))
-            .style(popover_surface)
-            .into();
-
-        // Backdrop dismiss.
-        let dismiss = || {
-            mouse_area(
-                container(Space::with_width(Length::Fill))
-                    .width(Length::Fill)
-                    .height(Length::Fill),
-            )
-            .on_press(Message::Exit)
-        };
-        let bottom_strip = row![
-            container(card).padding(iced::Padding {
-                top: 0.0,
-                right: 0.0,
-                bottom: 48.0,
-                left: 4.0,
-            }),
-            dismiss(),
-        ]
-        .height(Length::Fixed((CARD_HEIGHT + 48) as f32));
-        container(column![dismiss(), bottom_strip])
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .style(|_| container::Style {
-                background: Some(iced::Background::Color(iced::Color::TRANSPARENT)),
-                border: iced::Border {
-                    color: iced::Color::TRANSPARENT,
-                    width: 0.0,
-                    radius: 0.0.into(),
-                },
-                shadow: iced::Shadow::default(),
-                text_color: None,
-            })
-            .into()
-    }
-
-    fn theme(&self) -> Theme {
-        Theme::Dark
-    }
-
-    fn subscription(&self) -> iced::Subscription<Message> {
-        iced::keyboard::on_key_press(|key, _mods| {
-            use iced::keyboard::{key::Named, Key};
-            match key {
-                Key::Named(Named::Escape) => Some(Message::Exit),
-                Key::Named(Named::Enter) => Some(Message::PasteSelected),
-                Key::Named(Named::ArrowUp) => Some(Message::CursorUp),
-                Key::Named(Named::ArrowDown) => Some(Message::CursorDown),
-                Key::Character(ref c) if c.as_str() == "j" => Some(Message::CursorDown),
-                Key::Character(ref c) if c.as_str() == "k" => Some(Message::CursorUp),
-                _ => None,
-            }
-        })
-    }
-}
-
-pub fn run() -> iced_layershell::Result {
-    <App as iced_layershell::Application>::run(Settings {
+        },
+        namespace,
+        update,
+        view,
+    )
+    .theme(|_: &App| iced::Theme::Dark)
+    .subscription(subscription)
+    .settings(Settings {
         id: Some("mde-popover-clipboard".into()),
         fonts: crate::fonts::load_fallback_fonts(),
         layer_settings: LayerShellSettings {
@@ -632,6 +627,7 @@ pub fn run() -> iced_layershell::Result {
         },
         ..Default::default()
     })
+    .run()
 }
 
 // ── Widget helpers ────────────────────────────────────────────────────────
@@ -646,14 +642,14 @@ fn entry_row<'a>(
     let pin_mark: Element<'_, Message> = if is_pinned {
         text("📌").size(10).color(ACCENT).into()
     } else {
-        Space::with_width(Length::Fixed(0.0)).into()
+        Space::new().width(Length::Fixed(0.0)).into()
     };
 
     let row_btn = button(
         row![
             column![
                 text(preview(&entry.body, 72)).size(13).color(FG_TEXT),
-                Space::with_height(Length::Fixed(2.0)),
+                Space::new().height(Length::Fixed(2.0)),
                 text(format!("{} · {}", &entry.origin_peer, &entry.mime))
                     .size(10)
                     .color(FG_MUTED),
@@ -701,9 +697,10 @@ fn context_menu_row<'a>(ulid: String, is_pinned: bool) -> Element<'a, Message> {
                             radius: 4.0.into(),
                         },
                         shadow: Shadow::default(),
+                        snap: false,
                     }
                 }),
-            Space::with_width(Length::Fill),
+            Space::new().width(Length::Fill),
             button(text("✕").size(11).color(FG_MUTED))
                 .on_press(Message::HideContext)
                 .style(|_theme, status| {
@@ -718,6 +715,7 @@ fn context_menu_row<'a>(ulid: String, is_pinned: bool) -> Element<'a, Message> {
                         text_color: FG_MUTED,
                         border: Border::default(),
                         shadow: Shadow::default(),
+                        snap: false,
                     }
                 }),
         ]
@@ -735,6 +733,7 @@ fn context_menu_row<'a>(ulid: String, is_pinned: bool) -> Element<'a, Message> {
         },
         shadow: Shadow::default(),
         text_color: None,
+        snap: false,
     })
     .into()
 }
@@ -776,6 +775,7 @@ fn popover_surface(_theme: &Theme) -> container::Style {
         },
         text_color: Some(FG_TEXT),
         shadow: Shadow::default(),
+        snap: false,
     }
 }
 
@@ -798,6 +798,7 @@ fn history_row_style(status: button::Status, is_cursor: bool) -> button::Style {
         text_color: FG_TEXT,
         border: Border { color: Color::TRANSPARENT, width: 0.0, radius: 4.0.into() },
         shadow: Shadow::default(),
+        snap: false,
     }
 }
 

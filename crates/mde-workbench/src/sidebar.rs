@@ -146,7 +146,7 @@ pub fn view<'a>(
             bottom: outer_padding,
             left: outer_padding,
         })
-        .style(move |_theme| container::Style {
+        .style(move |_theme| container::Style { snap: false,
             background: Some(Background::Color(palette.background.into_iced_color())),
             border: Border {
                 color: palette.border.into_iced_color(),
@@ -162,14 +162,14 @@ pub fn view<'a>(
 /// UX-5 (e) — section divider. 1 px rule using the adaptive
 /// border token.
 fn section_divider<'a>(palette: Palette) -> Element<'a, crate::Message> {
-    container(Rule::horizontal(1))
+    container(iced::widget::rule::horizontal(1))
         .padding(Padding {
             top: 8.0,
             right: 0.0,
             bottom: 4.0,
             left: 0.0,
         })
-        .style(move |_| container::Style {
+        .style(move |_| container::Style { snap: false,
             text_color: Some(palette.border.into_iced_color()),
             ..container::Style::default()
         })
@@ -205,7 +205,7 @@ fn section_label<'a>(
             ButtonStatus::Pressed => Background::Color(palette.overlay.into_iced_color()),
             _ => Background::Color(Color::TRANSPARENT),
         };
-        button::Style {
+        button::Style { snap: false,
             background: Some(bg),
             text_color,
             border: Border::default(),
@@ -248,15 +248,15 @@ fn nav_row<'a>(
     } else {
         Color::TRANSPARENT
     };
-    let stripe = container(Space::with_height(Length::Fixed(NAV_ROW_HEIGHT)))
+    let stripe = container(Space::new().height(Length::Fixed(NAV_ROW_HEIGHT)))
         .width(Length::Fixed(SELECTED_STRIPE_WIDTH))
         .height(Length::Fixed(NAV_ROW_HEIGHT))
-        .style(move |_| container::Style {
+        .style(move |_| container::Style { snap: false,
             background: Some(Background::Color(stripe_color)),
             ..container::Style::default()
         });
 
-    let icon_slot = Space::with_width(Length::Fixed(NAV_ICON_SIZE));
+    let icon_slot = Space::new().width(Length::Fixed(NAV_ICON_SIZE));
 
     let text_color = if is_active {
         palette.accent.into_iced_color()
@@ -270,9 +270,9 @@ fn nav_row<'a>(
 
     let content = row![
         stripe,
-        Space::with_width(Length::Fixed(8.0)),
+        Space::new().width(Length::Fixed(8.0)),
         icon_slot,
-        Space::with_width(Length::Fixed(8.0)),
+        Space::new().width(Length::Fixed(8.0)),
         label,
     ]
     .align_y(alignment::Vertical::Center)
@@ -297,7 +297,7 @@ fn nav_row<'a>(
         } else {
             Border::default()
         };
-        button::Style {
+        button::Style { snap: false,
             background: Some(bg),
             text_color,
             border,

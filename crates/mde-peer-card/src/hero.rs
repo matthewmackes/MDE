@@ -101,20 +101,20 @@ pub fn view<'a, Msg: 'a + Clone>(
         .color(rgba_to_color(palette.text)),
     )
     .padding([space.xs2, space.sm])
-    .style(move |_theme| container::Style {
+    .style(move |_theme| container::Style { snap: false,
         background: Some(Background::Color(rgba_to_color(palette.overlay))),
         border: Border {
-            radius: tokens.radii.full.into(),
+            radius: (tokens.radii.full as f32).into(),
             ..Border::default()
         },
         ..container::Style::default()
     });
 
     // Upper row: wordmark right-aligned.
-    let upper = row![Space::with_width(Length::Fill), wordmark,].padding(space.md2);
+    let upper = row![Space::new().width(Length::Fill), wordmark,].padding(space.md2);
 
     // Lower row: hostname left, distro chip right.
-    let lower = row![hostname, Space::with_width(Length::Fill), distro_chip,]
+    let lower = row![hostname, Space::new().width(Length::Fill), distro_chip,]
         .padding(space.md2)
         .align_y(iced::alignment::Vertical::Bottom);
 
@@ -122,7 +122,7 @@ pub fn view<'a, Msg: 'a + Clone>(
     // badge row immediately above the hostname row.
     let mut inner_children: Vec<Element<'a, Msg>> = vec![
         upper.into(),
-        Space::with_height(Length::Fill).into(),
+        Space::new().height(Length::Fill).into(),
     ];
     if let Some(fed) = federation {
         inner_children.push(federation_row(fed, palette, space, tokens).into());
@@ -135,7 +135,7 @@ pub fn view<'a, Msg: 'a + Clone>(
     container(inner)
         .width(Length::Fill)
         .height(Length::Fixed(f32::from(HERO_HEIGHT_PX)))
-        .style(move |_theme| container::Style {
+        .style(move |_theme| container::Style { snap: false,
             background: Some(Background::Color(rgba_to_color(palette.raised))),
             ..container::Style::default()
         })
@@ -154,10 +154,10 @@ fn federation_row<'a, Msg: 'a>(
     space: mde_theme::Space,
     tokens: &'a Tokens,
 ) -> Element<'a, Msg> {
-    let pill_style = move |_theme: &iced::Theme| container::Style {
+    let pill_style = move |_theme: &iced::Theme| container::Style { snap: false,
         background: Some(Background::Color(rgba_to_color(palette.overlay))),
         border: Border {
-            radius: tokens.radii.full.into(),
+            radius: (tokens.radii.full as f32).into(),
             ..Border::default()
         },
         ..container::Style::default()
@@ -181,7 +181,7 @@ fn federation_row<'a, Msg: 'a>(
     .padding([space.xs2, space.sm])
     .style(pill_style);
 
-    row![mesh_badge, Space::with_width(Length::Fill), direction_chip,]
+    row![mesh_badge, Space::new().width(Length::Fill), direction_chip,]
         .padding(space.md2)
         .into()
 }

@@ -24,12 +24,6 @@ use zbus::fdo::RequestNameReply;
 /// not a queued reply.
 pub const BUS_NAME: &str = "dev.mackes.MDE.Workbench";
 
-/// Object path under [`BUS_NAME`] where CB-1.13's `Focus`
-/// interface will eventually live. Matches the
-/// `dev/mackes/MDE/Workbench` reverse-slash convention zbus
-/// uses by default.
-pub const OBJECT_PATH: &str = "/dev/mackes/MDE/Workbench";
-
 /// Result of asking the bus for [`BUS_NAME`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrimaryStatus {
@@ -60,11 +54,6 @@ mod tests {
     fn bus_name_carries_mde_namespace() {
         assert_eq!(BUS_NAME, "dev.mackes.MDE.Workbench");
         assert!(BUS_NAME.starts_with("dev.mackes.MDE."));
-    }
-
-    #[test]
-    fn object_path_mirrors_bus_name_segments() {
-        assert_eq!(OBJECT_PATH, "/dev/mackes/MDE/Workbench");
     }
 
     #[test]

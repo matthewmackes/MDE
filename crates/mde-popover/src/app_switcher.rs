@@ -24,7 +24,7 @@ use std::process::Command;
 use iced::keyboard::key::{Key, Named};
 use iced::keyboard::{self, Modifiers};
 use iced::widget::{column, container, image, row, text, Space};
-use iced::{Background, Border, Color, Element, Length, Padding, Shadow, Task, Theme};
+use iced::{Background, Border, Color, Element, Length, Padding, Shadow, Subscription, Task, Theme};
 use iced_layershell::reexport::{Anchor, KeyboardInteractivity, Layer};
 use iced_layershell::settings::{LayerShellSettings, Settings};
 use iced_layershell::to_layer_message;
@@ -118,198 +118,154 @@ pub struct App {
     pub selected: usize,
 }
 
-impl iced_layershell::Application for App {
-    type Executor = iced::executor::Default;
-    type Message = Message;
-    type Theme = Theme;
-    type Flags = ();
+fn namespace() -> String {
+    "mde-popover-app-switcher".to_string()
+}
 
-    fn new(_flags: ()) -> (Self, Task<Message>) {
-        let cards = scan_windows();
-        // Default selection: the SECOND card (= the alt-tab
-        // "go to the previous window" idiom). If there's only
-        // one window, stay on it.
-        let selected = if cards.len() > 1 { 1 } else { 0 };
-        // v4.0.1 WM-5.a — dispatch one deferred grim capture
-        // per card so the popover paints immediately (text-only
-        // cards on first frame) and the thumbnails slot in as
-        // grim returns. Captures run on tokio's blocking
-        // thread pool so they don't stall the Iced scheduler.
-        let captures: Vec<Task<Message>> = cards
-            .iter()
-            .map(|c| {
-                let con_id = c.con_id;
-                let rect = c.rect;
-                // grim takes 10-50 ms per window on typical
-                // hardware; running it inline inside the
-                // async closure is acceptable for the small
-                // (≤ ~10) window counts the switcher sees.
-                // A thread-pool spawn would help only when
-                // the count rises into the dozens, which
-                // doesn't happen in practice on a single
-                // workstation.
-                Task::perform(
-                    async move { capture_thumbnail(rect) },
-                    move |bytes| Message::ThumbnailLoaded(con_id, bytes),
-                )
-            })
-            .collect();
-        let task = if captures.is_empty() {
+fn update(state: &mut App, msg: Message) -> Task<Message> {
+    match msg {
+        Message::Next => {
+            if !state.cards.is_empty() {
+                state.selected = (state.selected + 1) % state.cards.len();
+            }
             Task::none()
-        } else {
-            Task::batch(captures)
-        };
-        (Self { cards, selected }, task)
-    }
-
-    fn namespace(&self) -> String {
-        "mde-popover-app-switcher".into()
-    }
-
-    fn update(&mut self, msg: Message) -> Task<Message> {
-        match msg {
-            Message::Next => {
-                if !self.cards.is_empty() {
-                    self.selected = (self.selected + 1) % self.cards.len();
-                }
-                Task::none()
+        }
+        Message::Prev => {
+            if !state.cards.is_empty() {
+                state.selected = (state.selected + state.cards.len() - 1) % state.cards.len();
             }
-            Message::Prev => {
-                if !self.cards.is_empty() {
-                    self.selected = (self.selected + self.cards.len() - 1) % self.cards.len();
-                }
-                Task::none()
+            Task::none()
+        }
+        Message::Commit => {
+            if let Some(card) = state.cards.get(state.selected) {
+                swaymsg_focus(card.con_id);
             }
-            Message::Commit => {
-                if let Some(card) = self.cards.get(self.selected) {
+            std::process::exit(0);
+        }
+        Message::Cancel => std::process::exit(0),
+        Message::Select(idx) => {
+            if idx < state.cards.len() {
+                state.selected = idx;
+                if let Some(card) = state.cards.get(idx) {
                     swaymsg_focus(card.con_id);
                 }
                 std::process::exit(0);
             }
-            Message::Cancel => std::process::exit(0),
-            Message::Select(idx) => {
-                if idx < self.cards.len() {
-                    self.selected = idx;
-                    if let Some(card) = self.cards.get(idx) {
-                        swaymsg_focus(card.con_id);
-                    }
-                    std::process::exit(0);
-                }
-                Task::none()
-            }
-            Message::ThumbnailLoaded(con_id, bytes) => {
-                if bytes.is_empty() {
-                    return Task::none();
-                }
-                if let Some(card) = self.cards.iter_mut().find(|c| c.con_id == con_id) {
-                    card.thumbnail = Some(bytes);
-                }
-                Task::none()
-            }
-            _ => Task::none(),
+            Task::none()
         }
+        Message::ThumbnailLoaded(con_id, bytes) => {
+            if bytes.is_empty() {
+                return Task::none();
+            }
+            if let Some(card) = state.cards.iter_mut().find(|c| c.con_id == con_id) {
+                card.thumbnail = Some(bytes);
+            }
+            Task::none()
+        }
+        _ => Task::none(),
+    }
+}
+
+fn view(state: &App) -> Element<'_, Message> {
+    if state.cards.is_empty() {
+        return container(text("No windows").size(16).color(FG_MUTED))
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .style(surface_style)
+            .into();
     }
 
-    fn view(&self) -> Element<'_, Message> {
-        if self.cards.is_empty() {
-            return container(text("No windows").size(16).color(FG_MUTED))
-                .center_x(Length::Fill)
-                .center_y(Length::Fill)
-                .style(surface_style)
-                .into();
-        }
+    let header = container(
+        text(format!(
+            "{} of {}: {}",
+            state.selected + 1,
+            state.cards.len(),
+            state.cards[state.selected]
+                .title
+                .as_str()
+                .lines()
+                .next()
+                .unwrap_or(""),
+        ))
+        .size(13)
+        .color(FG_TEXT),
+    )
+    .padding(Padding::from([6u16, 12u16]))
+    .center_x(Length::Fill);
 
-        let header = container(
-            text(format!(
-                "{} of {}: {}",
-                self.selected + 1,
-                self.cards.len(),
-                self.cards[self.selected]
-                    .title
-                    .as_str()
-                    .lines()
-                    .next()
-                    .unwrap_or(""),
-            ))
-            .size(13)
-            .color(FG_TEXT),
-        )
-        .padding(Padding::from([6u16, 12u16]))
-        .center_x(Length::Fill);
-
-        let mut grid = column![].spacing(10);
-        let mut current_row: Vec<Element<'_, Message>> = Vec::new();
-        for (i, card) in self.cards.iter().enumerate() {
-            current_row.push(card_view(card, i, i == self.selected));
-            if current_row.len() == CARDS_PER_ROW {
-                let mut r = row![].spacing(10);
-                for el in current_row.drain(..) {
-                    r = r.push(el);
-                }
-                grid = grid.push(r);
-            }
-        }
-        if !current_row.is_empty() {
+    let mut grid = column![].spacing(10);
+    let mut current_row: Vec<Element<'_, Message>> = Vec::new();
+    for (i, card) in state.cards.iter().enumerate() {
+        current_row.push(card_view(card, i, i == state.selected));
+        if current_row.len() == CARDS_PER_ROW {
             let mut r = row![].spacing(10);
             for el in current_row.drain(..) {
                 r = r.push(el);
             }
             grid = grid.push(r);
         }
-
-        let footer = text("Tab cycles · Enter focuses · Esc cancels")
-            .size(10)
-            .color(FG_MUTED);
-
-        container(
-            column![
-                header,
-                Space::with_height(Length::Fixed(12.0)),
-                grid,
-                Space::with_height(Length::Fixed(8.0)),
-                container(footer).center_x(Length::Fill),
-            ]
-            .spacing(2),
-        )
-        .padding(Padding::from([16u16, 16u16]))
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .style(surface_style)
-        .into()
+    }
+    if !current_row.is_empty() {
+        let mut r = row![].spacing(10);
+        for el in current_row.drain(..) {
+            r = r.push(el);
+        }
+        grid = grid.push(r);
     }
 
-    fn theme(&self) -> Theme {
-        Theme::custom(
-            "mde-popover-app-switcher".into(),
-            iced::theme::Palette {
-                background: SURFACE_BG,
-                text: FG_TEXT,
-                primary: ACCENT,
-                success: Color::from_rgb(0.20, 0.80, 0.40),
-                danger: Color::from_rgb(0.92, 0.32, 0.30),
-            },
-        )
-    }
+    let footer = text("Tab cycles · Enter focuses · Esc cancels")
+        .size(10)
+        .color(FG_MUTED);
 
-    fn subscription(&self) -> iced::Subscription<Message> {
-        keyboard::on_key_press(|key, modifiers| match key.as_ref() {
-            Key::Named(Named::Tab) => {
-                if modifiers.shift() {
-                    Some(Message::Prev)
-                } else {
-                    Some(Message::Next)
+    container(
+        column![
+            header,
+            Space::new().height(Length::Fixed(12.0)),
+            grid,
+            Space::new().height(Length::Fixed(8.0)),
+            container(footer).center_x(Length::Fill),
+        ]
+        .spacing(2),
+    )
+    .padding(Padding::from([16u16, 16u16]))
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .style(surface_style)
+    .into()
+}
+
+fn subscription(_state: &App) -> Subscription<Message> {
+    use iced::event;
+    event::listen_with(|event, status, _window| {
+        match event {
+            iced::Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. })
+                if status == event::Status::Ignored =>
+            {
+                match key.as_ref() {
+                    Key::Named(Named::Tab) => {
+                        if modifiers.shift() {
+                            Some(Message::Prev)
+                        } else {
+                            Some(Message::Next)
+                        }
+                    }
+                    Key::Named(Named::Enter) => Some(Message::Commit),
+                    Key::Named(Named::Escape) => Some(Message::Cancel),
+                    Key::Named(Named::ArrowRight) | Key::Named(Named::ArrowDown) => {
+                        Some(Message::Next)
+                    }
+                    Key::Named(Named::ArrowLeft) | Key::Named(Named::ArrowUp) => {
+                        Some(Message::Prev)
+                    }
+                    _ => {
+                        let _ = (key, modifiers as Modifiers);
+                        None
+                    }
                 }
             }
-            Key::Named(Named::Enter) => Some(Message::Commit),
-            Key::Named(Named::Escape) => Some(Message::Cancel),
-            Key::Named(Named::ArrowRight) | Key::Named(Named::ArrowDown) => Some(Message::Next),
-            Key::Named(Named::ArrowLeft) | Key::Named(Named::ArrowUp) => Some(Message::Prev),
-            _ => {
-                let _ = (key, modifiers as Modifiers);
-                None
-            }
-        })
-    }
+            _ => None,
+        }
+    })
 }
 
 fn surface_style(_: &Theme) -> container::Style {
@@ -325,6 +281,7 @@ fn surface_style(_: &Theme) -> container::Style {
         },
         shadow: Shadow::default(),
         text_color: Some(FG_TEXT),
+        snap: false,
     }
 }
 
@@ -348,15 +305,15 @@ fn card_view<'a>(card: &'a WindowCard, idx: usize, selected: bool) -> Element<'a
             .height(thumb_height)
             .content_fit(iced::ContentFit::Contain)
             .into(),
-        _ => Space::with_height(thumb_height).into(),
+        _ => Space::new().height(thumb_height).into(),
     };
 
     let body = container(
         column![
             thumb,
-            Space::with_height(Length::Fixed(2.0)),
+            Space::new().height(Length::Fixed(2.0)),
             container(title_text).center_x(Length::Fill),
-            Space::with_height(Length::Fixed(2.0)),
+            Space::new().height(Length::Fixed(2.0)),
             container(app_text).center_x(Length::Fill),
         ]
         .spacing(0),
@@ -391,6 +348,7 @@ fn card_view<'a>(card: &'a WindowCard, idx: usize, selected: bool) -> Element<'a
                     radius: 6.0.into(),
                 },
                 shadow: Shadow::default(),
+                snap: false,
             }
         })
         .on_press(Message::Select(idx))
@@ -538,16 +496,48 @@ pub fn capture_thumbnail(rect: WindowRect) -> Vec<u8> {
 }
 
 pub fn run() -> iced_layershell::Result {
-    <App as iced_layershell::Application>::run(Settings {
-        id: Some("mde-popover-app-switcher".into()),
+    iced_layershell::application(
+        || {
+            let cards = scan_windows();
+            let selected = if cards.len() > 1 { 1 } else { 0 };
+            let captures: Vec<Task<Message>> = cards
+                .iter()
+                .map(|c| {
+                    let con_id = c.con_id;
+                    let rect = c.rect;
+                    Task::perform(
+                        async move { capture_thumbnail(rect) },
+                        move |bytes| Message::ThumbnailLoaded(con_id, bytes),
+                    )
+                })
+                .collect();
+            let task = if captures.is_empty() {
+                Task::none()
+            } else {
+                Task::batch(captures)
+            };
+            (App { cards, selected }, task)
+        },
+        namespace,
+        update,
+        view,
+    )
+    .theme(|_: &App| iced::Theme::custom(
+        "mde-popover-app-switcher",
+        iced::theme::Palette {
+            background: SURFACE_BG,
+            text: FG_TEXT,
+            primary: ACCENT,
+            warning: Color::from_rgb(0.96, 0.65, 0.14),
+            success: Color::from_rgb(0.20, 0.80, 0.40),
+            danger: Color::from_rgb(0.92, 0.32, 0.30),
+        },
+    ))
+    .subscription(subscription)
+    .settings(Settings {
+        id: Some("mde-popover-app-switcher".to_string()),
         fonts: crate::fonts::load_fallback_fonts(),
         layer_settings: LayerShellSettings {
-            // Overlay layer so the switcher sits above
-            // everything, including the panel + scratchpad pop-
-            // outs. Centered via top+bottom+left+right anchor
-            // with margins computed from (output_size - card_box).
-            // Iced's Application::theme paints transparent
-            // outside the centered surface.
             layer: Layer::Overlay,
             anchor: Anchor::empty(),
             exclusive_zone: -1,
@@ -558,6 +548,7 @@ pub fn run() -> iced_layershell::Result {
         },
         ..Default::default()
     })
+    .run()
 }
 
 #[cfg(test)]
@@ -649,7 +640,6 @@ mod tests {
 
     #[test]
     fn next_wraps_at_end() {
-        use iced_layershell::Application;
         let mut app = App {
             cards: vec![
                 WindowCard { con_id: 1, app_id: "a".into(), title: "A".into(), rect: WindowRect::default(), thumbnail: None },
@@ -657,13 +647,12 @@ mod tests {
             ],
             selected: 1,
         };
-        let _ = app.update(Message::Next);
+        let _ = update(&mut app, Message::Next);
         assert_eq!(app.selected, 0);
     }
 
     #[test]
     fn prev_wraps_at_start() {
-        use iced_layershell::Application;
         let mut app = App {
             cards: vec![
                 WindowCard { con_id: 1, app_id: "a".into(), title: "A".into(), rect: WindowRect::default(), thumbnail: None },
@@ -671,18 +660,13 @@ mod tests {
             ],
             selected: 0,
         };
-        let _ = app.update(Message::Prev);
+        let _ = update(&mut app, Message::Prev);
         assert_eq!(app.selected, 1);
     }
 
     #[test]
     fn default_selection_is_second_card_for_alt_tab_idiom() {
-        let (app, _) = <App as iced_layershell::Application>::new(());
-        // Real sway not running in tests; cards will be empty.
-        // The selected=1 logic kicks in when len > 1 — we lock
-        // the rule by exercising it via the inner-let path.
-        let _ = app;
-        // Manual lock check:
+        // Manual lock check — real sway not available in tests.
         let cards = vec![
             WindowCard { con_id: 1, app_id: "a".into(), title: "A".into(), rect: WindowRect::default(), thumbnail: None },
             WindowCard { con_id: 2, app_id: "b".into(), title: "B".into(), rect: WindowRect::default(), thumbnail: None },

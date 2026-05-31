@@ -648,7 +648,7 @@ impl MeshFederationPanel {
                             },
                             _ => bg,
                         };
-                        button::Style {
+                        button::Style { snap: false,
                             background: Some(Background::Color(fill)),
                             text_color: fg,
                             border: Border {
@@ -668,8 +668,8 @@ impl MeshFederationPanel {
 
         let tab_separator = {
             use iced::widget::container;
-            container(Space::new(Length::Fill, Length::Fixed(1.0)))
-                .style(move |_t: &iced::Theme| iced::widget::container::Style {
+            container(Space::new().width(Length::Fill).height(Length::Fixed(1.0)))
+                .style(move |_t: &iced::Theme| iced::widget::container::Style { snap: false,
                     background: Some(Background::Color(raised)),
                     ..Default::default()
                 })
@@ -688,10 +688,10 @@ impl MeshFederationPanel {
 
         let content = column![
             header,
-            Space::with_height(12),
+            Space::new().height(12),
             tab_bar,
             tab_separator,
-            Space::with_height(16),
+            Space::new().height(16),
             body,
         ]
         .spacing(0)
@@ -734,7 +734,7 @@ impl MeshFederationPanel {
                 .color(Color::WHITE),
         )
         .padding([8u16, 20u16])
-        .style(move |_t, _s: ButtonStatus| button::Style {
+        .style(move |_t, _s: ButtonStatus| button::Style { snap: false,
             background: Some(Background::Color(accent)),
             text_color: Color::WHITE,
             border: Border {
@@ -749,14 +749,14 @@ impl MeshFederationPanel {
 
         let mut items: Vec<Element<'_, crate::Message>> = vec![
             heading.into(),
-            Space::with_height(4).into(),
+            Space::new().height(4).into(),
             hint.into(),
-            Space::with_height(12).into(),
+            Space::new().height(12).into(),
             mint_btn,
         ];
 
         if let Some(mnemonic) = &self.mint.mnemonic {
-            items.push(Space::with_height(20).into());
+            items.push(Space::new().height(20).into());
             items.push(
                 text(mnemonic.as_str())
                     .size(TypeRole::Display.size_in(sizes))
@@ -764,7 +764,7 @@ impl MeshFederationPanel {
                     .into(),
             );
             if let Some(ms) = self.mint.expires_at_ms {
-                items.push(Space::with_height(6).into());
+                items.push(Space::new().height(6).into());
                 items.push(
                     text(format_expiry(ms))
                         .size(TypeRole::Caption.size_in(sizes))
@@ -772,7 +772,7 @@ impl MeshFederationPanel {
                         .into(),
                 );
             }
-            items.push(Space::with_height(12).into());
+            items.push(Space::new().height(12).into());
             let revoke_btn: Element<'_, crate::Message> = button(
                 text(if self.mint.revoking { "Revoking…" } else { "Revoke" })
                     .size(TypeRole::Body.size_in(sizes))
@@ -784,7 +784,7 @@ impl MeshFederationPanel {
                     }),
             )
             .padding([6u16, 14u16])
-            .style(move |_t, _s: ButtonStatus| button::Style {
+            .style(move |_t, _s: ButtonStatus| button::Style { snap: false,
                 background: Some(Background::Color(Color {
                     r: 0.8,
                     g: 0.1,
@@ -810,7 +810,7 @@ impl MeshFederationPanel {
         }
 
         if let Some(e) = &self.mint.error {
-            items.push(Space::with_height(12).into());
+            items.push(Space::new().height(12).into());
             items.push(
                 text(format!("Error: {e}"))
                     .size(TypeRole::Caption.size_in(sizes))
@@ -871,7 +871,7 @@ impl MeshFederationPanel {
             .color(Color::WHITE),
         )
         .padding([8u16, 20u16])
-        .style(move |_t, _s: ButtonStatus| button::Style {
+        .style(move |_t, _s: ButtonStatus| button::Style { snap: false,
             background: Some(Background::Color(accent)),
             text_color: Color::WHITE,
             border: Border {
@@ -884,20 +884,20 @@ impl MeshFederationPanel {
         .on_press(crate::Message::MeshFederation(Message::AcceptSubmitClicked))
         .into();
 
-        let input_row: Element<'_, crate::Message> = row![input, Space::with_width(8), accept_btn]
+        let input_row: Element<'_, crate::Message> = row![input, Space::new().width(8), accept_btn]
             .align_y(iced::Alignment::Center)
             .into();
 
         let mut items: Vec<Element<'_, crate::Message>> = vec![
             heading.into(),
-            Space::with_height(4).into(),
+            Space::new().height(4).into(),
             hint.into(),
-            Space::with_height(12).into(),
+            Space::new().height(12).into(),
             input_row,
         ];
 
         if !word_hint.is_empty() {
-            items.push(Space::with_height(4).into());
+            items.push(Space::new().height(4).into());
             items.push(
                 text(word_hint)
                     .size(TypeRole::Caption.size_in(sizes))
@@ -907,7 +907,7 @@ impl MeshFederationPanel {
         }
 
         if let Some(s) = &self.accept.success {
-            items.push(Space::with_height(12).into());
+            items.push(Space::new().height(12).into());
             items.push(
                 text(s.as_str())
                     .size(TypeRole::Body.size_in(sizes))
@@ -917,7 +917,7 @@ impl MeshFederationPanel {
         }
 
         if let Some(e) = &self.accept.error {
-            items.push(Space::with_height(12).into());
+            items.push(Space::new().height(12).into());
             items.push(
                 text(format!("Error: {e}"))
                     .size(TypeRole::Caption.size_in(sizes))
@@ -998,7 +998,7 @@ impl MeshFederationPanel {
                                 .color(Color { r: 0.9, g: 0.2, b: 0.2, a: 1.0 }),
                         )
                         .padding([2u16, 8u16])
-                        .style(move |_t, _s: ButtonStatus| button::Style {
+                        .style(move |_t, _s: ButtonStatus| button::Style { snap: false,
                             background: Some(Background::Color(Color {
                                 r: 0.8,
                                 g: 0.1,
@@ -1021,7 +1021,7 @@ impl MeshFederationPanel {
                             text(t.as_str())
                                 .size(TypeRole::Body.size_in(sizes))
                                 .color(text_color),
-                            Space::with_width(Length::Fill),
+                            Space::new().width(Length::Fill),
                             rm_btn,
                         ]
                         .align_y(iced::Alignment::Center)
@@ -1045,7 +1045,7 @@ impl MeshFederationPanel {
                 .color(text_color),
         )
         .padding([6u16, 14u16])
-        .style(move |_t, _s: ButtonStatus| button::Style {
+        .style(move |_t, _s: ButtonStatus| button::Style { snap: false,
             background: Some(Background::Color(raised)),
             text_color,
             border: Border {
@@ -1059,7 +1059,7 @@ impl MeshFederationPanel {
         .into();
 
         let sub_add_row: Element<'_, crate::Message> =
-            row![sub_input, Space::with_width(8), sub_add_btn]
+            row![sub_input, Space::new().width(8), sub_add_btn]
                 .align_y(iced::Alignment::Center)
                 .into();
 
@@ -1099,7 +1099,7 @@ impl MeshFederationPanel {
                                 .color(Color { r: 0.9, g: 0.2, b: 0.2, a: 1.0 }),
                         )
                         .padding([2u16, 8u16])
-                        .style(move |_t, _s: ButtonStatus| button::Style {
+                        .style(move |_t, _s: ButtonStatus| button::Style { snap: false,
                             background: Some(Background::Color(Color {
                                 r: 0.8,
                                 g: 0.1,
@@ -1122,7 +1122,7 @@ impl MeshFederationPanel {
                             text(t.as_str())
                                 .size(TypeRole::Body.size_in(sizes))
                                 .color(text_color),
-                            Space::with_width(Length::Fill),
+                            Space::new().width(Length::Fill),
                             rm_btn,
                         ]
                         .align_y(iced::Alignment::Center)
@@ -1146,7 +1146,7 @@ impl MeshFederationPanel {
                 .color(text_color),
         )
         .padding([6u16, 14u16])
-        .style(move |_t, _s: ButtonStatus| button::Style {
+        .style(move |_t, _s: ButtonStatus| button::Style { snap: false,
             background: Some(Background::Color(raised)),
             text_color,
             border: Border {
@@ -1160,7 +1160,7 @@ impl MeshFederationPanel {
         .into();
 
         let pub_add_row: Element<'_, crate::Message> =
-            row![pub_input, Space::with_width(8), pub_add_btn]
+            row![pub_input, Space::new().width(8), pub_add_btn]
                 .align_y(iced::Alignment::Center)
                 .into();
 
@@ -1172,7 +1172,7 @@ impl MeshFederationPanel {
                 .color(Color::WHITE),
         )
         .padding([8u16, 20u16])
-        .style(move |_t, _s: ButtonStatus| button::Style {
+        .style(move |_t, _s: ButtonStatus| button::Style { snap: false,
             background: Some(Background::Color(accent)),
             text_color: Color::WHITE,
             border: Border {
@@ -1187,31 +1187,31 @@ impl MeshFederationPanel {
 
         let mut col = column![
             context,
-            Space::with_height(20),
+            Space::new().height(20),
             sub_heading,
-            Space::with_height(4),
+            Space::new().height(4),
             sub_hint,
-            Space::with_height(8),
+            Space::new().height(8),
             sub_list,
-            Space::with_height(8),
+            Space::new().height(8),
             sub_add_row,
-            Space::with_height(6),
+            Space::new().height(6),
             excluded_note,
-            Space::with_height(24),
+            Space::new().height(24),
             pub_heading,
-            Space::with_height(4),
+            Space::new().height(4),
             pub_hint,
-            Space::with_height(8),
+            Space::new().height(8),
             pub_list,
-            Space::with_height(8),
+            Space::new().height(8),
             pub_add_row,
-            Space::with_height(24),
+            Space::new().height(24),
             save_btn,
         ]
         .spacing(0);
 
         if let Some(e) = &self.grant.error {
-            col = col.push(Space::with_height(12)).push(
+            col = col.push(Space::new().height(12)).push(
                 text(format!("Error: {e}"))
                     .size(TypeRole::Caption.size_in(sizes))
                     .color(Color {
@@ -1291,7 +1291,7 @@ impl MeshFederationPanel {
                     .color(Color { r: 0.9, g: 0.2, b: 0.2, a: 1.0 }),
             )
             .padding([4u16, 10u16])
-            .style(move |_t, _s: ButtonStatus| button::Style {
+            .style(move |_t, _s: ButtonStatus| button::Style { snap: false,
                 background: Some(Background::Color(Color {
                     r: 0.8,
                     g: 0.1,
@@ -1317,7 +1317,7 @@ impl MeshFederationPanel {
                     .color(text_color),
             )
             .padding([4u16, 10u16])
-            .style(move |_t, _s: ButtonStatus| button::Style {
+            .style(move |_t, _s: ButtonStatus| button::Style { snap: false,
                 background: Some(Background::Color(raised)),
                 text_color,
                 border: Border {
@@ -1338,7 +1338,7 @@ impl MeshFederationPanel {
                     .color(accent),
             )
             .padding([4u16, 10u16])
-            .style(move |_t, _s: ButtonStatus| button::Style {
+            .style(move |_t, _s: ButtonStatus| button::Style { snap: false,
                 background: None,
                 text_color: accent,
                 border: Border {
@@ -1356,9 +1356,9 @@ impl MeshFederationPanel {
 
             let action_row: Element<'_, crate::Message> = row![
                 revoke_btn,
-                Space::with_width(8),
+                Space::new().width(8),
                 rotate_btn,
-                Space::with_width(8),
+                Space::new().width(8),
                 audit_btn,
             ]
             .into();
@@ -1385,14 +1385,14 @@ impl MeshFederationPanel {
                 text(format!("Publish: {pubs}"))
                     .size(TypeRole::Caption.size_in(sizes))
                     .color(text_muted),
-                Space::with_height(6),
+                Space::new().height(6),
                 action_row,
             ]
             .spacing(2)
             .into();
 
             items.push(pair_col);
-            items.push(Space::with_height(16).into());
+            items.push(Space::new().height(16).into());
         }
 
         if let Some(e) = &self.pairs.error {

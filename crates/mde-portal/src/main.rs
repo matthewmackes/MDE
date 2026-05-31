@@ -24,7 +24,6 @@
 
 use anyhow::Context as _;
 use clap::Parser;
-use iced_layershell::Application as _;
 
 mod app;
 // Portal-31 — startup scan of ~/.local/share/mde/cards/ + one-line summary log.
@@ -128,7 +127,7 @@ fn run_layershell() -> anyhow::Result<()> {
         rt.block_on(std::future::pending::<()>());
     });
 
-    app::DockApp::run(app::DockApp::settings())
+    app::run()
         .map_err(|e| anyhow::anyhow!("running mde-portal layer-shell application: {e}"))?;
 
     Ok(())

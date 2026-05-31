@@ -132,7 +132,7 @@ impl ServicePublishingPanel {
                     },
                     _ => accent,
                 };
-                iced::widget::button::Style {
+                iced::widget::button::Style { snap: false,
                     background: Some(Background::Color(bg)),
                     text_color: Color::WHITE,
                     border: Border {
@@ -148,7 +148,7 @@ impl ServicePublishingPanel {
 
         let header = row![
             column![title, subtitle].spacing(2),
-            Space::with_width(Length::Fill),
+            Space::new().width(Length::Fill),
             refresh_btn,
         ]
         .align_y(iced::alignment::Vertical::Center);
@@ -166,7 +166,7 @@ impl ServicePublishingPanel {
         container(
             column![
                 header,
-                Space::with_height(Length::Fixed(20.0)),
+                Space::new().height(Length::Fixed(20.0)),
                 rows_widget,
             ]
             .spacing(2),
@@ -184,7 +184,7 @@ fn empty_state<'a>(palette: Palette) -> Element<'a, crate::Message> {
             text("No service rows available")
                 .size(13)
                 .color(palette.text.into_iced_color()),
-            Space::with_height(Length::Fixed(6.0)),
+            Space::new().height(Length::Fixed(6.0)),
             text(
                 "Run Refresh after mackesd starts and Python's \
                  mackes.mesh_nebula module is importable. The 7 \
@@ -198,7 +198,7 @@ fn empty_state<'a>(palette: Palette) -> Element<'a, crate::Message> {
     )
     .padding(Padding::from([18u16, 22u16]))
     .width(Length::Fill)
-    .style(move |_| container::Style {
+    .style(move |_| container::Style { snap: false,
         background: Some(Background::Color(palette.raised.into_iced_color())),
         border: Border {
             color: palette.border.into_iced_color(),
@@ -225,7 +225,7 @@ fn service_row_view<'a>(r: &ServiceRow, palette: Palette) -> Element<'a, crate::
             .color(Color::WHITE),
     )
     .padding(Padding::from([2u16, 8u16]))
-    .style(move |_| container::Style {
+    .style(move |_| container::Style { snap: false,
         background: Some(Background::Color(pill_color)),
         border: Border {
             color: Color::TRANSPARENT,
@@ -272,7 +272,7 @@ fn service_row_view<'a>(r: &ServiceRow, palette: Palette) -> Element<'a, crate::
     )
     .padding(Padding::from([10u16, 16u16]))
     .width(Length::Fill)
-    .style(move |_| container::Style {
+    .style(move |_| container::Style { snap: false,
         background: Some(Background::Color(bg)),
         border: Border {
             color: border,

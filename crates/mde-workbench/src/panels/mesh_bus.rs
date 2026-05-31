@@ -1046,7 +1046,7 @@ impl MeshBusPanel {
                             },
                             _ => bg,
                         };
-                        button::Style {
+                        button::Style { snap: false,
                             background: Some(Background::Color(fill)),
                             text_color: fg,
                             border: Border {
@@ -1067,8 +1067,8 @@ impl MeshBusPanel {
 
         let tab_separator = {
             use iced::widget::container;
-            container(Space::new(Length::Fill, Length::Fixed(1.0)))
-                .style(move |_t: &iced::Theme| iced::widget::container::Style {
+            container(Space::new().width(Length::Fill).height(Length::Fixed(1.0)))
+                .style(move |_t: &iced::Theme| iced::widget::container::Style { snap: false,
                     background: Some(Background::Color(raised)),
                     ..Default::default()
                 })
@@ -1096,10 +1096,10 @@ impl MeshBusPanel {
 
         let content = column![
             header,
-            Space::with_height(12),
+            Space::new().height(12),
             tab_bar,
             tab_separator,
-            Space::with_height(16),
+            Space::new().height(16),
             body,
         ]
         .spacing(0)
@@ -1175,7 +1175,7 @@ impl MeshBusPanel {
 
             let card_btn: Element<'_, crate::Message> = button(object_card(card, palette))
                 .padding(0)
-                .style(move |_t, _s: ButtonStatus| button::Style {
+                .style(move |_t, _s: ButtonStatus| button::Style { snap: false,
                     background: None,
                     text_color: Color::TRANSPARENT,
                     border: Border {
@@ -1235,7 +1235,7 @@ impl MeshBusPanel {
                     items.push(
                         container(msg_list)
                             .padding(iced::Padding { top: 8.0, right: 16.0, bottom: 8.0, left: 16.0 })
-                            .style(move |_t: &iced::Theme| iced::widget::container::Style {
+                            .style(move |_t: &iced::Theme| iced::widget::container::Style { snap: false,
                                 background: Some(Background::Color(raised)),
                                 border: Border {
                                     color: Color::TRANSPARENT,
@@ -1248,7 +1248,7 @@ impl MeshBusPanel {
                             .into(),
                     );
                 }
-                items.push(Space::with_height(4).into());
+                items.push(Space::new().height(4).into());
             }
         }
 
@@ -1331,7 +1331,7 @@ impl MeshBusPanel {
                             .color(label_color),
                     )
                     .padding([2u16, 8u16])
-                    .style(move |_t, _s: ButtonStatus| button::Style {
+                    .style(move |_t, _s: ButtonStatus| button::Style { snap: false,
                         background: Some(Background::Color(Color {
                             r: 0.8,
                             g: 0.1,
@@ -1358,10 +1358,10 @@ impl MeshBusPanel {
                             .into(),
                     ];
                     if let Some(mn) = mute_note {
-                        row_items.push(Space::with_width(8).into());
+                        row_items.push(Space::new().width(8).into());
                         row_items.push(mn);
                     }
-                    row_items.push(Space::with_width(Length::Fill).into());
+                    row_items.push(Space::new().width(Length::Fill).into());
                     row_items.push(remove_btn);
 
                     row(row_items)
@@ -1387,7 +1387,7 @@ impl MeshBusPanel {
                 .color(Color::WHITE),
         )
         .padding([6u16, 14u16])
-        .style(move |_t, _s: ButtonStatus| button::Style {
+        .style(move |_t, _s: ButtonStatus| button::Style { snap: false,
             background: Some(Background::Color(accent)),
             text_color: Color::WHITE,
             border: Border {
@@ -1402,7 +1402,7 @@ impl MeshBusPanel {
 
         let add_row: Element<'_, crate::Message> = row![
             add_input,
-            Space::with_width(8),
+            Space::new().width(8),
             add_btn,
         ]
         .align_y(iced::Alignment::Center)
@@ -1432,7 +1432,7 @@ impl MeshBusPanel {
                 .color(palette.text.into_iced_color()),
         )
         .padding([6u16, 14u16])
-        .style(move |_t, _s: ButtonStatus| button::Style {
+        .style(move |_t, _s: ButtonStatus| button::Style { snap: false,
             background: Some(Background::Color(palette.raised.into_iced_color())),
             text_color: palette.text.into_iced_color(),
             border: Border {
@@ -1447,7 +1447,7 @@ impl MeshBusPanel {
 
         let peer_row: Element<'_, crate::Message> = row![
             peer_input,
-            Space::with_width(8),
+            Space::new().width(8),
             match_btn,
         ]
         .align_y(iced::Alignment::Center)
@@ -1464,21 +1464,21 @@ impl MeshBusPanel {
 
         let mut col = column![
             list_label,
-            Space::with_height(8),
+            Space::new().height(8),
             topic_list,
-            Space::with_height(16),
+            Space::new().height(16),
             add_row,
-            Space::with_height(28),
+            Space::new().height(28),
             peer_label,
-            Space::with_height(4),
+            Space::new().height(4),
             peer_hint,
-            Space::with_height(8),
+            Space::new().height(8),
             peer_row,
         ]
         .spacing(0);
 
         if let Some(err) = error_row {
-            col = col.push(Space::with_height(12)).push(err);
+            col = col.push(Space::new().height(12)).push(err);
         }
 
         col.into()
@@ -1528,7 +1528,7 @@ impl MeshBusPanel {
                 .color(toggle_fg),
         )
         .padding([8u16, 20u16])
-        .style(move |_t, _s: ButtonStatus| button::Style {
+        .style(move |_t, _s: ButtonStatus| button::Style { snap: false,
             background: Some(Background::Color(toggle_bg)),
             text_color: toggle_fg,
             border: Border {
@@ -1552,7 +1552,7 @@ impl MeshBusPanel {
         } else {
             row![
                 toggle_btn,
-                Space::with_width(12),
+                Space::new().width(12),
                 text(meta_str)
                     .size(TypeRole::Caption.size_in(sizes))
                     .color(palette.text_muted.into_iced_color()),
@@ -1588,7 +1588,7 @@ impl MeshBusPanel {
                 .color(save_fg),
         )
         .padding([6u16, 16u16])
-        .style(move |_t, _s: ButtonStatus| button::Style {
+        .style(move |_t, _s: ButtonStatus| button::Style { snap: false,
             background: Some(Background::Color(save_bg)),
             text_color: save_fg,
             border: Border {
@@ -1603,13 +1603,13 @@ impl MeshBusPanel {
 
         let quiet_row: Element<'_, crate::Message> = row![
             start_input,
-            Space::with_width(8),
+            Space::new().width(8),
             text("→")
                 .size(TypeRole::Body.size_in(sizes))
                 .color(palette.text_muted.into_iced_color()),
-            Space::with_width(8),
+            Space::new().width(8),
             end_input,
-            Space::with_width(12),
+            Space::new().width(12),
             save_btn,
         ]
         .align_y(iced::Alignment::Center)
@@ -1666,21 +1666,21 @@ impl MeshBusPanel {
 
         let mut col = column![
             toggle_row,
-            Space::with_height(20),
+            Space::new().height(20),
             quiet_label,
-            Space::with_height(4),
+            Space::new().height(4),
             quiet_hint,
-            Space::with_height(8),
+            Space::new().height(8),
             quiet_row,
-            Space::with_height(24),
+            Space::new().height(24),
             snooze_label,
-            Space::with_height(8),
+            Space::new().height(8),
             snooze_body,
         ]
         .spacing(0);
 
         if let Some(err) = error_row {
-            col = col.push(Space::with_height(12)).push(err);
+            col = col.push(Space::new().height(12)).push(err);
         }
 
         col.into()
@@ -1714,7 +1714,7 @@ impl MeshBusPanel {
                 .size(TypeRole::Caption.size_in(sizes))
                 .color(palette.text_muted.into_iced_color())
                 .into(),
-            Space::with_width(8).into(),
+            Space::new().width(8).into(),
         ];
         for (i, s) in HOOK_SAMPLES.iter().enumerate() {
             sample_row_items.push(
@@ -1724,7 +1724,7 @@ impl MeshBusPanel {
                         .color(palette.text.into_iced_color()),
                 )
                 .padding([4u16, 10u16])
-                .style(move |_t, _s: ButtonStatus| button::Style {
+                .style(move |_t, _s: ButtonStatus| button::Style { snap: false,
                     background: Some(Background::Color(palette.raised.into_iced_color())),
                     text_color: palette.text.into_iced_color(),
                     border: Border {
@@ -1754,7 +1754,7 @@ impl MeshBusPanel {
                     .color(apply_fg),
             )
             .padding([6u16, 16u16])
-            .style(move |_t, _s: ButtonStatus| button::Style {
+            .style(move |_t, _s: ButtonStatus| button::Style { snap: false,
                 background: Some(Background::Color(apply_bg)),
                 text_color: apply_fg,
                 border: Border {
@@ -1772,7 +1772,7 @@ impl MeshBusPanel {
                     .color(apply_fg),
             )
             .padding([6u16, 16u16])
-            .style(move |_t, _s: ButtonStatus| button::Style {
+            .style(move |_t, _s: ButtonStatus| button::Style { snap: false,
                 background: Some(Background::Color(apply_bg)),
                 text_color: apply_fg,
                 border: Border {
@@ -1789,7 +1789,7 @@ impl MeshBusPanel {
         // Build column — validation error (if any) appears between editor and samples.
         let mut items: Vec<Element<'_, crate::Message>> = vec![editor];
         if let Some(e) = &self.hooks.validation_error {
-            items.push(Space::with_height(6).into());
+            items.push(Space::new().height(6).into());
             items.push(
                 text(format!("⚠ {e}"))
                     .size(TypeRole::Caption.size_in(sizes))
@@ -1797,9 +1797,9 @@ impl MeshBusPanel {
                     .into(),
             );
         }
-        items.push(Space::with_height(8).into());
+        items.push(Space::new().height(8).into());
         items.push(sample_row);
-        items.push(Space::with_height(12).into());
+        items.push(Space::new().height(12).into());
         items.push(apply_btn);
 
         column(items).spacing(0).into()

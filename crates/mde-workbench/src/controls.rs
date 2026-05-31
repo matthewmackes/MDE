@@ -98,7 +98,7 @@ pub fn variant_button<'a, Message: Clone + 'a>(
             }
             ButtonStatus::Active => {}
         }
-        button::Style {
+        button::Style { snap: false,
             background: Some(Background::Color(bg)),
             text_color: fg,
             border,
@@ -226,13 +226,14 @@ pub fn toggle<'a, Message: Clone + 'a>(
         0.0
     };
 
-    let knob = container(Space::new(
-        Length::Fixed(TOGGLE_KNOB_DIAMETER),
-        Length::Fixed(TOGGLE_KNOB_DIAMETER),
-    ))
+    let knob = container(
+        Space::new()
+            .width(Length::Fixed(TOGGLE_KNOB_DIAMETER))
+            .height(Length::Fixed(TOGGLE_KNOB_DIAMETER)),
+    )
     .width(Length::Fixed(TOGGLE_KNOB_DIAMETER))
     .height(Length::Fixed(TOGGLE_KNOB_DIAMETER))
-    .style(move |_| container::Style {
+    .style(move |_| container::Style { snap: false,
         background: Some(Background::Color(knob_color)),
         border: Border {
             color: Color::TRANSPARENT,
@@ -242,7 +243,7 @@ pub fn toggle<'a, Message: Clone + 'a>(
         ..container::Style::default()
     });
 
-    let pill_content = row![Space::with_width(Length::Fixed(knob_offset + 2.0)), knob,]
+    let pill_content = row![Space::new().width(Length::Fixed(knob_offset + 2.0)), knob,]
         .align_y(alignment::Vertical::Center)
         .height(Length::Fixed(TOGGLE_HEIGHT));
 
@@ -256,7 +257,7 @@ pub fn toggle<'a, Message: Clone + 'a>(
             if matches!(status, ButtonStatus::Hovered) {
                 bg = brighten(bg, 1.05);
             }
-            button::Style {
+            button::Style { snap: false,
                 background: Some(Background::Color(bg)),
                 text_color: Color::TRANSPARENT,
                 border: Border {
@@ -378,7 +379,7 @@ pub fn scrollbar_style(
                 radius: 0.0.into(),
             },
             scroller: Scroller {
-                color: thumb_color,
+                background: Background::Color(thumb_color),
                 border: Border {
                     color: Color::TRANSPARENT,
                     width: 0.0,
@@ -391,6 +392,18 @@ pub fn scrollbar_style(
             vertical_rail: rail,
             horizontal_rail: rail,
             gap: None,
+            // iced 0.14 added the auto-scroll overlay; render it
+            // invisible (transparent) to preserve prior behavior.
+            auto_scroll: iced::widget::scrollable::AutoScroll {
+                background: Background::Color(Color::TRANSPARENT),
+                border: Border {
+                    color: Color::TRANSPARENT,
+                    width: 0.0,
+                    radius: 0.0.into(),
+                },
+                shadow: Shadow::default(),
+                icon: Color::TRANSPARENT,
+            },
         }
     }
 }
@@ -404,10 +417,10 @@ pub fn skeleton<'a, Message: 'a>(
 ) -> Element<'a, Message> {
     let radii = Radii::defaults();
     let bg = with_alpha(palette.raised.into_iced_color(), 0.6);
-    container(Space::new(Length::Fixed(width), Length::Fixed(height)))
+    container(Space::new().width(Length::Fixed(width)).height(Length::Fixed(height)))
         .width(Length::Fixed(width))
         .height(Length::Fixed(height))
-        .style(move |_| container::Style {
+        .style(move |_| container::Style { snap: false,
             background: Some(Background::Color(bg)),
             border: Border {
                 color: Color::TRANSPARENT,
@@ -424,10 +437,10 @@ pub fn skeleton<'a, Message: 'a>(
 pub fn spinner<'a, Message: 'a>(palette: Palette) -> Element<'a, Message> {
     let radii = Radii::defaults();
     let accent = palette.accent.into_iced_color();
-    container(Space::new(Length::Fixed(16.0), Length::Fixed(16.0)))
+    container(Space::new().width(Length::Fixed(16.0)).height(Length::Fixed(16.0)))
         .width(Length::Fixed(16.0))
         .height(Length::Fixed(16.0))
-        .style(move |_| container::Style {
+        .style(move |_| container::Style { snap: false,
             background: Some(Background::Color(with_alpha(accent, 0.6))),
             border: Border {
                 color: accent,

@@ -87,164 +87,137 @@ pub struct App {
     pub rows: Vec<MinimizedRow>,
 }
 
-impl iced_layershell::Application for App {
-    type Executor = iced::executor::Default;
-    type Message = Message;
-    type Theme = Theme;
-    type Flags = ();
+fn namespace() -> String {
+    "mde-popover-minimized".to_string()
+}
 
-    fn new(_flags: ()) -> (Self, Task<Message>) {
-        (
-            Self {
-                rows: scan_scratchpad(),
-            },
-            Task::none(),
-        )
-    }
-
-    fn namespace(&self) -> String {
-        "mde-popover-minimized".into()
-    }
-
-    fn update(&mut self, message: Message) -> Task<Message> {
-        match message {
-            Message::Refresh => {
-                self.rows = scan_scratchpad();
-                Task::none()
-            }
-            Message::Restore(con_id) => {
-                let _ = Command::new("swaymsg")
-                    .args([&format!("[con_id={con_id}]"), "scratchpad", "show"])
-                    .status();
-                std::process::exit(0);
-            }
-            Message::Esc => std::process::exit(0),
-            _ => Task::none(),
+fn update(state: &mut App, message: Message) -> Task<Message> {
+    match message {
+        Message::Refresh => {
+            state.rows = scan_scratchpad();
+            Task::none()
         }
+        Message::Restore(con_id) => {
+            let _ = Command::new("swaymsg")
+                .args([&format!("[con_id={con_id}]"), "scratchpad", "show"])
+                .status();
+            std::process::exit(0);
+        }
+        Message::Esc => std::process::exit(0),
+        _ => Task::none(),
+    }
+}
+
+fn view(state: &App) -> Element<'_, Message> {
+    let title = text("Minimized windows").size(15).color(FG_TEXT);
+    let subtitle = text(format!(
+        "{} window{} in scratchpad",
+        state.rows.len(),
+        if state.rows.len() == 1 { "" } else { "s" }
+    ))
+    .size(11)
+    .color(FG_MUTED);
+
+    let refresh_btn = button(text("Refresh").size(11).color(FG_TEXT))
+        .padding(Padding::from([4u16, 10u16]))
+        .style(|_, status| ghost_btn_style(status))
+        .on_press(Message::Refresh);
+
+    let header = row![
+        column![title, subtitle].spacing(2),
+        Space::new().width(Length::Fill),
+        refresh_btn,
+    ]
+    .align_y(iced::alignment::Vertical::Center);
+
+    let mut rows_col = column![].spacing(6);
+    for r in &state.rows {
+        rows_col = rows_col.push(window_row(r));
+    }
+    if state.rows.is_empty() {
+        rows_col = rows_col.push(empty_card());
     }
 
-    fn view(&self) -> Element<'_, Message> {
-        let title = text("Minimized windows").size(15).color(FG_TEXT);
-        let subtitle = text(format!(
-            "{} window{} in scratchpad",
-            self.rows.len(),
-            if self.rows.len() == 1 { "" } else { "s" }
-        ))
-        .size(11)
-        .color(FG_MUTED);
+    let footer = text("Esc / click outside closes · click a row to restore")
+        .size(10)
+        .color(FG_FAINT);
 
-        let refresh_btn = button(text("Refresh").size(11).color(FG_TEXT))
-            .padding(Padding::from([4u16, 10u16]))
-            .style(|_, status| ghost_btn_style(status))
-            .on_press(Message::Refresh);
-
-        let header = row![
-            column![title, subtitle].spacing(2),
-            Space::with_width(Length::Fill),
-            refresh_btn,
+    // The visible content card. Identical layout to before;
+    // wrapped in a fixed-size container so the surrounding
+    // backdrop pixels stay click-receptive.
+    let card: Element<'_, Message> = container(
+        column![
+            header,
+            Space::new().height(Length::Fixed(12.0)),
+            scrollable(rows_col).height(Length::Fill),
+            Space::new().height(Length::Fixed(8.0)),
+            footer,
         ]
-        .align_y(iced::alignment::Vertical::Center);
-
-        let mut rows_col = column![].spacing(6);
-        for r in &self.rows {
-            rows_col = rows_col.push(window_row(r));
-        }
-        if self.rows.is_empty() {
-            rows_col = rows_col.push(empty_card());
-        }
-
-        let footer = text("Esc / click outside closes · click a row to restore")
-            .size(10)
-            .color(FG_FAINT);
-
-        // The visible content card. Identical layout to before;
-        // wrapped in a fixed-size container so the surrounding
-        // backdrop pixels stay click-receptive.
-        let card: Element<'_, Message> = container(
-            column![
-                header,
-                Space::with_height(Length::Fixed(12.0)),
-                scrollable(rows_col).height(Length::Fill),
-                Space::with_height(Length::Fixed(8.0)),
-                footer,
-            ]
-            .spacing(2),
-        )
-        .padding(Padding::from([16u16, 18u16]))
-        .width(Length::Fixed(WIDTH as f32))
-        .height(Length::Fixed(HEIGHT as f32))
-        .style(|_| container::Style {
-            background: Some(Background::Color(SURFACE_BG)),
-            border: Border {
-                color: Color {
-                    a: 0.08,
-                    ..Color::WHITE
-                },
-                width: 1.0,
-                radius: 8.0.into(),
+        .spacing(2),
+    )
+    .padding(Padding::from([16u16, 18u16]))
+    .width(Length::Fixed(WIDTH as f32))
+    .height(Length::Fixed(HEIGHT as f32))
+    .style(|_| container::Style {
+        background: Some(Background::Color(SURFACE_BG)),
+        border: Border {
+            color: Color {
+                a: 0.08,
+                ..Color::WHITE
             },
-            shadow: Shadow::default(),
-            text_color: Some(FG_TEXT),
-        })
-        .into();
+            width: 1.0,
+            radius: 8.0.into(),
+        },
+        shadow: Shadow::default(),
+        text_color: Some(FG_TEXT),
+        snap: false,
+    })
+    .into();
 
-        // v3.0.4 (2026-05-23) — backdrop: fullscreen surface,
-        // card pinned to top-right, every other pixel is a
-        // mouse_area that fires Esc on click. Outer container
-        // paints transparent so the wallpaper / running windows
-        // show through.
-        let dismiss = || {
-            mouse_area(
-                container(Space::with_width(Length::Fill))
-                    .width(Length::Fill)
-                    .height(Length::Fill),
-            )
-            .on_press(Message::Esc)
-        };
-        let top_strip = row![
+    // v3.0.4 (2026-05-23) — backdrop: fullscreen surface,
+    // card pinned to top-right, every other pixel is a
+    // mouse_area that fires Esc on click. Outer container
+    // paints transparent so the wallpaper / running windows
+    // show through.
+    let dismiss = || {
+        mouse_area(
+            container(Space::new())
+                .width(Length::Fill)
+                .height(Length::Fill),
+        )
+        .on_press(Message::Esc)
+    };
+    let top_strip = row![
+        dismiss(),
+        container(card)
+            .padding(Padding {
+                top: 44.0,
+                right: 14.0,
+                bottom: 0.0,
+                left: 0.0,
+            }),
+    ]
+    .height(Length::Fixed((HEIGHT + 44) as f32));
+    container(
+        column![
+            top_strip,
             dismiss(),
-            container(card)
-                .padding(Padding {
-                    top: 44.0,
-                    right: 14.0,
-                    bottom: 0.0,
-                    left: 0.0,
-                }),
-        ]
-        .height(Length::Fixed((HEIGHT + 44) as f32));
-        container(
-            column![
-                top_strip,
-                dismiss(),
-            ],
-        )
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .style(|_| container::Style {
-            background: Some(Background::Color(Color::TRANSPARENT)),
-            border: Border {
-                color: Color::TRANSPARENT,
-                width: 0.0,
-                radius: 0.0.into(),
-            },
-            shadow: Shadow::default(),
-            text_color: None,
-        })
-        .into()
-    }
-
-    fn theme(&self) -> Theme {
-        Theme::custom(
-            "mde-popover-minimized".into(),
-            iced::theme::Palette {
-                background: SURFACE_BG,
-                text: FG_TEXT,
-                primary: ACCENT,
-                success: Color::from_rgb(0.20, 0.80, 0.40),
-                danger: Color::from_rgb(0.92, 0.32, 0.30),
-            },
-        )
-    }
+        ],
+    )
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .style(|_| container::Style {
+        background: Some(Background::Color(Color::TRANSPARENT)),
+        border: Border {
+            color: Color::TRANSPARENT,
+            width: 0.0,
+            radius: 0.0.into(),
+        },
+        shadow: Shadow::default(),
+        text_color: None,
+        snap: false,
+    })
+    .into()
 }
 
 fn window_row<'a>(r: &'a MinimizedRow) -> Element<'a, Message> {
@@ -285,6 +258,7 @@ fn window_row<'a>(r: &'a MinimizedRow) -> Element<'a, Message> {
             radius: 5.0.into(),
         },
         shadow: Shadow::default(),
+        snap: false,
     })
     .on_press(Message::Restore(r.con_id))
     .into()
@@ -328,6 +302,7 @@ fn ghost_btn_style(status: iced::widget::button::Status) -> iced::widget::button
             radius: 4.0.into(),
         },
         shadow: Shadow::default(),
+        snap: false,
     }
 }
 
@@ -433,8 +408,25 @@ fn collect_leaves(node: &serde_json::Value, out: &mut Vec<MinimizedRow>) {
 }
 
 pub fn run() -> iced_layershell::Result {
-    <App as iced_layershell::Application>::run(Settings {
-        id: Some("mde-popover-minimized".into()),
+    iced_layershell::application(
+        || App { rows: scan_scratchpad() },
+        namespace,
+        update,
+        view,
+    )
+    .theme(|_: &App| iced::Theme::custom(
+        "mde-popover-minimized",
+        iced::theme::Palette {
+            background: SURFACE_BG,
+            text: FG_TEXT,
+            primary: ACCENT,
+            warning: Color::from_rgb(0.96, 0.65, 0.14),
+            success: Color::from_rgb(0.20, 0.80, 0.40),
+            danger: Color::from_rgb(0.92, 0.32, 0.30),
+        },
+    ))
+    .settings(Settings {
+        id: Some("mde-popover-minimized".to_string()),
         fonts: crate::fonts::load_fallback_fonts(),
         layer_settings: LayerShellSettings {
             // v3.0.4 (2026-05-23) — fullscreen surface so the
@@ -454,6 +446,7 @@ pub fn run() -> iced_layershell::Result {
         },
         ..Default::default()
     })
+    .run()
 }
 
 #[cfg(test)]

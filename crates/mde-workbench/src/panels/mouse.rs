@@ -187,11 +187,11 @@ impl MousePanel {
                 text(format!("{:+.1}", self.pointer_accel)).size(13),
             ]
             .spacing(12),
-            checkbox("Natural (reverse) scrolling", self.natural_scroll)
+            checkbox(self.natural_scroll).label("Natural (reverse) scrolling")
                 .on_toggle(|v| crate::Message::Mouse(Message::NaturalScrollChanged(v))),
-            checkbox("Tap to click (touchpad)", self.tap_to_click)
+            checkbox(self.tap_to_click).label("Tap to click (touchpad)")
                 .on_toggle(|v| crate::Message::Mouse(Message::TapToClickChanged(v))),
-            checkbox("Left-handed button mapping", self.left_handed)
+            checkbox(self.left_handed).label("Left-handed button mapping")
                 .on_toggle(|v| crate::Message::Mouse(Message::LeftHandedChanged(v))),
             row![apply_btn, text(&self.status).size(13)].spacing(12),
         ]

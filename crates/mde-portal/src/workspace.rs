@@ -145,9 +145,9 @@ impl WorkspaceInfo {
 /// Uses an async-stream generator so the event loop is ergonomic and the
 /// stream is lazy (starts only when iced's runtime runs it).
 pub fn workspace_subscription() -> Subscription<Message> {
-    Subscription::run_with_id(
+    Subscription::run_with(
         "mde-portal-workspaces",
-        async_stream::stream! {
+        |_| async_stream::stream! {
             loop {
                 // Open command connection (for get_workspaces refreshes).
                 let cmd_conn = match Connection::new().await {
@@ -209,9 +209,9 @@ pub fn workspace_subscription() -> Subscription<Message> {
 ///
 /// Uses the same two-connection pattern as `workspace_subscription()`.
 pub fn window_subscription() -> Subscription<Message> {
-    Subscription::run_with_id(
+    Subscription::run_with(
         "mde-portal-windows",
-        async_stream::stream! {
+        |_| async_stream::stream! {
             loop {
                 let cmd_conn = match Connection::new().await {
                     Ok(c) => c,
@@ -272,9 +272,9 @@ pub fn window_subscription() -> Subscription<Message> {
 /// Same retry pattern as `workspace_subscription`: dedicated
 /// connection, 3 s backoff on failure.
 pub fn binding_subscription() -> Subscription<Message> {
-    Subscription::run_with_id(
+    Subscription::run_with(
         "mde-portal-binding",
-        async_stream::stream! {
+        |_| async_stream::stream! {
             loop {
                 let event_conn = match Connection::new().await {
                     Ok(c) => c,
@@ -320,9 +320,9 @@ pub fn binding_subscription() -> Subscription<Message> {
 /// message lands as `<bus_root>/<topic-path>/<ULID>.json` with a
 /// `StoredMessage` envelope (`{"ulid":..., "body":..., ...}`).
 pub fn bus_pulse_subscription() -> Subscription<Message> {
-    Subscription::run_with_id(
+    Subscription::run_with(
         "mde-portal-bus-pulse",
-        async_stream::stream! {
+        |_| async_stream::stream! {
             let mut seen: std::collections::BTreeSet<String> =
                 std::collections::BTreeSet::new();
             let topic_dir = match pulse_topic_dir() {
@@ -422,9 +422,9 @@ pub fn announce_topic_dir() -> Option<std::path::PathBuf> {
 /// (500 ms cadence, ULID-seen tracking, BTreeSet cap). Emits
 /// `Message::BusAnnounceSegment` per new ULID.
 pub fn bus_announce_subscription() -> Subscription<Message> {
-    Subscription::run_with_id(
+    Subscription::run_with(
         "mde-portal-bus-announce",
-        async_stream::stream! {
+        |_| async_stream::stream! {
             let mut seen: std::collections::BTreeSet<String> =
                 std::collections::BTreeSet::new();
             let topic_dir = match announce_topic_dir() {
@@ -578,9 +578,9 @@ pub fn peer_system_topic_dir(hostname: &str) -> Option<std::path::PathBuf> {
 /// with `BusSegmentTopic::Announce` (priority palette wins) since
 /// they're alert-class events, not clipboard adds.
 pub fn bus_peer_topics_subscription() -> Subscription<Message> {
-    Subscription::run_with_id(
+    Subscription::run_with(
         "mde-portal-bus-peer-topics",
-        async_stream::stream! {
+        |_| async_stream::stream! {
             let mut seen: std::collections::BTreeSet<String> =
                 std::collections::BTreeSet::new();
             let hostname = local_hostname();
@@ -659,9 +659,9 @@ pub fn clipboard_topic_dir() -> Option<std::path::PathBuf> {
 /// `Message::BusAnnounceSegment` with `topic = Clipboard` so the
 /// renderer picks the neutral-grey tint per design lock.
 pub fn bus_clipboard_subscription() -> Subscription<Message> {
-    Subscription::run_with_id(
+    Subscription::run_with(
         "mde-portal-bus-clipboard",
-        async_stream::stream! {
+        |_| async_stream::stream! {
             let mut seen: std::collections::BTreeSet<String> =
                 std::collections::BTreeSet::new();
             let topic_dir = match clipboard_topic_dir() {
@@ -781,9 +781,9 @@ pub fn parse_layout_command(cmd: &str) -> Option<&'static str> {
 /// the subscribe call gets its own connection; failures back off 3 s
 /// before reconnecting.
 pub fn mode_subscription() -> Subscription<Message> {
-    Subscription::run_with_id(
+    Subscription::run_with(
         "mde-portal-mode",
-        async_stream::stream! {
+        |_| async_stream::stream! {
             loop {
                 let event_conn = match Connection::new().await {
                     Ok(c) => c,

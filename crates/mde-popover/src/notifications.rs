@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use iced::widget::{column, container, mouse_area, row, scrollable, text, Space};
-use iced::{Background, Border, Color, Element, Length, Padding, Shadow, Task, Theme};
+use iced::{Background, Border, Color, Element, Length, Padding, Shadow, Subscription, Task, Theme};
 use mde_theme::motion::list::{STAGGER_CAP, STAGGER_REVEAL_MS, STAGGER_STEP_MS};
 use iced_layershell::reexport::{Anchor, KeyboardInteractivity, Layer};
 use iced_layershell::settings::{LayerShellSettings, Settings};
@@ -265,164 +265,356 @@ pub struct App {
     dismissing: HashMap<String, Instant>,
 }
 
-impl iced_layershell::Application for App {
-    type Executor = iced::executor::Default;
-    type Message = Message;
-    type Theme = Theme;
-    type Flags = ();
+fn namespace() -> String {
+    "mde-popover-notifications".to_string()
+}
 
-    fn new(_flags: ()) -> (Self, Task<Message>) {
-        let muted_peers = load_muted_peers();
-        let group_mode = GroupMode::Peer;
-        let groups = load_groups_for(group_mode, &muted_peers);
-        let bus_messages = bus_data_root()
-            .map(|root| load_bus_messages(&root))
-            .unwrap_or_default();
-        tracing::info!(
-            group_count = groups.len(),
-            muted = muted_peers.len(),
-            bus_messages = bus_messages.len(),
-            "notifications popover open"
-        );
-        (
-            Self {
-                groups,
-                muted_peers,
-                group_mode,
-                collapsed: std::collections::HashSet::new(),
-                bus_messages,
-                bus_acked: std::collections::HashSet::new(),
-                opened_at: Instant::now(),
-                dismissing: HashMap::new(),
-            },
-            Task::none(),
-        )
-    }
-
-    fn namespace(&self) -> String {
-        "mde-popover-notifications".to_string()
-    }
-
-    fn update(&mut self, msg: Message) -> Task<Message> {
-        match msg {
-            Message::Exit => std::process::exit(0),
-            Message::ClearAll => {
-                // BUG-8.a — empty the cache file (atomic via
-                // write to "") so the next open of any source
-                // re-reads zero notifications. Then exit so
-                // the operator sees the cleared state on next
-                // open.
-                let path = notifications_cache_path();
-                let _ = std::fs::write(&path, "");
-                std::process::exit(0);
-            }
-            Message::ToggleMute(peer) => {
-                // BUG-8.b — flip the mute state for `peer`,
-                // persist to ~/.config/mde/notification-mutes.toml,
-                // and refresh the in-memory groups so the peer's
-                // rows disappear (or reappear) immediately.
-                if self.muted_peers.contains(&peer) {
-                    self.muted_peers.remove(&peer);
-                } else {
-                    self.muted_peers.insert(peer);
-                }
-                let _ = save_muted_peers(&self.muted_peers);
-                self.groups = load_groups_for(self.group_mode, &self.muted_peers);
-                Task::none()
-            }
-            Message::ToggleGroupMode => {
-                self.group_mode = match self.group_mode {
-                    GroupMode::Peer => GroupMode::App,
-                    GroupMode::App => GroupMode::Peer,
-                };
-                // Reset collapses on mode flip — the bucket
-                // keys mean different things across modes.
-                self.collapsed.clear();
-                self.groups = load_groups_for(self.group_mode, &self.muted_peers);
-                Task::none()
-            }
-            Message::ToggleCollapse(key) => {
-                if self.collapsed.contains(&key) {
-                    self.collapsed.remove(&key);
-                } else {
-                    self.collapsed.insert(key);
-                }
-                Task::none()
-            }
-            Message::AckBusMessage(ulid) => {
-                // ANIM-3.b.2 — start dismiss fade instead of instant ack.
-                // The row fades out; AnimTick moves it to bus_acked once done.
-                self.dismissing.insert(ulid, Instant::now());
-                Task::none()
-            }
-            Message::AnimTick => {
-                // Advance dismiss animations: completed ones move to bus_acked.
-                let done: Vec<String> = self
-                    .dismissing
-                    .iter()
-                    .filter(|(_, start)| start.elapsed().as_millis() as u64 >= DISMISS_ANIM_MS)
-                    .map(|(k, _)| k.clone())
-                    .collect();
-                for ulid in done {
-                    self.dismissing.remove(&ulid);
-                    self.bus_acked.insert(ulid);
-                }
-                Task::none()
-            }
-            _ => Task::none(),
+fn update(state: &mut App, msg: Message) -> Task<Message> {
+    match msg {
+        Message::Exit => std::process::exit(0),
+        Message::ClearAll => {
+            // BUG-8.a — empty the cache file (atomic via
+            // write to "") so the next open of any source
+            // re-reads zero notifications. Then exit so
+            // the operator sees the cleared state on next
+            // open.
+            let path = notifications_cache_path();
+            let _ = std::fs::write(&path, "");
+            std::process::exit(0);
         }
+        Message::ToggleMute(peer) => {
+            // BUG-8.b — flip the mute state for `peer`,
+            // persist to ~/.config/mde/notification-mutes.toml,
+            // and refresh the in-memory groups so the peer's
+            // rows disappear (or reappear) immediately.
+            if state.muted_peers.contains(&peer) {
+                state.muted_peers.remove(&peer);
+            } else {
+                state.muted_peers.insert(peer);
+            }
+            let _ = save_muted_peers(&state.muted_peers);
+            state.groups = load_groups_for(state.group_mode, &state.muted_peers);
+            Task::none()
+        }
+        Message::ToggleGroupMode => {
+            state.group_mode = match state.group_mode {
+                GroupMode::Peer => GroupMode::App,
+                GroupMode::App => GroupMode::Peer,
+            };
+            // Reset collapses on mode flip — the bucket
+            // keys mean different things across modes.
+            state.collapsed.clear();
+            state.groups = load_groups_for(state.group_mode, &state.muted_peers);
+            Task::none()
+        }
+        Message::ToggleCollapse(key) => {
+            if state.collapsed.contains(&key) {
+                state.collapsed.remove(&key);
+            } else {
+                state.collapsed.insert(key);
+            }
+            Task::none()
+        }
+        Message::AckBusMessage(ulid) => {
+            // ANIM-3.b.2 — start dismiss fade instead of instant ack.
+            // The row fades out; AnimTick moves it to bus_acked once done.
+            state.dismissing.insert(ulid, Instant::now());
+            Task::none()
+        }
+        Message::AnimTick => {
+            // Advance dismiss animations: completed ones move to bus_acked.
+            let done: Vec<String> = state
+                .dismissing
+                .iter()
+                .filter(|(_, start)| start.elapsed().as_millis() as u64 >= DISMISS_ANIM_MS)
+                .map(|(k, _)| k.clone())
+                .collect();
+            for ulid in done {
+                state.dismissing.remove(&ulid);
+                state.bus_acked.insert(ulid);
+            }
+            Task::none()
+        }
+        _ => Task::none(),
+    }
+}
+
+fn view(state: &App) -> Element<'_, Message> {
+    let header = text("Notifications").size(14).color(FG_TEXT);
+    let total_rows: usize = state.groups.iter().map(|(_, r)| r.len()).sum();
+    let subhead = text(format!("{total_rows} total"))
+        .size(11)
+        .color(FG_MUTED);
+
+    // ANIM-3.b.2 — shared animation state for this frame.
+    let opened_ms = state.opened_at.elapsed().as_millis() as u64;
+    let mut row_idx: usize = 0;
+
+    let mut list = column![].spacing(10);
+    if state.groups.is_empty() {
+        list = list.push(
+            container(text("No notifications").size(13).color(FG_MUTED))
+                .padding(Padding {
+                    top: 28.0,
+                    right: 0.0,
+                    bottom: 0.0,
+                    left: 0.0,
+                }),
+        );
+    }
+    for (group_name, rows) in &state.groups {
+        let label_text = if group_name.is_empty() {
+            "Local".to_string()
+        } else {
+            group_name.clone()
+        };
+        // BUG-8.c — collapsed flag drives the chevron glyph
+        // + body visibility.
+        let is_collapsed = state.collapsed.contains(group_name);
+        let chevron = if is_collapsed { "▶" } else { "▼" };
+        let header_label = format!("{chevron}  {label_text}  ({})", rows.len());
+        let collapse_key = group_name.clone();
+        let header_btn: Element<'_, Message> = iced::widget::Button::new(
+            text(header_label).size(11).color(FG_TEXT),
+        )
+        .padding(Padding {
+            top: 2.0,
+            right: 8.0,
+            bottom: 2.0,
+            left: 8.0,
+        })
+        .style(|_t: &Theme, status: iced::widget::button::Status| {
+            let bg = match status {
+                iced::widget::button::Status::Hovered => Color {
+                    r: 0.14,
+                    g: 0.14,
+                    b: 0.16,
+                    a: 1.0,
+                },
+                _ => Color::TRANSPARENT,
+            };
+            iced::widget::button::Style {
+                background: Some(Background::Color(bg)),
+                text_color: FG_TEXT,
+                border: Border {
+                    color: Color::TRANSPARENT,
+                    width: 0.0,
+                    radius: 3.0.into(),
+                },
+                shadow: Shadow::default(),
+                snap: false,
+            }
+        })
+        .on_press(Message::ToggleCollapse(collapse_key))
+        .into();
+
+        // BUG-8.b — per-peer Mute button only makes sense in
+        // peer-grouped mode; hide it in app-grouped mode
+        // (muting "firefox" doesn't have the same wire
+        // semantics — that would be a future BUG-8.d).
+        let mute_btn: Element<'_, Message> = if state.group_mode == GroupMode::Peer {
+            let peer_for_mute = group_name.clone();
+            iced::widget::Button::new(text("Mute").size(10).color(FG_MUTED))
+                .padding(Padding {
+                    top: 2.0,
+                    right: 8.0,
+                    bottom: 2.0,
+                    left: 8.0,
+                })
+                .style(|_t: &Theme, status: iced::widget::button::Status| {
+                    let bg = match status {
+                        iced::widget::button::Status::Hovered => Color {
+                            r: 0.18,
+                            g: 0.18,
+                            b: 0.20,
+                            a: 1.0,
+                        },
+                        _ => Color::TRANSPARENT,
+                    };
+                    iced::widget::button::Style {
+                        background: Some(Background::Color(bg)),
+                        text_color: FG_MUTED,
+                        border: Border {
+                            color: Color {
+                                a: 0.12,
+                                ..Color::WHITE
+                            },
+                            width: 1.0,
+                            radius: 3.0.into(),
+                        },
+                        shadow: Shadow::default(),
+                        snap: false,
+                    }
+                })
+                .on_press(Message::ToggleMute(peer_for_mute))
+                .into()
+        } else {
+            Space::new().into()
+        };
+
+        let group_header = row![
+            header_btn,
+            Space::new().width(Length::Fill),
+            mute_btn,
+        ]
+        .align_y(iced::Alignment::Center);
+
+        let mut group_column = column![group_header].spacing(4);
+        if !is_collapsed {
+            for row_data in rows.iter().take(40) {
+                let alpha = stagger_alpha(row_idx, opened_ms);
+                row_idx += 1;
+                group_column = group_column.push(render_row(row_data, alpha));
+            }
+        }
+        list = list.push(group_column);
     }
 
-    fn view(&self) -> Element<'_, Message> {
-        let header = text("Notifications").size(14).color(FG_TEXT);
-        let total_rows: usize = self.groups.iter().map(|(_, r)| r.len()).sum();
-        let subhead = text(format!("{total_rows} total"))
-            .size(11)
-            .color(FG_MUTED);
-
-        // ANIM-3.b.2 — shared animation state for this frame.
-        let opened_ms = self.opened_at.elapsed().as_millis() as u64;
-        let mut row_idx: usize = 0;
-
-        let mut list = column![].spacing(10);
-        if self.groups.is_empty() {
+    // BUS-2.3 — Bus Messages section (priority-bucketed, below FDO).
+    {
+        let (urgent, high, default) = bucket_by_priority(&state.bus_messages, &state.bus_acked);
+        let acked_msgs: Vec<&BusPopoverMessage> = state
+            .bus_messages
+            .iter()
+            .filter(|m| state.bus_acked.contains(&m.ulid))
+            .collect();
+        let has_bus = !urgent.is_empty() || !high.is_empty() || !default.is_empty() || !acked_msgs.is_empty();
+        if !state.bus_messages.is_empty() || has_bus {
+            // Section divider + header
+            list = list.push(Space::new().height(Length::Fixed(8.0)));
             list = list.push(
-                container(text("No notifications").size(13).color(FG_MUTED))
-                    .padding(Padding {
-                        top: 28.0,
-                        right: 0.0,
-                        bottom: 0.0,
-                        left: 0.0,
+                container(Space::new().height(Length::Fixed(1.0)))
+                    .width(Length::Fill)
+                    .style(|_: &Theme| container::Style {
+                        background: Some(iced::Background::Color(Color { r: 1.0, g: 1.0, b: 1.0, a: 0.08 })),
+                        ..Default::default()
                     }),
             );
+            list = list.push(Space::new().height(Length::Fixed(6.0)));
+            let bus_active_total = urgent.len() + high.len() + default.len();
+            list = list.push(
+                text(format!("Bus Messages  ({bus_active_total} active)"))
+                    .size(11)
+                    .color(FG_FAINT),
+            );
+            // Urgent bucket
+            if !urgent.is_empty() {
+                list = list.push(
+                    text(format!("⚠ Urgent  ({})", urgent.len()))
+                        .size(10)
+                        .color(BUS_URGENT_COLOR),
+                );
+                for msg in urgent.iter().take(20) {
+                    let alpha = if let Some(&start) = state.dismissing.get(&msg.ulid) {
+                        dismiss_alpha(start)
+                    } else {
+                        stagger_alpha(row_idx, opened_ms)
+                    };
+                    row_idx += 1;
+                    list = list.push(render_bus_row(msg, alpha));
+                }
+            }
+            // High bucket
+            if !high.is_empty() {
+                list = list.push(
+                    text(format!("! High  ({})", high.len()))
+                        .size(10)
+                        .color(BUS_HIGH_COLOR),
+                );
+                for msg in high.iter().take(20) {
+                    let alpha = if let Some(&start) = state.dismissing.get(&msg.ulid) {
+                        dismiss_alpha(start)
+                    } else {
+                        stagger_alpha(row_idx, opened_ms)
+                    };
+                    row_idx += 1;
+                    list = list.push(render_bus_row(msg, alpha));
+                }
+            }
+            // Default bucket
+            if !default.is_empty() {
+                list = list.push(
+                    text(format!("Default  ({})", default.len()))
+                        .size(10)
+                        .color(BUS_DEFAULT_COLOR),
+                );
+                for msg in default.iter().take(20) {
+                    let alpha = if let Some(&start) = state.dismissing.get(&msg.ulid) {
+                        dismiss_alpha(start)
+                    } else {
+                        stagger_alpha(row_idx, opened_ms)
+                    };
+                    row_idx += 1;
+                    list = list.push(render_bus_row(msg, alpha));
+                }
+            }
+            // Empty state
+            if bus_active_total == 0 && acked_msgs.is_empty() {
+                list = list.push(
+                    container(text("No bus messages").size(13).color(FG_MUTED))
+                        .padding(Padding { top: 6.0, right: 0.0, bottom: 0.0, left: 0.0 }),
+                );
+            }
+            // Acked-list (if any)
+            if !acked_msgs.is_empty() {
+                list = list.push(
+                    text(format!("✓ Acked  ({})", acked_msgs.len()))
+                        .size(10)
+                        .color(FG_FAINT),
+                );
+                for msg in acked_msgs.iter().take(10) {
+                    list = list.push(
+                        container(
+                            text(format!(
+                                "✓  {}",
+                                if msg.title.is_empty() { &msg.topic } else { &msg.title }
+                            ))
+                            .size(11)
+                            .color(FG_FAINT),
+                        )
+                        .padding(Padding { top: 3.0, right: 8.0, bottom: 3.0, left: 8.0 }),
+                    );
+                }
+            }
         }
-        for (group_name, rows) in &self.groups {
-            let label_text = if group_name.is_empty() {
-                "Local".to_string()
-            } else {
-                group_name.clone()
-            };
-            // BUG-8.c — collapsed flag drives the chevron glyph
-            // + body visibility.
-            let is_collapsed = self.collapsed.contains(group_name);
-            let chevron = if is_collapsed { "▶" } else { "▼" };
-            let header_label = format!("{chevron}  {label_text}  ({})", rows.len());
-            let collapse_key = group_name.clone();
-            let header_btn: Element<'_, Message> = iced::widget::Button::new(
-                text(header_label).size(11).color(FG_TEXT),
+    }
+
+    if !state.muted_peers.is_empty() {
+        let muted_list: Vec<&str> = state.muted_peers.iter().map(|s| s.as_str()).collect();
+        list = list.push(
+            container(
+                text(format!("Muted: {}", muted_list.join(", ")))
+                    .size(10)
+                    .color(FG_FAINT),
             )
             .padding(Padding {
-                top: 2.0,
-                right: 8.0,
-                bottom: 2.0,
-                left: 8.0,
+                top: 8.0,
+                right: 0.0,
+                bottom: 0.0,
+                left: 0.0,
+            }),
+        );
+    }
+
+    let scroll = scrollable(list).height(Length::Fill);
+
+    // BUG-8.a — "Clear all" button (rendered only when
+    // ≥1 notification exists). Click empties the cache
+    // file + exits.
+    let clear_btn: Element<'_, Message> = if total_rows > 0 {
+        iced::widget::Button::new(text("Clear all").size(11).color(FG_TEXT))
+            .padding(Padding {
+                top: 3.0,
+                right: 10.0,
+                bottom: 3.0,
+                left: 10.0,
             })
             .style(|_t: &Theme, status: iced::widget::button::Status| {
                 let bg = match status {
                     iced::widget::button::Status::Hovered => Color {
-                        r: 0.14,
-                        g: 0.14,
-                        b: 0.16,
+                        r: 0.18,
+                        g: 0.18,
+                        b: 0.20,
                         a: 1.0,
                     },
                     _ => Color::TRANSPARENT,
@@ -431,388 +623,202 @@ impl iced_layershell::Application for App {
                     background: Some(Background::Color(bg)),
                     text_color: FG_TEXT,
                     border: Border {
-                        color: Color::TRANSPARENT,
-                        width: 0.0,
-                        radius: 3.0.into(),
+                        color: Color {
+                            a: 0.15,
+                            ..Color::WHITE
+                        },
+                        width: 1.0,
+                        radius: 4.0.into(),
                     },
                     shadow: Shadow::default(),
+                    snap: false,
                 }
             })
-            .on_press(Message::ToggleCollapse(collapse_key))
-            .into();
-
-            // BUG-8.b — per-peer Mute button only makes sense in
-            // peer-grouped mode; hide it in app-grouped mode
-            // (muting "firefox" doesn't have the same wire
-            // semantics — that would be a future BUG-8.d).
-            let mute_btn: Element<'_, Message> = if self.group_mode == GroupMode::Peer {
-                let peer_for_mute = group_name.clone();
-                iced::widget::Button::new(text("Mute").size(10).color(FG_MUTED))
-                    .padding(Padding {
-                        top: 2.0,
-                        right: 8.0,
-                        bottom: 2.0,
-                        left: 8.0,
-                    })
-                    .style(|_t: &Theme, status: iced::widget::button::Status| {
-                        let bg = match status {
-                            iced::widget::button::Status::Hovered => Color {
-                                r: 0.18,
-                                g: 0.18,
-                                b: 0.20,
-                                a: 1.0,
-                            },
-                            _ => Color::TRANSPARENT,
-                        };
-                        iced::widget::button::Style {
-                            background: Some(Background::Color(bg)),
-                            text_color: FG_MUTED,
-                            border: Border {
-                                color: Color {
-                                    a: 0.12,
-                                    ..Color::WHITE
-                                },
-                                width: 1.0,
-                                radius: 3.0.into(),
-                            },
-                            shadow: Shadow::default(),
-                        }
-                    })
-                    .on_press(Message::ToggleMute(peer_for_mute))
-                    .into()
-            } else {
-                Space::with_width(Length::Fixed(0.0)).into()
-            };
-
-            let group_header = row![
-                header_btn,
-                Space::with_width(Length::Fill),
-                mute_btn,
-            ]
-            .align_y(iced::Alignment::Center);
-
-            let mut group_column = column![group_header].spacing(4);
-            if !is_collapsed {
-                for row_data in rows.iter().take(40) {
-                    let alpha = stagger_alpha(row_idx, opened_ms);
-                    row_idx += 1;
-                    group_column = group_column.push(render_row(row_data, alpha));
-                }
-            }
-            list = list.push(group_column);
-        }
-
-        // BUS-2.3 — Bus Messages section (priority-bucketed, below FDO).
-        {
-            let (urgent, high, default) = bucket_by_priority(&self.bus_messages, &self.bus_acked);
-            let acked_msgs: Vec<&BusPopoverMessage> = self
-                .bus_messages
-                .iter()
-                .filter(|m| self.bus_acked.contains(&m.ulid))
-                .collect();
-            let has_bus = !urgent.is_empty() || !high.is_empty() || !default.is_empty() || !acked_msgs.is_empty();
-            if !self.bus_messages.is_empty() || has_bus {
-                // Section divider + header
-                list = list.push(Space::with_height(Length::Fixed(8.0)));
-                list = list.push(
-                    container(Space::with_height(Length::Fixed(1.0)))
-                        .width(Length::Fill)
-                        .style(|_: &Theme| container::Style {
-                            background: Some(iced::Background::Color(Color { r: 1.0, g: 1.0, b: 1.0, a: 0.08 })),
-                            ..Default::default()
-                        }),
-                );
-                list = list.push(Space::with_height(Length::Fixed(6.0)));
-                let bus_active_total = urgent.len() + high.len() + default.len();
-                list = list.push(
-                    text(format!("Bus Messages  ({bus_active_total} active)"))
-                        .size(11)
-                        .color(FG_FAINT),
-                );
-                // Urgent bucket
-                if !urgent.is_empty() {
-                    list = list.push(
-                        text(format!("⚠ Urgent  ({})", urgent.len()))
-                            .size(10)
-                            .color(BUS_URGENT_COLOR),
-                    );
-                    for msg in urgent.iter().take(20) {
-                        let alpha = if let Some(&start) = self.dismissing.get(&msg.ulid) {
-                            dismiss_alpha(start)
-                        } else {
-                            stagger_alpha(row_idx, opened_ms)
-                        };
-                        row_idx += 1;
-                        list = list.push(render_bus_row(msg, alpha));
-                    }
-                }
-                // High bucket
-                if !high.is_empty() {
-                    list = list.push(
-                        text(format!("! High  ({})", high.len()))
-                            .size(10)
-                            .color(BUS_HIGH_COLOR),
-                    );
-                    for msg in high.iter().take(20) {
-                        let alpha = if let Some(&start) = self.dismissing.get(&msg.ulid) {
-                            dismiss_alpha(start)
-                        } else {
-                            stagger_alpha(row_idx, opened_ms)
-                        };
-                        row_idx += 1;
-                        list = list.push(render_bus_row(msg, alpha));
-                    }
-                }
-                // Default bucket
-                if !default.is_empty() {
-                    list = list.push(
-                        text(format!("Default  ({})", default.len()))
-                            .size(10)
-                            .color(BUS_DEFAULT_COLOR),
-                    );
-                    for msg in default.iter().take(20) {
-                        let alpha = if let Some(&start) = self.dismissing.get(&msg.ulid) {
-                            dismiss_alpha(start)
-                        } else {
-                            stagger_alpha(row_idx, opened_ms)
-                        };
-                        row_idx += 1;
-                        list = list.push(render_bus_row(msg, alpha));
-                    }
-                }
-                // Empty state
-                if bus_active_total == 0 && acked_msgs.is_empty() {
-                    list = list.push(
-                        container(text("No bus messages").size(13).color(FG_MUTED))
-                            .padding(Padding { top: 6.0, right: 0.0, bottom: 0.0, left: 0.0 }),
-                    );
-                }
-                // Acked-list (if any)
-                if !acked_msgs.is_empty() {
-                    list = list.push(
-                        text(format!("✓ Acked  ({})", acked_msgs.len()))
-                            .size(10)
-                            .color(FG_FAINT),
-                    );
-                    for msg in acked_msgs.iter().take(10) {
-                        list = list.push(
-                            container(
-                                text(format!(
-                                    "✓  {}",
-                                    if msg.title.is_empty() { &msg.topic } else { &msg.title }
-                                ))
-                                .size(11)
-                                .color(FG_FAINT),
-                            )
-                            .padding(Padding { top: 3.0, right: 8.0, bottom: 3.0, left: 8.0 }),
-                        );
-                    }
-                }
-            }
-        }
-
-        if !self.muted_peers.is_empty() {
-            let muted_list: Vec<&str> = self.muted_peers.iter().map(|s| s.as_str()).collect();
-            list = list.push(
-                container(
-                    text(format!("Muted: {}", muted_list.join(", ")))
-                        .size(10)
-                        .color(FG_FAINT),
-                )
-                .padding(Padding {
-                    top: 8.0,
-                    right: 0.0,
-                    bottom: 0.0,
-                    left: 0.0,
-                }),
-            );
-        }
-
-        let scroll = scrollable(list).height(Length::Fill);
-
-        // BUG-8.a — "Clear all" button (rendered only when
-        // ≥1 notification exists). Click empties the cache
-        // file + exits.
-        let clear_btn: Element<'_, Message> = if total_rows > 0 {
-            iced::widget::Button::new(text("Clear all").size(11).color(FG_TEXT))
-                .padding(Padding {
-                    top: 3.0,
-                    right: 10.0,
-                    bottom: 3.0,
-                    left: 10.0,
-                })
-                .style(|_t: &Theme, status: iced::widget::button::Status| {
-                    let bg = match status {
-                        iced::widget::button::Status::Hovered => Color {
-                            r: 0.18,
-                            g: 0.18,
-                            b: 0.20,
-                            a: 1.0,
-                        },
-                        _ => Color::TRANSPARENT,
-                    };
-                    iced::widget::button::Style {
-                        background: Some(Background::Color(bg)),
-                        text_color: FG_TEXT,
-                        border: Border {
-                            color: Color {
-                                a: 0.15,
-                                ..Color::WHITE
-                            },
-                            width: 1.0,
-                            radius: 4.0.into(),
-                        },
-                        shadow: Shadow::default(),
-                    }
-                })
-                .on_press(Message::ClearAll)
-                .into()
-        } else {
-            Space::with_width(Length::Fixed(0.0)).into()
-        };
-
-        // BUG-8.c — group-mode toggle. Label reflects the
-        // mode the click will switch TO (so "By app" means
-        // currently grouped by peer; clicking flips to app).
-        let mode_label = match self.group_mode {
-            GroupMode::Peer => "By app",
-            GroupMode::App => "By peer",
-        };
-        let mode_btn: Element<'_, Message> =
-            iced::widget::Button::new(text(mode_label).size(11).color(FG_TEXT))
-                .padding(Padding {
-                    top: 3.0,
-                    right: 10.0,
-                    bottom: 3.0,
-                    left: 10.0,
-                })
-                .style(|_t: &Theme, status: iced::widget::button::Status| {
-                    let bg = match status {
-                        iced::widget::button::Status::Hovered => Color {
-                            r: 0.18,
-                            g: 0.18,
-                            b: 0.20,
-                            a: 1.0,
-                        },
-                        _ => Color::TRANSPARENT,
-                    };
-                    iced::widget::button::Style {
-                        background: Some(Background::Color(bg)),
-                        text_color: FG_TEXT,
-                        border: Border {
-                            color: Color {
-                                a: 0.15,
-                                ..Color::WHITE
-                            },
-                            width: 1.0,
-                            radius: 4.0.into(),
-                        },
-                        shadow: Shadow::default(),
-                    }
-                })
-                .on_press(Message::ToggleGroupMode)
-                .into();
-
-        let body = column![
-            row![
-                header,
-                Space::with_width(Length::Fill),
-                subhead,
-                Space::with_width(Length::Fixed(8.0)),
-                mode_btn,
-                Space::with_width(Length::Fixed(6.0)),
-                clear_btn,
-                Space::with_width(Length::Fixed(8.0)),
-                // v3.0.3 — always-visible close button (Esc still
-                // works via subscription below).
-                crate::dismiss::close_button(Message::Exit),
-            ]
-            .align_y(iced::Alignment::Center),
-            Space::with_height(Length::Fixed(8.0)),
-            scroll,
-            Space::with_height(Length::Fixed(4.0)),
-            text("Esc closes · Clear all empties the cache")
-                .size(10)
-                .color(FG_MUTED),
-        ]
-        .padding(Padding {
-            top: 14.0,
-            right: 14.0,
-            bottom: 8.0,
-            left: 14.0,
-        });
-
-        let card: Element<'_, Message> = container(body)
-            .width(Length::Fixed(WIDTH as f32))
-            .height(Length::Fixed(HEIGHT as f32))
-            .style(popover_surface)
-            .into();
-
-        // v3.0.4 — backdrop dismiss; bottom-right card.
-        let dismiss = || {
-            mouse_area(
-                container(Space::with_width(Length::Fill))
-                    .width(Length::Fill)
-                    .height(Length::Fill),
-            )
-            .on_press(Message::Exit)
-        };
-        let bottom_strip = row![
-            dismiss(),
-            container(card).padding(Padding {
-                top: 0.0,
-                right: 4.0,
-                bottom: 48.0,
-                left: 0.0,
-            }),
-        ]
-        .height(Length::Fixed((HEIGHT + 48) as f32));
-        container(column![dismiss(), bottom_strip])
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .style(|_| container::Style {
-                background: Some(Background::Color(Color::TRANSPARENT)),
-                border: Border {
-                    color: Color::TRANSPARENT,
-                    width: 0.0,
-                    radius: 0.0.into(),
-                },
-                shadow: Shadow::default(),
-                text_color: None,
-            })
+            .on_press(Message::ClearAll)
             .into()
-    }
+    } else {
+        Space::new().into()
+    };
 
-    fn theme(&self) -> Theme {
-        Theme::Dark
-    }
+    // BUG-8.c — group-mode toggle. Label reflects the
+    // mode the click will switch TO (so "By app" means
+    // currently grouped by peer; clicking flips to app).
+    let mode_label = match state.group_mode {
+        GroupMode::Peer => "By app",
+        GroupMode::App => "By peer",
+    };
+    let mode_btn: Element<'_, Message> =
+        iced::widget::Button::new(text(mode_label).size(11).color(FG_TEXT))
+            .padding(Padding {
+                top: 3.0,
+                right: 10.0,
+                bottom: 3.0,
+                left: 10.0,
+            })
+            .style(|_t: &Theme, status: iced::widget::button::Status| {
+                let bg = match status {
+                    iced::widget::button::Status::Hovered => Color {
+                        r: 0.18,
+                        g: 0.18,
+                        b: 0.20,
+                        a: 1.0,
+                    },
+                    _ => Color::TRANSPARENT,
+                };
+                iced::widget::button::Style {
+                    background: Some(Background::Color(bg)),
+                    text_color: FG_TEXT,
+                    border: Border {
+                        color: Color {
+                            a: 0.15,
+                            ..Color::WHITE
+                        },
+                        width: 1.0,
+                        radius: 4.0.into(),
+                    },
+                    shadow: Shadow::default(),
+                    snap: false,
+                }
+            })
+            .on_press(Message::ToggleGroupMode)
+            .into();
 
-    fn subscription(&self) -> iced::Subscription<Message> {
-        let keyboard = iced::keyboard::on_key_press(|key, _| {
-            use iced::keyboard::{key::Named, Key};
-            if matches!(key, Key::Named(Named::Escape)) {
-                Some(Message::Exit)
-            } else {
-                None
+    let body = column![
+        row![
+            header,
+            Space::new().width(Length::Fill),
+            subhead,
+            Space::new().width(Length::Fixed(8.0)),
+            mode_btn,
+            Space::new().width(Length::Fixed(6.0)),
+            clear_btn,
+            Space::new().width(Length::Fixed(8.0)),
+            // v3.0.3 — always-visible close button (Esc still
+            // works via subscription below).
+            crate::dismiss::close_button(Message::Exit),
+        ]
+        .align_y(iced::Alignment::Center),
+        Space::new().height(Length::Fixed(8.0)),
+        scroll,
+        Space::new().height(Length::Fixed(4.0)),
+        text("Esc closes · Clear all empties the cache")
+            .size(10)
+            .color(FG_MUTED),
+    ]
+    .padding(Padding {
+        top: 14.0,
+        right: 14.0,
+        bottom: 8.0,
+        left: 14.0,
+    });
+
+    let card: Element<'_, Message> = container(body)
+        .width(Length::Fixed(WIDTH as f32))
+        .height(Length::Fixed(HEIGHT as f32))
+        .style(popover_surface)
+        .into();
+
+    // v3.0.4 — backdrop dismiss; bottom-right card.
+    let dismiss = || {
+        mouse_area(
+            container(Space::new())
+                .width(Length::Fill)
+                .height(Length::Fill),
+        )
+        .on_press(Message::Exit)
+    };
+    let bottom_strip = row![
+        dismiss(),
+        container(card).padding(Padding {
+            top: 0.0,
+            right: 4.0,
+            bottom: 48.0,
+            left: 0.0,
+        }),
+    ]
+    .height(Length::Fixed((HEIGHT + 48) as f32));
+    container(column![dismiss(), bottom_strip])
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(|_| container::Style {
+            background: Some(Background::Color(Color::TRANSPARENT)),
+            border: Border {
+                color: Color::TRANSPARENT,
+                width: 0.0,
+                radius: 0.0.into(),
+            },
+            shadow: Shadow::default(),
+            text_color: None,
+            snap: false,
+        })
+        .into()
+}
+
+fn subscription(state: &App) -> Subscription<Message> {
+    use iced::event;
+    let keyboard = event::listen_with(|event, status, _window| {
+        use iced::keyboard;
+        match event {
+            iced::Event::Keyboard(keyboard::Event::KeyPressed { key, .. })
+                if status == event::Status::Ignored =>
+            {
+                use iced::keyboard::{key::Named, Key};
+                if matches!(key, Key::Named(Named::Escape)) {
+                    Some(Message::Exit)
+                } else {
+                    None
+                }
             }
-        });
-        // ANIM-3.b.2 — tick while entrance stagger or dismiss fades are active.
-        let entrance_ms = self.opened_at.elapsed().as_millis() as u64;
-        let animating = entrance_ms <= MAX_ENTRANCE_MS || !self.dismissing.is_empty();
-        if animating {
-            iced::Subscription::batch([
-                keyboard,
-                iced::time::every(std::time::Duration::from_millis(16))
-                    .map(|_| Message::AnimTick),
-            ])
-        } else {
-            keyboard
+            _ => None,
         }
+    });
+    // ANIM-3.b.2 — tick while entrance stagger or dismiss fades are active.
+    let entrance_ms = state.opened_at.elapsed().as_millis() as u64;
+    let animating = entrance_ms <= MAX_ENTRANCE_MS || !state.dismissing.is_empty();
+    if animating {
+        Subscription::batch([
+            keyboard,
+            iced::time::every(std::time::Duration::from_millis(16))
+                .map(|_| Message::AnimTick),
+        ])
+    } else {
+        keyboard
     }
 }
 
 pub fn run() -> iced_layershell::Result {
-    <App as iced_layershell::Application>::run(Settings {
+    iced_layershell::application(
+        || {
+            let muted_peers = load_muted_peers();
+            let group_mode = GroupMode::Peer;
+            let groups = load_groups_for(group_mode, &muted_peers);
+            let bus_messages = bus_data_root()
+                .map(|root| load_bus_messages(&root))
+                .unwrap_or_default();
+            tracing::info!(
+                group_count = groups.len(),
+                muted = muted_peers.len(),
+                bus_messages = bus_messages.len(),
+                "notifications popover open"
+            );
+            App {
+                groups,
+                muted_peers,
+                group_mode,
+                collapsed: std::collections::HashSet::new(),
+                bus_messages,
+                bus_acked: std::collections::HashSet::new(),
+                opened_at: Instant::now(),
+                dismissing: HashMap::new(),
+            }
+        },
+        namespace,
+        update,
+        view,
+    )
+    .theme(|_: &App| iced::Theme::Dark)
+    .subscription(subscription)
+    .settings(Settings {
         id: Some("mde-popover-notifications".to_string()),
         fonts: crate::fonts::load_fallback_fonts(),
         layer_settings: LayerShellSettings {
@@ -827,6 +833,7 @@ pub fn run() -> iced_layershell::Result {
         },
         ..Default::default()
     })
+    .run()
 }
 
 /// BUS-2.3 / ANIM-3.b.2 — render one Bus message row with an "Ack"
@@ -872,18 +879,19 @@ fn render_bus_row(msg: &BusPopoverMessage, alpha: f32) -> Element<'_, Message> {
                     radius: 3.0.into(),
                 },
                 shadow: Shadow::default(),
+                snap: false,
             }
         })
         .on_press(Message::AckBusMessage(ack_ulid))
         .into()
     } else {
-        Space::with_width(Length::Fixed(0.0)).into()
+        Space::new().into()
     };
 
     let text_col = column![topic_label, title_label, body_label].spacing(1);
     let content_row = row![
         text_col,
-        Space::with_width(Length::Fill),
+        Space::new().width(Length::Fill),
         ack_btn,
     ]
     .align_y(iced::Alignment::Center)
@@ -910,6 +918,7 @@ fn render_bus_row(msg: &BusPopoverMessage, alpha: f32) -> Element<'_, Message> {
             },
             text_color: Some(Color { a: FG_TEXT.a * alpha, ..FG_TEXT }),
             shadow: Shadow::default(),
+            snap: false,
         })
         .width(Length::Fill)
         .into()
@@ -961,6 +970,7 @@ fn render_row(row_data: &NotificationRow, alpha: f32) -> Element<'_, Message> {
             },
             text_color: Some(Color { a: FG_TEXT.a * alpha, ..FG_TEXT }),
             shadow: Shadow::default(),
+            snap: false,
         })
         .width(Length::Fill)
         .into()
@@ -1071,6 +1081,7 @@ fn popover_surface(_theme: &Theme) -> container::Style {
         },
         text_color: Some(FG_TEXT),
         shadow: Shadow::default(),
+        snap: false,
     }
 }
 

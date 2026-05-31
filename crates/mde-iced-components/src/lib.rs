@@ -96,11 +96,10 @@ pub fn object_card<'a, Message: 'a>(
             })
             .into()
     } else {
-        Space::new(
-            Length::Fixed(card_size.icon_size()),
-            Length::Fixed(card_size.icon_size()),
-        )
-        .into()
+        Space::new()
+            .width(Length::Fixed(card_size.icon_size()))
+            .height(Length::Fixed(card_size.icon_size()))
+            .into()
     };
 
     // ---- title + subtitle column -------------------------------
@@ -204,6 +203,7 @@ pub fn object_card<'a, Message: 'a>(
                 blur_radius: shadow_blur,
             },
             text_color: Some(title_color),
+            snap: false,
         })
         .into()
 }
@@ -491,7 +491,7 @@ pub fn skeleton_shimmer<'a, Message: 'a>(
         b: lerp(base.b, highlight.b, a),
         a: 1.0,
     };
-    container(Space::new(Length::Fill, Length::Shrink))
+    container(Space::new().width(Length::Fill))
         .width(Length::Fixed(width))
         .height(Length::Fixed(height))
         .style(move |_| container::Style {
@@ -566,7 +566,7 @@ fn context_menu_item_row<'a, Message: 'a>(
 ) -> Element<'a, Message> {
     use mde_theme::motion::context_menu as cm;
     if item.is_separator {
-        return container(Space::new(Length::Fill, Length::Fixed(1.0)))
+        return container(Space::new().width(Length::Fill).height(1.0))
             .width(Length::Fill)
             .style(move |_| container::Style {
                 background: Some(Background::Color(palette.border.into_iced_color())),
@@ -599,17 +599,17 @@ fn context_menu_item_row<'a, Message: 'a>(
     });
     let inner: Element<'a, Message> = match shortcut_el {
         None => row![
-            Space::with_width(Length::Fixed(cm::ICON_L_PAD + cm::LABEL_L_PAD)),
+            Space::new().width(Length::Fixed(cm::ICON_L_PAD + cm::LABEL_L_PAD)),
             label_el,
         ]
         .align_y(alignment::Vertical::Center)
         .into(),
         Some(kbd) => row![
-            Space::with_width(Length::Fixed(cm::ICON_L_PAD + cm::LABEL_L_PAD)),
+            Space::new().width(Length::Fixed(cm::ICON_L_PAD + cm::LABEL_L_PAD)),
             label_el,
-            Space::with_width(Length::Fill),
+            Space::new().width(Length::Fill),
             kbd,
-            Space::with_width(Length::Fixed(cm::KBD_R_PAD)),
+            Space::new().width(Length::Fixed(cm::KBD_R_PAD)),
         ]
         .align_y(alignment::Vertical::Center)
         .into(),
@@ -751,13 +751,13 @@ pub fn toast_chip<'a, Message: 'a + Clone>(
                             background: Some(Background::Color(hover_bg)),
                             text_color,
                             border: Border { radius: 4.0_f32.into(), ..Border::default() },
-                            shadow: Default::default(),
+                            ..Default::default()
                         },
                         _ => button::Style {
                             background: None,
                             text_color: resting_color,
                             border: Border { radius: 4.0_f32.into(), ..Border::default() },
-                            shadow: Default::default(),
+                            ..Default::default()
                         },
                     })
                     .padding(Padding {
@@ -784,7 +784,7 @@ pub fn toast_chip<'a, Message: 'a + Clone>(
     }
 
     // 2 px progress strip at the bottom of the chip.
-    let progress_strip: Element<'a, Message> = container(Space::with_width(0))
+    let progress_strip: Element<'a, Message> = container(Space::new())
         .width(Length::Fixed(bar_width))
         .height(Length::Fixed(tk::PROGRESS_HEIGHT))
         .style(move |_| container::Style {
@@ -1000,7 +1000,7 @@ mod tests {
             Elevation::Floating,
             Elevation::Modal,
         ] {
-            let content = Space::with_width(Length::Fixed(100.0));
+            let content = Space::new().width(Length::Fixed(100.0));
             let _: Element<'_, ()> = elevation_container(content, tier, palette);
         }
     }

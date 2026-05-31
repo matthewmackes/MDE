@@ -95,59 +95,44 @@ pub struct App {
     fade: f32,
 }
 
-impl iced_layershell::Application for App {
-    type Executor = iced::executor::Default;
-    type Message = Message;
-    type Theme = Theme;
-    type Flags = Action;
+fn namespace() -> String {
+    "mde-popover-farewell".to_string()
+}
 
-    fn new(action: Action) -> (Self, Task<Message>) {
-        (App { action, fade: 0.0 }, Task::none())
-    }
-
-    fn namespace(&self) -> String {
-        "mde-popover-farewell".to_string()
-    }
-
-    fn update(&mut self, msg: Message) -> Task<Message> {
-        match msg {
-            Message::FadeStep => {
-                self.fade = (self.fade + FADE_STEP).min(1.0);
-                if self.fade >= 1.0 {
-                    execute_action(self.action);
-                }
+fn update(state: &mut App, msg: Message) -> Task<Message> {
+    match msg {
+        Message::FadeStep => {
+            state.fade = (state.fade + FADE_STEP).min(1.0);
+            if state.fade >= 1.0 {
+                execute_action(state.action);
             }
-            Message::Cancel => std::process::exit(0),
-            _ => {}
         }
-        Task::none()
+        Message::Cancel => std::process::exit(0),
+        _ => {}
     }
+    Task::none()
+}
 
-    fn view(&self) -> Element<'_, Message> {
-        let fade = self.fade;
-        let bg = Color { a: CHARCOAL.a * fade, ..CHARCOAL };
+fn view(state: &App) -> Element<'_, Message> {
+    let fade = state.fade;
+    let bg = Color { a: CHARCOAL.a * fade, ..CHARCOAL };
 
-        mouse_area(
-            container(Space::new(Length::Fill, Length::Fill))
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .style(move |_: &Theme| ContainerStyle {
-                    background: Some(Background::Color(bg)),
-                    ..Default::default()
-                }),
-        )
-        .on_press(Message::Cancel)
-        .into()
-    }
+    mouse_area(
+        container(Space::new())
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(move |_: &Theme| ContainerStyle {
+                background: Some(Background::Color(bg)),
+                ..Default::default()
+            }),
+    )
+    .on_press(Message::Cancel)
+    .into()
+}
 
-    fn theme(&self) -> Theme {
-        Theme::Dark
-    }
-
-    fn subscription(&self) -> Subscription<Message> {
-        iced::time::every(std::time::Duration::from_millis(16))
-            .map(|_| Message::FadeStep)
-    }
+fn subscription(_state: &App) -> Subscription<Message> {
+    iced::time::every(std::time::Duration::from_millis(16))
+        .map(|_| Message::FadeStep)
 }
 
 pub fn run() -> iced_layershell::Result {
@@ -158,10 +143,17 @@ pub fn run() -> iced_layershell::Result {
     });
     tracing::info!(?action, "farewell overlay spawned");
 
-    <App as iced_layershell::Application>::run(Settings {
+    iced_layershell::application(
+        move || App { action, fade: 0.0 },
+        namespace,
+        update,
+        view,
+    )
+    .theme(|_: &App| iced::Theme::Dark)
+    .subscription(subscription)
+    .settings(Settings {
         id: Some("mde-popover-farewell".to_string()),
         fonts: crate::fonts::load_fallback_fonts(),
-        flags: action,
         layer_settings: LayerShellSettings {
             size: None,
             exclusive_zone: -1,
@@ -173,6 +165,7 @@ pub fn run() -> iced_layershell::Result {
         },
         ..Default::default()
     })
+    .run()
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

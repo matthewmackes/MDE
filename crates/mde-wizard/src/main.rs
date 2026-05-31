@@ -60,16 +60,21 @@ impl WizardApp {
             state.preset = pages::preset::DEFAULT_PRESET.into();
         }
 
-        let app = Self {
-            page: WizardPage::Welcome,
-            state,
-            preview: pages::preview::PreviewSnapshot::default(),
-            preview_landed_at: None,
-        };
-        iced::application(Self::title, Self::update, Self::view)
-            .theme(Self::theme)
-            .window_size(Size::new(720.0, 540.0))
-            .run_with(move || (app, Task::none()))
+        let init_preview = pages::preview::PreviewSnapshot::default();
+        iced::application(
+            move || WizardApp {
+                page: WizardPage::Welcome,
+                state: state.clone(),
+                preview: init_preview.clone(),
+                preview_landed_at: None,
+            },
+            WizardApp::update,
+            WizardApp::view,
+        )
+        .title(WizardApp::title)
+        .theme(WizardApp::theme)
+        .window_size(Size::new(720.0, 540.0))
+        .run()
     }
 
     fn title(&self) -> String {
@@ -187,7 +192,7 @@ impl WizardApp {
         if self.page.prev().is_some() {
             nav = nav.push(button(text("← Back")).on_press(Message::NavPrev));
         }
-        nav = nav.push(Space::with_width(Length::Fill));
+        nav = nav.push(Space::new().width(Length::Fill));
         // NF-7.3 — Preview button label distinguishes "click to
         // run the birthright steps" (Apply) from "click to exit
         // the wizard" (Finish). Refresh is a side button on the
@@ -202,9 +207,9 @@ impl WizardApp {
         container(
             column![
                 header,
-                Space::with_height(Length::Fixed(16.0)),
+                Space::new().height(Length::Fixed(16.0)),
                 body,
-                Space::with_height(Length::Fill),
+                Space::new().height(Length::Fill),
                 nav
             ]
             .padding(Padding::new(24.0))
@@ -219,7 +224,7 @@ impl WizardApp {
 fn welcome_body<'a>() -> Element<'a, Message> {
     column![
         text(pages::welcome::HEADLINE).size(20),
-        Space::with_height(Length::Fixed(8.0)),
+        Space::new().height(Length::Fixed(8.0)),
         text(pages::welcome::SUBHEAD).size(14),
     ]
     .into()
@@ -229,7 +234,7 @@ fn scan_body<'a>() -> Element<'a, Message> {
     let report = pages::scan::ScanReport::probe();
     let mut col = column![
         text("Environment").size(16),
-        Space::with_height(Length::Fixed(8.0))
+        Space::new().height(Length::Fixed(8.0))
     ];
     for line in report.lines() {
         col = col.push(text(line).size(13));
@@ -241,7 +246,7 @@ fn legacy_body<'a>() -> Element<'a, Message> {
     let detection = pages::legacy_import::LegacyDetection::probe();
     column![
         text("Legacy import").size(16),
-        Space::with_height(Length::Fixed(8.0)),
+        Space::new().height(Length::Fixed(8.0)),
         text(detection.summary()).size(13),
     ]
     .into()
@@ -250,7 +255,7 @@ fn legacy_body<'a>() -> Element<'a, Message> {
 fn preset_body<'a>(state: &'a WizardState) -> Element<'a, Message> {
     let mut col = column![
         text(format!("Active preset: {}", state.preset)).size(16),
-        Space::with_height(Length::Fixed(8.0)),
+        Space::new().height(Length::Fixed(8.0)),
     ];
     for preset in pages::preset::PRESETS {
         col = col.push(text(format!("  · {} — {}", preset.display_name, preset.blurb)).size(13));
@@ -262,7 +267,7 @@ fn mesh_body<'a>(state: &'a WizardState) -> Element<'a, Message> {
     column![
         text("Mesh passcode").size(16),
         text("16-character shared passcode (uppercase letters + digits).").size(13),
-        Space::with_height(Length::Fixed(8.0)),
+        Space::new().height(Length::Fixed(8.0)),
         text(format!(
             "Current: {}",
             if state.mesh_passcode.is_empty() {
@@ -306,18 +311,18 @@ fn preview_body<'a>(
     let mut col = column![
         text("Mesh preview").size(16),
         text(pages::preview::summary_line(snap)).size(13),
-        Space::with_height(Length::Fixed(8.0)),
+        Space::new().height(Length::Fixed(8.0)),
     ];
     if !snap.error.is_empty() {
         col = col.push(text(format!("Probe error: {}", snap.error)).size(12));
-        col = col.push(Space::with_height(Length::Fixed(6.0)));
+        col = col.push(Space::new().height(Length::Fixed(6.0)));
     }
     if let Some(self_node) = &snap.self_node {
         col = col.push(text(format!("  node-id: {}", self_node.node_id)).size(12));
         col = col.push(text(format!("  hostname: {}", self_node.host)).size(12));
         col = col.push(text(format!("  role: {}", self_node.role)).size(12));
         col = col.push(text(format!("  cert epoch: {}", self_node.cert_epoch)).size(12));
-        col = col.push(Space::with_height(Length::Fixed(6.0)));
+        col = col.push(Space::new().height(Length::Fixed(6.0)));
     }
     if snap.peers.is_empty() {
         col = col.push(text("Lighthouse roster: (no peers yet)").size(13));
@@ -337,13 +342,13 @@ fn preview_body<'a>(
     // with an empty roster. The banner copy is context-aware
     // (see pages::preview::diagnostic_message).
     if pages::preview::should_show_diagnostics(snap, elapsed_secs) {
-        col = col.push(Space::with_height(Length::Fixed(10.0)));
+        col = col.push(Space::new().height(Length::Fixed(10.0)));
         col = col.push(text("⚠ Diagnostics").size(14));
         col = col.push(text(pages::preview::diagnostic_message(snap)).size(12));
     }
     // Inline Refresh button so the operator can re-poll without
     // backing out of the wizard.
-    col = col.push(Space::with_height(Length::Fixed(12.0)));
+    col = col.push(Space::new().height(Length::Fixed(12.0)));
     col = col.push(
         row![button(text("Refresh probe")).on_press(Message::PreviewRefresh)]
             .spacing(8)
@@ -356,13 +361,13 @@ fn apply_body<'a>() -> Element<'a, Message> {
     let mut col = column![
         text("Apply").size(16),
         text("Selected birthright steps:").size(13),
-        Space::with_height(Length::Fixed(4.0)),
+        Space::new().height(Length::Fixed(4.0)),
     ];
     for step in pages::apply::STEPS {
         let mark = if step.default_on { "[x]" } else { "[ ]" };
         col = col.push(text(format!("  {mark} {}", step.label)).size(13));
     }
-    col = col.push(Space::with_height(Length::Fixed(8.0)));
+    col = col.push(Space::new().height(Length::Fixed(8.0)));
     col = col.push(text("Click Apply ✓ to finalize.").size(13));
     col.into()
 }

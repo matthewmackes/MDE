@@ -177,11 +177,12 @@ pub fn theme() -> iced::Theme {
         }
     }
     iced::Theme::custom(
-        "MDE".into(),
+        "MDE",
         iced::theme::Palette {
             background: WINDOW,
             text: FG,
             primary: ACCENT,
+            warning: Color::from_rgb(0.96, 0.65, 0.14),
             success: PF_SUCCESS,
             danger: PF_DANGER,
         },
@@ -204,6 +205,7 @@ fn theme_from_tokens(tokens: &mackes_theme::TokenTable) -> iced::Theme {
         background: WINDOW,
         text: FG,
         primary: ACCENT,
+        warning: Color::from_rgb(0.96, 0.65, 0.14),
         success: PF_SUCCESS,
         danger: PF_DANGER,
     };
@@ -221,5 +223,5 @@ fn theme_from_tokens(tokens: &mackes_theme::TokenTable) -> iced::Theme {
             }
         }
     }
-    iced::Theme::custom("MDE".into(), palette)
+    iced::Theme::custom("MDE", palette)
 }

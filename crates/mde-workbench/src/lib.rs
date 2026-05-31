@@ -29,6 +29,9 @@ pub mod single_instance;
 
 pub use app::{App, Message};
 pub use backend::{Backend, BackendError, DBusBackend, DemoBackend, FileBackend, RemoteBackend};
-pub use dbus::{PendingFocus, WorkbenchService, INTERFACE_NAME, METHOD_FOCUS};
+pub use dbus::{
+    poll_once as focus_poll_once, serve_bus as serve_focus_bus, slug_from_body, PendingFocus,
+    ACTION_TOPIC,
+};
 pub use model::{nav_model, Group, NavEntry, Panel, View};
-pub use single_instance::{decide_primary_status, PrimaryStatus, BUS_NAME, OBJECT_PATH};
+pub use single_instance::{decide_primary_status, PrimaryStatus, BUS_NAME};

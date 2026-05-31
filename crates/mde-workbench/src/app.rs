@@ -69,6 +69,9 @@ pub fn mde_workbench_iced_theme() -> Theme {
         background: p.background.into_iced_color(),
         text: p.text.into_iced_color(),
         primary: p.accent.into_iced_color(),
+        // iced 0.14 added `warning` to Palette. Amber (#f5a623),
+        // distinct from the single accent + the danger red below.
+        warning: Color::from_rgb(0xf5 as f32 / 255.0, 0xa6 as f32 / 255.0, 0x23 as f32 / 255.0),
         success: Color::from_rgb(
             0x3f as f32 / 255.0,
             0xb9 as f32 / 255.0,
@@ -612,7 +615,10 @@ impl App {
         // means GNOME-shell / KDE-on-Wayland sessions (which the
         // X11 build feature enables for the v2.0.0 fallback path)
         // also fall back to client-side chrome.
-        iced::application(Self::title, Self::update, Self::view)
+        // iced 0.14: application(boot, update, view) — the first arg
+        // is the boot fn (initial State); the title moved to .title().
+        iced::application(App::new, Self::update, Self::view)
+            .title(Self::title)
             .theme(Self::theme)
             .subscription(Self::subscription)
             .window(window::Settings {
@@ -751,7 +757,7 @@ impl App {
     /// window id, which for the single-window workbench is the
     /// one the user is interacting with.
     fn dispatch_window_action(action: HeaderAction) -> Task<Message> {
-        window::get_latest().and_then(move |id| match action {
+        window::latest().and_then(move |id| match action {
             HeaderAction::Minimize => window::minimize(id, true),
             HeaderAction::ToggleMaximize => window::toggle_maximize(id),
             HeaderAction::Close => window::close(id),

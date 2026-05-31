@@ -15,8 +15,8 @@ path = "src/main.rs"
 [dependencies]
 # Same Iced + iced_layershell pair as crates/mde-popover so the
 # workspace dep tree stays on a single resolution.
-iced            = { version = "0.13", default-features = false, features = ["wgpu", "tiny-skia", "tokio", "advanced"] }
-iced_layershell = "0.13.7"
+iced            = { version = "0.14", default-features = false, features = ["wgpu", "tiny-skia", "tokio", "advanced", "wayland"] }
+iced_layershell = "0.18"
 
 # Fixture + activity-feed parsing.
 serde      = { version = "1", features = ["derive"] }

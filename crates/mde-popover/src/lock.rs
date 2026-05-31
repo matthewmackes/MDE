@@ -221,199 +221,203 @@ impl App {
     }
 }
 
-impl iced_layershell::Application for App {
-    type Executor = iced::executor::Default;
-    type Message = Message;
-    type Theme = Theme;
-    type Flags = ();
+fn namespace() -> String {
+    "mde-popover-lock".to_string()
+}
 
-    fn new(_flags: ()) -> (Self, Task<Message>) {
-        let mut app = App::refresh();
-        app.fade = 0.0;
-        app.phase = FadePhase::In;
-        tracing::info!(hostname = %app.hostname, clock = %app.clock, "lock popover open");
-        (app, Task::none())
-    }
-
-    fn namespace(&self) -> String {
-        "mde-popover-lock".to_string()
-    }
-
-    fn update(&mut self, msg: Message) -> Task<Message> {
-        match msg {
-            Message::Tick => {
-                let fresh = App::refresh();
-                self.hostname = fresh.hostname;
-                self.clock = fresh.clock;
-                self.date = fresh.date;
-                self.mesh_up = fresh.mesh_up;
-                self.network_up = fresh.network_up;
-                self.battery_pct = fresh.battery_pct;
-                self.weather = fresh.weather;
-            }
-            Message::FadeStep => match self.phase {
-                FadePhase::In => {
-                    self.fade = (self.fade + FADE_STEP).min(1.0);
-                    if self.fade >= 1.0 {
-                        self.phase = FadePhase::Steady;
-                    }
-                }
-                FadePhase::Out => {
-                    self.fade = (self.fade - FADE_STEP).max(0.0);
-                    if self.fade <= 0.0 {
-                        std::process::exit(0);
-                    }
-                }
-                FadePhase::Steady => {}
-            },
-            Message::Exit => {
-                self.phase = FadePhase::Out;
-            }
-            _ => {}
+fn update(state: &mut App, msg: Message) -> Task<Message> {
+    match msg {
+        Message::Tick => {
+            let fresh = App::refresh();
+            state.hostname = fresh.hostname;
+            state.clock = fresh.clock;
+            state.date = fresh.date;
+            state.mesh_up = fresh.mesh_up;
+            state.network_up = fresh.network_up;
+            state.battery_pct = fresh.battery_pct;
+            state.weather = fresh.weather;
         }
-        Task::none()
+        Message::FadeStep => match state.phase {
+            FadePhase::In => {
+                state.fade = (state.fade + FADE_STEP).min(1.0);
+                if state.fade >= 1.0 {
+                    state.phase = FadePhase::Steady;
+                }
+            }
+            FadePhase::Out => {
+                state.fade = (state.fade - FADE_STEP).max(0.0);
+                if state.fade <= 0.0 {
+                    std::process::exit(0);
+                }
+            }
+            FadePhase::Steady => {}
+        },
+        Message::Exit => {
+            state.phase = FadePhase::Out;
+        }
+        _ => {}
     }
+    Task::none()
+}
 
-    fn view(&self) -> Element<'_, Message> {
-        let fade = self.fade;
+fn view(state: &App) -> Element<'_, Message> {
+    let fade = state.fade;
 
-        let breadcrumb: Element<'_, Message> = row![
-            text("M")
-                .size(13)
-                .color(fade_color(ACCENT, fade)),
-            Space::with_width(Length::Fixed(6.0)),
-            text("›").size(13).color(fade_color(FG_LABEL, fade)),
-            Space::with_width(Length::Fixed(6.0)),
-            text(self.hostname.clone()).size(13).color(fade_color(FG_DIM, fade)),
-        ]
-        .align_y(iced::Alignment::Center)
-        .into();
+    let breadcrumb: Element<'_, Message> = row![
+        text("M")
+            .size(13)
+            .color(fade_color(ACCENT, fade)),
+        Space::new().width(Length::Fixed(6.0)),
+        text("›").size(13).color(fade_color(FG_LABEL, fade)),
+        Space::new().width(Length::Fixed(6.0)),
+        text(state.hostname.clone()).size(13).color(fade_color(FG_DIM, fade)),
+    ]
+    .align_y(iced::Alignment::Center)
+    .into();
 
-        let big_clock: Element<'_, Message> =
-            text(self.clock.clone()).size(96).color(fade_color(FG, fade)).into();
+    let big_clock: Element<'_, Message> =
+        text(state.clock.clone()).size(96).color(fade_color(FG, fade)).into();
 
-        let date_line: Element<'_, Message> =
-            text(self.date.clone()).size(18).color(fade_color(FG_DIM, fade)).into();
+    let date_line: Element<'_, Message> =
+        text(state.date.clone()).size(18).color(fade_color(FG_DIM, fade)).into();
 
-        // ── Indicator row (mesh / net / battery / weather) ────────────────────
-        let dot = move |label: &str, up: bool| -> Element<'static, Message> {
-            let dot_color = if up { DOT_UP } else { DOT_DOWN };
-            row![
-                container(Space::with_width(Length::Fill))
-                    .width(Length::Fixed(8.0))
-                    .height(Length::Fixed(8.0))
-                    .style(move |_: &Theme| ContainerStyle {
-                        background: Some(Background::Color(fade_color(dot_color, fade))),
-                        border: Border {
-                            color: Color::TRANSPARENT,
-                            width: 0.0,
-                            radius: 4.0.into(),
-                        },
-                        ..Default::default()
-                    }),
-                Space::with_width(Length::Fixed(6.0)),
-                text(label.to_string()).size(12).color(fade_color(FG_DIM, fade)),
-            ]
-            .align_y(iced::Alignment::Center)
-            .into()
-        };
-
-        let battery_chip: Element<'_, Message> = match self.battery_pct {
-            Some(p) => row![
-                text("bat").size(10).color(fade_color(FG_LABEL, fade)),
-                Space::with_width(Length::Fixed(4.0)),
-                text(format!("{p}%")).size(12).color(fade_color(FG_DIM, fade)),
-            ]
-            .align_y(iced::Alignment::Center)
-            .into(),
-            None => row![text("bat —").size(12).color(fade_color(FG_LABEL, fade))]
-                .align_y(iced::Alignment::Center)
-                .into(),
-        };
-
-        let indicators: Element<'_, Message> = row![
-            dot("mesh", self.mesh_up),
-            Space::with_width(Length::Fixed(20.0)),
-            dot("net", self.network_up),
-            Space::with_width(Length::Fixed(20.0)),
-            battery_chip,
-            Space::with_width(Length::Fixed(20.0)),
-            text(self.weather.clone()).size(12).color(fade_color(FG_DIM, fade)),
-        ]
-        .align_y(iced::Alignment::Center)
-        .into();
-
-        // ── Centered card ────────────────────────────────────────────────────
-        let card_body = column![
-            breadcrumb,
-            Space::with_height(Length::Fixed(28.0)),
-            big_clock,
-            Space::with_height(Length::Fixed(4.0)),
-            date_line,
-            Space::with_height(Length::Fixed(24.0)),
-            indicators,
-        ]
-        .align_x(iced::Alignment::Center);
-
-        let footer: Element<'_, Message> =
-            text("Press Esc or Enter to unlock").size(11).color(fade_color(FG_LABEL, fade)).into();
-
-        let centered = column![
-            Space::with_height(Length::Fill),
-            card_body,
-            Space::with_height(Length::Fill),
-            footer,
-            Space::with_height(Length::Fixed(40.0)),
-        ]
-        .align_x(iced::Alignment::Center)
-        .padding(Padding { top: 0.0, right: 0.0, bottom: 0.0, left: 0.0 });
-
-        // mouse_area on the whole surface so an Enter-equivalent
-        // click (rare but possible on touch devices) dismisses.
-        let backdrop = mouse_area(
-            container(centered)
-                .width(Length::Fill)
-                .height(Length::Fill)
+    // ── Indicator row (mesh / net / battery / weather) ────────────────────
+    let dot = move |label: &str, up: bool| -> Element<'static, Message> {
+        let dot_color = if up { DOT_UP } else { DOT_DOWN };
+        row![
+            container(Space::new())
+                .width(Length::Fixed(8.0))
+                .height(Length::Fixed(8.0))
                 .style(move |_: &Theme| ContainerStyle {
-                    background: Some(Background::Color(fade_color(CHARCOAL, fade))),
+                    background: Some(Background::Color(fade_color(dot_color, fade))),
+                    border: Border {
+                        color: Color::TRANSPARENT,
+                        width: 0.0,
+                        radius: 4.0.into(),
+                    },
                     ..Default::default()
                 }),
-        )
-        .on_press(Message::Exit);
+            Space::new().width(Length::Fixed(6.0)),
+            text(label.to_string()).size(12).color(fade_color(FG_DIM, fade)),
+        ]
+        .align_y(iced::Alignment::Center)
+        .into()
+    };
 
-        backdrop.into()
-    }
+    let battery_chip: Element<'_, Message> = match state.battery_pct {
+        Some(p) => row![
+            text("bat").size(10).color(fade_color(FG_LABEL, fade)),
+            Space::new().width(Length::Fixed(4.0)),
+            text(format!("{p}%")).size(12).color(fade_color(FG_DIM, fade)),
+        ]
+        .align_y(iced::Alignment::Center)
+        .into(),
+        None => row![text("bat —").size(12).color(fade_color(FG_LABEL, fade))]
+            .align_y(iced::Alignment::Center)
+            .into(),
+    };
 
-    fn theme(&self) -> Theme {
-        Theme::Dark
-    }
+    let indicators: Element<'_, Message> = row![
+        dot("mesh", state.mesh_up),
+        Space::new().width(Length::Fixed(20.0)),
+        dot("net", state.network_up),
+        Space::new().width(Length::Fixed(20.0)),
+        battery_chip,
+        Space::new().width(Length::Fixed(20.0)),
+        text(state.weather.clone()).size(12).color(fade_color(FG_DIM, fade)),
+    ]
+    .align_y(iced::Alignment::Center)
+    .into();
 
-    fn subscription(&self) -> Subscription<Message> {
-        let keys = iced::keyboard::on_key_press(|key, _| {
-            use iced::keyboard::{key::Named, Key};
-            match key {
-                Key::Named(Named::Escape) | Key::Named(Named::Enter) => Some(Message::Exit),
-                _ => None,
+    // ── Centered card ────────────────────────────────────────────────────
+    let card_body = column![
+        breadcrumb,
+        Space::new().height(Length::Fixed(28.0)),
+        big_clock,
+        Space::new().height(Length::Fixed(4.0)),
+        date_line,
+        Space::new().height(Length::Fixed(24.0)),
+        indicators,
+    ]
+    .align_x(iced::Alignment::Center);
+
+    let footer: Element<'_, Message> =
+        text("Press Esc or Enter to unlock").size(11).color(fade_color(FG_LABEL, fade)).into();
+
+    let centered = column![
+        Space::new().height(Length::Fill),
+        card_body,
+        Space::new().height(Length::Fill),
+        footer,
+        Space::new().height(Length::Fixed(40.0)),
+    ]
+    .align_x(iced::Alignment::Center)
+    .padding(Padding { top: 0.0, right: 0.0, bottom: 0.0, left: 0.0 });
+
+    // mouse_area on the whole surface so an Enter-equivalent
+    // click (rare but possible on touch devices) dismisses.
+    let backdrop = mouse_area(
+        container(centered)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(move |_: &Theme| ContainerStyle {
+                background: Some(Background::Color(fade_color(CHARCOAL, fade))),
+                ..Default::default()
+            }),
+    )
+    .on_press(Message::Exit);
+
+    backdrop.into()
+}
+
+fn subscription(state: &App) -> Subscription<Message> {
+    use iced::event;
+    let keys = event::listen_with(|event, status, _window| {
+        use iced::keyboard;
+        match event {
+            iced::Event::Keyboard(keyboard::Event::KeyPressed { key, .. })
+                if status == event::Status::Ignored =>
+            {
+                use iced::keyboard::{key::Named, Key};
+                match key {
+                    Key::Named(Named::Escape) | Key::Named(Named::Enter) => Some(Message::Exit),
+                    _ => None,
+                }
             }
-        });
-
-        // Tick every 10 s so the clock + battery + mesh dot stay fresh.
-        let tick = iced::time::every(std::time::Duration::from_secs(10))
-            .map(|_| Message::Tick);
-
-        // 16 ms fade ticker — active only during In/Out phases (Q48 crossfade).
-        if self.phase != FadePhase::Steady {
-            let fade_tick = iced::time::every(std::time::Duration::from_millis(16))
-                .map(|_| Message::FadeStep);
-            Subscription::batch([keys, tick, fade_tick])
-        } else {
-            Subscription::batch([keys, tick])
+            _ => None,
         }
+    });
+
+    // Tick every 10 s so the clock + battery + mesh dot stay fresh.
+    let tick = iced::time::every(std::time::Duration::from_secs(10))
+        .map(|_| Message::Tick);
+
+    // 16 ms fade ticker — active only during In/Out phases (Q48 crossfade).
+    if state.phase != FadePhase::Steady {
+        let fade_tick = iced::time::every(std::time::Duration::from_millis(16))
+            .map(|_| Message::FadeStep);
+        Subscription::batch([keys, tick, fade_tick])
+    } else {
+        Subscription::batch([keys, tick])
     }
 }
 
 pub fn run() -> iced_layershell::Result {
-    <App as iced_layershell::Application>::run(Settings {
+    iced_layershell::application(
+        || {
+            let mut app = App::refresh();
+            app.fade = 0.0;
+            app.phase = FadePhase::In;
+            tracing::info!(hostname = %app.hostname, clock = %app.clock, "lock popover open");
+            app
+        },
+        namespace,
+        update,
+        view,
+    )
+    .theme(|_: &App| iced::Theme::Dark)
+    .subscription(subscription)
+    .settings(Settings {
         id: Some("mde-popover-lock".to_string()),
         fonts: crate::fonts::load_fallback_fonts(),
         layer_settings: LayerShellSettings {
@@ -427,6 +431,7 @@ pub fn run() -> iced_layershell::Result {
         },
         ..Default::default()
     })
+    .run()
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -577,7 +582,9 @@ mod tests {
 
     #[test]
     fn new_starts_with_fade_in_phase() {
-        let (app, _) = <App as iced_layershell::Application>::new(());
+        let mut app = App::refresh();
+        app.fade = 0.0;
+        app.phase = FadePhase::In;
         assert_eq!(app.phase, FadePhase::In);
         assert_eq!(app.fade, 0.0);
     }

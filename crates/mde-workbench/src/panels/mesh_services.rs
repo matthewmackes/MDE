@@ -213,7 +213,7 @@ impl MeshServicesPanel {
                     },
                     _ => accent,
                 };
-                iced::widget::button::Style {
+                iced::widget::button::Style { snap: false,
                     background: Some(Background::Color(bg)),
                     text_color: Color::WHITE,
                     border: Border {
@@ -229,7 +229,7 @@ impl MeshServicesPanel {
 
         let header = row![
             column![title, subtitle].spacing(2),
-            Space::with_width(Length::Fill),
+            Space::new().width(Length::Fill),
             refresh_btn,
         ]
         .align_y(iced::alignment::Vertical::Center);
@@ -252,7 +252,7 @@ impl MeshServicesPanel {
         container(
             column![
                 header,
-                Space::with_height(Length::Fixed(20.0)),
+                Space::new().height(Length::Fixed(20.0)),
                 scrollable(units_col).height(Length::Fill),
             ]
             .spacing(2),
@@ -370,7 +370,7 @@ fn unit_row<'a>(u: &'a UnitStatus, palette: Palette) -> Element<'a, crate::Messa
             description,
         ]
         .spacing(2),
-        Space::with_width(Length::Fill),
+        Space::new().width(Length::Fill),
         buttons,
     ]
     .spacing(10)
@@ -385,7 +385,7 @@ fn unit_row<'a>(u: &'a UnitStatus, palette: Palette) -> Element<'a, crate::Messa
                     .color(palette.text_muted.into_iced_color()),
             )
             .padding(Padding::from([8u16, 12u16]))
-            .style(move |_| container::Style {
+            .style(move |_| container::Style { snap: false,
                 background: Some(Background::Color(Color {
                     r: 0.06,
                     g: 0.06,
@@ -407,7 +407,7 @@ fn unit_row<'a>(u: &'a UnitStatus, palette: Palette) -> Element<'a, crate::Messa
     container(col)
         .padding(Padding::from([12u16, 16u16]))
         .width(Length::Fill)
-        .style(move |_| container::Style {
+        .style(move |_| container::Style { snap: false,
             background: Some(Background::Color(bg)),
             border: Border {
                 color: border,
@@ -449,7 +449,7 @@ fn action_btn_style(
             };
             (bg, Color::WHITE)
         };
-        iced::widget::button::Style {
+        iced::widget::button::Style { snap: false,
             background: Some(Background::Color(bg)),
             text_color,
             border: Border {

@@ -118,7 +118,7 @@ impl SyncStatusPanel {
                     },
                     _ => accent,
                 };
-                iced::widget::button::Style {
+                iced::widget::button::Style { snap: false,
                     background: Some(Background::Color(bg)),
                     text_color: Color::WHITE,
                     border: Border {
@@ -134,7 +134,7 @@ impl SyncStatusPanel {
 
         let header = row![
             column![title, subtitle].spacing(2),
-            Space::with_width(Length::Fill),
+            Space::new().width(Length::Fill),
             refresh_btn,
         ]
         .align_y(iced::alignment::Vertical::Center);
@@ -145,9 +145,9 @@ impl SyncStatusPanel {
         container(
             column![
                 header,
-                Space::with_height(Length::Fixed(20.0)),
+                Space::new().height(Length::Fixed(20.0)),
                 local_card,
-                Space::with_height(Length::Fixed(12.0)),
+                Space::new().height(Length::Fixed(12.0)),
                 healthz_card,
             ]
             .spacing(2),
@@ -229,7 +229,7 @@ fn file_status_card<'a>(snap: &'a SyncSnapshot, palette: Palette) -> Element<'a,
     )
     .padding(Padding::from([14u16, 18u16]))
     .width(Length::Fill)
-    .style(move |_| container::Style {
+    .style(move |_| container::Style { snap: false,
         background: Some(Background::Color(bg)),
         border: Border {
             color: border,
@@ -324,7 +324,7 @@ fn healthz_status_card<'a>(
             container(text(body_text).size(10).color(palette.text_muted.into_iced_color()))
                 .padding(Padding::from([8u16, 12u16]))
                 .width(Length::Fill)
-                .style(move |_| container::Style {
+                .style(move |_| container::Style { snap: false,
                     background: Some(Background::Color(raw_bg)),
                     border: Border {
                         color: border,
@@ -338,7 +338,7 @@ fn healthz_status_card<'a>(
     )
     .padding(Padding::from([14u16, 18u16]))
     .width(Length::Fill)
-    .style(move |_| container::Style {
+    .style(move |_| container::Style { snap: false,
         background: Some(Background::Color(bg)),
         border: Border {
             color: border,

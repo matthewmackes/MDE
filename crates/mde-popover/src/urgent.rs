@@ -74,87 +74,91 @@ pub struct App {
     body: String,
 }
 
-impl iced_layershell::Application for App {
-    type Executor = iced::executor::Default;
-    type Message = Message;
-    type Theme = Theme;
-    type Flags = ();
+fn namespace() -> String {
+    "mde-popover-urgent".to_string()
+}
 
-    fn new(_flags: ()) -> (Self, Task<Message>) {
-        let (title, body) = read_urgent_message();
-        tracing::info!(%title, "urgent theater open");
-        play_urgent_alert();
-        (Self { title, body }, Task::none())
+fn update(_state: &mut App, msg: Message) -> Task<Message> {
+    match msg {
+        Message::Exit => std::process::exit(0),
+        _ => {}
     }
+    Task::none()
+}
 
-    fn namespace(&self) -> String {
-        "mde-popover-urgent".to_string()
-    }
+fn view(state: &App) -> Element<'_, Message> {
+    let marker: Element<'_, Message> = text("⚠").size(64).color(URGENT_RED).into();
+    let title: Element<'_, Message> = text(state.title.clone()).size(32).color(FG).into();
 
-    fn update(&mut self, msg: Message) -> Task<Message> {
-        match msg {
-            Message::Exit => std::process::exit(0),
-            _ => {}
-        }
-        Task::none()
-    }
-
-    fn view(&self) -> Element<'_, Message> {
-        let marker: Element<'_, Message> = text("⚠").size(64).color(URGENT_RED).into();
-        let title: Element<'_, Message> = text(self.title.clone()).size(32).color(FG).into();
-
-        let mut card = column![marker, Space::with_height(Length::Fixed(16.0)), title]
-            .align_x(iced::Alignment::Center);
-        if !self.body.is_empty() {
-            card = card.push(Space::with_height(Length::Fixed(12.0)));
-            card = card.push(text(self.body.clone()).size(16).color(FG_DIM));
-        }
-
-        let footer: Element<'_, Message> = text("Press Esc or Enter to dismiss")
-            .size(12)
-            .color(FG_LABEL)
-            .into();
-
-        let centered = column![
-            Space::with_height(Length::Fill),
-            card,
-            Space::with_height(Length::Fixed(32.0)),
-            footer,
-            Space::with_height(Length::Fill),
-        ]
+    let mut card = column![marker, Space::new().height(Length::Fixed(16.0)), title]
         .align_x(iced::Alignment::Center);
-
-        mouse_area(
-            container(centered)
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .padding(Padding::from([0, 48]))
-                .style(|_: &Theme| ContainerStyle {
-                    background: Some(Background::Color(BACKDROP)),
-                    ..Default::default()
-                }),
-        )
-        .on_press(Message::Exit)
-        .into()
+    if !state.body.is_empty() {
+        card = card.push(Space::new().height(Length::Fixed(12.0)));
+        card = card.push(text(state.body.clone()).size(16).color(FG_DIM));
     }
 
-    fn theme(&self) -> Theme {
-        Theme::Dark
-    }
+    let footer: Element<'_, Message> = text("Press Esc or Enter to dismiss")
+        .size(12)
+        .color(FG_LABEL)
+        .into();
 
-    fn subscription(&self) -> Subscription<Message> {
-        iced::keyboard::on_key_press(|key, _| {
-            use iced::keyboard::{key::Named, Key};
-            match key {
-                Key::Named(Named::Escape) | Key::Named(Named::Enter) => Some(Message::Exit),
-                _ => None,
+    let centered = column![
+        Space::new().height(Length::Fill),
+        card,
+        Space::new().height(Length::Fixed(32.0)),
+        footer,
+        Space::new().height(Length::Fill),
+    ]
+    .align_x(iced::Alignment::Center);
+
+    mouse_area(
+        container(centered)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .padding(Padding::from([0, 48]))
+            .style(|_: &Theme| ContainerStyle {
+                background: Some(Background::Color(BACKDROP)),
+                ..Default::default()
+            }),
+    )
+    .on_press(Message::Exit)
+    .into()
+}
+
+fn subscription(_state: &App) -> Subscription<Message> {
+    use iced::event;
+    event::listen_with(|event, status, _window| {
+        use iced::keyboard;
+        match event {
+            iced::Event::Keyboard(keyboard::Event::KeyPressed { key, .. })
+                if status == event::Status::Ignored =>
+            {
+                use iced::keyboard::{key::Named, Key};
+                match key {
+                    Key::Named(Named::Escape) | Key::Named(Named::Enter) => Some(Message::Exit),
+                    _ => None,
+                }
             }
-        })
-    }
+            _ => None,
+        }
+    })
 }
 
 pub fn run() -> iced_layershell::Result {
-    <App as iced_layershell::Application>::run(Settings {
+    iced_layershell::application(
+        || {
+            let (title, body) = read_urgent_message();
+            tracing::info!(%title, "urgent theater open");
+            play_urgent_alert();
+            App { title, body }
+        },
+        namespace,
+        update,
+        view,
+    )
+    .theme(|_: &App| iced::Theme::Dark)
+    .subscription(subscription)
+    .settings(Settings {
         id: Some("mde-popover-urgent".to_string()),
         fonts: crate::fonts::load_fallback_fonts(),
         layer_settings: LayerShellSettings {
@@ -168,6 +172,7 @@ pub fn run() -> iced_layershell::Result {
         },
         ..Default::default()
     })
+    .run()
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

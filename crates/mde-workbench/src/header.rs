@@ -122,7 +122,7 @@ pub fn view<'a, Message: Clone + 'a>(
 
     let brand_strip = row![
         brand_icon,
-        Space::with_width(Length::Fixed(8.0)),
+        Space::new().width(Length::Fixed(8.0)),
         wordmark,
     ]
     .align_y(alignment::Vertical::Center);
@@ -148,7 +148,7 @@ pub fn view<'a, Message: Clone + 'a>(
             .padding([0u16, 16u16])
             .height(Length::Fixed(HEADER_HEIGHT))
             .align_y(alignment::Vertical::Center),
-        Space::with_width(Length::Fill),
+        Space::new().width(Length::Fill),
         container(controls)
             .height(Length::Fixed(HEADER_HEIGHT))
             .align_y(alignment::Vertical::Center),
@@ -159,7 +159,7 @@ pub fn view<'a, Message: Clone + 'a>(
     container(bar)
         .width(Length::Fill)
         .height(Length::Fixed(HEADER_HEIGHT))
-        .style(move |_| container::Style {
+        .style(move |_| container::Style { snap: false,
             background: Some(Background::Color(palette.surface.into_iced_color())),
             border: Border {
                 color: palette.border.into_iced_color(),
@@ -224,7 +224,7 @@ fn control_button<'a, Message: Clone + 'a>(
             (ButtonStatus::Hovered, false) => palette.accent.into_iced_color(),
             _ => palette.text_muted.into_iced_color(),
         };
-        button::Style {
+        button::Style { snap: false,
             background: Some(Background::Color(bg)),
             text_color,
             border: Border {

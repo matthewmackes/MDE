@@ -304,7 +304,8 @@ impl MdeFiles {
     /// Builds a fresh `MdeFiles` state, registers the warm-dark theme, opens a
     /// 1480×940 window, and dispatches updates from `Message`.
     pub fn run() -> iced::Result {
-        iced::application(Self::title, Self::update, Self::view)
+        iced::application(Self::new, Self::update, Self::view)
+            .title(Self::title)
             .theme(Self::theme)
             .window_size(Size::new(t::WIN_W, t::WIN_H))
             .run()
@@ -628,7 +629,7 @@ impl MdeFiles {
         })))
         .width(Length::Fill)
         .height(Length::Fill)
-        .style(|_| container::Style {
+        .style(|_| container::Style { snap: false,
             background: Some(Background::Color(t::PF_BG_300)),
             border: Border {
                 color: Color::TRANSPARENT,
@@ -666,7 +667,7 @@ impl MdeFiles {
         )
         .width(Length::Fill)
         .height(Length::Fill)
-        .style(|_| container::Style {
+        .style(|_| container::Style { snap: false,
             background: Some(Background::Color(t::WINDOW)),
             border: Border {
                 color: Color {
@@ -1005,7 +1006,7 @@ fn empty_state(label: &str) -> Element<'static, Message> {
     )
     .padding(Padding::new(56.0))
     .width(Length::Fill)
-    .style(|_| container::Style {
+    .style(|_| container::Style { snap: false,
         background: Some(Background::Color(Color::TRANSPARENT)),
         border: Border {
             color: Color {

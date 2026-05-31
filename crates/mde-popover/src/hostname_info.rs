@@ -12,7 +12,7 @@
 #![forbid(unsafe_code)]
 
 use iced::widget::{column, container, row, text, Space};
-use iced::{Background, Border, Color, Element, Length, Padding, Task, Theme};
+use iced::{Background, Border, Color, Element, Length, Padding, Subscription, Task, Theme};
 use iced_layershell::reexport::{Anchor, KeyboardInteractivity, Layer};
 use iced_layershell::settings::{LayerShellSettings, Settings};
 use iced_layershell::to_layer_message;
@@ -93,125 +93,129 @@ pub struct App {
     mesh_role: String,
 }
 
-impl iced_layershell::Application for App {
-    type Executor = iced::executor::Default;
-    type Message = Message;
-    type Theme = Theme;
-    type Flags = ();
+fn namespace() -> String {
+    "mde-popover-hostname-info".to_string()
+}
 
-    fn new(_flags: ()) -> (Self, Task<Message>) {
-        let hostname = read_hostname();
-        let uptime = read_uptime();
-        let ip = read_primary_ip();
-        let mesh_role = "peer".to_string();
-        tracing::info!(hostname = %hostname, ip = %ip, "hostname-info popover open");
-        (Self { hostname, uptime, ip, mesh_role }, Task::none())
-    }
-
-    fn namespace(&self) -> String {
-        "mde-popover-hostname-info".to_string()
-    }
-
-    fn update(&mut self, msg: Message) -> Task<Message> {
-        match msg {
-            Message::Exit => std::process::exit(0),
-            _ => Task::none(),
-        }
-    }
-
-    fn view(&self) -> Element<'_, Message> {
-        let row_item = |label: &str, value: &str| -> Element<'static, Message> {
-            row![
-                text(label.to_string())
-                    .size(10)
-                    .color(FG_LABEL)
-                    .width(Length::Fixed(72.0)),
-                text(value.to_string()).size(11).color(FG),
-            ]
-            .align_y(iced::Alignment::Center)
-            .spacing(4)
-            .into()
-        };
-
-        let card_body = column![
-            text(&self.hostname).size(15).color(FG),
-            Space::with_height(Length::Fixed(10.0)),
-            row_item("uptime", &self.uptime),
-            Space::with_height(Length::Fixed(4.0)),
-            row_item("ip", &self.ip),
-            Space::with_height(Length::Fixed(4.0)),
-            row_item("mesh", &self.mesh_role),
-            Space::with_height(Length::Fill),
-            text("Esc or click outside to close")
-                .size(9)
-                .color(FG_DIM),
-        ]
-        .padding(Padding { top: 14.0, right: 16.0, bottom: 10.0, left: 16.0 })
-        .spacing(0);
-
-        let card: Element<'_, Message> = container(card_body)
-            .width(Length::Fixed(CARD_WIDTH as f32))
-            .height(Length::Fixed(CARD_HEIGHT as f32))
-            .style(|_: &Theme| ContainerStyle {
-                background: Some(Background::Color(CHARCOAL)),
-                border: Border {
-                    color: Color { r: 1.0, g: 1.0, b: 1.0, a: 0.08 },
-                    width: 1.0,
-                    radius: 4.0.into(),
-                },
-                ..Default::default()
-            })
-            .into();
-
-        let dismiss = || {
-            mouse_area(
-                container(Space::with_width(Length::Fill))
-                    .width(Length::Fill)
-                    .height(Length::Fill),
-            )
-            .on_press(Message::Exit)
-        };
-
-        // Bottom strip: [card at left] [dismiss fills right]
-        let bottom_strip = row![
-            container(card).padding(Padding {
-                top: 0.0,
-                right: 0.0,
-                bottom: CARD_BOTTOM,
-                left: CARD_LEFT,
-            }),
-            dismiss(),
-        ]
-        .height(Length::Fixed((CARD_HEIGHT as f32) + CARD_BOTTOM));
-
-        container(column![dismiss(), bottom_strip])
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .style(|_: &Theme| ContainerStyle {
-                background: Some(Background::Color(Color::TRANSPARENT)),
-                ..Default::default()
-            })
-            .into()
-    }
-
-    fn theme(&self) -> Theme {
-        Theme::Dark
-    }
-
-    fn subscription(&self) -> iced::Subscription<Message> {
-        iced::keyboard::on_key_press(|key, _| {
-            use iced::keyboard::{key::Named, Key};
-            if matches!(key, Key::Named(Named::Escape)) {
-                Some(Message::Exit)
-            } else {
-                None
-            }
-        })
+fn update(_state: &mut App, msg: Message) -> Task<Message> {
+    match msg {
+        Message::Exit => std::process::exit(0),
+        _ => Task::none(),
     }
 }
 
+fn view(state: &App) -> Element<'_, Message> {
+    let row_item = |label: &str, value: &str| -> Element<'static, Message> {
+        row![
+            text(label.to_string())
+                .size(10)
+                .color(FG_LABEL)
+                .width(Length::Fixed(72.0)),
+            text(value.to_string()).size(11).color(FG),
+        ]
+        .align_y(iced::Alignment::Center)
+        .spacing(4)
+        .into()
+    };
+
+    let card_body = column![
+        text(&state.hostname).size(15).color(FG),
+        Space::new().height(Length::Fixed(10.0)),
+        row_item("uptime", &state.uptime),
+        Space::new().height(Length::Fixed(4.0)),
+        row_item("ip", &state.ip),
+        Space::new().height(Length::Fixed(4.0)),
+        row_item("mesh", &state.mesh_role),
+        Space::new().height(Length::Fill),
+        text("Esc or click outside to close")
+            .size(9)
+            .color(FG_DIM),
+    ]
+    .padding(Padding { top: 14.0, right: 16.0, bottom: 10.0, left: 16.0 })
+    .spacing(0);
+
+    let card: Element<'_, Message> = container(card_body)
+        .width(Length::Fixed(CARD_WIDTH as f32))
+        .height(Length::Fixed(CARD_HEIGHT as f32))
+        .style(|_: &Theme| ContainerStyle {
+            background: Some(Background::Color(CHARCOAL)),
+            border: Border {
+                color: Color { r: 1.0, g: 1.0, b: 1.0, a: 0.08 },
+                width: 1.0,
+                radius: 4.0.into(),
+            },
+            ..Default::default()
+        })
+        .into();
+
+    let dismiss = || {
+        mouse_area(
+            container(Space::new().width(Length::Fill))
+                .width(Length::Fill)
+                .height(Length::Fill),
+        )
+        .on_press(Message::Exit)
+    };
+
+    // Bottom strip: [card at left] [dismiss fills right]
+    let bottom_strip = row![
+        container(card).padding(Padding {
+            top: 0.0,
+            right: 0.0,
+            bottom: CARD_BOTTOM,
+            left: CARD_LEFT,
+        }),
+        dismiss(),
+    ]
+    .height(Length::Fixed((CARD_HEIGHT as f32) + CARD_BOTTOM));
+
+    container(column![dismiss(), bottom_strip])
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(|_: &Theme| ContainerStyle {
+            background: Some(Background::Color(Color::TRANSPARENT)),
+            ..Default::default()
+        })
+        .into()
+}
+
+fn subscription(_state: &App) -> Subscription<Message> {
+    use iced::event;
+    event::listen_with(|event, status, _window| {
+        use iced::keyboard;
+        match event {
+            iced::Event::Keyboard(keyboard::Event::KeyPressed { key, .. })
+                if status == event::Status::Ignored =>
+            {
+                use iced::keyboard::{key::Named, Key};
+                if matches!(key, Key::Named(Named::Escape)) {
+                    Some(Message::Exit)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    })
+}
+
 pub fn run() -> iced_layershell::Result {
-    <App as iced_layershell::Application>::run(Settings {
+    iced_layershell::application(
+        || {
+            let hostname = read_hostname();
+            let uptime = read_uptime();
+            let ip = read_primary_ip();
+            let mesh_role = "peer".to_string();
+            tracing::info!(hostname = %hostname, ip = %ip, "hostname-info popover open");
+            App { hostname, uptime, ip, mesh_role }
+        },
+        namespace,
+        update,
+        view,
+    )
+    .theme(|_: &App| iced::Theme::Dark)
+    .subscription(subscription)
+    .settings(Settings {
         id: Some("mde-popover-hostname-info".to_string()),
         fonts: crate::fonts::load_fallback_fonts(),
         layer_settings: LayerShellSettings {
@@ -225,6 +229,7 @@ pub fn run() -> iced_layershell::Result {
         },
         ..Default::default()
     })
+    .run()
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

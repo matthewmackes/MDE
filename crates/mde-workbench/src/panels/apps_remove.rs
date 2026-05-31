@@ -193,7 +193,7 @@ impl AppsRemovePanel {
         let rows = BLOAT.iter().fold(column![], |col, (pkg, desc)| {
             let name = (*pkg).to_string();
             let checked = self.selected.contains(*pkg);
-            let cb = checkbox(*pkg, checked).on_toggle(move |c| {
+            let cb = checkbox(checked).label(*pkg).on_toggle(move |c| {
                 crate::Message::AppsRemove(Message::Toggled {
                     name: name.clone(),
                     checked: c,

@@ -153,7 +153,7 @@ impl DriftPanel {
                     },
                     _ => accent,
                 };
-                iced::widget::button::Style {
+                iced::widget::button::Style { snap: false,
                     background: Some(Background::Color(bg)),
                     text_color: Color::WHITE,
                     border: Border {
@@ -169,7 +169,7 @@ impl DriftPanel {
 
         let header = row![
             column![title, subtitle].spacing(2),
-            Space::with_width(Length::Fill),
+            Space::new().width(Length::Fill),
             refresh_btn,
         ]
         .align_y(iced::alignment::Vertical::Center);
@@ -185,7 +185,7 @@ impl DriftPanel {
         container(
             column![
                 header,
-                Space::with_height(Length::Fixed(20.0)),
+                Space::new().height(Length::Fixed(20.0)),
                 scrollable(rows_col).height(Length::Fill),
             ]
             .spacing(2),
@@ -223,7 +223,7 @@ fn drift_row<'a>(r: &'a DriftRow, palette: Palette) -> Element<'a, crate::Messag
             .size(10)
             .color(palette.text_muted.into_iced_color()),
         text(r.peer.clone()).size(11).color(palette.text.into_iced_color()),
-        Space::with_width(Length::Fill),
+        Space::new().width(Length::Fill),
         text(fmt_epoch_ms(r.timestamp_ms))
             .size(10)
             .color(palette.text_muted.into_iced_color()),
@@ -240,7 +240,7 @@ fn drift_row<'a>(r: &'a DriftRow, palette: Palette) -> Element<'a, crate::Messag
     container(column![head, body].spacing(4))
         .padding(Padding::from([10u16, 14u16]))
         .width(Length::Fill)
-        .style(move |_| container::Style {
+        .style(move |_| container::Style { snap: false,
             background: Some(Background::Color(bg)),
             border: Border {
                 color: border,
@@ -290,7 +290,7 @@ fn empty_state_card<'a>(palette: Palette, error: Option<&'a str>) -> Element<'a,
     container(
         column![
             icon_widget,
-            Space::with_height(Length::Fixed(8.0)),
+            Space::new().height(Length::Fixed(8.0)),
             text(heading_text)
                 .size(14)
                 .color(palette.text.into_iced_color()),

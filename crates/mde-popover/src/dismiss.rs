@@ -56,7 +56,7 @@ const DESTRUCTIVE: Color = Color {
 ///
 /// Returns a small button with a centered "×" glyph. The caller is
 /// responsible for placing it in the view (typically in the header
-/// row, right-aligned via a `Space::with_width(Length::Fill)`
+/// row, right-aligned via a `Space::new().width(Length::Fill)`
 /// spacer to its left).
 pub fn close_button<'a, Msg: Clone + 'a>(on_close: Msg) -> Element<'a, Msg> {
     button(text("×").size(18).color(FG_MUTED))
@@ -89,7 +89,7 @@ fn close_button_style(_theme: &Theme, status: button::Status) -> button::Style {
         ),
         _ => (None, FG_MUTED),
     };
-    button::Style {
+    button::Style { snap: false,
         background: bg,
         text_color: fg,
         border: Border {

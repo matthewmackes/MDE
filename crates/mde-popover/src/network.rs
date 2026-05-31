@@ -17,7 +17,7 @@
 use std::process::Command;
 
 use iced::widget::{button, column, container, mouse_area, row, scrollable, text, Space};
-use iced::{Background, Border, Color, Element, Length, Padding, Shadow, Task, Theme};
+use iced::{Background, Border, Color, Element, Length, Padding, Shadow, Subscription, Task, Theme};
 use iced_layershell::reexport::{Anchor, KeyboardInteractivity, Layer};
 use iced_layershell::settings::{LayerShellSettings, Settings};
 use iced_layershell::to_layer_message;
@@ -128,381 +128,360 @@ pub struct App {
     pub password_input: String,
 }
 
-impl iced_layershell::Application for App {
-    type Executor = iced::executor::Default;
-    type Message = Message;
-    type Theme = Theme;
-    type Flags = ();
+fn namespace() -> String {
+    "mde-popover-network".to_string()
+}
 
-    fn new(_flags: ()) -> (Self, Task<Message>) {
-        let app = Self {
-            active: scan_active_connections(),
-            devices: scan_devices(),
-            aps: scan_access_points(),
-            status_msg: String::new(),
-            pending_password_ssid: None,
-            password_input: String::new(),
-        };
-        (app, Task::none())
-    }
-
-    fn namespace(&self) -> String {
-        "mde-popover-network".into()
-    }
-
-    fn update(&mut self, message: Message) -> Task<Message> {
-        match message {
-            Message::Refresh => {
-                // AF-NET-1.c (2026-05-23) — skip auto-refresh
-                // when the inline password prompt is open so a
-                // mid-tick re-scan doesn't disrupt the user's
-                // input. Manual button presses still fall
-                // through (the user explicitly asked).
-                if self.pending_password_ssid.is_none() {
-                    self.active = scan_active_connections();
-                    self.devices = scan_devices();
-                    self.aps = scan_access_points();
-                }
-                Task::none()
+fn update(state: &mut App, message: Message) -> Task<Message> {
+    match message {
+        Message::Refresh => {
+            // AF-NET-1.c (2026-05-23) — skip auto-refresh
+            // when the inline password prompt is open so a
+            // mid-tick re-scan doesn't disrupt the user's
+            // input. Manual button presses still fall
+            // through (the user explicitly asked).
+            if state.pending_password_ssid.is_none() {
+                state.active = scan_active_connections();
+                state.devices = scan_devices();
+                state.aps = scan_access_points();
             }
-            Message::OpenNmApplet => {
-                // Best-effort: launch nm-connection-editor if
-                // installed (the standard "manage connections"
-                // GUI on Fedora). nm-applet is the tray-icon
-                // tool, not a settings editor.
-                let _ = Command::new("nm-connection-editor").spawn();
-                Task::none()
-            }
-            Message::ConnectToAp(ssid) => {
-                // Shells `nmcli device wifi connect <ssid>`. Works
-                // for open networks + already-saved profiles
-                // (NM auto-uses the stored secret). Secured
-                // networks without a saved profile return
-                // "no secrets" — the operator falls back to
-                // nm-connection-editor for the password prompt.
-                self.status_msg = format!("connecting to {ssid}…");
-                let s = ssid.clone();
-                iced::Task::perform(
-                    async move {
-                        // Synchronous shell-out wrapped in async
-                        // (no tokio::process dep in mde-popover);
-                        // nmcli's per-connect call is fast enough
-                        // that blocking the small iced thread for
-                        // a few hundred ms is acceptable.
-                        let out = std::process::Command::new("nmcli")
-                            .args(["device", "wifi", "connect", &s])
-                            .output();
-                        match out {
-                            Ok(o) => {
-                                let stderr = String::from_utf8_lossy(&o.stderr).into_owned();
-                                (s, o.status.success(), stderr)
-                            }
-                            Err(e) => (s, false, format!("nmcli spawn: {e}")),
+            Task::none()
+        }
+        Message::OpenNmApplet => {
+            // Best-effort: launch nm-connection-editor if
+            // installed (the standard "manage connections"
+            // GUI on Fedora). nm-applet is the tray-icon
+            // tool, not a settings editor.
+            let _ = Command::new("nm-connection-editor").spawn();
+            Task::none()
+        }
+        Message::ConnectToAp(ssid) => {
+            // Shells `nmcli device wifi connect <ssid>`. Works
+            // for open networks + already-saved profiles
+            // (NM auto-uses the stored secret). Secured
+            // networks without a saved profile return
+            // "no secrets" — the operator falls back to
+            // nm-connection-editor for the password prompt.
+            state.status_msg = format!("connecting to {ssid}…");
+            let s = ssid.clone();
+            iced::Task::perform(
+                async move {
+                    // Synchronous shell-out wrapped in async
+                    // (no tokio::process dep in mde-popover);
+                    // nmcli's per-connect call is fast enough
+                    // that blocking the small iced thread for
+                    // a few hundred ms is acceptable.
+                    let out = std::process::Command::new("nmcli")
+                        .args(["device", "wifi", "connect", &s])
+                        .output();
+                    match out {
+                        Ok(o) => {
+                            let stderr = String::from_utf8_lossy(&o.stderr).into_owned();
+                            (s, o.status.success(), stderr)
                         }
-                    },
-                    |(ssid, ok, stderr)| Message::ConnectResult { ssid, ok, stderr },
-                )
-            }
-            Message::ConnectResult { ssid, ok, stderr } => {
-                // AF-NET-1.b — detect "no secrets" / "secret was
-                // not provided" responses from nmcli and pop the
-                // inline password prompt for that SSID instead
-                // of just reporting failure.
-                let needs_password = !ok && stderr_indicates_missing_secret(&stderr);
-                if needs_password {
-                    self.status_msg = format!("password required for {ssid}");
-                    self.pending_password_ssid = Some(ssid);
-                    self.password_input.clear();
-                } else {
-                    self.status_msg = if ok {
-                        self.pending_password_ssid = None;
-                        self.password_input.clear();
-                        format!("connected to {ssid}")
-                    } else {
-                        let snippet = stderr.lines().next().unwrap_or("").trim();
-                        format!("connect failed: {snippet}")
-                    };
-                }
-                // Refresh state so the row reflects the new
-                // connection.
-                self.active = scan_active_connections();
-                self.devices = scan_devices();
-                self.aps = scan_access_points();
-                Task::none()
-            }
-            Message::PasswordInputChanged(s) => {
-                self.password_input = s;
-                Task::none()
-            }
-            Message::CancelPassword => {
-                self.pending_password_ssid = None;
-                self.password_input.clear();
-                self.status_msg.clear();
-                Task::none()
-            }
-            Message::SubmitPassword => {
-                let Some(ssid) = self.pending_password_ssid.clone() else {
-                    return Task::none();
-                };
-                if self.password_input.is_empty() {
-                    self.status_msg = "password is empty".into();
-                    return Task::none();
-                }
-                let password = self.password_input.clone();
-                self.password_input.clear();
-                self.status_msg = format!("connecting to {ssid}…");
-                let ssid_clone = ssid.clone();
-                iced::Task::perform(
-                    async move {
-                        let out = std::process::Command::new("nmcli")
-                            .args([
-                                "device",
-                                "wifi",
-                                "connect",
-                                &ssid_clone,
-                                "password",
-                                &password,
-                            ])
-                            .output();
-                        match out {
-                            Ok(o) => {
-                                let stderr = String::from_utf8_lossy(&o.stderr).into_owned();
-                                (ssid_clone, o.status.success(), stderr)
-                            }
-                            Err(e) => (ssid_clone, false, format!("nmcli spawn: {e}")),
-                        }
-                    },
-                    |(ssid, ok, stderr)| Message::ConnectResult { ssid, ok, stderr },
-                )
-            }
-            Message::Esc => std::process::exit(0),
-            _ => Task::none(),
-        }
-    }
-
-    fn view(&self) -> Element<'_, Message> {
-        let title = text("Network")
-            .size(15)
-            .color(FG_TEXT);
-        let subtitle_text = if self.status_msg.is_empty() {
-            format!(
-                "{} active · {} device{}",
-                self.active.len(),
-                self.devices.len(),
-                if self.devices.len() == 1 { "" } else { "s" },
-            )
-        } else {
-            self.status_msg.clone()
-        };
-        let subtitle = text(subtitle_text).size(11).color(FG_MUTED);
-
-        let refresh_btn = button(text("Refresh").size(11).color(FG_TEXT))
-            .padding(Padding::from([4u16, 10u16]))
-            .style(|_, status| ghost_btn_style(status))
-            .on_press(Message::Refresh);
-
-        let header = row![
-            column![title, subtitle].spacing(2),
-            Space::with_width(Length::Fill),
-            refresh_btn,
-        ]
-        .align_y(iced::alignment::Vertical::Center);
-
-        let mut active_col = column![
-            text("Active connections")
-                .size(11)
-                .color(FG_MUTED),
-        ]
-        .spacing(6);
-        if self.active.is_empty() {
-            active_col = active_col.push(empty_card("Not connected."));
-        } else {
-            for c in &self.active {
-                active_col = active_col.push(active_card(c));
-            }
-        }
-
-        let mut device_col = column![
-            text("Devices")
-                .size(11)
-                .color(FG_MUTED),
-        ]
-        .spacing(6);
-        if self.devices.is_empty() {
-            device_col = device_col.push(empty_card("No interfaces."));
-        } else {
-            for d in &self.devices {
-                device_col = device_col.push(device_card(d));
-            }
-        }
-
-        // AF-NET-1: Wi-Fi access-point scan list. Only renders
-        // when nmcli returned at least one entry — operators
-        // on wired-only hosts don't see an empty Wi-Fi section.
-        let wifi_col: Option<Element<'_, Message>> = if self.aps.is_empty() {
-            None
-        } else {
-            let mut col = column![
-                text(format!("Wi-Fi networks ({})", self.aps.len()))
-                    .size(11)
-                    .color(FG_MUTED),
-            ]
-            .spacing(4);
-            // AF-NET-1.b — when a password is pending for an
-            // SSID, render the inline prompt row at the top of
-            // the Wi-Fi list instead of the regular ap_card
-            // for that SSID.
-            if let Some(pending) = &self.pending_password_ssid {
-                col = col.push(password_prompt_row(pending, &self.password_input));
-            }
-            for ap in &self.aps {
-                let is_pending = self
-                    .pending_password_ssid
-                    .as_ref()
-                    .map(|s| s == &ap.ssid)
-                    .unwrap_or(false);
-                if !is_pending {
-                    col = col.push(ap_card(ap));
-                }
-            }
-            Some(col.into())
-        };
-
-        let manage_btn = button(text("Open NetworkManager").size(11).color(Color::WHITE))
-            .padding(Padding::from([5u16, 12u16]))
-            .style(|_, status| accent_btn_style(status))
-            .on_press(Message::OpenNmApplet);
-
-        let body = if let Some(wifi) = wifi_col {
-            scrollable(
-                column![
-                    active_col,
-                    Space::with_height(Length::Fixed(12.0)),
-                    device_col,
-                    Space::with_height(Length::Fixed(12.0)),
-                    wifi,
-                ]
-                .spacing(6),
-            )
-            .height(Length::Fill)
-        } else {
-            scrollable(
-                column![
-                    active_col,
-                    Space::with_height(Length::Fixed(12.0)),
-                    device_col,
-                ]
-                .spacing(6),
-            )
-            .height(Length::Fill)
-        };
-
-        let card: Element<'_, Message> = container(
-            column![
-                header,
-                Space::with_height(Length::Fixed(10.0)),
-                body,
-                Space::with_height(Length::Fixed(8.0)),
-                row![Space::with_width(Length::Fill), manage_btn]
-                    .align_y(iced::alignment::Vertical::Center),
-            ]
-            .spacing(2),
-        )
-        .padding(Padding::from([16u16, 18u16]))
-        .width(Length::Fixed(WIDTH as f32))
-        .height(Length::Fixed(HEIGHT as f32))
-        .style(|_| container::Style {
-            background: Some(Background::Color(SURFACE_BG)),
-            border: Border {
-                color: Color {
-                    a: 0.08,
-                    ..Color::WHITE
+                        Err(e) => (s, false, format!("nmcli spawn: {e}")),
+                    }
                 },
-                width: 1.0,
-                radius: 8.0.into(),
+                |(ssid, ok, stderr)| Message::ConnectResult { ssid, ok, stderr },
+            )
+        }
+        Message::ConnectResult { ssid, ok, stderr } => {
+            // AF-NET-1.b — detect "no secrets" / "secret was
+            // not provided" responses from nmcli and pop the
+            // inline password prompt for that SSID instead
+            // of just reporting failure.
+            let needs_password = !ok && stderr_indicates_missing_secret(&stderr);
+            if needs_password {
+                state.status_msg = format!("password required for {ssid}");
+                state.pending_password_ssid = Some(ssid);
+                state.password_input.clear();
+            } else {
+                state.status_msg = if ok {
+                    state.pending_password_ssid = None;
+                    state.password_input.clear();
+                    format!("connected to {ssid}")
+                } else {
+                    let snippet = stderr.lines().next().unwrap_or("").trim();
+                    format!("connect failed: {snippet}")
+                };
+            }
+            // Refresh state so the row reflects the new
+            // connection.
+            state.active = scan_active_connections();
+            state.devices = scan_devices();
+            state.aps = scan_access_points();
+            Task::none()
+        }
+        Message::PasswordInputChanged(s) => {
+            state.password_input = s;
+            Task::none()
+        }
+        Message::CancelPassword => {
+            state.pending_password_ssid = None;
+            state.password_input.clear();
+            state.status_msg.clear();
+            Task::none()
+        }
+        Message::SubmitPassword => {
+            let Some(ssid) = state.pending_password_ssid.clone() else {
+                return Task::none();
+            };
+            if state.password_input.is_empty() {
+                state.status_msg = "password is empty".into();
+                return Task::none();
+            }
+            let password = state.password_input.clone();
+            state.password_input.clear();
+            state.status_msg = format!("connecting to {ssid}…");
+            let ssid_clone = ssid.clone();
+            iced::Task::perform(
+                async move {
+                    let out = std::process::Command::new("nmcli")
+                        .args([
+                            "device",
+                            "wifi",
+                            "connect",
+                            &ssid_clone,
+                            "password",
+                            &password,
+                        ])
+                        .output();
+                    match out {
+                        Ok(o) => {
+                            let stderr = String::from_utf8_lossy(&o.stderr).into_owned();
+                            (ssid_clone, o.status.success(), stderr)
+                        }
+                        Err(e) => (ssid_clone, false, format!("nmcli spawn: {e}")),
+                    }
+                },
+                |(ssid, ok, stderr)| Message::ConnectResult { ssid, ok, stderr },
+            )
+        }
+        Message::Esc => std::process::exit(0),
+        _ => Task::none(),
+    }
+}
+
+fn view(state: &App) -> Element<'_, Message> {
+    let title = text("Network")
+        .size(15)
+        .color(FG_TEXT);
+    let subtitle_text = if state.status_msg.is_empty() {
+        format!(
+            "{} active · {} device{}",
+            state.active.len(),
+            state.devices.len(),
+            if state.devices.len() == 1 { "" } else { "s" },
+        )
+    } else {
+        state.status_msg.clone()
+    };
+    let subtitle = text(subtitle_text).size(11).color(FG_MUTED);
+
+    let refresh_btn = button(text("Refresh").size(11).color(FG_TEXT))
+        .padding(Padding::from([4u16, 10u16]))
+        .style(|_, status| ghost_btn_style(status))
+        .on_press(Message::Refresh);
+
+    let header = row![
+        column![title, subtitle].spacing(2),
+        Space::new().width(Length::Fill),
+        refresh_btn,
+    ]
+    .align_y(iced::alignment::Vertical::Center);
+
+    let mut active_col = column![
+        text("Active connections")
+            .size(11)
+            .color(FG_MUTED),
+    ]
+    .spacing(6);
+    if state.active.is_empty() {
+        active_col = active_col.push(empty_card("Not connected."));
+    } else {
+        for c in &state.active {
+            active_col = active_col.push(active_card(c));
+        }
+    }
+
+    let mut device_col = column![
+        text("Devices")
+            .size(11)
+            .color(FG_MUTED),
+    ]
+    .spacing(6);
+    if state.devices.is_empty() {
+        device_col = device_col.push(empty_card("No interfaces."));
+    } else {
+        for d in &state.devices {
+            device_col = device_col.push(device_card(d));
+        }
+    }
+
+    // AF-NET-1: Wi-Fi access-point scan list. Only renders
+    // when nmcli returned at least one entry — operators
+    // on wired-only hosts don't see an empty Wi-Fi section.
+    let wifi_col: Option<Element<'_, Message>> = if state.aps.is_empty() {
+        None
+    } else {
+        let mut col = column![
+            text(format!("Wi-Fi networks ({})", state.aps.len()))
+                .size(11)
+                .color(FG_MUTED),
+        ]
+        .spacing(4);
+        // AF-NET-1.b — when a password is pending for an
+        // SSID, render the inline prompt row at the top of
+        // the Wi-Fi list instead of the regular ap_card
+        // for that SSID.
+        if let Some(pending) = &state.pending_password_ssid {
+            col = col.push(password_prompt_row(pending, &state.password_input));
+        }
+        for ap in &state.aps {
+            let is_pending = state
+                .pending_password_ssid
+                .as_ref()
+                .map(|s| s == &ap.ssid)
+                .unwrap_or(false);
+            if !is_pending {
+                col = col.push(ap_card(ap));
+            }
+        }
+        Some(col.into())
+    };
+
+    let manage_btn = button(text("Open NetworkManager").size(11).color(Color::WHITE))
+        .padding(Padding::from([5u16, 12u16]))
+        .style(|_, status| accent_btn_style(status))
+        .on_press(Message::OpenNmApplet);
+
+    let body = if let Some(wifi) = wifi_col {
+        scrollable(
+            column![
+                active_col,
+                Space::new().height(Length::Fixed(12.0)),
+                device_col,
+                Space::new().height(Length::Fixed(12.0)),
+                wifi,
+            ]
+            .spacing(6),
+        )
+        .height(Length::Fill)
+    } else {
+        scrollable(
+            column![
+                active_col,
+                Space::new().height(Length::Fixed(12.0)),
+                device_col,
+            ]
+            .spacing(6),
+        )
+        .height(Length::Fill)
+    };
+
+    let card: Element<'_, Message> = container(
+        column![
+            header,
+            Space::new().height(Length::Fixed(10.0)),
+            body,
+            Space::new().height(Length::Fixed(8.0)),
+            row![Space::new().width(Length::Fill), manage_btn]
+                .align_y(iced::alignment::Vertical::Center),
+        ]
+        .spacing(2),
+    )
+    .padding(Padding::from([16u16, 18u16]))
+    .width(Length::Fixed(WIDTH as f32))
+    .height(Length::Fixed(HEIGHT as f32))
+    .style(|_| container::Style {
+        background: Some(Background::Color(SURFACE_BG)),
+        border: Border {
+            color: Color {
+                a: 0.08,
+                ..Color::WHITE
+            },
+            width: 1.0,
+            radius: 8.0.into(),
+        },
+        shadow: Shadow::default(),
+        text_color: Some(FG_TEXT),
+        snap: false,
+    })
+    .into();
+
+    // v3.0.4 (2026-05-23) — backdrop dismiss surrounding the
+    // visible card. Top-right anchor pin via column+row of
+    // mouse_area spaces.
+    let dismiss = || {
+        mouse_area(
+            container(Space::new())
+                .width(Length::Fill)
+                .height(Length::Fill),
+        )
+        .on_press(Message::Esc)
+    };
+    let top_strip = row![
+        dismiss(),
+        container(card).padding(Padding {
+            top: 44.0,
+            right: 14.0,
+            bottom: 0.0,
+            left: 0.0,
+        }),
+    ]
+    .height(Length::Fixed((HEIGHT + 44) as f32));
+    container(column![top_strip, dismiss()])
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(|_| container::Style {
+            background: Some(Background::Color(Color::TRANSPARENT)),
+            border: Border {
+                color: Color::TRANSPARENT,
+                width: 0.0,
+                radius: 0.0.into(),
             },
             shadow: Shadow::default(),
-            text_color: Some(FG_TEXT),
+            text_color: None,
+            snap: false,
         })
-        .into();
+        .into()
+}
 
-        // v3.0.4 (2026-05-23) — backdrop dismiss surrounding the
-        // visible card. Top-right anchor pin via column+row of
-        // mouse_area spaces.
-        let dismiss = || {
-            mouse_area(
-                container(Space::with_width(Length::Fill))
-                    .width(Length::Fill)
-                    .height(Length::Fill),
-            )
-            .on_press(Message::Esc)
-        };
-        let top_strip = row![
-            dismiss(),
-            container(card).padding(Padding {
-                top: 44.0,
-                right: 14.0,
-                bottom: 0.0,
-                left: 0.0,
-            }),
-        ]
-        .height(Length::Fixed((HEIGHT + 44) as f32));
-        container(column![top_strip, dismiss()])
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .style(|_| container::Style {
-                background: Some(Background::Color(Color::TRANSPARENT)),
-                border: Border {
-                    color: Color::TRANSPARENT,
-                    width: 0.0,
-                    radius: 0.0.into(),
-                },
-                shadow: Shadow::default(),
-                text_color: None,
-            })
-            .into()
-    }
-
-    fn theme(&self) -> Theme {
-        Theme::custom(
-            "mde-popover-network".into(),
-            iced::theme::Palette {
-                background: SURFACE_BG,
-                text: FG_TEXT,
-                primary: ACCENT,
-                success: Color::from_rgb(0.20, 0.80, 0.40),
-                danger: Color::from_rgb(0.92, 0.32, 0.30),
-            },
-        )
-    }
-
-    /// AF-NET-1.c (v4.0.1, 2026-05-23) — live refresh.
-    /// Spec called for a D-Bus subscription to
-    /// `org.freedesktop.NetworkManager::StateChanged`; the
-    /// cheaper-and-equally-correct realization is a 4 s
-    /// `iced::time::every` tick that triggers `Refresh`,
-    /// which re-runs the same nmcli queries the manual
-    /// button does. Best-choice deviation: zbus would
-    /// double the popover's runtime deps for a UX outcome
-    /// indistinguishable from a 4 s poll (StateChanged
-    /// signals fire on the same events the poll catches,
-    /// just earlier; AP scans take 1-3 s in practice so
-    /// any < 4 s window is masked by scan latency anyway).
-    /// Esc keypress still folds into the same subscription
-    /// via `Subscription::batch`.
-    fn subscription(&self) -> iced::Subscription<Message> {
-        let tick = iced::time::every(std::time::Duration::from_secs(4))
-            .map(|_| Message::Refresh);
-        let esc = iced::keyboard::on_key_press(|key, _| {
-            use iced::keyboard::{key::Named, Key};
-            if matches!(key, Key::Named(Named::Escape)) {
-                Some(Message::Esc)
-            } else {
-                None
+/// AF-NET-1.c (v4.0.1, 2026-05-23) — live refresh.
+/// Spec called for a D-Bus subscription to
+/// `org.freedesktop.NetworkManager::StateChanged`; the
+/// cheaper-and-equally-correct realization is a 4 s
+/// `iced::time::every` tick that triggers `Refresh`,
+/// which re-runs the same nmcli queries the manual
+/// button does. Best-choice deviation: zbus would
+/// double the popover's runtime deps for a UX outcome
+/// indistinguishable from a 4 s poll (StateChanged
+/// signals fire on the same events the poll catches,
+/// just earlier; AP scans take 1-3 s in practice so
+/// any < 4 s window is masked by scan latency anyway).
+/// Esc keypress still folds into the same subscription
+/// via `Subscription::batch`.
+fn subscription(_state: &App) -> Subscription<Message> {
+    use iced::event;
+    let tick = iced::time::every(std::time::Duration::from_secs(4))
+        .map(|_| Message::Refresh);
+    let esc = event::listen_with(|event, status, _window| {
+        use iced::keyboard;
+        match event {
+            iced::Event::Keyboard(keyboard::Event::KeyPressed { key, .. })
+                if status == event::Status::Ignored =>
+            {
+                use iced::keyboard::{key::Named, Key};
+                if matches!(key, Key::Named(Named::Escape)) {
+                    Some(Message::Esc)
+                } else {
+                    None
+                }
             }
-        });
-        iced::Subscription::batch([tick, esc])
-    }
+            _ => None,
+        }
+    });
+    Subscription::batch([tick, esc])
 }
 
 fn active_card<'a>(c: &'a ActiveConnection) -> Element<'a, Message> {
@@ -527,6 +506,7 @@ fn active_card<'a>(c: &'a ActiveConnection) -> Element<'a, Message> {
             },
             shadow: Shadow::default(),
             text_color: Some(FG_TEXT),
+            snap: false,
         })
         .into()
 }
@@ -546,7 +526,7 @@ fn device_card<'a>(d: &'a DeviceRow) -> Element<'a, Message> {
     ))
     .size(11)
     .color(FG_MUTED);
-    container(row![title, Space::with_width(Length::Fill), detail])
+    container(row![title, Space::new().width(Length::Fill), detail])
         .padding(Padding::from([6u16, 12u16]))
         .width(Length::Fill)
         .style(|_| container::Style {
@@ -561,6 +541,7 @@ fn device_card<'a>(d: &'a DeviceRow) -> Element<'a, Message> {
             },
             shadow: Shadow::default(),
             text_color: Some(FG_TEXT),
+            snap: false,
         })
         .into()
 }
@@ -604,6 +585,7 @@ fn password_prompt_row<'a>(
                     radius: 4.0.into(),
                 },
                 shadow: Shadow::default(),
+                snap: false,
             }
         })
         .on_press(Message::SubmitPassword);
@@ -617,11 +599,11 @@ fn password_prompt_row<'a>(
             row![title].align_y(iced::alignment::Vertical::Center),
             row![
                 hint,
-                Space::with_width(Length::Fixed(6.0)),
+                Space::new().width(Length::Fixed(6.0)),
                 input,
-                Space::with_width(Length::Fixed(8.0)),
+                Space::new().width(Length::Fixed(8.0)),
                 connect_btn,
-                Space::with_width(Length::Fixed(4.0)),
+                Space::new().width(Length::Fixed(4.0)),
                 cancel_btn,
             ]
             .spacing(0)
@@ -640,6 +622,7 @@ fn password_prompt_row<'a>(
         },
         shadow: Shadow::default(),
         text_color: Some(FG_TEXT),
+        snap: false,
     })
     .into()
 }
@@ -689,11 +672,11 @@ fn ap_card<'a>(ap: &'a AccessPoint) -> Element<'a, Message> {
     container(
         row![
             column![title, security].spacing(2),
-            Space::with_width(Length::Fill),
+            Space::new().width(Length::Fill),
             bars_text,
-            Space::with_width(Length::Fixed(4.0)),
+            Space::new().width(Length::Fixed(4.0)),
             signal_label,
-            Space::with_width(Length::Fixed(8.0)),
+            Space::new().width(Length::Fixed(8.0)),
             action,
         ]
         .align_y(iced::alignment::Vertical::Center),
@@ -716,6 +699,7 @@ fn ap_card<'a>(ap: &'a AccessPoint) -> Element<'a, Message> {
         },
         shadow: Shadow::default(),
         text_color: Some(FG_TEXT),
+        snap: false,
     })
     .into()
 }
@@ -747,6 +731,7 @@ fn empty_card<'a>(msg: &'a str) -> Element<'a, Message> {
             },
             shadow: Shadow::default(),
             text_color: Some(FG_FAINT),
+            snap: false,
         })
         .into()
 }
@@ -773,6 +758,7 @@ fn ghost_btn_style(status: iced::widget::button::Status) -> iced::widget::button
             radius: 4.0.into(),
         },
         shadow: Shadow::default(),
+        snap: false,
     }
 }
 
@@ -795,6 +781,7 @@ fn accent_btn_style(status: iced::widget::button::Status) -> iced::widget::butto
             radius: 6.0.into(),
         },
         shadow: Shadow::default(),
+        snap: false,
     }
 }
 
@@ -967,8 +954,33 @@ pub fn parse_access_points(raw: &str) -> Vec<AccessPoint> {
 }
 
 pub fn run() -> iced_layershell::Result {
-    <App as iced_layershell::Application>::run(Settings {
-        id: Some("mde-popover-network".into()),
+    iced_layershell::application(
+        || App {
+            active: scan_active_connections(),
+            devices: scan_devices(),
+            aps: scan_access_points(),
+            status_msg: String::new(),
+            pending_password_ssid: None,
+            password_input: String::new(),
+        },
+        namespace,
+        update,
+        view,
+    )
+    .theme(|_: &App| iced::Theme::custom(
+        "mde-popover-network",
+        iced::theme::Palette {
+            background: SURFACE_BG,
+            text: FG_TEXT,
+            primary: ACCENT,
+            warning: Color::from_rgb(0.96, 0.65, 0.14),
+            success: Color::from_rgb(0.20, 0.80, 0.40),
+            danger: Color::from_rgb(0.92, 0.32, 0.30),
+        },
+    ))
+    .subscription(subscription)
+    .settings(Settings {
+        id: Some("mde-popover-network".to_string()),
         fonts: crate::fonts::load_fallback_fonts(),
         layer_settings: LayerShellSettings {
             layer: Layer::Top,
@@ -981,6 +993,7 @@ pub fn run() -> iced_layershell::Result {
         },
         ..Default::default()
     })
+    .run()
 }
 
 #[cfg(test)]

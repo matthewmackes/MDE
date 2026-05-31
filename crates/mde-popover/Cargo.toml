@@ -19,8 +19,8 @@ path = "src/main.rs"
 # can render Material Symbols glyphs instead of label-only buttons.
 # v4.0.1 WM-5.a: `image` added so app_switcher cards can paint
 # per-window PNG thumbnails captured via grim.
-iced            = { version = "0.13", default-features = false, features = ["wgpu", "tiny-skia", "svg", "image", "tokio", "advanced"] }
-iced_layershell = "0.13.7"
+iced            = { version = "0.14", default-features = false, features = ["wgpu", "tiny-skia", "svg", "image", "tokio", "advanced", "wayland"] }
+iced_layershell = "0.18"
 # v4.0.1 BUG-8.b — notification mute state persisted to
 # `~/.config/mde/notification-mutes.toml`.
 toml            = "0.8"
