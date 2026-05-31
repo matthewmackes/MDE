@@ -16,10 +16,10 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use iced::widget::{button, column, container, row, scrollable, text, Space};
+use iced::widget::{button, checkbox, column, container, row, scrollable, text, text_input, Space};
 use iced::{Background, Border, Color, Element, Length, Subscription, Task};
 use mde_theme::{Density, Rgba, Theme, Tokens, TypeRole};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 // ── Inventory data model ────────────────────────────────────────────────
 //
@@ -534,7 +534,7 @@ pub(crate) fn pick_latest_per_peer(entries: Vec<(String, Inventory)>) -> Vec<Inv
 // document, used to list a VM's active port-forwards in the detail panel.
 
 /// Which network a forward lives on (mirror of `compute_expose::Network`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum Network {
     Mesh,
@@ -646,6 +646,64 @@ fn read_exposed_for_vm(vm_nebula_ip: &str) -> Vec<ActiveRule> {
     rules_for_vm(states, vm_nebula_ip)
 }
 
+/// The `[Expose port…]` sheet's form state (VIRT-14.c.2).
+#[derive(Debug, Clone, Default)]
+pub(crate) struct ExposeForm {
+    pub guest_port: String,
+    /// false = TCP, true = UDP.
+    pub proto_udp: bool,
+    pub mesh: bool,
+    pub lan: bool,
+    pub wan: bool,
+}
+
+/// Expose-request payload published to `compute/expose/<peer>` (serialize
+/// mirror of `compute_expose::ExposeRequest`).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub(crate) struct ExposeRequest {
+    pub vm_nebula_ip: String,
+    pub guest_port: u16,
+    pub proto: String,
+    pub networks: Vec<Network>,
+}
+
+/// Unexpose-request payload (serialize mirror of
+/// `compute_expose::UnexposeRequest`).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub(crate) struct UnexposeRequest {
+    pub vm_nebula_ip: String,
+    pub host_port: u16,
+    pub proto: String,
+}
+
+/// Build a validated `ExposeRequest` from the sheet form. Returns `None`
+/// when the port isn't a 1–65535 integer or no network is selected. Pure.
+pub(crate) fn build_expose_request(form: &ExposeForm, vm_nebula_ip: &str) -> Option<ExposeRequest> {
+    let port: u16 = form.guest_port.parse().ok()?;
+    if port == 0 {
+        return None;
+    }
+    let mut networks = Vec::new();
+    if form.mesh {
+        networks.push(Network::Mesh);
+    }
+    if form.lan {
+        networks.push(Network::Lan);
+    }
+    if form.wan {
+        networks.push(Network::Wan);
+    }
+    if networks.is_empty() {
+        return None;
+    }
+    Some(ExposeRequest {
+        vm_nebula_ip: vm_nebula_ip.to_string(),
+        guest_port: port,
+        proto: if form.proto_udp { "udp" } else { "tcp" }.to_string(),
+        networks,
+    })
+}
+
 // ── VM detail (VIRT-14.a) ────────────────────────────────────────────────
 
 /// A snapshot of one VM's data for the detail panel. Carries `is_local`
@@ -660,10 +718,12 @@ pub(crate) struct VmDetail {
     pub nebula_ip: String,
     pub meshfs_available: bool,
     pub is_local: bool,
+    /// The VM's host peer Nebula addr (the `compute/expose/<peer>` target).
+    pub peer: String,
 }
 
 impl VmDetail {
-    fn from_row(r: &ResourceRow, is_local: bool) -> Self {
+    fn from_row(r: &ResourceRow, peer: &str, is_local: bool) -> Self {
         Self {
             name: r.name.clone(),
             state: r.state.clone(),
@@ -673,6 +733,7 @@ impl VmDetail {
             nebula_ip: r.nebula_ip.clone(),
             meshfs_available: r.meshfs_available,
             is_local,
+            peer: peer.to_string(),
         }
     }
 }
@@ -713,6 +774,24 @@ pub(crate) enum Message {
     DeleteSnapshot { vm: String, snap: String },
     /// A selected VM's exposed-port list finished loading.
     ExposedLoaded(Vec<ActiveRule>),
+    /// Open the `[Expose port…]` sheet for the selected VM.
+    OpenExposeSheet,
+    /// Close the expose sheet without submitting.
+    CloseExposeSheet,
+    /// Guest-port text input changed.
+    ExposePortInput(String),
+    /// Toggle the protocol (TCP ↔ UDP).
+    ExposeToggleProto,
+    /// Toggle a network checkbox.
+    ExposeToggleNet(Network),
+    /// Submit the expose sheet → publish an `ExposeRequest`.
+    SubmitExpose,
+    /// Remove an active forward → publish an `UnexposeRequest`.
+    Unexpose {
+        vm_nebula_ip: String,
+        host_port: u16,
+        proto: String,
+    },
 }
 
 /// `mde-virtual` application state.
@@ -730,6 +809,8 @@ pub(crate) struct VirtualApp {
     selected_snapshots: Vec<String>,
     /// Active exposed-port rules for the selected VM (VIRT-14.c); on select.
     exposed_rules: Vec<ActiveRule>,
+    /// The open `[Expose port…]` sheet form, if any (VIRT-14.c.2).
+    expose_form: Option<ExposeForm>,
     local_host: String,
 }
 
@@ -747,6 +828,7 @@ impl VirtualApp {
             selected: None,
             selected_snapshots: Vec::new(),
             exposed_rules: Vec::new(),
+            expose_form: None,
             local_host: local_hostname(),
         }
     }
@@ -762,7 +844,20 @@ impl VirtualApp {
                 *e = !*e;
                 Task::none()
             }
-            Message::Refresh => Task::perform(async { poll() }, Message::PollLoaded),
+            Message::Refresh => {
+                let poll_task = Task::perform(async { poll() }, Message::PollLoaded);
+                // Keep the open detail panel's exposed-port list fresh.
+                match self.selected.as_ref().map(|d| d.nebula_ip.clone()) {
+                    Some(ip) if !ip.is_empty() => Task::batch([
+                        poll_task,
+                        Task::perform(
+                            async move { read_exposed_for_vm(&ip) },
+                            Message::ExposedLoaded,
+                        ),
+                    ]),
+                    _ => poll_task,
+                }
+            }
             Message::PollLoaded(r) => {
                 self.fleet = r.fleet;
                 self.local_direct = r.local_direct;
@@ -813,6 +908,89 @@ impl VirtualApp {
             Message::ExposedLoaded(rules) => {
                 self.exposed_rules = rules;
                 Task::none()
+            }
+            Message::OpenExposeSheet => {
+                self.expose_form = Some(ExposeForm {
+                    mesh: true,
+                    ..ExposeForm::default()
+                });
+                Task::none()
+            }
+            Message::CloseExposeSheet => {
+                self.expose_form = None;
+                Task::none()
+            }
+            Message::ExposePortInput(s) => {
+                if let Some(form) = self.expose_form.as_mut() {
+                    // Digits only, capped at 5 (a u16 fits in 5 digits).
+                    form.guest_port = s.chars().filter(char::is_ascii_digit).take(5).collect();
+                }
+                Task::none()
+            }
+            Message::ExposeToggleProto => {
+                if let Some(form) = self.expose_form.as_mut() {
+                    form.proto_udp = !form.proto_udp;
+                }
+                Task::none()
+            }
+            Message::ExposeToggleNet(net) => {
+                if let Some(form) = self.expose_form.as_mut() {
+                    match net {
+                        Network::Mesh => form.mesh = !form.mesh,
+                        Network::Lan => form.lan = !form.lan,
+                        Network::Wan => form.wan = !form.wan,
+                    }
+                }
+                Task::none()
+            }
+            Message::SubmitExpose => {
+                let built = self
+                    .expose_form
+                    .as_ref()
+                    .zip(self.selected.as_ref())
+                    .and_then(|(form, d)| {
+                        build_expose_request(form, &d.nebula_ip).map(|r| (r, d.peer.clone()))
+                    });
+                let Some((req, peer)) = built else {
+                    return Task::none(); // invalid form — keep the sheet open
+                };
+                self.expose_form = None;
+                let topic = format!("compute/expose/{peer}");
+                let body = serde_json::to_string(&req).unwrap_or_default();
+                Task::perform(
+                    async move {
+                        let _ = std::process::Command::new("mde-bus")
+                            .args(["publish", &topic, "--body-flag", &body])
+                            .output();
+                    },
+                    |()| Message::Refresh,
+                )
+            }
+            Message::Unexpose {
+                vm_nebula_ip,
+                host_port,
+                proto,
+            } => {
+                let peer = self
+                    .selected
+                    .as_ref()
+                    .map(|d| d.peer.clone())
+                    .unwrap_or_default();
+                let req = UnexposeRequest {
+                    vm_nebula_ip,
+                    host_port,
+                    proto,
+                };
+                let topic = format!("compute/expose/{peer}");
+                let body = serde_json::to_string(&req).unwrap_or_default();
+                Task::perform(
+                    async move {
+                        let _ = std::process::Command::new("mde-bus")
+                            .args(["publish", &topic, "--body-flag", &body])
+                            .output();
+                    },
+                    |()| Message::Refresh,
+                )
             }
             Message::TakeSnapshot(vm) => {
                 let (prog, args) = snapshot_create_command(&vm);
@@ -1013,14 +1191,20 @@ impl VirtualApp {
                 col = col.push(self.muted_line("No VMs or containers."));
             } else {
                 for r in &rows {
-                    col = col.push(self.resource_row(r, show_actions, local));
+                    col = col.push(self.resource_row(r, show_actions, local, &inv.peer));
                 }
             }
         }
         container(col).width(Length::Fill).into()
     }
 
-    fn resource_row(&self, r: &ResourceRow, show_actions: bool, is_local: bool) -> Element<'_, Message> {
+    fn resource_row(
+        &self,
+        r: &ResourceRow,
+        show_actions: bool,
+        is_local: bool,
+        peer: &str,
+    ) -> Element<'_, Message> {
         let palette = self.tokens.palette;
         let space = self.tokens.space;
         let nebula = if r.nebula_ip.is_empty() {
@@ -1032,7 +1216,7 @@ impl VirtualApp {
         // VM names are clickable → open the detail panel; containers are
         // plain text (their management lands with VIRT-18).
         let name_el: Element<'_, Message> = if matches!(r.kind, ResourceKind::Vm) {
-            let detail = VmDetail::from_row(r, is_local);
+            let detail = VmDetail::from_row(r, peer, is_local);
             button(
                 text(r.name.clone())
                     .size(TypeRole::Body.size_in(self.tokens.font_size))
@@ -1196,7 +1380,7 @@ impl VirtualApp {
         col = col.push(console);
 
         // Exposed ports (any VM — exposures are mesh-readable) — VIRT-14.c.
-        col = col.push(self.exposed_section());
+        col = col.push(self.exposed_section(d));
 
         // Snapshots (local VMs only) — VIRT-14.b.
         if d.is_local {
@@ -1237,7 +1421,7 @@ impl VirtualApp {
         .into()
     }
 
-    fn exposed_section(&self) -> Element<'_, Message> {
+    fn exposed_section<'a>(&'a self, d: &'a VmDetail) -> Element<'a, Message> {
         let palette = self.tokens.palette;
         let space = self.tokens.space;
         let mut col = column![text("Exposed ports")
@@ -1249,12 +1433,120 @@ impl VirtualApp {
             col = col.push(self.muted_line("No exposed ports."));
         } else {
             for r in &self.exposed_rules {
-                col = col.push(
-                    self.detail_kv(r.network.label(), &format!("{}/{}", r.host_port, r.proto)),
-                );
+                let mut rule_row = row![text(format!(
+                    "{}: {}/{}",
+                    r.network.label(),
+                    r.host_port,
+                    r.proto
+                ))
+                .size(TypeRole::Body.size_in(self.tokens.font_size))
+                .color(rgba(palette.text))
+                .width(Length::Fill)]
+                .spacing(f32::from(space.sm))
+                .align_y(iced::alignment::Vertical::Center);
+                if d.is_local {
+                    rule_row = rule_row.push(self.simple_button(
+                        "\u{00d7}", // ×
+                        Message::Unexpose {
+                            vm_nebula_ip: d.nebula_ip.clone(),
+                            host_port: r.host_port,
+                            proto: r.proto.clone(),
+                        },
+                    ));
+                }
+                col = col.push(rule_row);
             }
         }
+        // Expose controls — local VMs only (remote read-only per M4).
+        if d.is_local {
+            col = match self.expose_form.as_ref() {
+                Some(form) => col.push(self.expose_sheet(form)),
+                None => col.push(self.simple_button("Expose port…", Message::OpenExposeSheet)),
+            };
+        }
         col.into()
+    }
+
+    fn expose_sheet<'a>(&'a self, form: &'a ExposeForm) -> Element<'a, Message> {
+        let palette = self.tokens.palette;
+        let space = self.tokens.space;
+        let radius = f32::from(self.tokens.radii.md);
+        let sm_radius = f32::from(self.tokens.radii.sm);
+        let valid = self
+            .selected
+            .as_ref()
+            .is_some_and(|d| build_expose_request(form, &d.nebula_ip).is_some());
+
+        let port_input = text_input("guest port", &form.guest_port)
+            .on_input(Message::ExposePortInput)
+            .padding(f32::from(space.xs))
+            .size(TypeRole::Body.size_in(self.tokens.font_size));
+
+        let proto_label = if form.proto_udp {
+            "Proto: UDP"
+        } else {
+            "Proto: TCP"
+        };
+
+        let nets = row![
+            checkbox(form.mesh)
+                .label("Mesh")
+                .on_toggle(|_| Message::ExposeToggleNet(Network::Mesh)),
+            checkbox(form.lan)
+                .label("LAN")
+                .on_toggle(|_| Message::ExposeToggleNet(Network::Lan)),
+            checkbox(form.wan)
+                .label("WAN")
+                .on_toggle(|_| Message::ExposeToggleNet(Network::Wan)),
+        ]
+        .spacing(f32::from(space.sm));
+
+        let mut submit =
+            button(text("Expose").size(TypeRole::Caption.size_in(self.tokens.font_size)))
+                .padding([space.xs2, space.xs])
+                .style(move |_t, _s| button::Style {
+                    background: Some(Background::Color(rgba(palette.surface))),
+                    text_color: if valid {
+                        rgba(palette.accent)
+                    } else {
+                        rgba(palette.text_muted)
+                    },
+                    border: Border {
+                        color: rgba(palette.border),
+                        width: 1.0,
+                        radius: sm_radius.into(),
+                    },
+                    ..button::Style::default()
+                });
+        if valid {
+            submit = submit.on_press(Message::SubmitExpose);
+        }
+
+        let mut col = column![
+            port_input,
+            self.simple_button(proto_label, Message::ExposeToggleProto),
+            nets,
+            row![submit, self.simple_button("Cancel", Message::CloseExposeSheet)]
+                .spacing(f32::from(space.sm)),
+        ]
+        .spacing(f32::from(space.xs))
+        .width(Length::Fill);
+        if !valid {
+            col = col.push(self.muted_line("Enter a port (1–65535) and pick at least one network."));
+        }
+        container(col)
+            .padding(f32::from(space.sm))
+            .style(move |_t| container::Style {
+                snap: false,
+                background: Some(Background::Color(rgba(palette.background))),
+                border: Border {
+                    color: rgba(palette.border),
+                    width: 1.0,
+                    radius: radius.into(),
+                },
+                ..container::Style::default()
+            })
+            .into()
     }
 
     fn snapshot_section<'a>(&'a self, d: &'a VmDetail) -> Element<'a, Message> {
@@ -1602,10 +1894,11 @@ mod tests {
     fn vm_detail_from_row_carries_fields_and_locality() {
         let inv: Inventory = serde_json::from_str(&sample_json("10.42.0.5", "alpha")).unwrap();
         let rows = rows_for(&inv);
-        let d = VmDetail::from_row(&rows[0], true);
+        let d = VmDetail::from_row(&rows[0], "10.42.0.1", true);
         assert_eq!(d.name, "web");
         assert_eq!(d.disk_path, "/var/lib/mde-vms/web.qcow2");
         assert_eq!(d.nebula_ip, "10.42.0.5");
+        assert_eq!(d.peer, "10.42.0.1");
         assert!(d.meshfs_available);
         assert!(d.is_local);
     }
@@ -1663,5 +1956,69 @@ mod tests {
             r#"{"peer":"p","rules":[{"network":"mesh","vm_nebula_ip":"","host_port":1,"proto":"tcp"}]}"#;
         let state: ExposedState = serde_json::from_str(json).unwrap();
         assert!(rules_for_vm(vec![state], "").is_empty());
+    }
+
+    #[test]
+    fn build_expose_request_valid() {
+        let form = ExposeForm {
+            guest_port: "8080".to_string(),
+            proto_udp: false,
+            mesh: true,
+            lan: true,
+            wan: false,
+        };
+        let req = build_expose_request(&form, "10.42.128.5").unwrap();
+        assert_eq!(req.vm_nebula_ip, "10.42.128.5");
+        assert_eq!(req.guest_port, 8080);
+        assert_eq!(req.proto, "tcp");
+        assert_eq!(req.networks, vec![Network::Mesh, Network::Lan]);
+    }
+
+    #[test]
+    fn build_expose_request_rejects_bad_input() {
+        let no_net = ExposeForm {
+            guest_port: "80".into(),
+            ..Default::default()
+        };
+        assert!(build_expose_request(&no_net, "ip").is_none());
+        let empty_port = ExposeForm {
+            guest_port: String::new(),
+            mesh: true,
+            ..Default::default()
+        };
+        assert!(build_expose_request(&empty_port, "ip").is_none());
+        let zero_port = ExposeForm {
+            guest_port: "0".into(),
+            mesh: true,
+            ..Default::default()
+        };
+        assert!(build_expose_request(&zero_port, "ip").is_none());
+    }
+
+    #[test]
+    fn expose_request_serializes_with_lowercase_networks() {
+        let form = ExposeForm {
+            guest_port: "443".into(),
+            proto_udp: true,
+            wan: true,
+            ..Default::default()
+        };
+        let req = build_expose_request(&form, "10.42.128.9").unwrap();
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"guest_port\":443"));
+        assert!(json.contains("\"proto\":\"udp\""));
+        assert!(json.contains("\"wan\""));
+    }
+
+    #[test]
+    fn unexpose_request_serializes() {
+        let req = UnexposeRequest {
+            vm_nebula_ip: "10.42.128.5".into(),
+            host_port: 8080,
+            proto: "tcp".into(),
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("\"host_port\":8080"));
+        assert!(json.contains("10.42.128.5"));
     }
 }
