@@ -131,6 +131,15 @@ enum Cmd {
     /// captive; silent + exit 0 when clear.
     CaptivePortalCheck,
 
+    /// MESH-A-6.5 (v5.0.0) — detect a DNS leak (R8-Q41): a configured
+    /// /etc/resolv.conf resolver not in `--expected` (the mesh resolver
+    /// set). Prints leaked resolvers + exits 1 when any.
+    DnsLeakCheck {
+        /// Expected mesh resolver IP (repeatable).
+        #[arg(long = "expected", value_name = "IP")]
+        expected: Vec<String>,
+    },
+
     /// EPIC-MESH-PROBE — run the nmap probe engine (MESH-PROBE-2).
     Probe {
         #[command(subcommand)]
@@ -1161,6 +1170,18 @@ fn main() -> anyhow::Result<()> {
                     println!("{portal}");
                     eprintln!("CAPTIVE-PORTAL: redirected to {portal}");
                 }
+                std::process::exit(1);
+            }
+        }
+        Cmd::DnsLeakCheck { expected } => {
+            use mackesd_core::surrounding_hosts::{dns_leak, parse_resolv_nameservers};
+            let content = std::fs::read_to_string("/etc/resolv.conf").unwrap_or_default();
+            let leaked = dns_leak(&parse_resolv_nameservers(&content), &expected);
+            for ip in &leaked {
+                println!("{ip}");
+            }
+            if !leaked.is_empty() {
+                eprintln!("DNS-LEAK: {} resolver(s) outside the expected mesh set", leaked.len());
                 std::process::exit(1);
             }
         }

@@ -1000,6 +1000,45 @@ pub fn detect_captive_portal(url: &str) -> Option<String> {
     captive_portal_from_headers(&String::from_utf8_lossy(&out.stdout))
 }
 
+/// Parse `nameserver <ip>` lines from `/etc/resolv.conf` content
+/// (MESH-A-6.5). Requires `nameserver` as a whole leading token; skips
+/// comments + non-nameserver lines; dedups. Pure; kept feature-free
+/// here rather than reusing netassess's async-services-gated
+/// `parse_resolv_conf`.
+#[must_use]
+pub fn parse_resolv_nameservers(content: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in content.lines() {
+        let line = line.trim();
+        if line.starts_with('#') || line.starts_with(';') {
+            continue;
+        }
+        let mut toks = line.split_whitespace();
+        if toks.next() == Some("nameserver") {
+            if let Some(ip) = toks.next() {
+                let ip = ip.to_string();
+                if !out.contains(&ip) {
+                    out.push(ip);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Detect a DNS leak (MESH-A-6.5, R8-Q41): the configured resolvers
+/// (`current`) that are NOT in the expected mesh resolver set
+/// (`expected`). A non-empty result means traffic is resolving through
+/// an off-mesh DNS server. Pure.
+#[must_use]
+pub fn dns_leak(current: &[String], expected: &[String]) -> Vec<String> {
+    current
+        .iter()
+        .filter(|ip| !expected.contains(ip))
+        .cloned()
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1539,5 +1578,22 @@ mod tests {
         );
         // No parseable status → treated as clear (offline, not captive).
         assert_eq!(captive_portal_from_headers(""), None);
+    }
+
+    // ── MESH-A-6.5: DNS-leak detection ──
+
+    #[test]
+    fn parse_resolv_nameservers_extracts_and_dedups() {
+        let c = "# comment\nnameserver 10.42.0.1\nsearch lan\nnameserver 8.8.8.8\nnameserver 10.42.0.1\n";
+        assert_eq!(parse_resolv_nameservers(c), vec!["10.42.0.1", "8.8.8.8"]);
+        assert!(parse_resolv_nameservers("search lan\noptions ndots:1\n").is_empty());
+    }
+
+    #[test]
+    fn dns_leak_flags_off_mesh_resolvers() {
+        let expected = vec!["10.42.0.1".to_string()];
+        let current = vec!["10.42.0.1".to_string(), "8.8.8.8".to_string()];
+        assert_eq!(dns_leak(&current, &expected), vec!["8.8.8.8"]);
+        assert!(dns_leak(&["10.42.0.1".to_string()], &expected).is_empty());
     }
 }
