@@ -2299,7 +2299,7 @@ reachability (the v3.x dead-module failure mode §0.12 + DoD gate-7 exist to cat
 
 #### Gluster-centric controls
 
-- [ ] **GF-16.1: Pause / resume / throttle sync controls on `dev.mackes.MDE.Gluster.Status`**
+- [✓] **GF-16.1: Pause / resume / throttle sync controls on `dev.mackes.MDE.Gluster.Status`** *(retired 2026-05-31 — superseded by LizardFS/MESHFS; the `dev.mackes.MDE.Gluster.*` control surface this targeted is gone. Not implemented; closed to match the GF-16 ❌ RETIRED header + its `[✓]` siblings.)*
   **As** an operator on a metered hotspot, an active call, or low battery,
   **I want** to pause, resume, and bandwidth-cap gluster sync without leaving the mesh,
   **so that** I retain control of when the desktop bleeds bandwidth and disk.
@@ -2310,7 +2310,7 @@ reachability (the v3.x dead-module failure mode §0.12 + DoD gate-7 exist to cat
     - [ ] `SetBandwidthCap(0)` removes the cap; non-zero pushes `gluster volume set mesh-home performance.write-behind-window-size <bytes>` via a new pure-fn `bandwidth_set_argv(binary, bytes)` helper.
     - [ ] `busctl --user call … PauseSync sx Heal 60` returns success → heal queue stops draining for 60 s → `Status()` reflects the pause → after 60 s heal resumes automatically.
 
-- [ ] **GF-16.9: Per-file pin xattr (`user.mde.pin=true`) — escape hatch for the 5 GB stub cap**
+- [✓] **GF-16.9: Per-file pin xattr (`user.mde.pin=true`) — escape hatch for the 5 GB stub cap** *(retired 2026-05-31 — superseded by LizardFS/MESHFS; the GF-4.2 stub-cap mechanism it extends is retired with the Gluster epic. Not implemented; closed to match the GF-16 ❌ RETIRED header.)*
   **As** an operator with an 8 GB project file I want resident on every peer,
   **I want** to pin a file so the GF-4.2 stub watcher skips it,
   **so that** the file stays available offline on all peers.
@@ -2320,7 +2320,7 @@ reachability (the v3.x dead-module failure mode §0.12 + DoD gate-7 exist to cat
     - [ ] mde-files row renders a Carbon `pin` glyph (12 px) on pinned files, alongside the GF-6.2 sync badge.
     - [ ] Bench: drop a 6 GB file in `~/Videos` → right-click "Pin to all peers" → other peers receive the real bytes (not a stub) within the LAN-first heal window.
 
-- [ ] **GF-16.10: UPower battery gating for non-essential heals [HW carve-out]** *(HW carve-out — needs a real battery + UPower live to verify the on-battery + low-percent gates fire; the argv-not-issued path is bench-observable via DBus simulation but the property-subscription wiring needs a laptop.)*
+- [✓] **GF-16.10: UPower battery gating for non-essential heals [HW carve-out]** *(RETIRED 2026-05-31 — superseded by LizardFS/MESHFS; the `gluster_worker` heal path this gated is retired with the Gluster epic. Not implemented; closed to match the GF-16 ❌ RETIRED header.)*
   **As** an operator with a laptop at 15% battery on the road,
   **I want** gluster to defer non-essential heal work,
   **so that** the heal queue doesn't bleed my last 15% of battery.
@@ -2381,7 +2381,7 @@ reachability (the v3.x dead-module failure mode §0.12 + DoD gate-7 exist to cat
     - [ ] Suppressed alerts still write to `~/.local/share/mde/alerts/*.json` (the audit trail is preserved; only the toast is suppressed).
     - [ ] Bench: enable DND → trigger `gluster_quorum_lost` → toast appears + pierces; trigger `HealCompleted` → no toast; `~/.local/share/mde/alerts/` shows both events.
 
-- [ ] **GF-16.6: Origin-peer xattr + replication-echo suppression [HW carve-out]** *(needs phone + multi-peer mesh to verify end-to-end suppression)*
+- [✓] **GF-16.6: Origin-peer xattr + replication-echo suppression [HW carve-out]** *(RETIRED 2026-05-31 — superseded by LizardFS/MESHFS; the Gluster replication path this targeted is retired with the epic. Not implemented; closed to match the GF-16 ❌ RETIRED header.)*
   **As** an operator with 3 peers (A/B/C) and a phone paired to peer A,
   **I want** only peer A to fire a "new file from <phone>" toast,
   **so that** B and C aren't spammed about events that didn't happen on them.
