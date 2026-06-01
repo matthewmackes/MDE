@@ -588,9 +588,17 @@ fi
 # The compat symlink (ln -sfn mde mackes-shell) is removed here.
 
 # 3a. Mackes Shell branding — hero logo (About / Wizard / Dashboard) +
-#     standard wallpaper (desktop + LightDM greeter)
-install -d %{buildroot}%{_datadir}/%{appname}/branding
-cp -r branding/* %{buildroot}%{_datadir}/%{appname}/branding/
+#     standard wallpaper (desktop + LightDM greeter). Guarded: the
+#     `branding/` directory was removed in 8b4de357 ("Delete branding
+#     directory"); install the assets only when the directory is present,
+#     mirroring the `data/panel` + `data/xfce-baseline` conditional-copy
+#     idiom above so `%install` (and thus `make rpm`) succeeds with or
+#     without them. Covered by the `%{_datadir}/%{appname}/` %files
+#     catch-all, so no %files change is needed either way.
+if [ -d branding ]; then
+    install -d %{buildroot}%{_datadir}/%{appname}/branding
+    cp -r branding/* %{buildroot}%{_datadir}/%{appname}/branding/
+fi
 
 # 3b. In-Mackes help documentation (docs/help/*.md)
 install -d %{buildroot}%{_datadir}/%{appname}/help
@@ -1088,6 +1096,16 @@ install -D -m 0755 target/release/mde-files \
 install -D -m 0644 data/applications/mde-files.desktop \
     %{buildroot}%{_datadir}/applications/mde-files.desktop
 
+# v5.0.0 VIRT-10 — mde-virtual mesh-aware compute manager (KVM + Podman
+# across the workgroup; Fleet + Local tabs). Replaces the original
+# Workbench Compute panel + Cockpit deep-link. `cargo build --release
+# --workspace` above already builds it (workspace member). The .desktop
+# entry makes it launchable from the app menu / Dock / Portal search.
+install -D -m 0755 target/release/mde-virtual \
+    %{buildroot}%{_bindir}/mde-virtual
+install -D -m 0644 data/applications/mde-virtual.desktop \
+    %{buildroot}%{_datadir}/applications/mde-virtual.desktop
+
 # v2.0.0 Phase D.1 — mde-session Wayland session orchestrator.
 install -D -m 0755 target/release/mde-session \
     %{buildroot}%{_bindir}/mde-session
@@ -1501,6 +1519,8 @@ echo ">>> mde-desktop installed. Run \`sudo mde-install --profile=full\` to fini
 %{_datadir}/applications/mde-open.desktop
 %{_bindir}/mde-files
 %{_datadir}/applications/mde-files.desktop
+%{_bindir}/mde-virtual
+%{_datadir}/applications/mde-virtual.desktop
 %{_bindir}/mde-session
 %{_bindir}/mde-logout-dialog
 %{_bindir}/mde-wizard

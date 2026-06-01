@@ -2133,16 +2133,20 @@ reachability (the v3.x dead-module failure mode §0.12 + DoD gate-7 exist to cat
     - No full compute-inventory panel in Workbench — all fleet management lives in `mde-virtual`
     - Cite: visual-identity.md §1; ref: Apple System Settings (visual citation for the tile surface)
 
-- [ ] **VIRT-10: v5.0.0 — `mde-virtual.desktop` + Dock default pin + Portal app registration**
+- [ ] **VIRT-10: v5.0.0 — `mde-virtual.desktop` + Dock default pin + Portal app registration** *(split §0.12 2026-05-31 — session=opus-48-2026-05-31-virt10a. 10.a [✓] ships the `.desktop` entry + RPM packaging so `mde-virtual` installs to `%{_bindir}/mde-virtual` and launches from the standard freedesktop application menu / any XDG launcher; 10.b + 10.c [ ] remain, each blocked on unbuilt Dock/Portal infra noted below. Umbrella stays open until both land.)*
   **As** an operator, **I want** `mde-virtual` to appear in the Dock by default and be launchable from Portal search,
   **so that** compute management is immediately accessible on a fresh install.
   **Acceptance** (each bench-observable):
-    - [ ] `data/applications/mde-virtual.desktop` exists with `Name=Virtual`, `Icon=computer`, `Exec=mde-virtual`, `Categories=System;Utility;`, `StartupWMClass=mde-virtual`
-    - [ ] `mde-virtual` added to the RPM `%files` section (in VIRT-2)
-    - [ ] Default Dock config (`data/config/mde-dock-defaults.json` or equivalent) includes `mde-virtual` as a pinned item
-    - [ ] Portal app-card index picks up `mde-virtual.desktop` via the standard `.desktop` discovery path
-    - [ ] voice-lint clean on `mde-virtual.desktop` display strings
-    - [ ] 1 test: `.desktop` file parses without error via `gio info`
+    - [✓] `data/applications/mde-virtual.desktop` exists with `Name=Virtual`, `Icon=computer`, `Exec=mde-virtual`, `Categories=System;Utility;`, `StartupWMClass=mde-virtual` *(10.a)*
+    - [✓] `mde-virtual` added to the RPM `%files` + `%install` (binary → `%{_bindir}/mde-virtual`, `.desktop` → `%{_datadir}/applications/`); `cargo build --release --workspace` already builds the workspace-member binary *(10.a)*
+    - [ ] Default Dock config (`data/config/mde-dock-defaults.json` or equivalent) includes `mde-virtual` as a pinned item *(10.b — no dock-defaults mechanism exists in the tree yet; default Dock pinning is mde-portal Dock infra, cf. Portal-28. Blocked on that surface.)*
+    - [ ] Portal app-card index picks up `mde-virtual.desktop` via the standard `.desktop` discovery path *(10.c — mde-portal discovers apps via JSON cards under `mde/cards/`, not `.desktop` scanning; the `.desktop`→app-grid path is the unbuilt Portal-19 Library layer. Blocked on Portal-19.)*
+    - [✓] voice-lint clean on `mde-virtual.desktop` display strings *(10.a — `lint-voice.sh` + `lint-material-symbols.sh` both clean)*
+    - [✓] 1 test: `.desktop` file parses without error *(10.a — 2 tests in `crates/mde-virtual/src/main.rs::desktop_entry_tests` `include_str!` the file + assert well-formed `key=value` lines + the launcher-critical keys: `Type`/`Name`/`Icon`/`Terminal`, `Categories`⊇`System`, and `Exec=mde-virtual=StartupWMClass` — the parse `gio info`/`desktop-file-validate` performs)*
+  **Sub-tasks (§0.12 split 2026-05-31):**
+    - [✓] **VIRT-10.a** — `.desktop` entry + RPM `%install`/`%files` packaging + voice/material-symbols lint + 2 parse-tests. `mde-virtual` installs to `%{_bindir}/mde-virtual` and launches from the standard application menu / any XDG launcher. *(shipped 2026-05-31 — session=opus-48-2026-05-31-virt10a)*
+    - [ ] **VIRT-10.b** — Default Dock pin. Blocked: no `mde-dock-defaults` config exists in the tree; needs the mde-portal Dock default-pin mechanism (Portal-28 App-switcher-on-Dock surface).
+    - [ ] **VIRT-10.c** — Portal app discovery. Blocked: mde-portal discovers apps via JSON cards under `mde/cards/`, not `.desktop` scanning; needs the Portal-19 Library-layer `.desktop` app-grid (or a `.desktop`→card bridge).
 
 - [✓] **VIRT-11: v5.0.0 — `docs/help/virtual.md` + CHANGELOG entry** *(shipped 2026-05-31 — session=opus-48-2026-05-31-virt11. New `docs/help/virtual.md` (help-doc house style: `#`/`##`/`###` + prose + bullets) documents the shipped `mde-virtual` UX end-to-end — Fleet vs Local tabs, the 4-step creation wizard + provisioning banner, the VM detail panel (lifecycle actions, `virt-viewer` console, snapshots, exposed ports mesh/LAN/WAN, cold migrate, save-as-template, live CPU/RAM sparklines), MeshFS-via-virtiofs sharing, templates on mesh-storage, and the Podman container rows. `CHANGELOG.md` gains a dated `mde-virtual` block under `## Unreleased` (the live "v1.0 MackesDE for Workgroups" section — the CHANGELOG's actual unreleased line; §0.14 newer-wins over the worklist's "v5.0.0 section" wording). Written in the house voice (no future-promise strings); voice-lint clean (docs/ isn't in its scan path, but the prose is voice-clean regardless). Documents the built feature set (VIRT-13..17 + 18.a); container pod-mgmt / images (18.b/19) + the VOIP dialer aren't claimed.)*
     - [✓] `docs/help/virtual.md` covers: creating a VM (4-step wizard), MeshFS access, exposing a port (mesh/LAN/WAN), cold migration, containers, the VM console (virt-viewer), snapshots, and saving a template

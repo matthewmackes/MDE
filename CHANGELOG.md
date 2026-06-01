@@ -9,8 +9,9 @@ unreleased; tag versions get a date when they ship.
 - A new **Virtual** app manages the KVM virtual machines and Podman
   containers across your whole workgroup from one window: a Fleet tab
   (every peer's compute, read-only) and a Local tab (your machine, with
-  full controls). Launch it from the Workbench Virtual tile, the Dock,
-  or Portal search.
+  full controls). It installs as **Virtual** in the application menu,
+  and also launches from the Workbench Virtual tile, the Dock, or Portal
+  search.
 - Create a VM with a four-step wizard (name → CPU/RAM → disk + installer
   ISO → review); a status banner tracks provisioning. Save any VM's
   settings as a template and reuse it on any peer.

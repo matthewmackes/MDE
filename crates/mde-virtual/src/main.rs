@@ -67,3 +67,86 @@ fn main() -> iced::Result {
         })
         .run()
 }
+
+#[cfg(test)]
+mod desktop_entry_tests {
+    //! VIRT-10.a — validate the shipped
+    //! `data/applications/mde-virtual.desktop` the way
+    //! `desktop-file-validate` / `gio info` would: every entry line parses
+    //! as `key=value`, and the launcher-critical keys carry the values the
+    //! spec + the RPM `%files` packaging depend on. The file is embedded at
+    //! compile time (`include_str!`) so the test needs no installed copy and
+    //! no runtime path resolution; the relative path is repo-root anchored
+    //! from `crates/mde-virtual/src/`.
+
+    const DESKTOP: &str =
+        include_str!("../../../data/applications/mde-virtual.desktop");
+
+    /// Parse the `[Desktop Entry]` group into `(key, value)` pairs, asserting
+    /// every non-comment, non-blank, non-group-header line is well-formed
+    /// `key=value`. Panics (fails the test) on a malformed line, mirroring a
+    /// validator's parse-error exit.
+    fn parse_entry(src: &str) -> Vec<(String, String)> {
+        let mut pairs = Vec::new();
+        let mut in_entry = false;
+        for line in src.lines() {
+            let line = line.trim_end();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            if line.starts_with('[') && line.ends_with(']') {
+                in_entry = line == "[Desktop Entry]";
+                continue;
+            }
+            if !in_entry {
+                continue;
+            }
+            let (k, v) = line.split_once('=').unwrap_or_else(|| {
+                panic!("malformed .desktop line (no '='): {line:?}")
+            });
+            pairs.push((k.to_string(), v.to_string()));
+        }
+        pairs
+    }
+
+    fn value<'a>(pairs: &'a [(String, String)], key: &str) -> Option<&'a str> {
+        pairs.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
+    }
+
+    #[test]
+    fn desktop_entry_parses_and_has_required_keys() {
+        let pairs = parse_entry(DESKTOP);
+        assert!(!pairs.is_empty(), "no [Desktop Entry] keys parsed");
+
+        // The first meaningful line must open the canonical group.
+        let first_meaningful = DESKTOP
+            .lines()
+            .map(str::trim_end)
+            .find(|l| !l.is_empty() && !l.starts_with('#'))
+            .expect("file has at least one meaningful line");
+        assert_eq!(first_meaningful, "[Desktop Entry]");
+
+        assert_eq!(value(&pairs, "Type"), Some("Application"));
+        assert_eq!(value(&pairs, "Name"), Some("Virtual"));
+        assert_eq!(value(&pairs, "Icon"), Some("computer"));
+        assert_eq!(value(&pairs, "Terminal"), Some("false"));
+
+        let categories =
+            value(&pairs, "Categories").expect("Categories key present");
+        assert!(
+            categories.split(';').any(|c| c == "System"),
+            "Categories must include System: {categories:?}"
+        );
+    }
+
+    #[test]
+    fn desktop_exec_matches_binary_and_wmclass_matches_app_id() {
+        let pairs = parse_entry(DESKTOP);
+        // The launcher contract: `Exec` spawns the same binary name the RPM
+        // installs to `%{_bindir}`, and `StartupWMClass` equals it so the
+        // compositor maps the window to its launcher (it also equals the
+        // `iced::Settings.id` set in `main`).
+        assert_eq!(value(&pairs, "Exec"), Some("mde-virtual"));
+        assert_eq!(value(&pairs, "StartupWMClass"), Some("mde-virtual"));
+    }
+}

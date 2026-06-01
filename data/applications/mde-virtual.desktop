@@ -1,0 +1,18 @@
+[Desktop Entry]
+# v5.0.0 VIRT-10 — MDE Virtual (mesh-aware compute manager) .desktop
+# entry. Single launcher for the KVM virtual machines + Podman
+# containers running across the whole workgroup (Fleet + Local tabs).
+# Replaces the original Workbench Compute panel + the Cockpit deep-link
+# (VIRT-* lock, docs/design/v5.0.0-compute.md §13). Surfaced from the
+# Workbench Virtual tile, the Dock, and Portal search ("Virtual").
+Type=Application
+Name=Virtual
+GenericName=Compute Manager
+Comment=Mesh-aware compute manager — KVM virtual machines and Podman containers across your workgroup
+Exec=mde-virtual
+Icon=computer
+Terminal=false
+Categories=System;Utility;
+Keywords=virtual;vm;container;kvm;podman;compute;machine;libvirt;virtualization;mesh;mde;mackes;
+StartupNotify=true
+StartupWMClass=mde-virtual
