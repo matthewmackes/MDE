@@ -13,7 +13,7 @@
 #
 # Build deps on Fedora 44:
 #   cmake, gcc, g++, fuse3-devel, fuse3-libs, zlib-devel,
-#   openssl-devel, boost-devel, spdlog-devel, python3-devel, pkg-config
+#   openssl-devel, boost-devel, spdlog-devel, fmt-devel, python3-devel, pkg-config
 
 name: lizardfs-build
 
@@ -54,6 +54,7 @@ jobs:
             openssl-devel \
             boost-devel \
             spdlog-devel \
+            fmt-devel \
             python3-devel \
             python3 \
             pkg-config \
@@ -86,6 +87,7 @@ jobs:
           cmake /tmp/lizardfs-src \
               -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
               -DCMAKE_CXX_FLAGS="-include cstdint" \
+              -DCMAKE_CXX_STANDARD_LIBRARIES="-lfmt" \
               -DCMAKE_BUILD_TYPE=Release \
               -DCMAKE_INSTALL_PREFIX=/usr \
               -DENABLE_TESTS=OFF \

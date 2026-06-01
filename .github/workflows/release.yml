@@ -112,7 +112,7 @@ jobs:
           if [ ! -f lizardfs-binaries.tar.gz ]; then
             dnf install -y --setopt=install_weak_deps=False \
               cmake gcc gcc-c++ fuse3-devel fuse3-libs zlib-devel \
-              openssl-devel boost-devel spdlog-devel python3-devel pkg-config make
+              openssl-devel boost-devel spdlog-devel fmt-devel python3-devel pkg-config make
             install-helpers/build-lizardfs.sh "$LIZARDFS_TAG"
           fi
           mkdir -p rpmbuild/SOURCES
