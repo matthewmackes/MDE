@@ -12,7 +12,7 @@
 //! direct `virsh list` / `podman ps` read backs the Local tab when the
 //! Bus is unavailable.
 
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -236,6 +236,46 @@ pub(crate) fn actions_for_state(state: &str) -> Vec<ActionVerb> {
     } else {
         vec![ActionVerb::Start]
     }
+}
+
+/// VIRT-20: a stable selection key for a Local-tab row.
+pub(crate) fn row_key(kind: ResourceKind, name: &str) -> String {
+    let tag = match kind {
+        ResourceKind::Vm => "vm",
+        ResourceKind::Container => "ct",
+    };
+    format!("{tag}:{name}")
+}
+
+/// Both VMs and containers support bulk Start/Stop (the only verbs the
+/// bulk bar exposes).
+fn kind_supports_bulk(_kind: ResourceKind, verb: ActionVerb) -> bool {
+    matches!(verb, ActionVerb::Start | ActionVerb::Stop)
+}
+
+/// VIRT-20: the bulk verbs valid for a selection — the intersection of
+/// what every selected kind supports, limited to the bar's Start/Stop.
+/// Empty selection ⇒ no actions.
+pub(crate) fn bulk_actions_for(kinds: &[ResourceKind]) -> Vec<ActionVerb> {
+    if kinds.is_empty() {
+        return vec![];
+    }
+    [ActionVerb::Start, ActionVerb::Stop]
+        .into_iter()
+        .filter(|v| kinds.iter().all(|k| kind_supports_bulk(*k, *v)))
+        .collect()
+}
+
+/// VIRT-20: resolve selected keys to `(kind, name)` targets against the
+/// current rows — one entry per selected row.
+pub(crate) fn bulk_targets(
+    selected: &HashSet<String>,
+    rows: &[ResourceRow],
+) -> Vec<(ResourceKind, String)> {
+    rows.iter()
+        .filter(|r| selected.contains(&row_key(r.kind, &r.name)))
+        .map(|r| (r.kind, r.name.clone()))
+        .collect()
 }
 
 /// Whether a verb is meaningful for a given state (used to enable/disable
@@ -1290,6 +1330,16 @@ pub(crate) enum Message {
     ConfirmImageDelete,
     /// Dismiss the image delete confirmation.
     CancelImageDelete,
+    /// VIRT-20: toggle a Local row's bulk selection.
+    ToggleBulk(String),
+    /// VIRT-20: select (`true`) or clear (`false`) all visible Local rows.
+    SelectAllBulk(bool),
+    /// VIRT-20: open the confirmation for a bulk verb over the selection.
+    RequestBulk(ActionVerb),
+    /// VIRT-20: confirm the pending bulk action (one command per resource).
+    ConfirmBulk,
+    /// VIRT-20: dismiss the bulk confirmation.
+    CancelBulk,
 }
 
 /// `mde-virtual` application state.
@@ -1337,6 +1387,10 @@ pub(crate) struct VirtualApp {
     pending_pod_delete: Option<String>,
     /// VIRT-19.b: the image ref awaiting delete confirmation, if any.
     pending_image_delete: Option<String>,
+    /// VIRT-20: selected Local-row keys for bulk actions.
+    selected_bulk: HashSet<String>,
+    /// VIRT-20: the bulk verb awaiting confirmation, if any.
+    pending_bulk: Option<ActionVerb>,
 }
 
 impl VirtualApp {
@@ -1368,6 +1422,8 @@ impl VirtualApp {
             pending_container_delete: None,
             pending_pod_delete: None,
             pending_image_delete: None,
+            selected_bulk: HashSet::new(),
+            pending_bulk: None,
         }
     }
 
@@ -1501,6 +1557,48 @@ impl VirtualApp {
                 Task::perform(
                     async move {
                         let _ = std::process::Command::new(bin).args(&args).status();
+                    },
+                    |()| Message::Refresh,
+                )
+            }
+            Message::ToggleBulk(key) => {
+                if !self.selected_bulk.remove(&key) {
+                    self.selected_bulk.insert(key);
+                }
+                Task::none()
+            }
+            Message::SelectAllBulk(all) => {
+                if all {
+                    self.selected_bulk = self
+                        .local_rows()
+                        .iter()
+                        .map(|r| row_key(r.kind, &r.name))
+                        .collect();
+                } else {
+                    self.selected_bulk.clear();
+                }
+                Task::none()
+            }
+            Message::RequestBulk(verb) => {
+                self.pending_bulk = Some(verb);
+                Task::none()
+            }
+            Message::CancelBulk => {
+                self.pending_bulk = None;
+                Task::none()
+            }
+            Message::ConfirmBulk => {
+                let Some(verb) = self.pending_bulk.take() else {
+                    return Task::none();
+                };
+                let targets = bulk_targets(&self.selected_bulk, &self.local_rows());
+                self.selected_bulk.clear();
+                Task::perform(
+                    async move {
+                        for (kind, name) in targets {
+                            let (bin, args) = command_for(kind, verb, &name);
+                            let _ = std::process::Command::new(bin).args(&args).status();
+                        }
                     },
                     |()| Message::Refresh,
                 )
@@ -2019,15 +2117,115 @@ impl VirtualApp {
         if let Some(b) = self.image_delete_banner() {
             banners.push(b);
         }
-        if banners.is_empty() {
+        if let Some(b) = self.bulk_confirm_banner() {
+            banners.push(b);
+        }
+        let action_bar = self.bulk_action_bar();
+        if banners.is_empty() && action_bar.is_none() {
             list
         } else {
             let mut col = column![].spacing(f32::from(space.sm)).height(Length::Fill);
             for b in banners {
                 col = col.push(b);
             }
-            col.push(list).into()
+            col = col.push(list);
+            if let Some(bar) = action_bar {
+                col = col.push(bar);
+            }
+            col.into()
         }
+    }
+
+    /// VIRT-20: the contextual bulk-action bar at the bottom of the Local
+    /// tab, shown when ≥1 row is selected. Offers the verbs valid across the
+    /// selection (Start all / Stop all) + a Clear.
+    fn bulk_action_bar(&self) -> Option<Element<'_, Message>> {
+        if self.selected_bulk.is_empty() {
+            return None;
+        }
+        let palette = self.tokens.palette;
+        let space = self.tokens.space;
+        let kinds: Vec<ResourceKind> = bulk_targets(&self.selected_bulk, &self.local_rows())
+            .iter()
+            .map(|(k, _)| *k)
+            .collect();
+        let mut bar = row![text(format!("{} selected", self.selected_bulk.len()))
+            .size(TypeRole::Caption.size_in(self.tokens.font_size))
+            .color(rgba(palette.text_muted))
+            .width(Length::Fill)]
+        .spacing(f32::from(space.sm))
+        .align_y(iced::alignment::Vertical::Center);
+        for verb in bulk_actions_for(&kinds) {
+            let label = if matches!(verb, ActionVerb::Start) {
+                "Start all"
+            } else {
+                "Stop all"
+            };
+            bar = bar.push(self.simple_button(label, Message::RequestBulk(verb)));
+        }
+        bar = bar.push(self.simple_button("Clear", Message::SelectAllBulk(false)));
+        Some(
+            container(bar)
+                .width(Length::Fill)
+                .padding([space.sm, space.lg2])
+                .style(move |_t| container::Style {
+                    snap: false,
+                    background: Some(Background::Color(rgba(palette.raised))),
+                    border: Border {
+                        color: rgba(palette.border),
+                        width: 1.0,
+                        radius: 0.0.into(),
+                    },
+                    ..container::Style::default()
+                })
+                .into(),
+        )
+    }
+
+    /// VIRT-20: the bulk-action confirmation banner — lists the selected
+    /// resource names before executing.
+    fn bulk_confirm_banner(&self) -> Option<Element<'_, Message>> {
+        let verb = self.pending_bulk?;
+        let palette = self.tokens.palette;
+        let space = self.tokens.space;
+        let radius = f32::from(self.tokens.radii.md);
+        let names: Vec<String> = bulk_targets(&self.selected_bulk, &self.local_rows())
+            .into_iter()
+            .map(|(_, n)| n)
+            .collect();
+        let verb_label = if matches!(verb, ActionVerb::Start) {
+            "Start"
+        } else {
+            "Stop"
+        };
+        let msg = format!("{verb_label} {} resource(s): {}?", names.len(), names.join(", "));
+        Some(
+            container(
+                row![
+                    text(msg)
+                        .size(TypeRole::Body.size_in(self.tokens.font_size))
+                        .color(rgba(palette.text))
+                        .width(Length::Fill),
+                    self.simple_button(verb_label, Message::ConfirmBulk),
+                    self.simple_button("Cancel", Message::CancelBulk),
+                ]
+                .align_y(iced::alignment::Vertical::Center)
+                .spacing(f32::from(space.sm)),
+            )
+            .width(Length::Fill)
+            .padding([space.sm, space.lg2])
+            .style(move |_t| container::Style {
+                snap: false,
+                background: Some(Background::Color(rgba(palette.surface))),
+                border: Border {
+                    color: rgba(palette.border),
+                    width: 1.0,
+                    radius: radius.into(),
+                },
+                ..container::Style::default()
+            })
+            .into(),
+        )
     }
 
     /// This peer's containers (Bus inventory, or the direct local read when
@@ -2045,6 +2243,16 @@ impl VirtualApp {
                 .map(|i| i.containers.clone())
                 .unwrap_or_default(),
         }
+    }
+
+    /// This peer's display rows (VMs + containers), or empty when there's no
+    /// local inventory. For VIRT-20 bulk select-all + dispatch.
+    fn local_rows(&self) -> Vec<ResourceRow> {
+        let inv = match &self.fleet {
+            FleetState::Available(invs) => invs.iter().find(|i| is_local(i, &self.local_host)),
+            FleetState::Unavailable => self.local_direct.as_ref(),
+        };
+        inv.map(rows_for).unwrap_or_default()
     }
 
     /// VIRT-19.b: the image delete-confirmation banner. When the image is in
@@ -2385,6 +2593,21 @@ impl VirtualApp {
             if rows.is_empty() {
                 col = col.push(self.muted_line("No VMs or containers."));
             } else {
+                // VIRT-20: a select-all checkbox over this section's rows (Local).
+                if show_actions {
+                    let all_keys: Vec<String> =
+                        rows.iter().map(|r| row_key(r.kind, &r.name)).collect();
+                    let all_selected =
+                        !all_keys.is_empty() && all_keys.iter().all(|k| self.selected_bulk.contains(k));
+                    col = col.push(
+                        container(
+                            checkbox(all_selected)
+                                .label("Select all")
+                                .on_toggle(Message::SelectAllBulk),
+                        )
+                        .padding([space.xs, space.md]),
+                    );
+                }
                 // VIRT-18.b: VMs + standalone containers render flat; pods
                 // get a header with their child containers indented beneath.
                 let (flat, pods) = group_by_pod(&rows);
@@ -2537,6 +2760,16 @@ impl VirtualApp {
             if matches!(r.kind, ResourceKind::Container) {
                 widget = widget.push(self.delete_button(&r.name));
             }
+            // VIRT-20: a bulk-selection checkbox leads the row on the Local tab.
+            let key = row_key(r.kind, &r.name);
+            let checked = self.selected_bulk.contains(&key);
+            return row![
+                checkbox(checked).on_toggle(move |_| Message::ToggleBulk(key.clone())),
+                widget,
+            ]
+            .spacing(f32::from(space.sm))
+            .align_y(iced::alignment::Vertical::Center)
+            .into();
         }
         widget.into()
     }
@@ -3253,6 +3486,47 @@ mod tests {
         assert_eq!(app.pending_image_delete.as_deref(), Some("redis:7"));
         let _ = app.update(Message::CancelImageDelete);
         assert!(app.pending_image_delete.is_none());
+    }
+
+    #[test]
+    fn bulk_actions_intersection_for_mixed_selection() {
+        // VMs and containers both support Start/Stop, so a mixed selection
+        // still exposes both.
+        assert_eq!(
+            bulk_actions_for(&[ResourceKind::Vm, ResourceKind::Container]),
+            vec![ActionVerb::Start, ActionVerb::Stop]
+        );
+        assert_eq!(bulk_actions_for(&[]), Vec::<ActionVerb>::new());
+    }
+
+    #[test]
+    fn bulk_targets_one_per_selected_row() {
+        let rows = vec![
+            pod_test_row("web", ResourceKind::Vm, ""),
+            pod_test_row("db", ResourceKind::Container, ""),
+            pod_test_row("cache", ResourceKind::Container, ""),
+        ];
+        let mut sel = std::collections::HashSet::new();
+        sel.insert(row_key(ResourceKind::Vm, "web"));
+        sel.insert(row_key(ResourceKind::Container, "cache"));
+        let targets = bulk_targets(&sel, &rows);
+        assert_eq!(targets.len(), 2); // one per selected; db excluded
+        assert!(targets.iter().any(|(k, n)| *k == ResourceKind::Vm && n == "web"));
+        assert!(targets
+            .iter()
+            .any(|(k, n)| *k == ResourceKind::Container && n == "cache"));
+    }
+
+    #[test]
+    fn bulk_toggle_and_clear_state() {
+        let mut app = VirtualApp::new();
+        let _ = app.update(Message::ToggleBulk("vm:web".into()));
+        assert!(app.selected_bulk.contains("vm:web"));
+        let _ = app.update(Message::ToggleBulk("vm:web".into())); // toggle off
+        assert!(!app.selected_bulk.contains("vm:web"));
+        let _ = app.update(Message::ToggleBulk("ct:db".into()));
+        let _ = app.update(Message::SelectAllBulk(false)); // clear
+        assert!(app.selected_bulk.is_empty());
     }
 
     #[test]

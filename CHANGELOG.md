@@ -25,6 +25,8 @@ unreleased; tag versions get a date when they ship.
   browsing, groups containers under their pod, and can start, stop, or
   delete a container, a whole pod, or an image (deletes ask for
   confirmation; an image in use by a running container is protected).
+- Select multiple VMs/containers (or "Select all") and start or stop the
+  whole batch at once, with a confirmation listing what's affected.
 - See `docs/help/virtual.md` for the full guide.
 
 **Compute lifecycle toasts (2026-06-01)**

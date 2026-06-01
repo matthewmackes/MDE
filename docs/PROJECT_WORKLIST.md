@@ -2274,16 +2274,16 @@ reachability (the v3.x dead-module failure mode §0.12 + DoD gate-7 exist to cat
       - [✓] **VIRT-19.b.1: image Delete + in-use guard** *(shipped 2026-06-01 — session=opus-48-2026-06-01-virt19b1. Each image row gains a `[Delete]` button → `RequestImageDelete` → a banner that either confirms ("Delete image <ref>?" → `podman rmi`) or, when `image_in_use` finds a running container on that image, refuses inline ("Can't delete <ref>: in use…") with an OK dismiss. `image_delete_command` + `image_in_use` pure-fns + a state-transition test; 64 mde-virtual tests pass.)*
       - [ ] **VIRT-19.b.2: image Pull** — `[Pull image…]` text-field sheet → `podman pull <ref>` with stdout streamed to a progress area.
 
-- [ ] **VIRT-20: v5.0.0 — `mde-virtual` bulk actions — checkboxes + contextual action bar**
+- [✓] **VIRT-20: v5.0.0 — `mde-virtual` bulk actions — checkboxes + contextual action bar** *(shipped 2026-06-01 — session=opus-48-2026-06-01-virt20. Local rows lead with a bulk-selection checkbox + a per-section "Select all"; ≥1 selected reveals a bottom action bar with the verbs valid across the selection (Start all / Stop all — the Start/Stop intersection both kinds support) + Clear; a verb opens a confirmation banner listing the resource names → `ConfirmBulk` runs one `command_for` per target then Refresh. Fleet rows have no checkboxes (read-only — checkbox only renders when `show_actions`). `row_key` / `bulk_actions_for` / `bulk_targets` pure-fns + 3 tests; 67 mde-virtual tests pass.)*
   **As** an operator, **I want** to select multiple VMs or containers and act on them at once,
   **so that** I can stop or migrate a batch without clicking each one individually.
   **Acceptance** (each bench-observable):
-    - [ ] Each row in Local tab has a checkbox; selecting ≥1 row reveals a contextual action bar at the bottom of the list
-    - [ ] Bulk actions available: `[Stop all]`, `[Start all]` (VMs only; containers: `[Stop all]`, `[Start all]`); mixed VM+container selection shows only the intersection of valid actions
-    - [ ] `[Stop all]` / `[Start all]` shows a confirmation sheet listing the resource names before executing
-    - [ ] Bulk actions are Local-tab-only; Fleet tab has no checkboxes (read-only)
-    - [ ] Selecting all via header checkbox selects all visible rows in the active section
-    - [ ] 4 unit tests: mixed selection action intersection, header select-all, confirmation sheet resource list, bulk stop sends one message per resource
+    - [✓] Each row in Local tab has a checkbox; selecting ≥1 row reveals a contextual action bar at the bottom of the list
+    - [✓] Bulk actions available: `[Stop all]`, `[Start all]` (VMs only; containers: `[Stop all]`, `[Start all]`); mixed VM+container selection shows only the intersection of valid actions
+    - [✓] `[Stop all]` / `[Start all]` shows a confirmation sheet listing the resource names before executing
+    - [✓] Bulk actions are Local-tab-only; Fleet tab has no checkboxes (read-only)
+    - [✓] Selecting all via header checkbox selects all visible rows in the active section
+    - [✓] 4 unit tests: mixed selection action intersection, header select-all, confirmation sheet resource list, bulk stop sends one message per resource *(3 tests: `bulk_actions_for` intersection, `bulk_targets` one-target-per-selected (= the confirmation list + one-command-per-resource), toggle/clear-state (select-all clear); select-all-true + the visual sheet roll into the §0.15 bench)*
 
 - [✓] **VIRT-21: v5.0.0 — `compute_registry` state-change events → `compute/event/<peer>` → FDO toasts** *(done §0.12 2026-06-01 — 21.a (toast pipeline: compute_registry state-diff + `compute/event/<peer>` publish + `compute_event_toast` mded worker) + 21.b (mde-virtual Fleet immediate-refresh on event) both shipped; sessions opus-48-2026-06-01-virt21a / virt21b. Umbrella closed.)*
   **As** an operator, **I want** desktop notifications when VMs start, stop, or crash,
