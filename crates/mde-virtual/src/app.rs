@@ -388,6 +388,17 @@ pub(crate) fn container_delete_command(name: &str) -> (&'static str, Vec<String>
     ("podman", vec!["rm".into(), "-f".into(), name.into()])
 }
 
+/// Argv to start/stop every container in a pod (VIRT-18.b.3).
+pub(crate) fn pod_lifecycle_command(pod: &str, start: bool) -> (&'static str, Vec<String>) {
+    let verb = if start { "start" } else { "stop" };
+    ("podman", vec!["pod".into(), verb.into(), pod.into()])
+}
+
+/// Argv for force-removing a pod and its containers (VIRT-18.b.3).
+pub(crate) fn pod_delete_command(pod: &str) -> (&'static str, Vec<String>) {
+    ("podman", vec!["pod".into(), "rm".into(), "-f".into(), pod.into()])
+}
+
 /// Parse `podman ps --all --format json` into container rows (name +
 /// state only). Mirrors `compute_registry::parse_podman_ps_json`. Pure.
 pub(crate) fn parse_podman_ps_local(stdout: &str) -> Vec<ContainerEntry> {
@@ -1251,6 +1262,14 @@ pub(crate) enum Message {
     ConfirmContainerDelete,
     /// Dismiss the delete confirmation without removing.
     CancelContainerDelete,
+    /// VIRT-18.b.3: start/stop every container in a pod (`podman pod`).
+    PodLifecycle { pod: String, start: bool },
+    /// Open the delete-confirmation for a pod (removes it + its containers).
+    RequestPodDelete(String),
+    /// Confirm the pending pod delete (`podman pod rm -f`).
+    ConfirmPodDelete,
+    /// Dismiss the pod delete confirmation.
+    CancelPodDelete,
 }
 
 /// `mde-virtual` application state.
@@ -1294,6 +1313,8 @@ pub(crate) struct VirtualApp {
     volumes: Vec<VolumeEntry>,
     /// VIRT-18.b.2: the local container awaiting delete confirmation, if any.
     pending_container_delete: Option<String>,
+    /// VIRT-18.b.3: the pod awaiting delete confirmation, if any.
+    pending_pod_delete: Option<String>,
 }
 
 impl VirtualApp {
@@ -1323,6 +1344,7 @@ impl VirtualApp {
             images: Vec::new(),
             volumes: Vec::new(),
             pending_container_delete: None,
+            pending_pod_delete: None,
         }
     }
 
@@ -1404,6 +1426,35 @@ impl VirtualApp {
                     return Task::none();
                 };
                 let (bin, args) = container_delete_command(&name);
+                Task::perform(
+                    async move {
+                        let _ = std::process::Command::new(bin).args(&args).status();
+                    },
+                    |()| Message::Refresh,
+                )
+            }
+            Message::PodLifecycle { pod, start } => {
+                let (bin, args) = pod_lifecycle_command(&pod, start);
+                Task::perform(
+                    async move {
+                        let _ = std::process::Command::new(bin).args(&args).status();
+                    },
+                    |()| Message::Refresh,
+                )
+            }
+            Message::RequestPodDelete(pod) => {
+                self.pending_pod_delete = Some(pod);
+                Task::none()
+            }
+            Message::CancelPodDelete => {
+                self.pending_pod_delete = None;
+                Task::none()
+            }
+            Message::ConfirmPodDelete => {
+                let Some(pod) = self.pending_pod_delete.take() else {
+                    return Task::none();
+                };
+                let (bin, args) = pod_delete_command(&pod);
                 Task::perform(
                     async move {
                         let _ = std::process::Command::new(bin).args(&args).status();
@@ -1919,6 +1970,9 @@ impl VirtualApp {
         if let Some(b) = self.container_delete_banner() {
             banners.push(b);
         }
+        if let Some(b) = self.pod_delete_banner() {
+            banners.push(b);
+        }
         if banners.is_empty() {
             list
         } else {
@@ -1928,6 +1982,44 @@ impl VirtualApp {
             }
             col.push(list).into()
         }
+    }
+
+    /// VIRT-18.b.3: the pod delete-confirmation banner (removes the pod and
+    /// all its containers). `None` when nothing is awaiting confirmation.
+    fn pod_delete_banner(&self) -> Option<Element<'_, Message>> {
+        let pod = self.pending_pod_delete.as_ref()?;
+        let palette = self.tokens.palette;
+        let space = self.tokens.space;
+        let radius = f32::from(self.tokens.radii.md);
+        Some(
+            container(
+                row![
+                    text(format!(
+                        "Delete pod {pod} and all its containers? (`podman pod rm -f`)"
+                    ))
+                    .size(TypeRole::Body.size_in(self.tokens.font_size))
+                    .color(rgba(palette.text))
+                    .width(Length::Fill),
+                    self.simple_button("Delete", Message::ConfirmPodDelete),
+                    self.simple_button("Cancel", Message::CancelPodDelete),
+                ]
+                .align_y(iced::alignment::Vertical::Center)
+                .spacing(f32::from(space.sm)),
+            )
+            .width(Length::Fill)
+            .padding([space.sm, space.lg2])
+            .style(move |_t| container::Style {
+                snap: false,
+                background: Some(Background::Color(rgba(palette.surface))),
+                border: Border {
+                    color: rgba(palette.border),
+                    width: 1.0,
+                    radius: radius.into(),
+                },
+                ..container::Style::default()
+            })
+            .into(),
+        )
     }
 
     /// VIRT-18.b.2: the container delete-confirmation banner, shown while a
@@ -2191,7 +2283,7 @@ impl VirtualApp {
                     col = col.push(self.resource_row(r, show_actions, local, &inv.peer));
                 }
                 for (pod, children) in &pods {
-                    col = col.push(self.pod_header_row(pod));
+                    col = col.push(self.pod_header_row(pod, show_actions));
                     for r in children {
                         col = col.push(row![
                             Space::new().width(Length::Fixed(f32::from(space.lg2))),
@@ -2204,18 +2296,55 @@ impl VirtualApp {
         container(col).width(Length::Fill).into()
     }
 
-    /// VIRT-18.b: a pod grouping header rendered above its indented child
-    /// containers. (Pod-level action buttons land with 18.b's pod actions.)
-    fn pod_header_row(&self, pod: &str) -> Element<'_, Message> {
+    /// VIRT-18.b: a pod grouping header above its indented child containers.
+    /// On the Local tab (`show_actions`) it carries pod-level Start/Stop/
+    /// Delete buttons applying to every child container (VIRT-18.b.3).
+    fn pod_header_row(&self, pod: &str, show_actions: bool) -> Element<'_, Message> {
         let palette = self.tokens.palette;
         let space = self.tokens.space;
-        container(
-            text(format!("\u{25be} Pod: {pod}"))
-                .size(TypeRole::Caption.size_in(self.tokens.font_size))
-                .color(rgba(palette.text_muted)),
-        )
-        .padding([space.xs, space.md])
-        .into()
+        let mut header = row![text(format!("\u{25be} Pod: {pod}"))
+            .size(TypeRole::Caption.size_in(self.tokens.font_size))
+            .color(rgba(palette.text_muted))
+            .width(Length::Fill)]
+        .spacing(f32::from(space.sm))
+        .align_y(iced::alignment::Vertical::Center);
+        if show_actions {
+            header = header
+                .push(self.pod_button(
+                    "Start",
+                    Message::PodLifecycle { pod: pod.to_string(), start: true },
+                ))
+                .push(self.pod_button(
+                    "Stop",
+                    Message::PodLifecycle { pod: pod.to_string(), start: false },
+                ))
+                .push(self.pod_button("Delete", Message::RequestPodDelete(pod.to_string())));
+        }
+        container(header)
+            .width(Length::Fill)
+            .padding([space.xs, space.md])
+            .into()
+    }
+
+    /// A small pod-level action button (VIRT-18.b.3).
+    fn pod_button(&self, label: &str, msg: Message) -> Element<'_, Message> {
+        let palette = self.tokens.palette;
+        let space = self.tokens.space;
+        let radius = f32::from(self.tokens.radii.sm);
+        button(text(label.to_string()).size(TypeRole::Caption.size_in(self.tokens.font_size)))
+            .on_press(msg)
+            .padding([space.xs2, space.xs])
+            .style(move |_t, _status| button::Style {
+                background: Some(Background::Color(rgba(palette.surface))),
+                text_color: rgba(palette.accent),
+                border: Border {
+                    color: rgba(palette.border),
+                    width: 1.0,
+                    radius: radius.into(),
+                },
+                ..button::Style::default()
+            })
+            .into()
     }
 
     fn resource_row(
@@ -2946,6 +3075,34 @@ mod tests {
         assert_eq!(app.pending_container_delete.as_deref(), Some("redis"));
         let _ = app.update(Message::CancelContainerDelete);
         assert!(app.pending_container_delete.is_none());
+    }
+
+    #[test]
+    fn pod_commands_build_argv() {
+        assert_eq!(
+            pod_lifecycle_command("app", true),
+            ("podman", vec!["pod".to_string(), "start".to_string(), "app".to_string()])
+        );
+        assert_eq!(
+            pod_lifecycle_command("app", false),
+            ("podman", vec!["pod".to_string(), "stop".to_string(), "app".to_string()])
+        );
+        assert_eq!(
+            pod_delete_command("app"),
+            (
+                "podman",
+                vec!["pod".to_string(), "rm".to_string(), "-f".to_string(), "app".to_string()]
+            )
+        );
+    }
+
+    #[test]
+    fn pod_delete_confirmation_state() {
+        let mut app = VirtualApp::new();
+        let _ = app.update(Message::RequestPodDelete("app-pod".into()));
+        assert_eq!(app.pending_pod_delete.as_deref(), Some("app-pod"));
+        let _ = app.update(Message::CancelPodDelete);
+        assert!(app.pending_pod_delete.is_none());
     }
 
     #[test]
