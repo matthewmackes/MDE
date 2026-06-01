@@ -67,6 +67,9 @@ pub(crate) struct ContainerEntry {
     pub cpu_pct: f64,
     #[serde(default)]
     pub ram_mb: u64,
+    /// Pod this container belongs to (`""` if standalone). VIRT-18.b.
+    #[serde(default)]
+    pub pod: String,
 }
 
 /// A single peer's compute inventory document.
@@ -119,6 +122,8 @@ pub(crate) struct ResourceRow {
     pub meshfs_available: bool,
     /// Container image ref (empty for VMs).
     pub image: String,
+    /// Pod name for containers (`""` for VMs + standalone containers). VIRT-18.b.
+    pub pod: String,
 }
 
 /// Flatten an inventory's VMs (first) then containers into display rows.
@@ -136,6 +141,7 @@ pub(crate) fn rows_for(inv: &Inventory) -> Vec<ResourceRow> {
             disk_path: vm.disk_path.clone(),
             meshfs_available: vm.meshfs_available,
             image: String::new(),
+            pod: String::new(),
         });
     }
     for c in &inv.containers {
@@ -150,9 +156,30 @@ pub(crate) fn rows_for(inv: &Inventory) -> Vec<ResourceRow> {
             disk_path: String::new(),
             meshfs_available: false,
             image: c.image.clone(),
+            pod: c.pod.clone(),
         });
     }
     out
+}
+
+/// Partition display rows for the grouped Local view (VIRT-18.b): VMs and
+/// pod-less containers stay flat (original order); containers sharing a pod
+/// are grouped under that pod name (groups sorted by name). Returns
+/// `(flat, pod_groups)`.
+pub(crate) fn group_by_pod(
+    rows: &[ResourceRow],
+) -> (Vec<&ResourceRow>, Vec<(String, Vec<&ResourceRow>)>) {
+    use std::collections::BTreeMap;
+    let mut flat = Vec::new();
+    let mut pods: BTreeMap<String, Vec<&ResourceRow>> = BTreeMap::new();
+    for r in rows {
+        if r.kind == ResourceKind::Container && !r.pod.is_empty() {
+            pods.entry(r.pod.clone()).or_default().push(r);
+        } else {
+            flat.push(r);
+        }
+    }
+    (flat, pods.into_iter().collect())
 }
 
 /// True when a libvirt/podman state string reads as actively running.
@@ -384,12 +411,18 @@ pub(crate) fn parse_podman_ps_local(stdout: &str) -> Vec<ContainerEntry> {
             if name.is_empty() {
                 return None;
             }
+            let pod = row
+                .get("PodName")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             Some(ContainerEntry {
                 name,
                 image,
                 state,
                 cpu_pct: 0.0,
                 ram_mb: 0,
+                pod,
             })
         })
         .collect()
@@ -2070,12 +2103,38 @@ impl VirtualApp {
             if rows.is_empty() {
                 col = col.push(self.muted_line("No VMs or containers."));
             } else {
-                for r in &rows {
+                // VIRT-18.b: VMs + standalone containers render flat; pods
+                // get a header with their child containers indented beneath.
+                let (flat, pods) = group_by_pod(&rows);
+                for r in &flat {
                     col = col.push(self.resource_row(r, show_actions, local, &inv.peer));
+                }
+                for (pod, children) in &pods {
+                    col = col.push(self.pod_header_row(pod));
+                    for r in children {
+                        col = col.push(row![
+                            Space::new().width(Length::Fixed(f32::from(space.lg2))),
+                            self.resource_row(r, show_actions, local, &inv.peer),
+                        ]);
+                    }
                 }
             }
         }
         container(col).width(Length::Fill).into()
+    }
+
+    /// VIRT-18.b: a pod grouping header rendered above its indented child
+    /// containers. (Pod-level action buttons land with 18.b's pod actions.)
+    fn pod_header_row(&self, pod: &str) -> Element<'_, Message> {
+        let palette = self.tokens.palette;
+        let space = self.tokens.space;
+        container(
+            text(format!("\u{25be} Pod: {pod}"))
+                .size(TypeRole::Caption.size_in(self.tokens.font_size))
+                .color(rgba(palette.text_muted)),
+        )
+        .padding([space.xs, space.md])
+        .into()
     }
 
     fn resource_row(
@@ -2724,6 +2783,41 @@ mod tests {
         assert_eq!(human_size(512), "512 B");
         assert_eq!(human_size(2048), "2.0 KB");
         assert_eq!(human_size(1_500_000), "1.4 MB");
+    }
+
+    fn pod_test_row(name: &str, kind: ResourceKind, pod: &str) -> ResourceRow {
+        ResourceRow {
+            id: String::new(),
+            name: name.to_string(),
+            kind,
+            state: "running".to_string(),
+            cpu_pct: 0.0,
+            ram_mb: 0,
+            nebula_ip: String::new(),
+            disk_path: String::new(),
+            meshfs_available: false,
+            image: String::new(),
+            pod: pod.to_string(),
+        }
+    }
+
+    #[test]
+    fn group_by_pod_partitions_vms_and_pods() {
+        let rows = vec![
+            pod_test_row("web", ResourceKind::Vm, ""),
+            pod_test_row("db", ResourceKind::Container, "app-pod"),
+            pod_test_row("cache", ResourceKind::Container, "app-pod"),
+            pod_test_row("standalone", ResourceKind::Container, ""),
+        ];
+        let (flat, pods) = group_by_pod(&rows);
+        // VM + standalone container stay flat, in order.
+        assert_eq!(flat.len(), 2);
+        assert_eq!(flat[0].name, "web");
+        assert_eq!(flat[1].name, "standalone");
+        // One pod group carrying both members.
+        assert_eq!(pods.len(), 1);
+        assert_eq!(pods[0].0, "app-pod");
+        assert_eq!(pods[0].1.len(), 2);
     }
 
     #[test]

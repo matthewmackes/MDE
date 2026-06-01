@@ -87,6 +87,10 @@ pub struct ContainerEntry {
     pub cpu_pct: f64,
     /// Used memory in MiB (parsed from `MemUsage`'s "512MiB / 16GiB").
     pub ram_mb: u64,
+    /// Pod this container belongs to (`""` when standalone). VIRT-18.b —
+    /// `#[serde(default)]` so pre-pod inventory still deserializes.
+    #[serde(default)]
+    pub pod: String,
 }
 
 /// Top-level inventory document published per tick.
@@ -249,6 +253,11 @@ pub fn parse_podman_ps_json(stdout: &str) -> Vec<ContainerEntry> {
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
+            let pod = row
+                .get("PodName")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             Some(ContainerEntry {
                 id,
                 name,
@@ -256,6 +265,7 @@ pub fn parse_podman_ps_json(stdout: &str) -> Vec<ContainerEntry> {
                 image,
                 cpu_pct: 0.0,
                 ram_mb: 0,
+                pod,
             })
         })
         .collect()
@@ -863,6 +873,15 @@ mod tests {
         assert_eq!(v[0].name, "mediasoup");
         assert_eq!(v[0].image, "ghcr.io/mde/mediasoup:latest");
         assert_eq!(v[0].state, "running");
+        assert_eq!(v[0].pod, ""); // no PodName ⇒ standalone
+    }
+
+    #[test]
+    fn parse_podman_ps_reads_pod_name() {
+        let json = r#"[{"Id":"c1","Names":["db"],"Image":"postgres","State":"running","PodName":"app-pod"}]"#;
+        let v = parse_podman_ps_json(json);
+        assert_eq!(v.len(), 1);
+        assert_eq!(v[0].pod, "app-pod");
     }
 
     #[test]
@@ -920,6 +939,7 @@ mod tests {
             image: "ghcr.io/example/img:latest".into(),
             cpu_pct: 0.0,
             ram_mb: 256,
+            pod: String::new(),
         }
     }
 
