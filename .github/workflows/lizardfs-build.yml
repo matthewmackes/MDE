@@ -35,7 +35,7 @@ env:
 
 jobs:
   build:
-    name: Build LizardFS ${{ env.LIZARDFS_TAG }}
+    name: Build LizardFS 3.13.0-rc2  # literal: the `env` context isn't available in jobs.<id>.name
     runs-on: ubuntu-latest
     container:
       image: fedora:44
