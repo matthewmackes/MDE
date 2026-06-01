@@ -1106,7 +1106,8 @@ fn main() -> anyhow::Result<()> {
         Cmd::DiscoverMdns => {
             use mackesd_core::surrounding_hosts::{
                 arp_neigh_map, classify, collect_mdns, enrich_hosts, hosts_from_mdns,
-                load_system_oui, refine_unknown_with_http, reverse_dns, HostSignals,
+                load_system_oui, refine_unknown_with_http, refine_unknown_with_nmap_os,
+                reverse_dns, HostSignals,
             };
             let now_ms = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -1134,6 +1135,9 @@ fn main() -> anyhow::Result<()> {
             let mut hosts = enrich_hosts(hosts, &arp_neigh_map(), &load_system_oui());
             // MESH-A-4.c.3 — HTTP-banner refine for still-Unknown hosts.
             refine_unknown_with_http(&mut hosts);
+            // MESH-A-4.c.3.b — active nmap -O fingerprint, last-resort
+            // refine for hosts still Unknown after the HTTP banner.
+            refine_unknown_with_nmap_os(&mut hosts);
             for host in &hosts {
                 println!("{}", serde_json::to_string(host)?);
             }

@@ -25,7 +25,8 @@ use mde_bus::persist::Persist;
 
 use crate::surrounding_hosts::{
     arp_neigh_map, classify, collect_mdns, enrich_hosts, hosts_from_mdns, load_system_oui,
-    refine_unknown_with_http, reverse_dns, HostSignals, SurroundingHost,
+    refine_unknown_with_http, refine_unknown_with_nmap_os, reverse_dns, HostSignals,
+    SurroundingHost,
 };
 use crate::workers::netassess::{snapshot_filename, trim_older_than};
 
@@ -98,6 +99,9 @@ impl SurroundingWorker {
         }
         let mut hosts = enrich_hosts(hosts, &arp_neigh_map(), &load_system_oui());
         refine_unknown_with_http(&mut hosts);
+        // MESH-A-4.c.3.b — active nmap -O fingerprint for hosts still
+        // Unknown after the HTTP-banner refine (privileged, HW-gated).
+        refine_unknown_with_nmap_os(&mut hosts);
         hosts
     }
 

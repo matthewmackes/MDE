@@ -703,6 +703,104 @@ pub fn refine_unknown_with_http(hosts: &mut [SurroundingHost]) {
     }
 }
 
+/// Parse nmap's `Device type:` line from `nmap -O` output. nmap prints
+/// at most one such line (values `|`-separated when ambiguous, e.g.
+/// `general purpose|router`); returns the raw value, `None` when absent
+/// or empty. Case-insensitive on the key. Pure half of
+/// [`nmap_os_fingerprint`].
+#[must_use]
+pub fn parse_nmap_device_type(stdout: &str) -> Option<String> {
+    for line in stdout.lines() {
+        if let Some((name, value)) = line.split_once(':') {
+            if name.trim().eq_ignore_ascii_case("device type") {
+                let v = value.trim();
+                if !v.is_empty() {
+                    return Some(v.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Map an nmap `Device type:` value to a host type (MESH-A-4.c.3.b).
+/// nmap's device-type taxonomy lines up closely with [`HostType`]; the
+/// generic `general purpose` class can't distinguish computer vs server
+/// → `None`. The value may carry several `|`-separated guesses — the
+/// first specific match wins (the scan stops early), so e.g. `general
+/// purpose|router` resolves to [`HostType::Router`].
+#[must_use]
+pub fn host_type_from_nmap_device_type(device_type: &str) -> Option<HostType> {
+    let s = device_type.to_ascii_lowercase();
+    if s.contains("printer") {
+        return Some(HostType::Printer);
+    }
+    if s.contains("webcam") || s.contains("camera") {
+        return Some(HostType::Camera);
+    }
+    if s.contains("storage") {
+        return Some(HostType::Nas);
+    }
+    if s.contains("wap") || s.contains("access point") {
+        return Some(HostType::Ap);
+    }
+    if s.contains("switch") || s.contains("bridge") {
+        return Some(HostType::Switch);
+    }
+    if s.contains("broadband router") || s.contains("router") || s.contains("gateway") {
+        return Some(HostType::Router);
+    }
+    if s.contains("game console") {
+        return Some(HostType::GameConsole);
+    }
+    if s.contains("media device") {
+        return Some(HostType::TvCast);
+    }
+    if s.contains("phone") {
+        return Some(HostType::Phone);
+    }
+    // "general purpose" (and anything unrecognised) is too weak to pin a
+    // computer-vs-server distinction — leave the host Unknown.
+    None
+}
+
+/// Active OS / TCP-IP fingerprint of `<ip>` via `nmap -O` (MESH-A-4.c.3.b).
+/// Privileged — nmap's OS detection needs root; `-Pn` since the host is
+/// already known up from the mDNS/ARP sweep, `--osscan-guess` to coax a
+/// class from partial matches. Returns the parsed `Device type:` value;
+/// `None` when nmap is absent, unprivileged, or yields no device type.
+/// HW-bench-gated shell-out; the pure half is [`parse_nmap_device_type`].
+#[must_use]
+pub fn nmap_os_fingerprint(ip: &str) -> Option<String> {
+    let out = Command::new("nmap")
+        .args(["-O", "-Pn", "--osscan-guess", ip])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    parse_nmap_device_type(&String::from_utf8_lossy(&out.stdout))
+}
+
+/// Refine still-[`HostType::Unknown`] hosts with an active `nmap -O`
+/// fingerprint (MESH-A-4.c.3.b). Probes only Unknown hosts — the same
+/// bound the HTTP enricher uses — since `nmap -O` is privileged + slow;
+/// a confident mDNS / hostname / vendor / HTTP type is left alone. The
+/// shell-out is HW-bench-gated; the pure mapping is
+/// [`host_type_from_nmap_device_type`].
+pub fn refine_unknown_with_nmap_os(hosts: &mut [SurroundingHost]) {
+    for host in hosts.iter_mut() {
+        if host.host_type != HostType::Unknown {
+            continue;
+        }
+        if let Some(dt) = nmap_os_fingerprint(&host.ip) {
+            if let Some(t) = host_type_from_nmap_device_type(&dt) {
+                host.host_type = t;
+            }
+        }
+    }
+}
+
 /// One coalesced surrounding-host card (R8-Q14) — the union of every
 /// peer's sighting of a single host identity.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -1583,6 +1681,47 @@ mod tests {
         // Generic web servers say nothing about device type.
         assert_eq!(host_type_from_http_server("nginx/1.24"), None);
         assert_eq!(host_type_from_http_server("Apache/2.4.57"), None);
+    }
+
+    // ── MESH-A-4.c.3.b: active nmap -O fingerprint ──
+
+    #[test]
+    fn parse_nmap_device_type_extracts_case_insensitive() {
+        let out = "Nmap scan report for 10.0.0.5\nDEVICE TYPE: printer\nRunning: HP embedded\n";
+        assert_eq!(parse_nmap_device_type(out).as_deref(), Some("printer"));
+        // Ambiguous multi-guess values are returned verbatim (the mapping
+        // resolves them below).
+        let multi = "Device type: general purpose|router\nRunning: Linux 4.X\n";
+        assert_eq!(
+            parse_nmap_device_type(multi).as_deref(),
+            Some("general purpose|router")
+        );
+        // No device-type line, and an empty value, both → None.
+        assert_eq!(parse_nmap_device_type("Running: Linux 5.X\n"), None);
+        assert_eq!(parse_nmap_device_type("Device type:   \n"), None);
+    }
+
+    #[test]
+    fn host_type_from_nmap_device_type_maps_classes() {
+        assert_eq!(host_type_from_nmap_device_type("printer"), Some(HostType::Printer));
+        assert_eq!(host_type_from_nmap_device_type("router"), Some(HostType::Router));
+        assert_eq!(host_type_from_nmap_device_type("WAP"), Some(HostType::Ap));
+        assert_eq!(host_type_from_nmap_device_type("switch"), Some(HostType::Switch));
+        assert_eq!(host_type_from_nmap_device_type("webcam"), Some(HostType::Camera));
+        assert_eq!(host_type_from_nmap_device_type("storage-misc"), Some(HostType::Nas));
+        assert_eq!(host_type_from_nmap_device_type("media device"), Some(HostType::TvCast));
+        assert_eq!(
+            host_type_from_nmap_device_type("game console"),
+            Some(HostType::GameConsole)
+        );
+        assert_eq!(host_type_from_nmap_device_type("phone"), Some(HostType::Phone));
+        // First specific match wins across `|`-separated guesses.
+        assert_eq!(
+            host_type_from_nmap_device_type("general purpose|router"),
+            Some(HostType::Router)
+        );
+        // The generic class alone is too weak to pin a type → Unknown.
+        assert_eq!(host_type_from_nmap_device_type("general purpose"), None);
     }
 
     // ── MESH-A-4.c.4: coalescing + union reader ──
