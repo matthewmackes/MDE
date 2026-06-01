@@ -1255,13 +1255,14 @@ systemctl daemon-reload || :
 # mde-install's start_services step runs, whichever is first.
 # Phase 12.1 — mackesd store init is idempotent (migrate on start).
 systemctl enable mackesd.service 2>/dev/null || :
-# MESHFS-1.1 (v5.0.0) — LizardFS daemons for the mesh-storage volume.
-# mfschunkserver: per-peer chunk storage.
-# mfsmaster (shadow mode): metadata shadow on every non-genesis peer;
-#   the meshfs_worker determines whether this peer is genesis-active-master
-#   or shadow, so enabling here is idempotent and safe on all peers.
-systemctl enable mfschunkserver.service 2>/dev/null || :
-systemctl enable mfsmaster.service 2>/dev/null || :
+# MESHFS-2.1 (v5.0.0) — the LizardFS daemons (mfsmaster / mfschunkserver)
+# are NOT systemd-managed: meshfs_worker (in mackesd) writes their config
+# and starts them directly (`mfsmaster start`, `mfschunkserver start`,
+# shadow via `mfsmaster -a`), deciding genesis-active-master vs shadow per
+# peer at runtime. There are deliberately no mfs*.service units to enable —
+# mackesd.service (enabled above) is the single entry point that brings the
+# mesh-storage substrate up. (The 2026-05-30 MESHFS-1.1 close wrongly
+# claimed %post enabled mfs*.service units; those never existed.)
 # MON-1 (v2.6) — netdata for the apply_netdata_monitor birthright
 # step (bound to 127.0.0.1 until birthright writes the overlay bind).
 systemctl enable netdata.service 2>/dev/null || :
