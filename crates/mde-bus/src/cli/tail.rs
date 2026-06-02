@@ -73,7 +73,23 @@ pub fn format_line(msg: &StoredMessage) -> String {
         .lines()
         .next()
         .unwrap_or("");
-    format!("{}  {}  {}  {}", msg.ulid, msg.topic, msg.priority, summary)
+    // BUS-2.7 — surface action buttons inline so an operator tailing the
+    // bus sees them (the notification UI renders them as clickable buttons).
+    let actions = if msg.actions.is_empty() {
+        String::new()
+    } else {
+        let list = msg
+            .actions
+            .iter()
+            .map(|a| format!("{}→{}", a.label, a.url))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("  [{list}]")
+    };
+    format!(
+        "{}  {}  {}  {}{}",
+        msg.ulid, msg.topic, msg.priority, summary, actions
+    )
 }
 
 /// Resolve the pattern against the topic registry, returning
@@ -200,6 +216,7 @@ mod tests {
             body: Some("Body".to_string()),
             ts_unix_ms: 0,
             file_path: "t/x/01ABCDE.json".to_string(),
+            actions: Vec::new(),
         };
         let line = format_line(&m);
         assert!(line.contains("01ABCDE"));
@@ -219,10 +236,31 @@ mod tests {
             body: Some("the body line\nsecond line".to_string()),
             ts_unix_ms: 0,
             file_path: "t/x/01ABCDE.json".to_string(),
+            actions: Vec::new(),
         };
         let line = format_line(&m);
         assert!(line.contains("the body line"));
         assert!(!line.contains("second line"));
+    }
+
+    #[test]
+    fn format_line_appends_actions() {
+        let m = StoredMessage {
+            ulid: "01ACT".to_string(),
+            topic: "t/x".to_string(),
+            priority: "default".to_string(),
+            title: Some("Conflict".to_string()),
+            body: None,
+            ts_unix_ms: 0,
+            file_path: "t/x/01ACT.json".to_string(),
+            actions: vec![crate::persist::Action {
+                label: "Resolve".to_string(),
+                url: "mde://files/resolve".to_string(),
+            }],
+        };
+        let line = format_line(&m);
+        assert!(line.contains("Conflict"));
+        assert!(line.contains("Resolve→mde://files/resolve"));
     }
 
     #[test]
@@ -235,6 +273,7 @@ mod tests {
             body: Some("body".to_string()),
             ts_unix_ms: 1_700_000_000_000,
             file_path: "fleet/announce/01J0AAA.json".to_string(),
+            actions: Vec::new(),
         };
         let json = format_emit(&m, true);
         let parsed: StoredMessage = serde_json::from_str(&json).unwrap();
@@ -251,6 +290,7 @@ mod tests {
             body: None,
             ts_unix_ms: 0,
             file_path: "p".to_string(),
+            actions: Vec::new(),
         };
         assert_eq!(format_emit(&m, false), format_line(&m));
     }

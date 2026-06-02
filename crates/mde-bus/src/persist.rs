@@ -50,6 +50,18 @@ pub const DEFAULT_BUS_ROOT: &str = "~/.local/share/mde/bus";
 /// re-audited (the cycle guard in [`Persist::write`]).
 pub const AUDIT_TOPIC_PREFIX: &str = "audit/";
 
+/// BUS-2.7 — a single notification action button: a `label` the
+/// notification surface renders, and a `url` (typically `mde://…`)
+/// dispatched via `mde-open` when the operator clicks it.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Action {
+    /// Button label the notification surface renders (e.g. "Resolve").
+    pub label: String,
+    /// Target URL — an `mde://…` deep-link dispatched through `mde-open`,
+    /// or an `http(s)://` link opened in the browser.
+    pub url: String,
+}
+
 /// One row of the index + the on-disk file pointer.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct StoredMessage {
@@ -75,6 +87,11 @@ pub struct StoredMessage {
     /// Path relative to `bus_root`. The on-disk JSON file lives
     /// at `bus_root.join(file_path)`.
     pub file_path: String,
+    /// BUS-2.7 — optional action buttons (≤5, `v6.x-mackes-bus.md` §9).
+    /// `#[serde(default)]` keeps pre-2.7 messages (no field on disk)
+    /// deserializing to an empty vec — no migration, full backward-compat.
+    #[serde(default)]
+    pub actions: Vec<Action>,
 }
 
 /// Errors surfaced by [`Persist`] operations.
@@ -150,6 +167,21 @@ impl Persist {
         title: Option<&str>,
         body: Option<&str>,
     ) -> Result<StoredMessage, PersistError> {
+        self.write_with_actions(topic, priority, title, body, &[])
+    }
+
+    /// BUS-2.7 — append a notification carrying optional action buttons
+    /// (≤5, `v6.x-mackes-bus.md` §9). The `actions` persist in the on-disk
+    /// JSON; the SQLite index stays a query layer. Empty `actions` is
+    /// equivalent to [`Persist::write`].
+    pub fn write_with_actions(
+        &self,
+        topic: &str,
+        priority: Priority,
+        title: Option<&str>,
+        body: Option<&str>,
+        actions: &[Action],
+    ) -> Result<StoredMessage, PersistError> {
         validate_topic(topic)?;
 
         // ULID carries the timestamp + a random tail; monotonic
@@ -179,6 +211,7 @@ impl Persist {
             body: body.map(String::from),
             ts_unix_ms,
             file_path: rel_path,
+            actions: actions.to_vec(),
         };
 
         // Write JSON atomically. tmp-then-rename so a crash mid-
@@ -471,6 +504,10 @@ fn row_to_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredMessage> {
         body: row.get(4)?,
         ts_unix_ms: row.get(5)?,
         file_path: row.get(6)?,
+        // BUS-2.7: the SQLite index is a query layer and does not carry
+        // actions; the full message (incl. actions) lives in the on-disk
+        // JSON at `file_path`, which consumers read when they render.
+        actions: Vec::new(),
     })
 }
 

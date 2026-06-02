@@ -46,6 +46,12 @@ pub struct PublishArgs {
     /// Priority — one of `min` / `default` / `high` / `urgent`.
     #[arg(long, default_value = "default")]
     pub priority: String,
+    /// BUS-2.7 — action button(s) as `LABEL=URL` (repeatable, ≤5). The
+    /// URL (typically `mde://…`) is dispatched via `mde-open` when the
+    /// button is clicked in the notification UI. Malformed entries (no
+    /// `=`) are skipped.
+    #[arg(long = "action", value_name = "LABEL=URL")]
+    pub actions: Vec<String>,
     /// Persist-only mode — skip the broker POST entirely. Useful
     /// for offline message recording or for tests.
     #[arg(long)]
@@ -148,8 +154,9 @@ pub async fn run(args: PublishArgs) -> Result<()> {
         None => default_bus_root()?,
     };
     let persist = Persist::open(bus_root).context("open persist")?;
+    let actions = parse_actions(&args.actions);
     let stored = persist
-        .write(&args.topic, priority, args.title.as_deref(), Some(&body))
+        .write_with_actions(&args.topic, priority, args.title.as_deref(), Some(&body), &actions)
         .with_context(|| format!("persist publish {} → {}", args.topic, args.topic))?;
 
     if args.json {
@@ -203,6 +210,22 @@ pub async fn run(args: PublishArgs) -> Result<()> {
     }
 }
 
+/// BUS-2.7 — parse `LABEL=URL` action specs (from `--action`) into
+/// [`crate::persist::Action`]s. Splits on the first `=`; entries without
+/// a `=` are skipped (lenient — a malformed spec drops rather than aborts
+/// the publish). Labels + URLs are trimmed.
+pub(crate) fn parse_actions(specs: &[String]) -> Vec<crate::persist::Action> {
+    specs
+        .iter()
+        .filter_map(|s| {
+            s.split_once('=').map(|(label, url)| crate::persist::Action {
+                label: label.trim().to_string(),
+                url: url.trim().to_string(),
+            })
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -235,6 +258,22 @@ mod tests {
     }
 
     #[test]
+    fn parse_actions_splits_label_url_and_skips_malformed() {
+        let specs = vec![
+            "Resolve=mde://files/resolve".to_string(),
+            "  View = https://x/y  ".to_string(), // trimmed
+            "no-equals-sign".to_string(),         // skipped (no '=')
+        ];
+        let actions = parse_actions(&specs);
+        assert_eq!(actions.len(), 2);
+        assert_eq!(actions[0].label, "Resolve");
+        assert_eq!(actions[0].url, "mde://files/resolve");
+        assert_eq!(actions[1].label, "View");
+        assert_eq!(actions[1].url, "https://x/y");
+        assert!(parse_actions(&[]).is_empty());
+    }
+
+    #[test]
     fn parse_priority_accepts_all_four_levels() {
         assert_eq!(parse_priority("min").unwrap(), Priority::Min);
         assert_eq!(parse_priority("default").unwrap(), Priority::Default);
@@ -260,6 +299,7 @@ mod tests {
             bus_root: Some(tmp.path().to_path_buf()),
             broker_url: None,
             json: false,
+            actions: Vec::new(),
         };
         run(args).await.unwrap();
         // Verify Persist stored the message.
