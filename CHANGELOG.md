@@ -36,6 +36,8 @@ unreleased; tag versions get a date when they ship.
 - **Album pages:** click an album (in the library or a search result) to
   open its track list — Play, Shuffle, or Add the whole album to the
   queue, and play-next or queue any individual track.
+- **Browse by genre:** the Genres tile lists your library's genres; open
+  one to see its albums, then open an album to play it.
 
 **KVM + Podman mesh-native compute — `mde-virtual` app (2026-05-31)**
 - A new **Virtual** app manages the KVM virtual machines and Podman

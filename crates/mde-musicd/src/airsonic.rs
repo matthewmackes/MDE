@@ -75,6 +75,18 @@ pub struct Artist {
     pub album_count: u32,
 }
 
+/// A genre row from `getGenres` (its `value` is also its id for
+/// `getAlbumList2?type=byGenre&genre=<value>`).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, Deserialize)]
+pub struct Genre {
+    #[serde(rename = "value")]
+    pub name: String,
+    #[serde(default, rename = "albumCount")]
+    pub album_count: u32,
+    #[serde(default, rename = "songCount")]
+    pub song_count: u32,
+}
+
 /// An album row from `getAlbumList2` / `search3`.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, Deserialize)]
 pub struct Album {
@@ -309,6 +321,35 @@ impl Client {
         let inner = self.get("getAlbum", &[("id", id)]).await?;
         parse_album_detail(&inner)
     }
+
+    /// `getGenres` — the server's genre list (AIR-13 genre tiles).
+    ///
+    /// # Errors
+    /// Transport / API / parse failures.
+    pub async fn get_genres(&self) -> Result<Vec<Genre>, AirsonicError> {
+        let inner = self.get("getGenres", &[]).await?;
+        Ok(parse_genres(&inner))
+    }
+
+    /// `getAlbumList2?type=byGenre&genre=<g>` — the albums in one genre
+    /// (the AIR-13 genre page).
+    ///
+    /// # Errors
+    /// Transport / API / parse failures.
+    pub async fn get_albums_by_genre(
+        &self,
+        genre: &str,
+        size: u32,
+    ) -> Result<Vec<Album>, AirsonicError> {
+        let size = size.to_string();
+        let inner = self
+            .get(
+                "getAlbumList2",
+                &[("type", "byGenre"), ("genre", genre), ("size", &size)],
+            )
+            .await?;
+        Ok(parse_album_list2(&inner))
+    }
 }
 
 // ───────────────────────── pure parse helpers ─────────────────────────
@@ -438,6 +479,21 @@ pub fn parse_album_detail(inner: &Value) -> Result<AlbumDetail, AirsonicError> {
     Ok(AlbumDetail { album, songs })
 }
 
+/// Parse `getGenres` → `genres.genre[]`.
+#[must_use]
+pub fn parse_genres(inner: &Value) -> Vec<Genre> {
+    inner
+        .get("genres")
+        .and_then(|g| g.get("genre"))
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|g| serde_json::from_value(g.clone()).ok())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// Minimal percent-encoding for query values (space + the reserved
 /// chars that break a Subsonic query). Avoids a `url`/`percent-encoding`
 /// dep for the handful of chars that actually occur in ids + search
@@ -542,6 +598,20 @@ mod tests {
         assert_eq!(d.songs[1].track, Some(2));
         // A missing `album` object is a parse error.
         assert!(parse_album_detail(&json!({"nope": 1})).is_err());
+    }
+
+    #[test]
+    fn parse_genres_reads_list() {
+        let inner = json!({"genres": {"genre": [
+            {"value": "Jazz", "albumCount": 12, "songCount": 140},
+            {"value": "Rock", "albumCount": 30}
+        ]}});
+        let g = parse_genres(&inner);
+        assert_eq!(g.len(), 2);
+        assert_eq!(g[0].name, "Jazz");
+        assert_eq!(g[0].album_count, 12);
+        assert_eq!(g[1].name, "Rock");
+        assert!(parse_genres(&json!({"nope": 1})).is_empty());
     }
 
     #[test]

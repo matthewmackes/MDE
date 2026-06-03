@@ -95,6 +95,8 @@ enum Message {
     /// Open an album / artist result (navigates the breadcrumb).
     OpenAlbum(String, String),
     OpenArtist(String, String),
+    /// Open a genre page (loads the genre's albums).
+    OpenGenre(String),
     /// Add a song result to the queue; the reply closes the sheet.
     EnqueueSong(String),
     SearchEnqueued(Result<(), String>),
@@ -278,6 +280,17 @@ impl State {
                 self.dismiss_search();
                 Task::none()
             }
+            Message::OpenGenre(genre) => {
+                self.nav.push(Route::Genre(genre.clone()));
+                self.dismiss_search();
+                self.items.clear();
+                self.load_error = None;
+                self.loading = true;
+                Task::perform(library::fetch_albums_by_genre(genre), |r| match r {
+                    Ok(items) => Message::ItemsLoaded(items),
+                    Err(e) => Message::ItemsFailed(e),
+                })
+            }
             Message::EnqueueSong(id) => Task::perform(search::enqueue(id), Message::SearchEnqueued),
             Message::SearchEnqueued(result) => {
                 match result {
@@ -437,10 +450,13 @@ impl State {
                     for item in &self.items {
                         let mut btn = button(text(item.label.clone()));
                         btn = match route {
-                            Route::Category(HubCard::Albums) => btn
+                            Route::Category(HubCard::Albums) | Route::Genre(_) => btn
                                 .on_press(Message::OpenAlbum(item.id.clone(), item.label.clone())),
                             Route::Category(HubCard::Artists) => btn
                                 .on_press(Message::OpenArtist(item.id.clone(), item.label.clone())),
+                            Route::Category(HubCard::Genres) => {
+                                btn.on_press(Message::OpenGenre(item.label.clone()))
+                            }
                             _ => btn,
                         };
                         col = col.push(btn);

@@ -26,6 +26,7 @@ pub fn verb_for(card: HubCard) -> Option<&'static str> {
     match card {
         HubCard::Albums => Some("list-albums"),
         HubCard::Artists => Some("list-artists"),
+        HubCard::Genres => Some("list-genres"),
         _ => None,
     }
 }
@@ -45,7 +46,17 @@ pub fn parse_items(reply_json: &str) -> Vec<LibraryItem> {
         Some(r) => r,
         None => return Vec::new(),
     };
-    // Try each section; the first present one wins (a verb returns one).
+    // Genres carry no `id` — the genre name (`value`) is both id + label.
+    if let Some(arr) = result.get("genres").and_then(serde_json::Value::as_array) {
+        return arr
+            .iter()
+            .filter_map(|g| {
+                let value = g.get("value").and_then(serde_json::Value::as_str)?;
+                Some(LibraryItem { id: value.to_string(), label: value.to_string() })
+            })
+            .collect();
+    }
+    // Try each id/label section; the first present one wins (a verb returns one).
     for (section, label_key) in [("albums", "name"), ("artists", "name"), ("songs", "title")] {
         if let Some(arr) = result.get(section).and_then(serde_json::Value::as_array) {
             return arr
@@ -90,6 +101,37 @@ pub async fn fetch(verb: &'static str) -> Result<Vec<LibraryItem>, String> {
                 mde_bus::hooks::config::Priority::Default,
                 None,
                 None,
+                Duration::from_secs(5),
+            ))
+            .map_err(|e| format!("daemon not responding ({e})"))?;
+        Ok(parse_items(reply.body.as_deref().unwrap_or("")))
+    })
+    .await
+    .map_err(|e| format!("fetch task join error: {e}"))?
+}
+
+/// Fetch the albums in a genre over the Bus (`action/music/albums-by-genre`,
+/// the genre name in the body). The rows render like the album grid
+/// (click → album page).
+///
+/// # Errors
+/// Bus-store / request / timeout failures (daemon not running).
+pub async fn fetch_albums_by_genre(genre: String) -> Result<Vec<LibraryItem>, String> {
+    tokio::task::spawn_blocking(move || -> Result<Vec<LibraryItem>, String> {
+        let bus_root = mde_bus::default_data_dir().ok_or_else(|| "no Bus data dir".to_string())?;
+        let persist =
+            mde_bus::persist::Persist::open(bus_root).map_err(|e| format!("Bus store: {e}"))?;
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|e| e.to_string())?;
+        let reply = rt
+            .block_on(mde_bus::rpc::request(
+                &persist,
+                "action/music/albums-by-genre",
+                mde_bus::hooks::config::Priority::Default,
+                None,
+                Some(&genre),
                 Duration::from_secs(5),
             ))
             .map_err(|e| format!("daemon not responding ({e})"))?;
@@ -146,5 +188,17 @@ mod tests {
     fn label_falls_back_to_id_when_missing() {
         let reply = r#"{"ok":true,"result":{"albums":[{"id":"only-id"}]}}"#;
         assert_eq!(parse_items(reply)[0].label, "only-id");
+    }
+
+    #[test]
+    fn parse_genres_section_uses_value_as_id_and_label() {
+        // The daemon's list-genres reply flattens to result.genres = [...].
+        let reply = r#"{"ok":true,"result":{"genres":[
+            {"value":"Jazz","albumCount":12},{"value":"Rock"}
+        ]}}"#;
+        let items = parse_items(reply);
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0], LibraryItem { id: "Jazz".into(), label: "Jazz".into() });
+        assert_eq!(items[1].label, "Rock");
     }
 }

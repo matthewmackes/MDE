@@ -25,6 +25,8 @@ pub enum Route {
     Artist(String, String),
     /// A specific album page (id, display name).
     Album(String, String),
+    /// A genre page — the albums in one genre (the genre name).
+    Genre(String),
     /// A search-results page for a query.
     Search(String),
 }
@@ -37,6 +39,7 @@ impl Route {
             Self::Hub => ROOT_LABEL.to_string(),
             Self::Category(c) => c.label().to_string(),
             Self::Artist(_, name) | Self::Album(_, name) => name.clone(),
+            Self::Genre(g) => g.clone(),
             Self::Search(q) => format!("Search: {q}"),
         }
     }
