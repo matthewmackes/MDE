@@ -8,3 +8,4 @@
 pub mod hub;
 pub mod library;
 pub mod nav;
+pub mod search;

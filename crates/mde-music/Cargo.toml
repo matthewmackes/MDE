@@ -28,7 +28,9 @@ mde-bus    = { path = "../mde-bus" }
 serde_json = "1"
 # AIR-10.b — the Bus round-trip runs in spawn_blocking (Persist/rusqlite
 # isn't Send, so it can't cross Iced's multi-thread Task executor).
-tokio      = { version = "1", features = ["rt", "rt-multi-thread"] }
+# AIR-14 — `time` powers the 250 ms search debounce (tokio::time::sleep,
+# which runs on Iced's tokio executor).
+tokio      = { version = "1", features = ["rt", "rt-multi-thread", "time"] }
 
 [lints]
 workspace = true

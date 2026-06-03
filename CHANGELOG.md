@@ -29,6 +29,10 @@ unreleased; tag versions get a date when they ship.
   player install with `mde-desktop`, and a systemd **user** unit starts
   the daemon in every graphical session — so playback, the media-key /
   MPRIS surface, and Bus control are live at login with no manual setup.
+- **Search the library:** the player gains a top-bar search field
+  (focus with Cmd/Ctrl-F) that finds artists, albums, and songs as you
+  type; click an artist or album to jump straight to it, or a song to
+  add it to the queue. Esc dismisses.
 
 **KVM + Podman mesh-native compute — `mde-virtual` app (2026-05-31)**
 - A new **Virtual** app manages the KVM virtual machines and Podman
