@@ -80,6 +80,9 @@ struct State {
     album_art: Option<image::Handle>,
     /// AIR-11.b — the persisted library-grid sort order.
     sort: SortKey,
+    /// AIR-11.c — last-known window width (tracked via the WindowResized
+    /// subscription); the library grid derives its column count from it.
+    grid_width: f32,
 }
 
 #[derive(Debug, Clone)]
@@ -92,6 +95,8 @@ enum Message {
     ItemsLoaded(Vec<LibraryItem>),
     /// A category fetch failed (daemon down / no server).
     ItemsFailed(String),
+    /// AIR-11.c — the window resized; updates the adaptive-grid column count.
+    WindowResized(f32),
     /// First-run form field edits.
     UrlChanged(String),
     UserChanged(String),
@@ -175,6 +180,7 @@ impl State {
             album_text_color: (255, 255, 255),
             album_art: None,
             sort: prefs::load().sort,
+            grid_width: 1100.0,
         }
     }
 
@@ -353,6 +359,10 @@ impl State {
             Message::PlayPlaylist(id) => {
                 Task::perform(album::play_playlist(id), Message::AlbumActionDone)
             }
+            Message::WindowResized(w) => {
+                self.grid_width = w;
+                Task::none()
+            }
             Message::EnqueueSong(id) => Task::perform(search::enqueue(id), Message::SearchEnqueued),
             Message::SearchEnqueued(result) => {
                 match result {
@@ -486,13 +496,23 @@ impl State {
                 _ => None,
             }
         });
+        // AIR-11.c — track window width so the library grid can reflow
+        // its columns (iced 0.13's facade has no `responsive`; the resize
+        // event drives the adaptive layout instead).
+        let resizes = iced::event::listen_with(|event, _status, _id| match event {
+            iced::Event::Window(iced::window::Event::Resized(size)) => {
+                Some(Message::WindowResized(size.width))
+            }
+            _ => None,
+        });
         // Poll the now-playing snapshot once the library is shown (there's
         // no daemon to ask on the first-run connect form).
         if self.form.is_some() {
-            keys
+            Subscription::batch([keys, resizes])
         } else {
             Subscription::batch([
                 keys,
+                resizes,
                 iced::time::every(nowplaying::POLL).map(|_| Message::PollState),
             ])
         }
@@ -587,13 +607,20 @@ impl State {
                 } else {
                     let mut items = self.items.clone();
                     prefs::apply_sort(&mut items, self.sort);
-                    // Wrapping grid of 160×160 cards (fixed columns for now;
-                    // width-adaptivity + per-card art + scroll-position
-                    // persistence are the AIR-11.b.b follow-on). Album /
-                    // artist / genre cards navigate; others aren't yet.
-                    const COLS: usize = 5;
+                    // AIR-11.c — width-adaptive grid: the column count is
+                    // derived from the live viewport width via iced
+                    // `responsive`, so the 160px cards reflow as the window
+                    // resizes (replacing the AIR-11.b fixed 5-column layout).
+                    // Per-card cover art + scroll-position persistence remain
+                    // the AIR-11.c.2 follow-on.
+                    // AIR-11.c — width-adaptive columns: the count is derived
+                    // from the live window width (tracked via the WindowResized
+                    // subscription) so the 160px cards reflow on resize, replacing
+                    // the AIR-11.b fixed 5-column layout. Per-card cover art +
+                    // scroll-position persistence remain the AIR-11.c.2 follow-on.
+                    let cols = ((self.grid_width + 8.0) / 168.0).floor().max(1.0) as usize;
                     let mut grid = column![].spacing(8);
-                    for chunk in items.chunks(COLS) {
+                    for chunk in items.chunks(cols) {
                         let mut r = row![].spacing(8);
                         for item in chunk {
                             let mut btn = button(text(item.label.clone()))
