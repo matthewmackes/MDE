@@ -272,6 +272,8 @@ enum Message {
     GotoLayer(Layer),
     /// MESH-PROBE-9.b — switch the Network layer's Peers/Hosts tab.
     NetworkTabSelected(NetworkTab),
+    /// MESH/Portal-20 — a Control-layer meta-category card was clicked.
+    ControlCategorySelected(ControlCategory),
     /// Portal-17.a — user clicked a Hub system-tag or user-tag
     /// card. Placeholder for cascade-card expansion (Portal-17.b)
     /// + right-click iconic menu (Portal-17.c).
@@ -417,6 +419,18 @@ fn update(state: &mut PortalFull, msg: Message) -> Task<Message> {
         }
         Message::NetworkTabSelected(tab) => {
             state.network_tab = tab;
+        }
+        Message::ControlCategorySelected(cat) => {
+            // MESH/Portal-20 — deep-link the category to the Workbench
+            // settings app (or mde-virtual for Containers).
+            let argv = cat.launch_argv();
+            std::thread::spawn(move || {
+                let mut cmd = std::process::Command::new(argv[0]);
+                cmd.args(&argv[1..]);
+                if let Err(e) = cmd.spawn() {
+                    tracing::warn!(program = argv[0], error = %e, "portal-full: control launch failed");
+                }
+            });
         }
         Message::HubTagClicked(tag_name) => {
             // Portal-17.b — push the clicked tag onto the cascade
@@ -1228,7 +1242,7 @@ fn view(state: &PortalFull) -> Element<'_, Message> {
     let body: Element<'_, Message> = match state.layer {
         Layer::Hub => build_hub_layer(state),
         Layer::Library => build_library_placeholder(state),
-        Layer::Control => build_control_placeholder(state),
+        Layer::Control => build_control_layer(state),
         Layer::Network => build_network_layer(state),
     };
     container(
@@ -2303,8 +2317,89 @@ impl<M> canvas::Program<M> for MeshViewProgram {
     }
 }
 
-fn build_control_placeholder(_state: &PortalFull) -> Element<'_, Message> {
-    column![].into()
+/// MESH/Portal-20 — the Control layer's 6 meta-categories (v6.0-mde-portal
+/// §3.3). First slice: each card deep-links to the Workbench settings app
+/// (`mde-workbench --focus <group>`), or launches mde-virtual for
+/// Containers. The inline cascade-settings UX is Portal-20.b.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ControlCategory {
+    Hardware,
+    Network,
+    Customize,
+    Maintenance,
+    Containers,
+    About,
+}
+
+impl ControlCategory {
+    const ALL: [ControlCategory; 6] = [
+        ControlCategory::Hardware,
+        ControlCategory::Network,
+        ControlCategory::Customize,
+        ControlCategory::Maintenance,
+        ControlCategory::Containers,
+        ControlCategory::About,
+    ];
+
+    fn label(self) -> &'static str {
+        match self {
+            ControlCategory::Hardware => "Hardware",
+            ControlCategory::Network => "Network",
+            ControlCategory::Customize => "Customize",
+            ControlCategory::Maintenance => "Maintenance",
+            ControlCategory::Containers => "Containers",
+            ControlCategory::About => "About",
+        }
+    }
+
+    fn detail(self) -> &'static str {
+        match self {
+            ControlCategory::Hardware => "Display · audio · keyboard · storage",
+            ControlCategory::Network => "Mesh · Wi-Fi · wired · VPN",
+            ControlCategory::Customize => "Themes · fonts · input",
+            ControlCategory::Maintenance => "Updates · power",
+            ControlCategory::Containers => "Podman container management",
+            ControlCategory::About => "Version · host · release notes",
+        }
+    }
+
+    /// The command this category launches (the Workbench settings group, or
+    /// mde-virtual for Containers).
+    fn launch_argv(self) -> Vec<&'static str> {
+        match self {
+            ControlCategory::Hardware => vec!["mde-workbench", "--focus", "devices"],
+            ControlCategory::Network => vec!["mde-workbench", "--focus", "network"],
+            ControlCategory::Customize => vec!["mde-workbench", "--focus", "look_and_feel"],
+            ControlCategory::Maintenance => vec!["mde-workbench", "--focus", "maintain"],
+            ControlCategory::Containers => vec!["mde-virtual"],
+            ControlCategory::About => vec!["mde-workbench", "--focus", "help"],
+        }
+    }
+}
+
+fn build_control_layer(_state: &PortalFull) -> Element<'_, Message> {
+    let mut col = column![text("Settings").size(20.0).color(FG)].spacing(8);
+    for cat in ControlCategory::ALL {
+        let card = column![
+            text(cat.label()).size(15.0).color(FG),
+            text(cat.detail()).size(11.0).color(FG_DIM),
+        ]
+        .spacing(2);
+        col = col.push(
+            button(card)
+                .padding(12)
+                .width(Length::Fill)
+                .on_press(Message::ControlCategorySelected(cat))
+                .style(|_t: &Theme, _s: button::Status| button::Style {
+                    background: Some(iced::Background::Color(SURFACE_RAISED)),
+                    text_color: FG,
+                    border: iced::Border { radius: 8.0.into(), ..Default::default() },
+                    shadow: iced::Shadow::default(),
+                    snap: false,
+                }),
+        );
+    }
+    scrollable(col).into()
 }
 
 // ── Subscription ──────────────────────────────────────────────────────────────
@@ -2504,6 +2599,23 @@ mod tests {
         assert_eq!(inv.hosts[0].source, "LAN");
         assert_eq!(inv.hosts[0].services.len(), 1);
         assert_eq!(inv.hosts[0].services[0].port, 443);
+    }
+
+    #[test]
+    fn control_category_launch_argv_maps() {
+        assert_eq!(ControlCategory::ALL.len(), 6);
+        assert_eq!(
+            ControlCategory::Hardware.launch_argv(),
+            vec!["mde-workbench", "--focus", "devices"]
+        );
+        assert_eq!(ControlCategory::Containers.launch_argv(), vec!["mde-virtual"]);
+        // Workbench group slug is underscore-form (look_and_feel), not hyphen.
+        assert_eq!(ControlCategory::Customize.launch_argv()[2], "look_and_feel");
+        for cat in ControlCategory::ALL {
+            assert!(!cat.label().is_empty());
+            assert!(!cat.detail().is_empty());
+            assert!(!cat.launch_argv().is_empty());
+        }
     }
 
     #[test]
