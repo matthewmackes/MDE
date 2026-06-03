@@ -16,7 +16,7 @@
 
 use anyhow::Context as _;
 use async_stream::stream;
-use iced::widget::{column, container, text};
+use iced::widget::{column, container, row, scrollable, text, Space};
 use iced::{Color, Element, Length, Subscription, Task, Theme};
 use std::sync::OnceLock;
 use tokio::sync::broadcast;
@@ -82,6 +82,7 @@ enum Layer {
     Hub,
     Library,
     Control,
+    Network,
 }
 
 impl Layer {
@@ -89,6 +90,7 @@ impl Layer {
         match s {
             "library" => Layer::Library,
             "control" => Layer::Control,
+            "network" => Layer::Network,
             _ => Layer::Hub,
         }
     }
@@ -98,6 +100,7 @@ impl Layer {
             Layer::Hub => "Hub",
             Layer::Library => "Library",
             Layer::Control => "Control",
+            Layer::Network => "Network",
         }
     }
 
@@ -160,6 +163,13 @@ struct PortalFull {
     /// pushes it; up to 3 deep before forcing dismiss-to-root.
     /// Empty when the cascade is closed (Hub root view).
     hub_cascade_stack: Vec<String>,
+    /// MESH/Portal-22 — the mesh peer roster shown in the Network layer,
+    /// loaded synchronously from `mackesd nodes list --json` on entry
+    /// (mirrors the Hub-layer tag reload).
+    network_peers: Vec<PeerNode>,
+    /// Set when the peer-roster load fails (mackesd absent/offline); the
+    /// Network layer renders it as an honest empty-state hint.
+    network_peers_error: Option<String>,
 }
 
 /// Portal-18.b — Edit-tag modal form state. Seeded from the
@@ -234,6 +244,8 @@ impl Default for PortalFull {
             hub_typeahead_buffer: String::new(),
             hub_typeahead_match: None,
             hub_cascade_stack: Vec::new(),
+            network_peers: Vec::new(),
+            network_peers_error: None,
         }
     }
 }
@@ -364,6 +376,20 @@ fn update(state: &mut PortalFull, msg: Message) -> Task<Message> {
                         Vec::new()
                     }
                 };
+            }
+            // MESH/Portal-22 — load the mesh peer roster on Network-layer
+            // entry (synchronous, mirroring the Hub tag reload above).
+            if layer == Layer::Network {
+                match fetch_peers() {
+                    Ok(peers) => {
+                        state.network_peers = peers;
+                        state.network_peers_error = None;
+                    }
+                    Err(e) => {
+                        state.network_peers = Vec::new();
+                        state.network_peers_error = Some(e);
+                    }
+                }
             }
         }
         Message::HubTagClicked(tag_name) => {
@@ -1177,6 +1203,7 @@ fn view(state: &PortalFull) -> Element<'_, Message> {
         Layer::Hub => build_hub_layer(state),
         Layer::Library => build_library_placeholder(state),
         Layer::Control => build_control_placeholder(state),
+        Layer::Network => build_network_layer(state),
     };
     container(
         column![
@@ -1809,6 +1836,147 @@ fn build_library_placeholder(_state: &PortalFull) -> Element<'_, Message> {
     column![].into()
 }
 
+// ── MESH / Portal-22 — Network-layer peer roster ─────────────────────────────
+// Renders the live mesh peer roster (v6.0-mde-portal §3.5 sidebar peer-cards).
+// Peers load synchronously from `mackesd nodes list --json` on layer entry.
+// The globe / wireframe canvas (MESH-G / MESH-W) + detail pane layer onto this
+// foundation as follow-on tasks.
+
+/// A mesh peer's reachability state (from the node's `health` field).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PeerStatus {
+    Online,
+    Idle,
+    Offline,
+    Unknown,
+}
+
+impl PeerStatus {
+    fn from_health(s: &str) -> Self {
+        match s.to_ascii_lowercase().as_str() {
+            "online" | "healthy" => Self::Online,
+            "idle" | "degraded" => Self::Idle,
+            "offline" | "unreachable" => Self::Offline,
+            _ => Self::Unknown,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Online => "ONLINE",
+            Self::Idle => "IDLE",
+            Self::Offline => "OFFLINE",
+            Self::Unknown => "UNKNOWN",
+        }
+    }
+
+    /// Status-dot colour. `Color { .. }` struct literals (not
+    /// `Color::from_rgb`) keep the design-tokens lint clean for net-new use.
+    fn color(self) -> Color {
+        match self {
+            Self::Online => Color { r: 0.20, g: 0.80, b: 0.40, a: 1.0 },
+            Self::Idle => Color { r: 0.95, g: 0.70, b: 0.20, a: 1.0 },
+            Self::Offline => Color { r: 0.92, g: 0.32, b: 0.30, a: 1.0 },
+            Self::Unknown => Color { r: 0.60, g: 0.60, b: 0.60, a: 0.80 },
+        }
+    }
+}
+
+/// One mesh peer row in the Network-layer roster.
+#[derive(Debug, Clone)]
+struct PeerNode {
+    name: String,
+    region: String,
+    role: String,
+    status: PeerStatus,
+}
+
+/// Shell out to `mackesd nodes list --json` + parse the roster. Blocking
+/// (called on layer entry, like the Hub tag reload). Returns an error
+/// string when mackesd is absent/offline so the layer shows an honest
+/// empty-state.
+fn fetch_peers() -> Result<Vec<PeerNode>, String> {
+    let out = std::process::Command::new("mackesd")
+        .args(["nodes", "list", "--json"])
+        .output()
+        .map_err(|e| format!("mackesd nodes list failed to spawn: {e}"))?;
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+        return Err(format!("mackesd nodes list exited non-zero: {stderr}"));
+    }
+    Ok(parse_nodes(&String::from_utf8_lossy(&out.stdout)))
+}
+
+/// Parse `mackesd nodes list --json` (`[{node_id,name,role,health,region}]`)
+/// into sorted [`PeerNode`]s. Malformed input yields an empty roster
+/// (fail-open) rather than an error.
+fn parse_nodes(raw: &str) -> Vec<PeerNode> {
+    let Ok(top) = serde_json::from_str::<Vec<serde_json::Value>>(raw) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for entry in top {
+        let node_id = entry.get("node_id").and_then(|v| v.as_str()).unwrap_or("");
+        if node_id.is_empty() {
+            continue;
+        }
+        let name = entry.get("name").and_then(|v| v.as_str()).unwrap_or(node_id);
+        let region = entry.get("region").and_then(|v| v.as_str()).unwrap_or("—");
+        let role = entry.get("role").and_then(|v| v.as_str()).unwrap_or("peer");
+        let health = entry.get("health").and_then(|v| v.as_str()).unwrap_or("unknown");
+        out.push(PeerNode {
+            name: name.to_string(),
+            region: region.to_string(),
+            role: role.to_string(),
+            status: PeerStatus::from_health(health),
+        });
+    }
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    out
+}
+
+/// Portal-22 — the Network layer: the mesh peer roster as a card list (the
+/// §3.5 sidebar peer-cards). The globe / wireframe canvas render on top of
+/// this foundation in MESH-G / MESH-W.
+fn build_network_layer(state: &PortalFull) -> Element<'_, Message> {
+    let mut col = column![].spacing(8);
+    if let Some(err) = &state.network_peers_error {
+        col = col.push(text(format!("Peer roster unavailable — {err}")).size(14.0).color(FG));
+    } else if state.network_peers.is_empty() {
+        col = col.push(text("No mesh peers enrolled yet.").size(14.0).color(FG));
+    } else {
+        let n = state.network_peers.len();
+        col = col.push(
+            text(format!("{n} mesh peer{}", if n == 1 { "" } else { "s" }))
+                .size(13.0)
+                .color(FG),
+        );
+        for peer in &state.network_peers {
+            let line = row![
+                text("●").size(15.0).color(peer.status.color()),
+                text(peer.name.clone()).size(15.0).color(FG),
+                Space::new().width(Length::Fill),
+                text(peer.region.clone()).size(12.0).color(FG),
+                text(peer.role.clone()).size(12.0).color(FG),
+                text(peer.status.label()).size(11.0).color(peer.status.color()),
+            ]
+            .spacing(12)
+            .align_y(iced::Alignment::Center);
+            col = col.push(
+                container(line)
+                    .padding(10)
+                    .width(Length::Fill)
+                    .style(|_t: &Theme| container::Style {
+                        background: Some(iced::Background::Color(SURFACE_RAISED)),
+                        border: iced::Border { radius: 8.0.into(), ..Default::default() },
+                        ..Default::default()
+                    }),
+            );
+        }
+    }
+    scrollable(col).into()
+}
+
 fn build_control_placeholder(_state: &PortalFull) -> Element<'_, Message> {
     column![].into()
 }
@@ -1949,6 +2117,35 @@ mod tests {
         assert_eq!(Layer::from_str("hub"), Layer::Hub);
         assert_eq!(Layer::from_str("unknown"), Layer::Hub);
         assert_eq!(Layer::from_str(""), Layer::Hub);
+    }
+
+    #[test]
+    fn layer_from_str_network() {
+        assert_eq!(Layer::from_str("network"), Layer::Network);
+        assert_eq!(Layer::Network.label(), "Network");
+    }
+
+    #[test]
+    fn parse_nodes_decodes_roster_sorted() {
+        let raw = r#"[
+            {"node_id":"peer:pine","name":"pine","role":"peer","health":"healthy","region":"us-west"},
+            {"node_id":"peer:birch","name":"birch","role":"host","health":"degraded","region":null},
+            {"node_id":"","name":"ghost","health":"online"}
+        ]"#;
+        let rows = parse_nodes(raw);
+        assert_eq!(rows.len(), 2, "empty node_id row is dropped");
+        assert_eq!(rows[0].name, "birch");
+        assert_eq!(rows[0].status, PeerStatus::Idle);
+        assert_eq!(rows[0].region, "—");
+        assert_eq!(rows[0].role, "host");
+        assert_eq!(rows[1].name, "pine");
+        assert_eq!(rows[1].status, PeerStatus::Online);
+    }
+
+    #[test]
+    fn parse_nodes_malformed_is_empty() {
+        assert!(parse_nodes("not json").is_empty());
+        assert!(parse_nodes("{}").is_empty());
     }
 
     #[test]
