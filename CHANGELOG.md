@@ -33,6 +33,9 @@ unreleased; tag versions get a date when they ship.
   (focus with Cmd/Ctrl-F) that finds artists, albums, and songs as you
   type; click an artist or album to jump straight to it, or a song to
   add it to the queue. Esc dismisses.
+- **Album pages:** click an album (in the library or a search result) to
+  open its track list — Play, Shuffle, or Add the whole album to the
+  queue, and play-next or queue any individual track.
 
 **KVM + Podman mesh-native compute — `mde-virtual` app (2026-05-31)**
 - A new **Virtual** app manages the KVM virtual machines and Podman

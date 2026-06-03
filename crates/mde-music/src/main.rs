@@ -13,6 +13,7 @@ use iced::{Element, Length, Size, Subscription, Task};
 
 use mde_music::hub::HubCard;
 use mde_music::library::{self, LibraryItem};
+use mde_music::album::{self, AlbumView};
 use mde_music::nav::{NavState, Route};
 use mde_music::search::{self, SearchResults};
 use mde_musicd::creds::{self, Creds};
@@ -59,6 +60,10 @@ struct State {
     searching: bool,
     search_error: Option<String>,
     search_open: bool,
+    /// AIR-12 — the currently-open album page (None until one is opened).
+    album: Option<AlbumView>,
+    album_loading: bool,
+    album_error: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -93,6 +98,15 @@ enum Message {
     /// Add a song result to the queue; the reply closes the sheet.
     EnqueueSong(String),
     SearchEnqueued(Result<(), String>),
+    /// AIR-12 — album page: the fetch resolved/failed + the action buttons.
+    AlbumLoaded(AlbumView),
+    AlbumFailed(String),
+    PlayAlbum,
+    ShuffleAlbum,
+    AddAlbumToQueue,
+    PlayTrackNext(String),
+    AddTrackToQueue(String),
+    AlbumActionDone(Result<(), String>),
 }
 
 impl State {
@@ -114,6 +128,9 @@ impl State {
             searching: false,
             search_error: None,
             search_open: false,
+            album: None,
+            album_loading: false,
+            album_error: None,
         }
     }
 
@@ -246,9 +263,15 @@ impl State {
                 Task::none()
             }
             Message::OpenAlbum(id, name) => {
-                self.nav.push(Route::Album(id, name));
+                self.nav.push(Route::Album(id.clone(), name));
                 self.dismiss_search();
-                Task::none()
+                self.album = None;
+                self.album_error = None;
+                self.album_loading = true;
+                Task::perform(album::fetch_album(id), |r| match r {
+                    Ok(a) => Message::AlbumLoaded(a),
+                    Err(e) => Message::AlbumFailed(e),
+                })
             }
             Message::OpenArtist(id, name) => {
                 self.nav.push(Route::Artist(id, name));
@@ -261,6 +284,46 @@ impl State {
                     // Queued — closing the sheet is the confirmation.
                     Ok(()) => self.dismiss_search(),
                     Err(e) => self.search_error = Some(e),
+                }
+                Task::none()
+            }
+            Message::AlbumLoaded(a) => {
+                self.album = Some(a);
+                self.album_loading = false;
+                Task::none()
+            }
+            Message::AlbumFailed(e) => {
+                self.album = None;
+                self.album_loading = false;
+                self.album_error = Some(e);
+                Task::none()
+            }
+            Message::PlayAlbum => match &self.album {
+                Some(a) => Task::perform(album::play_ids(a.track_ids()), Message::AlbumActionDone),
+                None => Task::none(),
+            },
+            Message::ShuffleAlbum => match &self.album {
+                Some(a) => Task::perform(
+                    album::play_ids(album::shuffle_ids(a.track_ids())),
+                    Message::AlbumActionDone,
+                ),
+                None => Task::none(),
+            },
+            Message::AddAlbumToQueue => match &self.album {
+                Some(a) => {
+                    Task::perform(album::enqueue_ids(a.track_ids()), Message::AlbumActionDone)
+                }
+                None => Task::none(),
+            },
+            Message::PlayTrackNext(id) => {
+                Task::perform(album::play_next(id), Message::AlbumActionDone)
+            }
+            Message::AddTrackToQueue(id) => {
+                Task::perform(album::enqueue_ids(vec![id]), Message::AlbumActionDone)
+            }
+            Message::AlbumActionDone(result) => {
+                if let Err(e) = result {
+                    self.album_error = Some(e);
                 }
                 Task::none()
             }
@@ -357,6 +420,7 @@ impl State {
                 }
                 cards.into()
             }
+            Route::Album(..) => self.album_page(),
             route => {
                 let mut col = column![text(route.segment()).size(20)].spacing(6);
                 if self.loading {
@@ -368,8 +432,18 @@ impl State {
                         text("Nothing here yet — start mde-musicd to load your library.").size(13),
                     );
                 } else {
+                    // Album + artist rows navigate into their page; other
+                    // categories' rows aren't navigable yet (AIR-13+).
                     for item in &self.items {
-                        col = col.push(button(text(item.label.clone())));
+                        let mut btn = button(text(item.label.clone()));
+                        btn = match route {
+                            Route::Category(HubCard::Albums) => btn
+                                .on_press(Message::OpenAlbum(item.id.clone(), item.label.clone())),
+                            Route::Category(HubCard::Artists) => btn
+                                .on_press(Message::OpenArtist(item.id.clone(), item.label.clone())),
+                            _ => btn,
+                        };
+                        col = col.push(btn);
                     }
                 }
                 col.into()
@@ -444,6 +518,68 @@ impl State {
             .height(Length::Fill)
             .padding(40)
             .into()
+    }
+
+    /// AIR-12 — the album detail page: an art-placeholder column + the
+    /// album header (Play / Shuffle / Add) + the numbered track list (each
+    /// row can Play-Next or Add-to-Queue). Cover-art *image* rendering is a
+    /// follow-on (art-over-Bus); the layout uses a glyph placeholder.
+    fn album_page(&self) -> Element<'_, Message> {
+        if self.album_loading {
+            return text("Loading album…").size(13).into();
+        }
+        if let Some(err) = &self.album_error {
+            return text(err.clone()).size(13).into();
+        }
+        let Some(a) = &self.album else {
+            return text("No album loaded.").size(13).into();
+        };
+
+        // Header: title / artist / (year ·) N tracks · duration + actions.
+        let mut meta = format!("{} track(s) · {}", a.tracks.len(), album::fmt_duration(a.total_secs()));
+        if let Some(y) = a.year {
+            meta = format!("{y} · {meta}");
+        }
+        let actions = row![
+            button(text("Play")).on_press(Message::PlayAlbum),
+            button(text("Shuffle")).on_press(Message::ShuffleAlbum),
+            button(text("Add to Queue")).on_press(Message::AddAlbumToQueue),
+        ]
+        .spacing(8);
+        let header = column![
+            text(a.name.clone()).size(24),
+            text(a.artist.clone()).size(15),
+            text(meta).size(12),
+            Space::with_height(Length::Fixed(10.0)),
+            actions,
+        ]
+        .spacing(4);
+
+        // Numbered track rows with per-track Play-Next / Add-to-Queue.
+        let mut list = column![].spacing(4);
+        for (i, t) in a.tracks.iter().enumerate() {
+            let no = t.track_no.unwrap_or_else(|| u32::try_from(i + 1).unwrap_or(0));
+            let track_row = row![
+                text(format!("{no}.")).size(13).width(Length::Fixed(32.0)),
+                text(t.title.clone()).size(13).width(Length::Fill),
+                text(album::fmt_duration(t.duration)).size(12).width(Length::Fixed(56.0)),
+                button(text("Play Next").size(11)).on_press(Message::PlayTrackNext(t.id.clone())),
+                button(text("+ Queue").size(11)).on_press(Message::AddTrackToQueue(t.id.clone())),
+            ]
+            .spacing(8);
+            list = list.push(track_row);
+        }
+
+        // Art placeholder (left) + header/tracks (right). The art-over-Bus
+        // image fetch is a follow-on; a glyph stands in for now.
+        let art = container(text("♪").size(48))
+            .width(Length::Fixed(220.0))
+            .height(Length::Fixed(220.0))
+            .padding(86);
+        let content = column![header, Space::with_height(Length::Fixed(16.0)), scrollable(list)]
+            .spacing(8)
+            .width(Length::Fill);
+        row![art, content].spacing(20).into()
     }
 }
 

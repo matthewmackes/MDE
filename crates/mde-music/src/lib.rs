@@ -5,6 +5,7 @@
 //! grids behind each card + the playback transport arrive over the
 //! `mde-musicd` data path (AIR-10.b / AIR-2).
 
+pub mod album;
 pub mod hub;
 pub mod library;
 pub mod nav;

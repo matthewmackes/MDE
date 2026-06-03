@@ -121,6 +121,13 @@ pub struct SearchResult3 {
     pub songs: Vec<Song>,
 }
 
+/// Result of `getAlbum` — the album's metadata + its ordered track list.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct AlbumDetail {
+    pub album: Album,
+    pub songs: Vec<Song>,
+}
+
 /// An authenticated Airsonic client.
 pub struct Client {
     base_url: String,
@@ -292,6 +299,16 @@ impl Client {
         let inner = self.get("getSong", &[("id", id)]).await?;
         parse_song(&inner)
     }
+
+    /// `getAlbum` — an album's metadata + its ordered track list (the
+    /// AIR-12 album page). AIR-4.b endpoint, landed with its consumer.
+    ///
+    /// # Errors
+    /// Transport / API / parse failures.
+    pub async fn get_album(&self, id: &str) -> Result<AlbumDetail, AirsonicError> {
+        let inner = self.get("getAlbum", &[("id", id)]).await?;
+        parse_album_detail(&inner)
+    }
 }
 
 // ───────────────────────── pure parse helpers ─────────────────────────
@@ -398,6 +415,29 @@ pub fn parse_song(inner: &Value) -> Result<Song, AirsonicError> {
         .ok_or_else(|| AirsonicError::Parse("getSong: missing song object".into()))
 }
 
+/// Parse `getAlbum` → the `album` object's metadata + its nested `song[]`
+/// track list.
+///
+/// # Errors
+/// [`AirsonicError::Parse`] when the `album` object is missing or malformed.
+pub fn parse_album_detail(inner: &Value) -> Result<AlbumDetail, AirsonicError> {
+    let album_obj = inner
+        .get("album")
+        .ok_or_else(|| AirsonicError::Parse("getAlbum: missing album object".into()))?;
+    let album: Album = serde_json::from_value(album_obj.clone())
+        .map_err(|e| AirsonicError::Parse(e.to_string()))?;
+    let songs = album_obj
+        .get("song")
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| serde_json::from_value(v.clone()).ok())
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(AlbumDetail { album, songs })
+}
+
 /// Minimal percent-encoding for query values (space + the reserved
 /// chars that break a Subsonic query). Avoids a `url`/`percent-encoding`
 /// dep for the handful of chars that actually occur in ids + search
@@ -482,6 +522,26 @@ mod tests {
         assert_eq!(s.cover_art, "al-7");
         // A missing `song` object is a parse error, not a panic.
         assert!(parse_song(&json!({"nope": 1})).is_err());
+    }
+
+    #[test]
+    fn parse_album_detail_reads_meta_and_tracks() {
+        let inner = json!({"album": {
+            "id": "al1", "name": "Kind of Blue", "artist": "Miles Davis",
+            "artistId": "ar1", "songCount": 5, "coverArt": "al1", "year": 1959,
+            "song": [
+                {"id": "s1", "title": "So What", "duration": 545, "track": 1, "suffix": "flac"},
+                {"id": "s2", "title": "Freddie Freeloader", "duration": 586, "track": 2}
+            ]
+        }});
+        let d = parse_album_detail(&inner).unwrap();
+        assert_eq!(d.album.name, "Kind of Blue");
+        assert_eq!(d.album.year, Some(1959));
+        assert_eq!(d.songs.len(), 2);
+        assert_eq!(d.songs[0].title, "So What");
+        assert_eq!(d.songs[1].track, Some(2));
+        // A missing `album` object is a parse error.
+        assert!(parse_album_detail(&json!({"nope": 1})).is_err());
     }
 
     #[test]
