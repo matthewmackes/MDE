@@ -274,6 +274,8 @@ enum Message {
     NetworkTabSelected(NetworkTab),
     /// MESH/Portal-20 — a Control-layer meta-category card was clicked.
     ControlCategorySelected(ControlCategory),
+    /// MESH/Portal-19 — a Library Files card was clicked; xdg-open the dir.
+    LibraryDirOpened(String),
     /// Portal-17.a — user clicked a Hub system-tag or user-tag
     /// card. Placeholder for cascade-card expansion (Portal-17.b)
     /// + right-click iconic menu (Portal-17.c).
@@ -429,6 +431,14 @@ fn update(state: &mut PortalFull, msg: Message) -> Task<Message> {
                 cmd.args(&argv[1..]);
                 if let Err(e) = cmd.spawn() {
                     tracing::warn!(program = argv[0], error = %e, "portal-full: control launch failed");
+                }
+            });
+        }
+        Message::LibraryDirOpened(path) => {
+            // MESH/Portal-19 — open the folder in the file manager.
+            std::thread::spawn(move || {
+                if let Err(e) = std::process::Command::new("xdg-open").arg(&path).spawn() {
+                    tracing::warn!(%path, error = %e, "portal-full: Library xdg-open spawn failed");
                 }
             });
         }
@@ -1241,7 +1251,7 @@ pub const SYSTEM_TAGS: &[&str] = &[
 fn view(state: &PortalFull) -> Element<'_, Message> {
     let body: Element<'_, Message> = match state.layer {
         Layer::Hub => build_hub_layer(state),
-        Layer::Library => build_library_placeholder(state),
+        Layer::Library => build_library_layer(state),
         Layer::Control => build_control_layer(state),
         Layer::Network => build_network_layer(state),
     };
@@ -1872,8 +1882,58 @@ fn hub_parse_hex(s: &str) -> Option<Color> {
     }
 }
 
-fn build_library_placeholder(_state: &PortalFull) -> Element<'_, Message> {
-    column![].into()
+/// MESH/Portal-19 — the XDG user dirs shown as Files cards in the Library
+/// layer. Only dirs that exist on disk are returned (label, path).
+fn library_dirs() -> Vec<(&'static str, std::path::PathBuf)> {
+    let candidates: [(&'static str, Option<std::path::PathBuf>); 8] = [
+        ("Documents", dirs::document_dir()),
+        ("Downloads", dirs::download_dir()),
+        ("Pictures", dirs::picture_dir()),
+        ("Music", dirs::audio_dir()),
+        ("Videos", dirs::video_dir()),
+        ("Desktop", dirs::desktop_dir()),
+        ("Public", dirs::public_dir()),
+        ("Templates", dirs::template_dir()),
+    ];
+    candidates
+        .into_iter()
+        .filter_map(|(label, p)| p.filter(|p| p.exists()).map(|p| (label, p)))
+        .collect()
+}
+
+/// MESH/Portal-19 — the Library layer (v6.0-mde-portal §3.2). First slice:
+/// the Files sub-view — the XDG user folders as cards; click opens one in
+/// the file manager via xdg-open. Activity + Notifications sub-views + the
+/// sidebar/tabs are Portal-19.b.
+fn build_library_layer(_state: &PortalFull) -> Element<'_, Message> {
+    let dir_list = library_dirs();
+    let mut col = column![text("Files").size(20.0).color(FG)].spacing(8);
+    if dir_list.is_empty() {
+        col = col.push(text("No standard user folders found.").size(13.0).color(FG_DIM));
+    } else {
+        for (label, path) in dir_list {
+            let path_str = path.display().to_string();
+            let card = column![
+                text(label).size(15.0).color(FG),
+                text(path_str.clone()).size(11.0).color(FG_DIM),
+            ]
+            .spacing(2);
+            col = col.push(
+                button(card)
+                    .padding(12)
+                    .width(Length::Fill)
+                    .on_press(Message::LibraryDirOpened(path_str))
+                    .style(|_t: &Theme, _s: button::Status| button::Style {
+                        background: Some(iced::Background::Color(SURFACE_RAISED)),
+                        text_color: FG,
+                        border: iced::Border { radius: 8.0.into(), ..Default::default() },
+                        shadow: iced::Shadow::default(),
+                        snap: false,
+                    }),
+            );
+        }
+    }
+    scrollable(col).into()
 }
 
 // ── MESH / Portal-22 — Network-layer peer roster ─────────────────────────────
@@ -2615,6 +2675,15 @@ mod tests {
             assert!(!cat.label().is_empty());
             assert!(!cat.detail().is_empty());
             assert!(!cat.launch_argv().is_empty());
+        }
+    }
+
+    #[test]
+    fn library_dirs_returns_only_existing() {
+        // Depends on the runtime $HOME; just assert it completes without
+        // panic and every returned path exists.
+        for (_label, path) in library_dirs() {
+            assert!(path.exists());
         }
     }
 
