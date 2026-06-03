@@ -113,6 +113,10 @@ enum Message {
     OpenArtist(String, String),
     /// Open a genre page (loads the genre's albums).
     OpenGenre(String),
+    /// Open a podcast channel page (loads its episodes).
+    OpenPodcast(String, String),
+    /// Play a podcast episode by its streamId (clear queue + enqueue + play).
+    PlayEpisode(String),
     /// Add a song result to the queue; the reply closes the sheet.
     EnqueueSong(String),
     SearchEnqueued(Result<(), String>),
@@ -329,6 +333,20 @@ impl State {
                     Ok(items) => Message::ItemsLoaded(items),
                     Err(e) => Message::ItemsFailed(e),
                 })
+            }
+            Message::OpenPodcast(id, name) => {
+                self.nav.push(Route::Podcast(id.clone(), name));
+                self.dismiss_search();
+                self.items.clear();
+                self.load_error = None;
+                self.loading = true;
+                Task::perform(library::fetch_podcast_episodes(id), |r| match r {
+                    Ok(items) => Message::ItemsLoaded(items),
+                    Err(e) => Message::ItemsFailed(e),
+                })
+            }
+            Message::PlayEpisode(stream_id) => {
+                Task::perform(album::play_ids(vec![stream_id]), Message::AlbumActionDone)
             }
             Message::EnqueueSong(id) => Task::perform(search::enqueue(id), Message::SearchEnqueued),
             Message::SearchEnqueued(result) => {
@@ -585,6 +603,12 @@ impl State {
                                 ),
                                 Route::Category(HubCard::Genres) => {
                                     btn.on_press(Message::OpenGenre(item.label.clone()))
+                                }
+                                Route::Category(HubCard::Podcasts) => btn.on_press(
+                                    Message::OpenPodcast(item.id.clone(), item.label.clone()),
+                                ),
+                                Route::Podcast(..) => {
+                                    btn.on_press(Message::PlayEpisode(item.id.clone()))
                                 }
                                 _ => btn,
                             };

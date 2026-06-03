@@ -87,6 +87,22 @@ pub struct Genre {
     pub song_count: u32,
 }
 
+/// A podcast channel from `getPodcasts` (AIR-21). Serialized as
+/// `{id, title}` so the GUI's `parse_items` reads it like any row.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct PodcastChannel {
+    pub id: String,
+    pub title: String,
+}
+
+/// A podcast episode from `getPodcasts?id=<channel>` (AIR-21). `id` is the
+/// episode's `streamId` — the media id the player streams + enqueues.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct PodcastEpisode {
+    pub id: String,
+    pub title: String,
+}
+
 /// An album row from `getAlbumList2` / `search3`.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, Deserialize)]
 pub struct Album {
@@ -373,6 +389,36 @@ impl Client {
             .map(|b| b.to_vec())
             .map_err(|e| AirsonicError::Http(e.to_string()))
     }
+
+    /// `getPodcasts` (no id, no episodes) — the subscribed podcast channels
+    /// (AIR-21 hub list).
+    ///
+    /// # Errors
+    /// Transport / API / parse failures.
+    pub async fn get_podcast_channels(&self) -> Result<Vec<PodcastChannel>, AirsonicError> {
+        let inner = self
+            .get("getPodcasts", &[("includeEpisodes", "false")])
+            .await?;
+        Ok(parse_podcast_channels(&inner))
+    }
+
+    /// `getPodcasts?id=<channel>&includeEpisodes=true` — one channel's
+    /// episodes (the AIR-21 channel page).
+    ///
+    /// # Errors
+    /// Transport / API / parse failures.
+    pub async fn get_podcast_episodes(
+        &self,
+        channel_id: &str,
+    ) -> Result<Vec<PodcastEpisode>, AirsonicError> {
+        let inner = self
+            .get(
+                "getPodcasts",
+                &[("id", channel_id), ("includeEpisodes", "true")],
+            )
+            .await?;
+        Ok(parse_podcast_episodes(&inner))
+    }
 }
 
 // ───────────────────────── pure parse helpers ─────────────────────────
@@ -517,6 +563,52 @@ pub fn parse_genres(inner: &Value) -> Vec<Genre> {
         .unwrap_or_default()
 }
 
+/// Parse `getPodcasts` → `podcasts.channel[]` (id + title).
+#[must_use]
+pub fn parse_podcast_channels(inner: &Value) -> Vec<PodcastChannel> {
+    inner
+        .get("podcasts")
+        .and_then(|p| p.get("channel"))
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|c| {
+                    let id = c.get("id").and_then(Value::as_str)?;
+                    let title = c.get("title").and_then(Value::as_str).unwrap_or(id);
+                    Some(PodcastChannel { id: id.to_string(), title: title.to_string() })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Parse `getPodcasts?id=<channel>` → the first channel's `episode[]`. Each
+/// episode's playable id is its `streamId` (the media to stream), falling
+/// back to its `id`.
+#[must_use]
+pub fn parse_podcast_episodes(inner: &Value) -> Vec<PodcastEpisode> {
+    inner
+        .get("podcasts")
+        .and_then(|p| p.get("channel"))
+        .and_then(Value::as_array)
+        .and_then(|chans| chans.first())
+        .and_then(|c| c.get("episode"))
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|e| {
+                    let id = e
+                        .get("streamId")
+                        .or_else(|| e.get("id"))
+                        .and_then(Value::as_str)?;
+                    let title = e.get("title").and_then(Value::as_str).unwrap_or(id);
+                    Some(PodcastEpisode { id: id.to_string(), title: title.to_string() })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// Minimal percent-encoding for query values (space + the reserved
 /// chars that break a Subsonic query). Avoids a `url`/`percent-encoding`
 /// dep for the handful of chars that actually occur in ids + search
@@ -635,6 +727,29 @@ mod tests {
         assert_eq!(g[0].album_count, 12);
         assert_eq!(g[1].name, "Rock");
         assert!(parse_genres(&json!({"nope": 1})).is_empty());
+    }
+
+    #[test]
+    fn parse_podcasts_channels_and_episodes() {
+        let chans = json!({"podcasts": {"channel": [
+            {"id": "c1", "title": "Rust Talks"},
+            {"id": "c2", "title": "Mesh Weekly"}
+        ]}});
+        let c = parse_podcast_channels(&chans);
+        assert_eq!(c.len(), 2);
+        assert_eq!(c[0].id, "c1");
+        assert_eq!(c[0].title, "Rust Talks");
+        // Episodes: streamId is the playable id; falls back to id.
+        let eps = json!({"podcasts": {"channel": [{"id": "c1", "episode": [
+            {"id": "e1", "streamId": "s1", "title": "Ep 1"},
+            {"id": "e2", "title": "Ep 2"}
+        ]}]}});
+        let e = parse_podcast_episodes(&eps);
+        assert_eq!(e.len(), 2);
+        assert_eq!(e[0].id, "s1"); // streamId wins
+        assert_eq!(e[1].id, "e2"); // falls back to id
+        assert!(parse_podcast_channels(&json!({"nope": 1})).is_empty());
+        assert!(parse_podcast_episodes(&json!({"nope": 1})).is_empty());
     }
 
     #[test]

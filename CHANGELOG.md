@@ -46,6 +46,8 @@ unreleased; tag versions get a date when they ship.
   colour, with automatically-readable contrast text.
 - **Sort your library:** album / artist / genre grids lay out as cards
   with a Name A–Z / Z–A sort toggle that persists across launches.
+- **Podcasts:** the Podcasts tile lists your subscribed channels; open one
+  to see its episodes and play them.
 
 **KVM + Podman mesh-native compute — `mde-virtual` app (2026-05-31)**
 - A new **Virtual** app manages the KVM virtual machines and Podman

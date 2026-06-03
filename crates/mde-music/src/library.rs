@@ -27,6 +27,7 @@ pub fn verb_for(card: HubCard) -> Option<&'static str> {
         HubCard::Albums => Some("list-albums"),
         HubCard::Artists => Some("list-artists"),
         HubCard::Genres => Some("list-genres"),
+        HubCard::Podcasts => Some("list-podcasts"),
         _ => None,
     }
 }
@@ -57,7 +58,13 @@ pub fn parse_items(reply_json: &str) -> Vec<LibraryItem> {
             .collect();
     }
     // Try each id/label section; the first present one wins (a verb returns one).
-    for (section, label_key) in [("albums", "name"), ("artists", "name"), ("songs", "title")] {
+    for (section, label_key) in [
+        ("albums", "name"),
+        ("artists", "name"),
+        ("songs", "title"),
+        ("podcasts", "title"),
+        ("episodes", "title"),
+    ] {
         if let Some(arr) = result.get(section).and_then(serde_json::Value::as_array) {
             return arr
                 .iter()
@@ -141,6 +148,37 @@ pub async fn fetch_albums_by_genre(genre: String) -> Result<Vec<LibraryItem>, St
     .map_err(|e| format!("fetch task join error: {e}"))?
 }
 
+/// Fetch a podcast channel's episodes over the Bus
+/// (`action/music/podcast-episodes`, the channel id in the body). The rows
+/// render like any grid (each episode's id is its playable `streamId`).
+///
+/// # Errors
+/// Bus-store / request / timeout failures (daemon not running).
+pub async fn fetch_podcast_episodes(channel_id: String) -> Result<Vec<LibraryItem>, String> {
+    tokio::task::spawn_blocking(move || -> Result<Vec<LibraryItem>, String> {
+        let bus_root = mde_bus::default_data_dir().ok_or_else(|| "no Bus data dir".to_string())?;
+        let persist =
+            mde_bus::persist::Persist::open(bus_root).map_err(|e| format!("Bus store: {e}"))?;
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|e| e.to_string())?;
+        let reply = rt
+            .block_on(mde_bus::rpc::request(
+                &persist,
+                "action/music/podcast-episodes",
+                mde_bus::hooks::config::Priority::Default,
+                None,
+                Some(&channel_id),
+                Duration::from_secs(5),
+            ))
+            .map_err(|e| format!("daemon not responding ({e})"))?;
+        Ok(parse_items(reply.body.as_deref().unwrap_or("")))
+    })
+    .await
+    .map_err(|e| format!("fetch task join error: {e}"))?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -188,6 +226,14 @@ mod tests {
     fn label_falls_back_to_id_when_missing() {
         let reply = r#"{"ok":true,"result":{"albums":[{"id":"only-id"}]}}"#;
         assert_eq!(parse_items(reply)[0].label, "only-id");
+    }
+
+    #[test]
+    fn parse_podcasts_and_episodes_sections() {
+        let pods = parse_items(r#"{"ok":true,"result":{"podcasts":[{"id":"c1","title":"Rust Talks"}]}}"#);
+        assert_eq!(pods, vec![LibraryItem { id: "c1".into(), label: "Rust Talks".into() }]);
+        let eps = parse_items(r#"{"ok":true,"result":{"episodes":[{"id":"s1","title":"Ep 1"}]}}"#);
+        assert_eq!(eps[0].label, "Ep 1");
     }
 
     #[test]
