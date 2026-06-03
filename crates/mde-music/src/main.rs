@@ -73,6 +73,8 @@ struct State {
     now_artist: String,
     /// AIR-15.b.2 — the current track's decoded cover art (maxi header).
     now_art: Option<image::Handle>,
+    /// AIR-15.b.2 — current track duration (ms) for the maxi scrub bar.
+    now_duration_ms: u64,
     /// AIR-16 — the open album's dominant cover colour + contrast text
     /// (Indigo until the cover art resolves).
     album_color: (u8, u8, u8),
@@ -170,7 +172,7 @@ enum Message {
     StateLoaded(NowState),
     SongResolved(String, String, String),
     /// AIR-15.b.2 — the current track's coverArt token resolved.
-    NowCoverResolved(Option<String>),
+    NowMetaResolved(Option<String>, u64),
     /// AIR-15.b.2 — the current track's cover art decoded.
     NowArtReady(Option<image::Handle>),
     PlayPause,
@@ -205,6 +207,7 @@ impl State {
             now_title: String::new(),
             now_artist: String::new(),
             now_art: None,
+            now_duration_ms: 0,
             album_color: color::INDIGO,
             album_text_color: (255, 255, 255),
             album_art: None,
@@ -561,10 +564,11 @@ impl State {
                                 Message::SongResolved(id.clone(), t, a)
                             })
                         };
-                        let art = Task::perform(nowplaying::resolve_cover_id(id), |r| {
-                            Message::NowCoverResolved(r.ok().flatten())
+                        let meta = Task::perform(nowplaying::resolve_now_meta(id), |r| {
+                            let (cover, duration) = r.unwrap_or((None, 0));
+                            Message::NowMetaResolved(cover, duration)
                         });
-                        return Task::batch([resolve, art]);
+                        return Task::batch([resolve, meta]);
                     }
                 }
                 Task::none()
@@ -576,12 +580,15 @@ impl State {
                 }
                 Task::none()
             }
-            Message::NowCoverResolved(cover) => match cover {
-                Some(c) => Task::perform(color::fetch_cover_art(c), |r| {
-                    Message::NowArtReady(r.ok().map(|b| image::Handle::from_bytes(b)))
-                }),
-                None => Task::none(),
-            },
+            Message::NowMetaResolved(cover, duration) => {
+                self.now_duration_ms = duration;
+                match cover {
+                    Some(c) => Task::perform(color::fetch_cover_art(c), |r| {
+                        Message::NowArtReady(r.ok().map(|b| image::Handle::from_bytes(b)))
+                    }),
+                    None => Task::none(),
+                }
+            }
             Message::NowArtReady(handle) => {
                 self.now_art = handle;
                 Task::none()
@@ -1017,6 +1024,22 @@ impl State {
                 .into(),
             None => Space::with_height(Length::Fixed(0.0)).into(),
         };
+        let ratio = (self.now_state.position_ms as f32
+            / self.now_duration_ms.max(1) as f32)
+            .clamp(0.0, 1.0);
+        let scrub: Element<'_, Message> = column![
+            iced::widget::progress_bar(0.0..=1.0, ratio).height(Length::Fixed(6.0)),
+            text(format!(
+                "{}:{:02} / {}:{:02}",
+                self.now_state.position_ms / 60000,
+                (self.now_state.position_ms / 1000) % 60,
+                self.now_duration_ms / 60000,
+                (self.now_duration_ms / 1000) % 60,
+            ))
+            .size(11),
+        ]
+        .spacing(2)
+        .into();
         let header = column![
             row![
                 text("Now Playing").size(22).width(Length::Fill),
@@ -1026,6 +1049,7 @@ impl State {
             art,
             text(title).size(28),
             text(self.now_artist.clone()).size(16),
+            scrub,
             row![
                 button(text("Prev").size(13)).on_press(Message::SkipPrev),
                 button(text(play_pause).size(13)).on_press(Message::PlayPause),

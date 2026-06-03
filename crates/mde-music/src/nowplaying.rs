@@ -141,10 +141,26 @@ pub fn parse_cover_id(reply_json: &str) -> Option<String> {
 ///
 /// # Errors
 /// Bus-store / request / timeout failures.
-pub async fn resolve_cover_id(song_id: String) -> Result<Option<String>, String> {
+/// Extract the song's duration (server reports seconds; returned as ms) from
+/// a `get-song` reply, for the maxi scrub bar. 0 when absent.
+#[must_use]
+pub fn parse_song_duration(reply_json: &str) -> u64 {
+    serde_json::from_str::<Value>(reply_json)
+        .ok()
+        .and_then(|v| v.get("result")?.get("song")?.get("duration").and_then(Value::as_u64))
+        .unwrap_or(0)
+        * 1000
+}
+
+/// Resolve a song id to its `(coverArt token, duration_ms)` via `get-song`
+/// (for the maxi cover art + scrub bar).
+///
+/// # Errors
+/// Bus-store / request / timeout failures.
+pub async fn resolve_now_meta(song_id: String) -> Result<(Option<String>, u64), String> {
     with_bus(move |p, rt| {
         let reply = req(p, rt, "action/music/get-song", Some(&song_id))?;
-        Ok(parse_cover_id(&reply))
+        Ok((parse_cover_id(&reply), parse_song_duration(&reply)))
     })
     .await
 }
@@ -215,6 +231,15 @@ mod tests {
         );
         assert_eq!(parse_cover_id(r#"{"ok":true,"result":{"song":{"title":"X"}}}"#), None);
         assert_eq!(parse_cover_id("nope"), None);
+    }
+
+    #[test]
+    fn parse_song_duration_seconds_to_ms() {
+        assert_eq!(
+            parse_song_duration(r#"{"ok":true,"result":{"song":{"duration":215}}}"#),
+            215_000
+        );
+        assert_eq!(parse_song_duration("nope"), 0);
     }
 
     #[test]
