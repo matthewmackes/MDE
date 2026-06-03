@@ -175,6 +175,8 @@ enum Message {
     NowMetaResolved(Option<String>, u64),
     /// AIR-15.b.2 — the current track's cover art decoded.
     NowArtReady(Option<image::Handle>),
+    /// AIR-15.b.3 — the maxi volume slider changed.
+    SetVolume(f32),
     PlayPause,
     SkipNext,
     SkipPrev,
@@ -592,6 +594,10 @@ impl State {
             Message::NowArtReady(handle) => {
                 self.now_art = handle;
                 Task::none()
+            }
+            Message::SetVolume(v) => {
+                self.now_state.volume = v;
+                Task::perform(nowplaying::set_volume(v), Message::TransportDone)
             }
             Message::PlayPause => Task::perform(
                 nowplaying::play_pause(self.now_state.playing),
@@ -1040,6 +1046,11 @@ impl State {
         ]
         .spacing(2)
         .into();
+        let volume_slider: Element<'_, Message> =
+            iced::widget::slider(0.0..=1.0, self.now_state.volume, Message::SetVolume)
+                .step(0.01_f32)
+                .width(Length::Fixed(200.0))
+                .into();
         let header = column![
             row![
                 text("Now Playing").size(22).width(Length::Fill),
@@ -1050,6 +1061,7 @@ impl State {
             text(title).size(28),
             text(self.now_artist.clone()).size(16),
             scrub,
+            volume_slider,
             row![
                 button(text("Prev").size(13)).on_press(Message::SkipPrev),
                 button(text(play_pause).size(13)).on_press(Message::PlayPause),

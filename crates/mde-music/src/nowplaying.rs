@@ -20,12 +20,14 @@ use crate::album::{req, with_bus};
 pub const POLL: std::time::Duration = std::time::Duration::from_secs(2);
 
 /// The live transport snapshot from `get-state`.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct NowState {
     pub playing: bool,
     pub active: bool,
     pub song_id: String,
     pub position_ms: u64,
+    /// AIR-15.b.3 — playback volume 0.0..=1.0 (engine.volume() via get-state).
+    pub volume: f32,
 }
 
 impl NowState {
@@ -56,6 +58,7 @@ pub fn parse_state(reply_json: &str) -> NowState {
             .unwrap_or("")
             .to_string(),
         position_ms: v.get("position_ms").and_then(Value::as_u64).unwrap_or(0),
+        volume: v.get("volume").and_then(Value::as_f64).map(|x| x as f32).unwrap_or(1.0),
     }
 }
 
@@ -161,6 +164,19 @@ pub async fn resolve_now_meta(song_id: String) -> Result<(Option<String>, u64), 
     with_bus(move |p, rt| {
         let reply = req(p, rt, "action/music/get-song", Some(&song_id))?;
         Ok((parse_cover_id(&reply), parse_song_duration(&reply)))
+    })
+    .await
+}
+
+/// Set the playback volume (0.0..=1.0) via `action/music/set-volume` (the
+/// daemon accepts a bare number body).
+///
+/// # Errors
+/// Bus-store / request / timeout failures.
+pub async fn set_volume(v: f32) -> Result<(), String> {
+    with_bus(move |p, rt| {
+        req(p, rt, "action/music/set-volume", Some(&v.to_string()))?;
+        Ok(())
     })
     .await
 }
